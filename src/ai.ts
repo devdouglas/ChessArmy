@@ -1,19 +1,15 @@
 /**
- * Greedy AI:
- * - Army: capture value + approach enemy general
- * - King threatened: anyone who can hit the threat does that first;
- *   only then the king flees (prefer high ground)
+ * Aggressive AI: if anyone can shoot or melee, they do.
+ * Otherwise close on the enemy general (else nearest enemy). No fleeing.
  */
 
 import {
   allLegalActions,
   applyAction,
   getPiece,
-  hasSplash,
   hpLeft,
   pieceAt,
   previewMove,
-  splashBlast,
   statsOf,
   terrainAt,
   UNIT_STATS,
@@ -27,77 +23,41 @@ function dist(state: GameState, a: Hex, b: Hex): number {
   return distance(a, b, state.orientation);
 }
 
-/** Enemy within this distance → general must prioritize fleeing. */
-const GEN_THREAT_RANGE = 3;
-
 function enemyGeneral(state: GameState, me: Side) {
   return state.pieces.find((p) => p.side !== me && statsOf(p.type).king);
 }
 
-function myGeneral(state: GameState, me: Side) {
-  return state.pieces.find((p) => p.side === me && statsOf(p.type).king);
-}
-
-function minEnemyDist(state: GameState, hex: Hex, me: Side): number {
-  let min = Infinity;
+function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
+  const gen = enemyGeneral(state, me);
+  if (gen) return { col: gen.col, row: gen.row };
+  let best: Hex | null = null;
+  let bestD = Infinity;
   for (const p of state.pieces) {
     if (p.side === me) continue;
-    min = Math.min(min, dist(state, hex, { col: p.col, row: p.row }));
+    const h = { col: p.col, row: p.row };
+    const d = dist(state, from, h);
+    if (d < bestD) {
+      bestD = d;
+      best = h;
+    }
   }
-  return min === Infinity ? 99 : min;
-}
-
-/** Sum of capped distances — higher = farther from the pack. */
-function packClearance(state: GameState, hex: Hex, me: Side): number {
-  let sum = 0;
-  for (const p of state.pieces) {
-    if (p.side === me) continue;
-    sum += Math.min(dist(state, hex, { col: p.col, row: p.row }), 8);
-  }
-  return sum;
+  return best;
 }
 
 function isAttackAction(state: GameState, action: Action, me: Side): boolean {
   if (action.kind === 'shoot') return true;
   if (action.kind === 'move') {
-    const v = pieceAt(state, action.to);
-    return !!(v && v.side !== me);
-  }
-  return false;
-}
-
-function generalThreatened(state: GameState, me: Side): boolean {
-  return threatPieces(state, me).length > 0;
-}
-
-function threatPieces(state: GameState, me: Side) {
-  const g = myGeneral(state, me);
-  if (!g) return [];
-  const gh: Hex = { col: g.col, row: g.row };
-  return state.pieces.filter(
-    (p) => p.side !== me && dist(state, gh, { col: p.col, row: p.row }) <= GEN_THREAT_RANGE,
-  );
-}
-
-function actionHitsThreats(state: GameState, action: Action, threatIds: Set<string>): boolean {
-  if (!threatIds.size) return false;
-  if (action.kind === 'shoot') {
-    const at = pieceAt(state, action.at);
-    if (at && threatIds.has(at.id)) return true;
-    const shooter = getPiece(state, action.pieceId);
-    if (!shooter || !hasSplash(statsOf(shooter.type))) return false;
-    return splashBlast(state, action.at, { col: shooter.col, row: shooter.row }).some((h) => {
-      const v = pieceAt(state, h);
-      return !!v && threatIds.has(v.id);
-    });
-  }
-  if (action.kind === 'move') {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
     const plan = previewMove(state, piece, action.to);
-    if (plan.hits.some((h) => threatIds.has(h.id))) return true;
+    if (plan.hits.some((h) => {
+      const v = getPiece(state, h.id);
+      return !!v && v.side !== me;
+    })) {
+      return true;
+    }
     const v = pieceAt(state, plan.stop);
-    return !!v && threatIds.has(v.id);
+    return !!(v && v.side !== me);
   }
   return false;
 }
@@ -106,12 +66,12 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
   let score = 0;
   const removed = state.pieces.filter((p) => !after.pieces.some((q) => q.id === p.id));
   for (const k of removed) {
-    const v = UNIT_STATS[k.type].value * 20;
+    const v = UNIT_STATS[k.type].value * 24;
     if (k.side !== me) {
       score += v;
       if (statsOf(k.type).king) score += 10_000;
     } else {
-      score -= v * 1.4;
+      score -= v * 0.5;
       if (statsOf(k.type).king) score -= 10_000;
     }
   }
@@ -120,114 +80,52 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
     if (!q) continue;
     const dmg = hpLeft(p) - hpLeft(q);
     if (dmg <= 0) continue;
-    const v = UNIT_STATS[p.type].value * 8 * dmg;
-    score += p.side !== me ? v : -v * 1.4;
+    const v = UNIT_STATS[p.type].value * 10 * dmg;
+    score += p.side !== me ? v : -v * 0.5;
   }
   if (after.winner === me) score += 50_000;
   if (after.winner && after.winner !== me) score -= 50_000;
   return score;
 }
 
-/** Flee scoring: maximize distance from enemies; attacks only if no flee/move left. */
-function scoreGeneralAction(state: GameState, action: Action, me: Side): number {
-  if (action.kind === 'skip') return -100;
+function scoreAction(state: GameState, action: Action, me: Side): number {
+  if (action.kind === 'skip') return -80;
 
   const piece = getPiece(state, action.pieceId);
   if (!piece) return -Infinity;
 
   const from: Hex = { col: piece.col, row: piece.row };
-  const genActs = allLegalActions(state).filter(
-    (a) => a.kind !== 'skip' && a.pieceId === piece.id,
-  );
-  const hasNonAttack = genActs.some((a) => !isAttackAction(state, a, me));
-  const attacking = isAttackAction(state, action, me);
+  let score = scoreKillDelta(state, applyAction(state, action), me);
 
-  if (attacking) {
-    // Only fight when every other general option is also an attack
-    if (hasNonAttack) return -20_000;
-    const after = applyAction(state, action);
-    return scoreKillDelta(state, after, me) + Math.random() * 0.3;
+  if (isAttackAction(state, action, me)) {
+    score += 4_000;
+    if (action.kind === 'shoot') {
+      const t = pieceAt(state, action.at);
+      if (t && t.side !== me) score += UNIT_STATS[t.type].value * 22;
+    }
+    score += Math.random() * 0.3;
+    return score;
   }
 
-  if (action.kind !== 'move') return -Infinity;
+  if (action.kind !== 'move') return score;
 
   const stop = previewMove(state, piece, action.to).stop;
-  const beforeMin = minEnemyDist(state, from, me);
-  const afterMin = minEnemyDist(state, stop, me);
-  const beforePack = packClearance(state, from, me);
-  const afterPack = packClearance(state, stop, me);
-
-  let score = (afterMin - beforeMin) * 100;
-  score += (afterPack - beforePack) * 4;
-
-  // Strongly prefer opening distance; punish walking into the army
-  if (afterMin > beforeMin) score += 500;
-  else if (afterMin < beforeMin) score -= 800;
+  const hunt = huntHex(state, from, me);
+  if (hunt) {
+    const closer = dist(state, from, hunt) - dist(state, stop, hunt);
+    score += closer * 80;
+    if (closer > 0) score += 300;
+    else if (closer < 0) score -= 900;
+  }
 
   const fromHigh = terrainAt(state, from) === 'high';
   const toHigh = terrainAt(state, stop) === 'high';
-  if (toHigh && !fromHigh) score += 420;
-  else if (toHigh) score += 160;
-  if (fromHigh && !toHigh) score -= 280;
-
-  score += Math.random() * 0.3;
-  return score;
-}
-
-function scoreArmyAction(state: GameState, action: Action, me: Side): number {
-  if (action.kind === 'skip') return -5;
-
-  const piece = getPiece(state, action.pieceId);
-  if (!piece) return -Infinity;
-
-  const gen = enemyGeneral(state, me);
-  let score = scoreKillDelta(state, applyAction(state, action), me);
-
-  if (action.kind === 'move' && gen) {
-    const beforeDist = dist(
-      state,
-      { col: piece.col, row: piece.row },
-      { col: gen.col, row: gen.row },
-    );
-    const afterDist = dist(
-      state,
-      previewMove(state, piece, action.to).stop,
-      { col: gen.col, row: gen.row },
-    );
-    score += (beforeDist - afterDist) * 3;
-
-    const s = statsOf(piece.type);
-    if (s.value >= 3 && s.shoot >= 4) {
-      score += (beforeDist - afterDist) * 2;
-    }
-
-    const victim = pieceAt(state, action.to);
-    if (victim && victim.side !== me) {
-      score += UNIT_STATS[victim.type].value * 20;
-    }
-  }
-
-  if (action.kind === 'shoot' && gen) {
-    const d = dist(state, action.at, { col: gen.col, row: gen.row });
-    score += Math.max(0, 8 - d);
-
-    const target = pieceAt(state, action.at);
-    if (target && target.side !== me) {
-      score += UNIT_STATS[target.type].value * 18;
-    }
-  }
+  if (toHigh && !fromHigh) score += 40;
+  if (fromHigh && !toHigh) score -= 20;
 
   score += UNIT_STATS[piece.type].value * 0.05;
   score += Math.random() * 0.3;
   return score;
-}
-
-function scoreAction(state: GameState, action: Action, me: Side): number {
-  if (action.kind === 'skip') return -5;
-  const piece = getPiece(state, action.pieceId);
-  if (!piece) return -Infinity;
-  if (statsOf(piece.type).king) return scoreGeneralAction(state, action, me);
-  return scoreArmyAction(state, action, me);
 }
 
 function pickBest(actions: Action[], state: GameState, me: Side): Action {
@@ -248,22 +146,8 @@ export function pickAiAction(state: GameState): Action | null {
   const actions = allLegalActions(state);
   if (!actions.length) return null;
 
-  const g = myGeneral(state, me);
-
-  if (g && generalThreatened(state, me)) {
-    const threatIds = new Set(threatPieces(state, me).map((p) => p.id));
-    const defense = actions.filter(
-      (a) => a.kind !== 'skip' && actionHitsThreats(state, a, threatIds),
-    );
-    if (defense.length) return pickBest(defense, state, me);
-
-    const genActs = actions.filter((a) => a.kind !== 'skip' && a.pieceId === g.id);
-    if (genActs.length) {
-      const flee = genActs.filter((a) => !isAttackAction(state, a, me));
-      return pickBest(flee.length ? flee : genActs, state, me);
-    }
-  }
-
+  const attacks = actions.filter((a) => isAttackAction(state, a, me));
+  if (attacks.length) return pickBest(attacks, state, me);
   return pickBest(actions, state, me);
 }
 

@@ -39,9 +39,9 @@ Live numbers are editable in **Units**. PHP/`localStorage` override these.
 
 Click a piece: green = move, gold = stamina (double range or climb), red = legal shot. Dual hex: Shoot, or click again to move.
 
-**Stamina:** once per turn, spend 1 to climb low→high and/or double that action's move range. Spending it on a multi-action unit (scout) ends the activation — no second action. Empty pool shows a bolt badge on the piece (top-right, above ammo). Regen is consecutive **idle** own turns per point (no move that turn; walking resets the count). Regen 2 = sit still two turns. 0 = never.
+**Stamina:** once per turn, spend 1 to climb low→high and/or double that action's move range. Spending it on a multi-action unit (scout) ends the activation — no second action. Empty pool shows a bolt badge on the piece (top-right, above ammo). Regen is consecutive own turns per point; walking resets the countdown (that turn still counts). The point only lands on an **idle** End (no move). Regen 1 = sit one idle turn after walking. Regen 2 = two own turns, last one idle. 0 = never.
 
-**Max units / turn** (Level panel in the Editor, default 1): that many pieces may activate before the side-turn ends. Played pieces get a green check. **End turn** below the board skips leftovers. AI uses the same quota. Scout’s 2 actions still happen inside one of those activations. Random maps stay at 1.
+**Max units / turn** (Level panel in the Editor, default 1): that many pieces may activate before the side-turn ends. Played pieces get a green check. **End turn** below the board skips leftovers (also how you idle-regen when the cap is 1). AI uses the same quota. Scout’s 2 actions still happen inside one of those activations. Random maps stay at 1.
 
 ## Terrain
 
@@ -59,7 +59,7 @@ Random maps scatter water / rock / wall / high on the **mid belt** (rows 3–7).
 
 Armor ring: **green** ≥2, **orange** 1, **red** 0, **purple** negative. Damage is `max(0, amount − armor)`.
 
-AI is greedy: captures by material, then walks toward your general.
+AI is aggressive: any legal shoot/melee first, otherwise close on your general (or nearest piece). It does not flee.
 
 Start screen: **Campaign** / **vs AI** / **Hotseat** / **Tutorial**. Campaign and Tutorial walk saved maps of that category A–Z vs AI. **Start** in the toolbar returns here.
 

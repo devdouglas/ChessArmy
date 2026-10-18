@@ -1176,10 +1176,11 @@ function renderBoard(): string {
 }
 
 function endTurnButton(): string {
-  if (!canControl() || state.unitsPerTurn <= 1) return '';
+  if (!canControl()) return '';
   const used = state.actedIds.length;
   const max = state.unitsPerTurn;
-  return `<button type="button" id="end-turn">End turn (${used}/${max})</button>`;
+  const label = max > 1 ? `End turn (${used}/${max})` : 'End turn';
+  return `<button type="button" id="end-turn">${label}</button>`;
 }
 
 function renderActionBar(): string {
@@ -1296,10 +1297,10 @@ function renderSidebar(): string {
       stamNote = 'used this turn';
       stamWarn = true;
     } else if (curSt < maxSt && s.staminaRegen > 0) {
-      const n = piece.staminaRegenWait ?? s.staminaRegen;
+      const n = Math.max(1, piece.staminaRegenWait ?? s.staminaRegen);
       stamNote = `+1 after ${n} idle turn${n === 1 ? '' : 's'}`;
     } else if (s.staminaRegen > 0) {
-      stamNote = `regen ${s.staminaRegen} idle`;
+      stamNote = `regen ${s.staminaRegen}`;
     }
 
     const rows = [
@@ -2400,7 +2401,7 @@ function render() {
           <dd><strong>Actions</strong> activations per turn</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
           <dd><strong>Stamina</strong> pool. Spend 1 to climb low→high or double move range, once per turn</dd>
-          <dd><strong>Stam regen</strong> consecutive idle own turns (no move) to recover 1. Moving resets the count. 0 = never</dd>
+          <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before</dd>
           <dt>Shoot</dt>
           <dd><strong>Range / min</strong> fire distance</dd>

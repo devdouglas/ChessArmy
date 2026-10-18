@@ -174,7 +174,7 @@ export type UnitStats = UnitTraits & {
   moveBudget: number;
   /** Stamina pool. 0 = cannot climb or double. */
   stamina: number;
-  /** Consecutive idle own turns (no move) to recover 1 stamina. 0 = never. */
+  /** Own turns to recover 1 stamina (walk resets; grant only on an idle End). 0 = never. */
   staminaRegen: number;
   /** Shots per piece per match (0 = unlimited). */
   ammo: number;

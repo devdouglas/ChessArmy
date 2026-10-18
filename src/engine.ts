@@ -72,7 +72,7 @@ export type Piece = {
   staminaUsedThisTurn?: boolean;
   /** Walked this activation — idle regen does not tick. */
   movedThisTurn?: boolean;
-  /** Idle own turns left until +1 stamina (when below max). */
+  /** Own-turn Ends left until +1 stamina can land (grant only while idle). */
   staminaRegenWait?: number;
 };
 
@@ -463,7 +463,11 @@ function other(side: Side): Side {
   return side === 'red' ? 'blue' : 'red';
 }
 
-/** Idle pieces only: consecutive turns without a move. Movers skip and already reset wait. */
+/**
+ * Every own-turn End advances the countdown. Walking resets it to `regen`
+ * (this End still counts, so remaining is regen-1). Only an idle End can
+ * actually grant — otherwise spend/walk + regen 1 would refill the same turn.
+ */
 function tickStamina(state: GameState, side: Side): void {
   for (const p of state.pieces) {
     if (p.side !== side) continue;
@@ -477,13 +481,12 @@ function tickStamina(state: GameState, side: Side): void {
       p.staminaRegenWait = undefined;
       continue;
     }
-    if (moved) continue;
     const wait = (p.staminaRegenWait ?? regen) - 1;
-    if (wait <= 0) {
+    if (!moved && wait <= 0) {
       p.stamina = Math.min(max, staminaLeft(p) + 1);
       p.staminaRegenWait = staminaLeft(p) < max ? regen : undefined;
     } else {
-      p.staminaRegenWait = wait;
+      p.staminaRegenWait = Math.max(0, wait);
     }
   }
 }
