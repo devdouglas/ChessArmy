@@ -1207,7 +1207,7 @@ function renderActionBar(): string {
     pieceAt(state, pendingHex!) &&
     pieceAt(state, pendingHex!)!.side !== piece.side
   ) {
-    hint = `Melee — ${UNIT_STATS[piece.type].meleeDamage} dmg; kill takes the hex`;
+    hint = `Melee — ${UNIT_STATS[piece.type].meleeDamage} dmg (min 1); kill takes the hex`;
   } else if (
     state.scoutPieceId &&
     state.scoutPieceId !== piece.id &&
@@ -1408,8 +1408,8 @@ function renderSidebar(): string {
           <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
           <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
           <div><dt>Stamina</dt><dd>climb low→high or double move, once / turn</dd></div>
-          <div><dt>Melee</dt><dd>enter occupied hex; kill takes it</dd></div>
-          <div><dt>Shield</dt><dd>DMG = attack − shield; negative shield adds damage</dd></div>
+          <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
+          <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1); negative shield adds</dd></div>
           <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
           <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
         </dl>
@@ -2415,7 +2415,7 @@ function render() {
           <dd><strong>Armor</strong> subtracted from incoming dmg (can be negative). Ring: +2 green, +1 orange, 0 red, −1 purple. Stock: tank +2, general +1</dd>
           <dd><strong>Value</strong> scoring / AI</dd>
           <dd><strong>Category</strong> Modern / Roman / Greek — filter above. Stock is Modern</dd>
-          <dd><strong>Kit</strong> icon + specials (water, overrun, high, king). Does not reset numbers</dd>
+          <dd><strong>Kit</strong> icon + specials (water, overrun, high, king). Does not reset numbers. Tower is glyph only</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
         </dl>
       </aside>

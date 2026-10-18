@@ -124,9 +124,9 @@ export function armorOf(piece: Piece): number {
   return statsOf(piece.type).armor;
 }
 
-/** Damage after the target's armor. Negative armor increases the hit. */
-export function netDamage(piece: Piece, amount: number): number {
-  return Math.max(0, amount - armorOf(piece));
+/** Damage after the target's armor. Negative armor increases the hit. Melee uses min 1. */
+export function netDamage(piece: Piece, amount: number, min = 0): number {
+  return Math.max(min, amount - armorOf(piece));
 }
 
 export function hasSplash(stats: UnitStats): boolean {
@@ -207,8 +207,9 @@ function applyDamage(
   state: GameState,
   victim: Piece,
   amount: number,
+  min = 0,
 ): { fatal: boolean; remaining: number } {
-  const remaining = Math.max(0, hpLeft(victim) - netDamage(victim, amount));
+  const remaining = Math.max(0, hpLeft(victim) - netDamage(victim, amount, min));
   victim.hp = remaining;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
@@ -233,10 +234,10 @@ function hpBit(victim: Piece, fatal: boolean, remaining: number): string {
   return fatal ? `${unitLog(victim)} killed` : `${unitLog(victim)} (${remaining} HP)`;
 }
 
-/** net = attack − shield; negative shield adds damage. */
-function dmgLine(victim: Piece, amount: number): string {
+/** net = attack − shield; negative shield adds damage. Melee floors at 1. */
+function dmgLine(victim: Piece, amount: number, min = 0): string {
   const shield = armorOf(victim);
-  const net = netDamage(victim, amount);
+  const net = netDamage(victim, amount, min);
   return `<span class="log-dmg">DMG: ${net} (attack ${amount} - shield ${shield})</span>`;
 }
 
@@ -292,7 +293,7 @@ export function previewMove(
 
   const strike = (victim: Piece): boolean => {
     if (melee <= 0) return false;
-    const nextHp = hpOf(victim, hpMap) - netDamage(victim, melee);
+    const nextHp = hpOf(victim, hpMap) - netDamage(victim, melee, 1);
     hpMap.set(victim.id, nextHp);
     hits.push({
       id: victim.id,
@@ -782,9 +783,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
     for (const mh of plan.hits) {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
-      applyDamage(next, victim, mh.amount);
+      applyDamage(next, victim, mh.amount, 1);
       hitBits.push(hpBit(victim, mh.fatal, mh.remaining));
-      dmgLines.push(dmgLine(victim, mh.amount));
+      dmgLines.push(dmgLine(victim, mh.amount, 1));
     }
 
     const bounced = !eq(plan.stop, action.to);

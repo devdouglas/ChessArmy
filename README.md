@@ -36,6 +36,7 @@ Live numbers are editable in **Units**. PHP/`localStorage` override these.
 | Rook   | Sniper  | 1    | 6     | —                                                          | 5     |
 | Queen  | Tank    | 3    | 3–4   | Overrun infantry; no high; splash FF; min range 3; armor 2 | 9     |
 | King   | General | 1    | 2     | King (win piece); armor 1                                  | —     |
+| —      | Tower   | *    | *     | Kit glyph only — set stats in Units                        | *     |
 
 Click a piece: green = move, gold = stamina (double range or climb), red = legal shot. Dual hex: Shoot, or click again to move.
 
@@ -57,7 +58,7 @@ Random maps scatter water / rock / wall / high on the **mid belt** (rows 3–7).
 
 **Straight** shots: pieces block LOS from low ground. **Arch** shots: fire over units; terrain LOS (rock / wall / high) is unchanged. High shooters see along the ridge and over pieces either way; rock/wall still block.
 
-Armor ring: **green** ≥2, **orange** 1, **red** 0, **purple** negative. Damage is `max(0, amount − armor)`.
+Armor ring: **green** ≥2, **orange** 1, **red** 0, **purple** negative. Damage is `max(0, amount − armor)`. Melee floors at **1** even if armor would soak it; shots can still bounce off.
 
 AI is aggressive: any legal shoot/melee first, otherwise close on your general (or nearest piece). It does not flee.
 

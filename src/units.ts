@@ -261,15 +261,15 @@ export function patchUnitShootArc(type: UnitType, shootArc: ShootArc): void {
   persistUnitStats();
 }
 
-/** Writes kit glyph + traits only. Leaves numbers / name / category. */
+/** Writes kit glyph + traits. Tower is glyph only — numbers and flags stay. */
 export function patchUnitKit(type: UnitType, role: UnitRole): void {
   if (!isUnitRole(role) || !UNIT_TYPES.includes(type)) return;
   const kit = DEFAULT_UNIT_STATS[role];
+  const prev = statsOf(type);
   const next = sanitizeUnitStats(type, {
-    ...statsOf(type),
+    ...prev,
     role,
-    chess: kit.chess,
-    ...KIT_TRAITS[role],
+    ...(role === 'tower' ? {} : { chess: kit.chess, ...KIT_TRAITS[role] }),
   });
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();

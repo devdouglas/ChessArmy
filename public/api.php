@@ -104,6 +104,7 @@ function allowed_unit(mixed $type): bool {
         'sniper' => true,
         'tank' => true,
         'general' => true,
+        'tower' => true,
     ];
     if (!is_string($type) || strlen($type) > 40) {
         return false;

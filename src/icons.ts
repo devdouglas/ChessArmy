@@ -63,6 +63,17 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M0 -7 L1.5 -3.2 H5.5 L2.2 -0.8 L3.5 3.2 L0 1.2 L-3.5 3.2 L-2.2 -0.8 L-5.5 -3.2 H-1.5 Z"/>
     <path d="M-3.8 4.2 H3.8 L2.8 7 H-2.8 Z"/>
   `,
+  // Keep — shaft, merlons, slit
+  tower: `
+    <path d="M-7 7.5 H7 L5.5 3 H-5.5 Z"/>
+    <path d="M-4.8 3 H4.8 V-2.1 H-4.8 Z"/>
+    <path d="M-6.3 -2.1 H6.3 V-3.9
+      H4.7 V-7.3 H2.7 V-3.9
+      H1.0 V-7.3 H-1.0 V-3.9
+      H-2.7 V-7.3 H-4.7 V-3.9
+      H-6.3 Z"/>
+    <rect x="-1.15" y="-0.15" width="2.3" height="2.5" rx="0.35"/>
+  `,
 };
 
 export function pieceIconSvg(type: UnitType, size = 16): string {
@@ -141,4 +152,5 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   sniper: 'scoped rifle',
   tank: 'tracked hull',
   general: 'command star',
+  tower: 'keep',
 };

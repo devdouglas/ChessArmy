@@ -9,7 +9,8 @@ export type UnitRole =
   | 'bazooka'
   | 'sniper'
   | 'tank'
-  | 'general';
+  | 'general'
+  | 'tower';
 
 /** Roster id: a stock role, or `u-…` for a copied unit. */
 export type UnitType = string;
@@ -21,6 +22,7 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'sniper',
   'tank',
   'general',
+  'tower',
 ];
 
 /** Live roster. Copies are appended; reset restores stock. */
@@ -55,6 +57,7 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   sniper: 'Sniper',
   tank: 'Tank',
   general: 'General',
+  tower: 'Tower',
 };
 
 export function sanitizeUnitCategory(raw: unknown): UnitCategory {
@@ -149,6 +152,14 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     overrun: false,
     infantry: false,
     king: true,
+  },
+  tower: {
+    passWater: false,
+    passUnits: false,
+    noHigh: false,
+    overrun: false,
+    infantry: false,
+    king: false,
   },
 };
 
@@ -328,6 +339,29 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 1,
     ...KIT_TRAITS.general,
+  },
+  tower: {
+    name: 'Tower',
+    chess: '—',
+    category: 'modern',
+    role: 'tower',
+    move: 1,
+    shoot: 2,
+    shootMin: 1,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 1,
+    value: 1,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...KIT_TRAITS.tower,
   },
 };
 
