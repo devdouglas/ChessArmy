@@ -1,4 +1,4 @@
-import { UNIT_STATS, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
+import { statsOf, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
 import type { HexOrientation } from './hex';
 
 export const COLS = 11;
@@ -209,12 +209,12 @@ function pawnCol(side: Side, backIndex: number, cols: number): number {
   return Math.max(0, Math.min(cols - 1, col));
 }
 
-function spawnExtras(type: UnitType): Pick<Piece, 'hasSprint' | 'ammo' | 'hp'> {
-  const s = UNIT_STATS[type];
+function spawnExtras(type: UnitType): Pick<Piece, 'ammo' | 'hp' | 'stamina'> {
+  const s = statsOf(type);
   return {
-    hasSprint: s.sprint || undefined,
     ammo: s.ammo > 0 ? s.ammo : undefined,
     hp: s.hp > 1 ? s.hp : undefined,
+    stamina: s.stamina > 0 ? s.stamina : undefined,
   };
 }
 
@@ -364,19 +364,24 @@ function freshGame(
   if (!custom) placeSetupWalls(t, cols, rows);
   const inBounds = (p: ArmyStamp) =>
     p.col >= 0 && p.col < cols && p.row >= 0 && p.row < rows;
+  const pieces = custom
+    ? piecesFromStamps(armies.filter(inBounds))
+    : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)];
+  const king = (side: Side) => pieces.some((p) => p.side === side && statsOf(p.type).king);
   return {
     cols,
     rows,
     orientation,
     terrain: t,
-    pieces: custom
-      ? piecesFromStamps(armies.filter(inBounds))
-      : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)],
+    pieces,
     turn: 'red',
     scoutActionsLeft: null,
     scoutPieceId: null,
     scoutMoveSpent: null,
     winner: null,
+    hadKing: { red: king('red'), blue: king('blue') },
+    unitsPerTurn: 1,
+    actedIds: [],
     log: [log],
   };
 }

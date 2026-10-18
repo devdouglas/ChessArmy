@@ -152,8 +152,15 @@ function phpServer(): Plugin {
   };
 }
 
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as {
+  version: string;
+};
+
 export default defineConfig({
   base: '/warchess/',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [phpServer()],
   server: {
     port: 5174,

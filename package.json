@@ -1,12 +1,13 @@
 {
   "name": "chess-army-prototype",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare": "sh scripts/install-git-hooks.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

@@ -15,6 +15,34 @@ import {
   type HexOrientation,
   type PathOpts,
 } from './hex';
+import { statsOf, type UnitStats, type UnitType } from './roster';
+
+export {
+  DEFAULT_UNIT_STATS,
+  KIT_TRAITS,
+  SHOOT_ARCS,
+  SHOOT_ARC_LABEL,
+  STOCK_UNIT_TYPES,
+  TRAIT_FIELDS,
+  UNIT_CATEGORIES,
+  UNIT_CATEGORY_LABEL,
+  UNIT_ROLE_LABEL,
+  UNIT_STATS,
+  UNIT_TYPES,
+  isCustomUnitId,
+  isKnownUnit,
+  isUnitRole,
+  roleOf,
+  sanitizeShootArc,
+  sanitizeUnitCategory,
+  statsOf,
+  type ShootArc,
+  type UnitCategory,
+  type UnitRole,
+  type UnitStats,
+  type UnitTraits,
+  type UnitType,
+} from './roster';
 
 export type Side = 'red' | 'blue';
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high';
@@ -23,22 +51,6 @@ export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high';
 export function isSolidTerrain(t: Terrain): boolean {
   return t === 'rock' || t === 'wall';
 }
-export type UnitType =
-  | 'soldier'
-  | 'scout'
-  | 'bazooka'
-  | 'sniper'
-  | 'tank'
-  | 'general';
-
-export const UNIT_TYPES: UnitType[] = [
-  'soldier',
-  'scout',
-  'bazooka',
-  'sniper',
-  'tank',
-  'general',
-];
 
 export type Piece = {
   id: string;
@@ -46,8 +58,6 @@ export type Piece = {
   type: UnitType;
   col: number;
   row: number;
-  /** Soldiers only: once-per-game 2-hex sprint. Lost when used or when shooting. */
-  hasSprint?: boolean;
   /** Turns of shoot cooldown remaining (can't shoot while > 0). */
   shootCooldown?: number;
   /** Fired this turn — cooldown won't tick until the following end-turn. */
@@ -56,6 +66,14 @@ export type Piece = {
   ammo?: number;
   /** Remaining hitpoints (undefined = full / `UnitStats.hp`). */
   hp?: number;
+  /** Remaining stamina (undefined = full / `UnitStats.stamina`). */
+  stamina?: number;
+  /** Spent stamina already this activation. */
+  staminaUsedThisTurn?: boolean;
+  /** Walked this activation — idle regen does not tick. */
+  movedThisTurn?: boolean;
+  /** Idle own turns left until +1 stamina (when below max). */
+  staminaRegenWait?: number;
 };
 
 export type GameState = {
@@ -72,52 +90,27 @@ export type GameState = {
   scoutMoveSpent: number | null;
   winner: Side | null;
   log: string[];
+  /** Snapshot at match start. King-kill win only if that side actually fielded one. */
+  hadKing: Record<Side, boolean>;
+  /** How many pieces this side may activate before the turn ends. Default 1. */
+  unitsPerTurn: number;
+  /** Piece ids that already finished an activation this side-turn. */
+  actedIds: string[];
 };
 
 export type Action =
-  | { kind: 'move'; pieceId: string; to: Hex; sprint?: boolean }
+  | { kind: 'move'; pieceId: string; to: Hex }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
   | { kind: 'move'; hex: Hex; cost: number }
-  | { kind: 'sprint'; hex: Hex; cost: number }
+  /** Walk that spends 1 stamina (double range and/or climb). */
+  | { kind: 'stamina'; hex: Hex; cost: number }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
   | { kind: 'shoot-range'; hex: Hex };
-
-export type UnitStats = {
-  name: string;
-  chess: string;
-  move: number;
-  /** Max shoot distance (high ground may add +1). */
-  shoot: number;
-  /** Min shoot distance (1 = can fire adjacent). */
-  shootMin: number;
-  actions: number;
-  /** Own turns you must sit out shooting after firing (1 = next activation, 2 = two, …). */
-  shootCooldown: number;
-  value: number;
-  /** Once-per-game extra move (lost when used or when shooting). */
-  sprint: boolean;
-  /** Sprint move range (used when sprint is still available). */
-  sprintMove: number;
-  /** Cap on total move cost across a multi-action activation (0 = no cap). */
-  moveBudget: number;
-  /** Shots per piece per match (0 = unlimited). */
-  ammo: number;
-  /** Hitpoints. */
-  hp: number;
-  /** Damage when bumping / overrunning an occupied hex. */
-  meleeDamage: number;
-  /** Damage of a non-splash shot. */
-  shootDamage: number;
-  /** Damage per hex in a splash blast. 0 = no splash (bullet shot). */
-  splashDamage: number;
-  /** Subtracted from incoming damage (can be negative). */
-  armor: number;
-};
 
 /** Ring color for the current armor scale. */
 export function armorColor(armor: number): string {
@@ -128,7 +121,7 @@ export function armorColor(armor: number): string {
 }
 
 export function armorOf(piece: Piece): number {
-  return UNIT_STATS[piece.type].armor;
+  return statsOf(piece.type).armor;
 }
 
 /** Damage after the target's armor. Negative armor increases the hit. */
@@ -140,140 +133,20 @@ export function hasSplash(stats: UnitStats): boolean {
   return stats.splashDamage > 0;
 }
 
-export const DEFAULT_UNIT_STATS: Record<UnitType, UnitStats> = {
-  soldier: {
-    name: 'Soldier',
-    chess: 'Pawn',
-    move: 1,
-    shoot: 2,
-    shootMin: 1,
-    actions: 1,
-    shootCooldown: 1,
-    value: 1,
-    sprint: true,
-    sprintMove: 2,
-    moveBudget: 0,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 0,
-    armor: 0,
-  },
-  scout: {
-    name: 'Scout',
-    chess: 'Knight',
-    move: 2,
-    shoot: 3,
-    shootMin: 1,
-    actions: 2,
-    shootCooldown: 1,
-    value: 3,
-    sprint: false,
-    sprintMove: 2,
-    moveBudget: 3,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 0,
-    armor: 0,
-  },
-  bazooka: {
-    name: 'Bazooka',
-    chess: 'Bishop',
-    move: 1,
-    shoot: 4,
-    shootMin: 1,
-    actions: 1,
-    shootCooldown: 2,
-    value: 3,
-    sprint: false,
-    sprintMove: 2,
-    moveBudget: 0,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 1,
-    armor: 0,
-  },
-  sniper: {
-    name: 'Sniper',
-    chess: 'Rook',
-    move: 1,
-    shoot: 6,
-    shootMin: 1,
-    actions: 1,
-    shootCooldown: 1,
-    value: 5,
-    sprint: false,
-    sprintMove: 2,
-    moveBudget: 0,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 0,
-    armor: 0,
-  },
-  tank: {
-    name: 'Tank',
-    chess: 'Queen',
-    move: 3,
-    shoot: 4,
-    shootMin: 3,
-    actions: 1,
-    shootCooldown: 2,
-    value: 9,
-    sprint: false,
-    sprintMove: 2,
-    moveBudget: 0,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 1,
-    armor: 2,
-  },
-  general: {
-    name: 'General',
-    chess: 'King',
-    move: 1,
-    shoot: 2,
-    shootMin: 1,
-    actions: 1,
-    shootCooldown: 0,
-    value: 100,
-    sprint: false,
-    sprintMove: 2,
-    moveBudget: 0,
-    ammo: 0,
-    hp: 1,
-    meleeDamage: 1,
-    shootDamage: 1,
-    splashDamage: 0,
-    armor: 1,
-  },
-};
-
-/** Live stats — mutated by the unit editor. Engine reads this at action time. */
-export const UNIT_STATS: Record<UnitType, UnitStats> = structuredClone(DEFAULT_UNIT_STATS);
-
 export function isReloading(piece: Piece): boolean {
   return (piece.shootCooldown ?? 0) > 0;
 }
 
 /** True when the unit has a finite ammo cap and none left. */
 export function isDepleted(piece: Piece): boolean {
-  const cap = UNIT_STATS[piece.type].ammo;
+  const cap = statsOf(piece.type).ammo;
   if (cap <= 0) return false;
   return (piece.ammo ?? 0) <= 0;
 }
 
 /** Remaining shots, or null if ammo is unlimited. */
 export function ammoLeft(piece: Piece): number | null {
-  const cap = UNIT_STATS[piece.type].ammo;
+  const cap = statsOf(piece.type).ammo;
   if (cap <= 0) return null;
   return piece.ammo ?? 0;
 }
@@ -284,11 +157,46 @@ function ammoLog(piece: Piece, stats: UnitStats): string {
 }
 
 export function hpMax(piece: Piece): number {
-  return UNIT_STATS[piece.type].hp;
+  return statsOf(piece.type).hp;
 }
 
 export function hpLeft(piece: Piece): number {
   return piece.hp ?? hpMax(piece);
+}
+
+export function staminaMax(piece: Piece): number {
+  return statsOf(piece.type).stamina;
+}
+
+export function staminaLeft(piece: Piece): number {
+  const max = staminaMax(piece);
+  if (max <= 0) return 0;
+  return piece.stamina ?? max;
+}
+
+export function canSpendStamina(piece: Piece): boolean {
+  return staminaLeft(piece) > 0 && !piece.staminaUsedThisTurn;
+}
+
+function spendStamina(piece: Piece): void {
+  const max = staminaMax(piece);
+  if (max <= 0) return;
+  piece.stamina = Math.max(0, staminaLeft(piece) - 1);
+  piece.staminaUsedThisTurn = true;
+  restartStaminaWait(piece);
+}
+
+/** Moving while below max restarts the idle countdown. */
+function markMoved(piece: Piece): void {
+  piece.movedThisTurn = true;
+  if (staminaLeft(piece) < staminaMax(piece)) restartStaminaWait(piece);
+}
+
+function restartStaminaWait(piece: Piece): void {
+  const regen = statsOf(piece.type).staminaRegen;
+  if (regen > 0 && staminaLeft(piece) < staminaMax(piece)) {
+    piece.staminaRegenWait = regen;
+  }
 }
 
 function hpOf(piece: Piece, hpMap?: Map<string, number>): number {
@@ -309,8 +217,27 @@ function applyDamage(
   return { fatal: false, remaining };
 }
 
-function hpHitLog(name: string, fatal: boolean, remaining: number): string {
-  return fatal ? `${name} killed` : `${name} (${remaining} HP)`;
+function escLog(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function unitLog(piece: Piece): string {
+  return `<span class="log-side ${piece.side}">${escLog(statsOf(piece.type).name)}</span>`;
+}
+
+function sideLog(side: Side, label: string): string {
+  return `<span class="log-side ${side}">${escLog(label)}</span>`;
+}
+
+function hpBit(victim: Piece, fatal: boolean, remaining: number): string {
+  return fatal ? `${unitLog(victim)} killed` : `${unitLog(victim)} (${remaining} HP)`;
+}
+
+/** net = attack − shield; negative shield adds damage. */
+function dmgLine(victim: Piece, amount: number): string {
+  const shield = armorOf(victim);
+  const net = netDamage(victim, amount);
+  return `<span class="log-dmg">DMG: ${net} (attack ${amount} - shield ${shield})</span>`;
 }
 
 export type MoveHit = {
@@ -326,17 +253,19 @@ export type MovePlan = {
 };
 
 function activationMoveRange(state: GameState, piece: Piece): number {
-  const stats = UNIT_STATS[piece.type];
-  let moveRange =
-    stats.sprint && piece.hasSprint
-      ? Math.max(stats.move, stats.sprintMove)
-      : stats.move;
+  const stats = statsOf(piece.type);
+  let moveRange = stats.move;
   if (stats.actions > 1 && stats.moveBudget > 0) {
     const spent =
       state.scoutPieceId === piece.id ? (state.scoutMoveSpent ?? 0) : 0;
     moveRange = Math.min(stats.move, Math.max(0, stats.moveBudget - spent));
   }
   return moveRange;
+}
+
+function effectiveMoveRange(state: GameState, piece: Piece): number {
+  const base = activationMoveRange(state, piece);
+  return canSpendStamina(piece) ? base * 2 : base;
 }
 
 /**
@@ -350,11 +279,11 @@ export function previewMove(
   to: Hex,
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
-  const melee = Math.max(0, UNIT_STATS[piece.type].meleeDamage);
+  const melee = Math.max(0, statsOf(piece.type).meleeDamage);
   const path =
     pathTo(from, to, {
       ...movePathOpts(state, piece),
-      maxDist: Math.max(1, activationMoveRange(state, piece)),
+      maxDist: Math.max(1, effectiveMoveRange(state, piece)),
     }) ?? (eq(from, to) ? [] : [to]);
 
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
@@ -379,7 +308,8 @@ export function previewMove(
     const occ = pieceAt(state, h);
     if (!occ || occ.side === piece.side) continue;
     const isDest = i === path.length - 1;
-    const overrun = piece.type === 'tank' && occ.type === 'soldier' && !isDest;
+    const overrun =
+      statsOf(piece.type).overrun && statsOf(occ.type).infantry && !isDest;
     if (!isDest && !overrun) continue;
     const died = strike(occ);
     if (!died) {
@@ -415,18 +345,19 @@ function hexNeighbors(state: GameState, h: Hex): Hex[] {
   return neighbors(h, state.orientation);
 }
 
-function losClear(state: GameState, from: Hex, to: Hex): boolean {
+function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boolean {
   const cells = line(from, to, state.orientation);
   const fromHigh = terrainAt(state, from) === 'high';
   // Rock/wall always block. High blocks through-LOS only when shooting from low.
   // From high: shoot along/over the ridge (intermediate high ignored) and over pieces.
+  // Arch: fire over units even from low. Terrain LOS unchanged.
   // Destination may be high / occupied / wall — you can shoot *onto* it.
   for (let i = 0; i < cells.length - 1; i++) {
     const h = cells[i];
     const t = terrainAt(state, h);
     if (isSolidTerrain(t)) return false;
     if (!fromHigh && t === 'high') return false;
-    if (!fromHigh && pieceAt(state, h)) return false;
+    if (!fromHigh && !overUnits && pieceAt(state, h)) return false;
   }
   return true;
 }
@@ -505,17 +436,56 @@ function splashHasTarget(
   return terrainAt(state, at) === 'wall';
 }
 
+export const MIN_UNITS_PER_TURN = 1;
+export const MAX_UNITS_PER_TURN = 12;
+
+export function clampUnitsPerTurn(n: unknown): number {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return 1;
+  return Math.max(MIN_UNITS_PER_TURN, Math.min(MAX_UNITS_PER_TURN, Math.floor(v)));
+}
+
+export function hasActed(state: GameState, id: string): boolean {
+  return state.actedIds.includes(id);
+}
+
 function cloneState(state: GameState): GameState {
   return {
     ...state,
     terrain: state.terrain.map((r) => [...r]),
     pieces: state.pieces.map((p) => ({ ...p })),
     log: [...state.log],
+    actedIds: [...state.actedIds],
   };
 }
 
 function other(side: Side): Side {
   return side === 'red' ? 'blue' : 'red';
+}
+
+/** Idle pieces only: consecutive turns without a move. Movers skip and already reset wait. */
+function tickStamina(state: GameState, side: Side): void {
+  for (const p of state.pieces) {
+    if (p.side !== side) continue;
+    const moved = !!p.movedThisTurn;
+    p.movedThisTurn = false;
+    p.staminaUsedThisTurn = false;
+    const max = staminaMax(p);
+    const regen = statsOf(p.type).staminaRegen;
+    if (max <= 0 || regen <= 0) continue;
+    if (staminaLeft(p) >= max) {
+      p.staminaRegenWait = undefined;
+      continue;
+    }
+    if (moved) continue;
+    const wait = (p.staminaRegenWait ?? regen) - 1;
+    if (wait <= 0) {
+      p.stamina = Math.min(max, staminaLeft(p) + 1);
+      p.staminaRegenWait = staminaLeft(p) < max ? regen : undefined;
+    } else {
+      p.staminaRegenWait = wait;
+    }
+  }
 }
 
 function tickShootCooldowns(state: GameState, side: Side): void {
@@ -532,42 +502,87 @@ function tickShootCooldowns(state: GameState, side: Side): void {
   }
 }
 
-function endTurn(state: GameState): void {
-  const finished = state.turn;
+function clearScoutLock(state: GameState): void {
   state.scoutActionsLeft = null;
   state.scoutPieceId = null;
   state.scoutMoveSpent = null;
+}
+
+function endSideTurn(state: GameState): void {
+  const finished = state.turn;
+  clearScoutLock(state);
   tickShootCooldowns(state, finished);
+  tickStamina(state, finished);
+  state.actedIds = [];
   state.turn = other(state.turn);
 }
 
-function checkWin(state: GameState): void {
-  const redG = state.pieces.some((p) => p.side === 'red' && p.type === 'general');
-  const blueG = state.pieces.some((p) => p.side === 'blue' && p.type === 'general');
-  if (!redG) state.winner = 'blue';
-  else if (!blueG) state.winner = 'red';
-}
-
-function afterAction(state: GameState, piece: Piece): void {
-  const stats = UNIT_STATS[piece.type];
-  if (stats.actions > 1 && state.scoutPieceId === piece.id) {
-    state.scoutActionsLeft = (state.scoutActionsLeft ?? stats.actions) - 1;
-    if (state.scoutActionsLeft <= 0) endTurn(state);
-  } else if (stats.actions > 1 && state.scoutPieceId === null) {
-    // first scout action
-    state.scoutPieceId = piece.id;
-    state.scoutActionsLeft = stats.actions - 1;
-    if (state.scoutActionsLeft <= 0) endTurn(state);
-  } else {
-    endTurn(state);
-  }
+/** Finish this piece's activation; end the side-turn if the unit quota is spent. */
+function finishActivation(state: GameState, piece: Piece): void {
+  clearScoutLock(state);
+  if (!state.actedIds.includes(piece.id)) state.actedIds.push(piece.id);
+  const cap = clampUnitsPerTurn(state.unitsPerTurn);
+  const more =
+    state.actedIds.length < cap &&
+    state.pieces.some((p) => p.side === state.turn && !state.actedIds.includes(p.id));
+  if (!more) endSideTurn(state);
   checkWin(state);
 }
 
-/** Path rules for a piece (shared by highlights + tank overrun resolution). */
+function hasKing(pieces: Piece[], side: Side): boolean {
+  return pieces.some((p) => p.side === side && statsOf(p.type).king);
+}
+
+function sideDefeated(state: GameState, side: Side): boolean {
+  const mine = state.pieces.filter((p) => p.side === side);
+  if (mine.length === 0) return true;
+  if (state.hadKing[side] && !hasKing(mine, side)) return true;
+  return false;
+}
+
+/** Why the loser is out: no pieces left, or their fielded king was killed. */
+export function defeatKind(state: GameState, loser: Side): 'wipeout' | 'king' {
+  if (!state.pieces.some((p) => p.side === loser)) return 'wipeout';
+  return 'king';
+}
+
+function checkWin(state: GameState): void {
+  const redOut = sideDefeated(state, 'red');
+  const blueOut = sideDefeated(state, 'blue');
+  if (redOut && !blueOut) state.winner = 'blue';
+  else if (blueOut && !redOut) state.winner = 'red';
+  else if (redOut && blueOut) state.winner = other(state.turn);
+}
+
+function afterAction(state: GameState, piece: Piece): void {
+  const stats = statsOf(piece.type);
+  // Stamina spend burns leftover actions (scout second action, etc.).
+  if (piece.staminaUsedThisTurn && stats.actions > 1) {
+    finishActivation(state, piece);
+    return;
+  }
+  if (stats.actions > 1 && state.scoutPieceId === piece.id) {
+    state.scoutActionsLeft = (state.scoutActionsLeft ?? stats.actions) - 1;
+    if (state.scoutActionsLeft <= 0) finishActivation(state, piece);
+    else checkWin(state);
+    return;
+  }
+  if (stats.actions > 1 && state.scoutPieceId === null) {
+    state.scoutPieceId = piece.id;
+    state.scoutActionsLeft = stats.actions - 1;
+    if (state.scoutActionsLeft <= 0) finishActivation(state, piece);
+    else checkWin(state);
+    return;
+  }
+  finishActivation(state, piece);
+}
+
+/** Path rules for a piece (shared by highlights + overrun resolution). */
 function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'> {
-  const isScout = piece.type === 'scout';
-  const isTank = piece.type === 'tank';
+  const stats = statsOf(piece.type);
+  const fromTerrain = terrainAt(state, { col: piece.col, row: piece.row });
+  const climbOk = fromTerrain === 'high' || canSpendStamina(piece);
+  const highOk = (t: Terrain) => t !== 'high' || climbOk;
   return {
     cols: state.cols,
     rows: state.rows,
@@ -575,10 +590,10 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
     canStop: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
-      // Nobody ends on water/rock/wall (scouts only *pass through* water)
+      // Nobody ends on water/rock/wall (water-walkers only *pass through*)
       if (t === 'water' || isSolidTerrain(t)) return false;
-      // Tanks too heavy for high ground
-      if (isTank && t === 'high') return false;
+      if (stats.noHigh && t === 'high') return false;
+      if (!highOk(t)) return false;
       const occ = pieceAt(state, h);
       if (!occ) return true;
       return occ.side !== piece.side; // capture enemy
@@ -586,20 +601,17 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
     canPass: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
-      if (isSolidTerrain(t)) return false; // rock/wall block everyone
-      if (isScout) {
-        // Scout: through water + any pieces; stop rules handled by canStop
-        return true;
-      }
-      if (t === 'water') return false;
-      if (isTank && t === 'high') return false;
+      if (isSolidTerrain(t)) return false;
+      if (stats.noHigh && t === 'high') return false;
+      if (!highOk(t)) return false;
+      if (t === 'water' && !stats.passWater) return false;
+      if (stats.passUnits) return true;
       const occ = pieceAt(state, h);
       if (!occ) return true;
-      // Tank: overrun enemy infantry; blocked by other pieces
-      if (isTank) {
-        return occ.side !== piece.side && occ.type === 'soldier';
+      if (stats.overrun) {
+        return occ.side !== piece.side && statsOf(occ.type).infantry;
       }
-      return occ.side === piece.side; // others: friendlies only
+      return occ.side === piece.side;
     },
   };
 }
@@ -609,44 +621,27 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   const piece = getPiece(state, pieceId);
   if (!piece) return [];
 
-  const stats = UNIT_STATS[piece.type];
+  const stats = statsOf(piece.type);
   const from: Hex = { col: piece.col, row: piece.row };
   const out: Highlight[] = [];
 
-  const moveRange = activationMoveRange(state, piece);
-
+  const baseRange = activationMoveRange(state, piece);
+  const moveRange = effectiveMoveRange(state, piece);
   const fromTerrain = terrainAt(state, from);
-  // Climb onto high from low: −1 move range (min 1).
-  // Already on high → other high (incl. adjacent): full move, no climb penalty.
-  // Leaving high / flat: full move.
-  const climbRange = Math.max(1, moveRange - 1);
-
-  const pathOpts = movePathOpts(state, piece);
-
-  const reachFull = reachable(from, { ...pathOpts, maxDist: moveRange });
-  const reachClimb =
-    fromTerrain === 'high'
-      ? reachFull // on the ridge — never apply climb restriction
-      : reachable(from, { ...pathOpts, maxDist: climbRange });
-
-  const reach = new Map<string, number>();
-  for (const [k, dist] of reachFull) {
-    const h = parseKey(k);
-    const climbing = fromTerrain !== 'high' && terrainAt(state, h) === 'high';
-    if (climbing) {
-      const cd = reachClimb.get(k);
-      if (cd === undefined) continue;
-      reach.set(k, cd);
-    } else {
-      reach.set(k, dist);
-    }
-  }
+  const pathOpts = { ...movePathOpts(state, piece), maxDist: moveRange };
+  const reach = reachable(from, pathOpts);
 
   for (const [k, dist] of reach) {
     const h = parseKey(k);
-    if (stats.sprint && piece.hasSprint && dist > stats.move && dist <= moveRange) {
-      out.push({ kind: 'sprint', hex: h, cost: dist });
-    } else if (dist <= moveRange) {
+    const doubled = dist > baseRange;
+    const path = pathTo(from, h, pathOpts);
+    const climbs =
+      fromTerrain !== 'high' &&
+      (terrainAt(state, h) === 'high' ||
+        (path?.some((p) => terrainAt(state, p) === 'high') ?? false));
+    if (climbs || doubled) {
+      out.push({ kind: 'stamina', hex: h, cost: dist });
+    } else {
       out.push({ kind: 'move', hex: h, cost: dist });
     }
   }
@@ -672,7 +667,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       if (terrain === 'wall' && !splash) continue;
       // Splash (bazooka/tank) can't impact on water
       if (splash && terrain === 'water') continue;
-      if (!losClear(state, from, h)) continue;
+      if (!losClear(state, from, h, stats.shootArc === 'arch')) continue;
 
       const target = pieceAt(state, h);
       // Never highlight friendly-occupied tiles as shoot range
@@ -703,15 +698,22 @@ export function legalHighlights(state: GameState, pieceId: string): Highlight[] 
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn) return [];
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return [];
+  if (hasActed(state, pieceId)) return [];
+  if (
+    !state.scoutPieceId &&
+    state.actedIds.length >= clampUnitsPerTurn(state.unitsPerTurn)
+  ) {
+    return [];
+  }
   return rangeHighlights(state, pieceId);
 }
 
-/** End the current turn even if it isn't a scout skip. */
+/** End the current side-turn (skip leftover units / scout lock). */
 export function passTurn(state: GameState): GameState {
   const next = cloneState(state);
   if (next.winner) return next;
-  next.log.push(`${next.turn} passes`);
-  endTurn(next);
+  next.log.push(sideLog(next.turn, 'End turn'));
+  endSideTurn(next);
   checkWin(next);
   return next;
 }
@@ -745,8 +747,15 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
   if (action.kind === 'skip') {
     if (next.scoutPieceId) {
-      next.log.push(`${next.turn} scout skips remaining action`);
-      endTurn(next);
+      const scout = getPiece(next, next.scoutPieceId);
+      next.log.push(
+        `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips remaining action`,
+      );
+      if (scout) finishActivation(next, scout);
+      else {
+        clearScoutLock(next);
+        checkWin(next);
+      }
     }
     return next;
   }
@@ -754,61 +763,61 @@ function applyActionInner(state: GameState, action: Action): GameState {
   const piece = getPiece(next, action.pieceId);
   if (!piece || piece.side !== next.turn) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
+  if (hasActed(next, piece.id)) return state;
 
   const highlights = legalHighlights(next, piece.id);
 
   if (action.kind === 'move') {
     const hit = highlights.find(
-      (h) =>
-        (h.kind === 'move' || h.kind === 'sprint') && eq(h.hex, action.to),
+      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, action.to),
     );
-    if (!hit) return state;
+    if (!hit || (hit.kind !== 'move' && hit.kind !== 'stamina')) return state;
 
     const plan = previewMove(next, piece, action.to);
     const hitBits: string[] = [];
+    const dmgLines: string[] = [];
     for (const mh of plan.hits) {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
-      const name = `${victim.side} ${UNIT_STATS[victim.type].name}`;
       applyDamage(next, victim, mh.amount);
-      hitBits.push(hpHitLog(name, mh.fatal, mh.remaining));
+      hitBits.push(hpBit(victim, mh.fatal, mh.remaining));
+      dmgLines.push(dmgLine(victim, mh.amount));
     }
 
     const bounced = !eq(plan.stop, action.to);
-    const sprintTag = hit.kind === 'sprint' ? ' (sprint)' : '';
+    const staminaTag = hit.kind === 'stamina' ? ' (stamina)' : '';
     if (hitBits.length) {
       next.log.push(
-        `${piece.side} ${UNIT_STATS[piece.type].name} ${
+        `${unitLog(piece)} ${
           bounced
             ? 'strikes'
             : plan.hits.some((h) => h.fatal)
               ? 'captures'
-              : piece.type === 'tank'
+              : statsOf(piece.type).overrun
                 ? 'overruns'
                 : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
             : ` → ${action.to.col},${action.to.row}`) +
-          sprintTag,
+          staminaTag +
+          dmgLines.join(''),
       );
     } else if (bounced) {
       next.log.push(
-        `${piece.side} ${UNIT_STATS[piece.type].name} stops short of ${action.to.col},${action.to.row}${sprintTag}`,
+        `${unitLog(piece)} stops short of ${action.to.col},${action.to.row}${staminaTag}`,
       );
     } else {
       next.log.push(
-        `${piece.side} ${UNIT_STATS[piece.type].name} moves to ${action.to.col},${action.to.row}${sprintTag}`,
+        `${unitLog(piece)} moves to ${action.to.col},${action.to.row}${staminaTag}`,
       );
     }
 
     piece.col = plan.stop.col;
     piece.row = plan.stop.row;
-    if (hit.kind === 'sprint') piece.hasSprint = false;
-    if (
-      UNIT_STATS[piece.type].moveBudget > 0 &&
-      (hit.kind === 'move' || hit.kind === 'sprint')
-    ) {
+    if (hit.kind === 'stamina') spendStamina(piece);
+    markMoved(piece);
+    if (statsOf(piece.type).moveBudget > 0) {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
@@ -820,8 +829,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
   const shootOk = highlights.some((h) => h.kind === 'shoot' && eq(h.hex, action.at));
   if (!shootOk) return state;
 
-  const stats = UNIT_STATS[piece.type];
-  if (stats.sprint) piece.hasSprint = false;
+  const stats = statsOf(piece.type);
   if (stats.ammo > 0) {
     piece.ammo = Math.max(0, (piece.ammo ?? stats.ammo) - 1);
   }
@@ -834,14 +842,15 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const fromHex: Hex = { col: piece.col, row: piece.row };
     const blast = splashBlast(next, action.at, fromHex);
     const hitBits: string[] = [];
+    const dmgLines: string[] = [];
     let wallsDown = 0;
     for (const h of blast) {
       const t = pieceAt(next, h);
       // Splash hits everyone in the blast — friendlies included
       if (t && stats.splashDamage > 0) {
-        const name = `${t.side === piece.side ? 'friendly ' : ''}${UNIT_STATS[t.type].name}`;
         const dmg = applyDamage(next, t, stats.splashDamage);
-        hitBits.push(hpHitLog(name, dmg.fatal, dmg.remaining));
+        hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
+        dmgLines.push(dmgLine(t, stats.splashDamage));
       }
       // Concrete walls crumble under rockets
       if (terrainAt(next, h) === 'wall') {
@@ -851,21 +860,22 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
     if (wallsDown) hitBits.push(`${wallsDown} wall${wallsDown > 1 ? 's' : ''}`);
     next.log.push(
-      `${piece.side} ${UNIT_STATS[piece.type].name} fires at ${action.at.col},${action.at.row}` +
+      `${unitLog(piece)} fires at ${action.at.col},${action.at.row}` +
         (hitBits.length ? ` — hits ${hitBits.join(' + ')}` : ' — splash misses') +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
-        ammoLog(piece, stats),
+        ammoLog(piece, stats) +
+        dmgLines.join(''),
     );
   } else {
     const t = pieceAt(next, action.at);
     if (!t || t.side === piece.side) return state;
-    const name = `${t.side} ${UNIT_STATS[t.type].name}`;
     const dmg = applyDamage(next, t, stats.shootDamage);
     next.log.push(
-      `${piece.side} ${UNIT_STATS[piece.type].name} shoots ${name} at ${action.at.col},${action.at.row}` +
-        (dmg.fatal ? '' : ` — ${dmg.remaining} HP`) +
+      `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
+        (dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
-        ammoLog(piece, stats),
+        ammoLog(piece, stats) +
+        dmgLine(t, stats.shootDamage),
     );
   }
 
@@ -880,16 +890,15 @@ export function allLegalActions(state: GameState): Action[] {
   const pieces =
     state.scoutPieceId
       ? state.pieces.filter((p) => p.id === state.scoutPieceId)
-      : state.pieces.filter((p) => p.side === state.turn);
+      : state.pieces.filter((p) => p.side === state.turn && !hasActed(state, p.id));
 
   for (const p of pieces) {
     for (const h of legalHighlights(state, p.id)) {
-      if (h.kind === 'move' || h.kind === 'sprint') {
+      if (h.kind === 'move' || h.kind === 'stamina') {
         actions.push({
           kind: 'move',
           pieceId: p.id,
           to: h.hex,
-          sprint: h.kind === 'sprint',
         });
       } else if (h.kind === 'shoot') {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });

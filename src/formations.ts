@@ -1,4 +1,4 @@
-import { UNIT_TYPES, type UnitType } from './engine';
+import { isKnownUnit, type UnitType } from './engine';
 import {
   COLS,
   ROWS,
@@ -28,7 +28,7 @@ function uid(): string {
 }
 
 function validType(t: unknown): t is UnitType {
-  return typeof t === 'string' && (UNIT_TYPES as string[]).includes(t);
+  return isKnownUnit(t);
 }
 
 function sanitizeSlot(raw: unknown): ArmySlot | null {

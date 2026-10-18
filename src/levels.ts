@@ -1,4 +1,4 @@
-import { UNIT_TYPES, type Terrain, type UnitType } from './engine';
+import { clampUnitsPerTurn, isKnownUnit, type Terrain, type UnitType } from './engine';
 import type { HexOrientation } from './hex';
 import {
   COLS,
@@ -13,6 +13,21 @@ const STORAGE_KEY = 'chessarmy-levels-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
 const DEFAULT_KEY = 'chessarmy-default-level';
 
+export type LevelCategory = 'campaign' | 'tutorial' | 'free';
+
+export const LEVEL_CATEGORIES: LevelCategory[] = ['campaign', 'tutorial', 'free'];
+
+export const LEVEL_CATEGORY_LABEL: Record<LevelCategory, string> = {
+  campaign: 'Campaign',
+  tutorial: 'Tutorial',
+  free: 'Free',
+};
+
+export function sanitizeCategory(raw: unknown): LevelCategory {
+  if (raw === 'campaign' || raw === 'tutorial' || raw === 'free') return raw;
+  return 'free';
+}
+
 export type SavedLevel = {
   id: string;
   name: string;
@@ -24,6 +39,10 @@ export type SavedLevel = {
   terrain: Terrain[][];
   /** Stamped armies. Missing = spawn stock on Play. Empty = no pieces. */
   armies?: ArmyStamp[];
+  /** Missing on old saves → free. */
+  category: LevelCategory;
+  /** Pieces a side may activate per turn. Missing on old saves → 1. */
+  unitsPerTurn: number;
   updatedAt: number;
 };
 
@@ -46,7 +65,7 @@ export function listLevels(): SavedLevel[] {
 }
 
 function validType(t: unknown): t is UnitType {
-  return typeof t === 'string' && (UNIT_TYPES as string[]).includes(t);
+  return isKnownUnit(t);
 }
 
 function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] | undefined {
@@ -85,6 +104,8 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         cols,
         rows,
         terrain: cloneTerrain(l.terrain),
+        category: sanitizeCategory(l.category),
+        unitsPerTurn: clampUnitsPerTurn(l.unitsPerTurn ?? 1),
         ...(armies !== undefined ? { armies } : {}),
       };
     })
@@ -105,12 +126,23 @@ export function getLevel(id: string): SavedLevel | null {
   return listLevels().find((l) => l.id === id) ?? null;
 }
 
+/** Category playlist order: name A–Z, numeric-aware. */
+export function levelsInCategory(category: LevelCategory): SavedLevel[] {
+  return listLevels()
+    .filter((l) => l.category === category)
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+    );
+}
+
 export function saveLevel(
   name: string,
   terrain: Terrain[][],
   existingId?: string | null,
   orientation: HexOrientation = DEFAULT_ORIENTATION,
   armies?: ArmyStamp[],
+  category?: LevelCategory,
+  unitsPerTurn?: number,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -129,6 +161,8 @@ export function saveLevel(
         orientation,
         terrain: cloneTerrain(terrain),
         armies: stamped,
+        category: sanitizeCategory(category ?? levels[idx].category),
+        unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? levels[idx].unitsPerTurn ?? 1),
         updatedAt: now,
       };
       levels[idx] = updated;
@@ -144,6 +178,8 @@ export function saveLevel(
     orientation,
     terrain: cloneTerrain(terrain),
     armies: stamped,
+    category: sanitizeCategory(category),
+    unitsPerTurn: clampUnitsPerTurn(unitsPerTurn),
     updatedAt: now,
   };
   levels.unshift(created);

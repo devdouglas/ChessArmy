@@ -105,7 +105,13 @@ function allowed_unit(mixed $type): bool {
         'tank' => true,
         'general' => true,
     ];
-    return is_string($type) && isset($ok[$type]);
+    if (!is_string($type) || strlen($type) > 40) {
+        return false;
+    }
+    if (isset($ok[$type])) {
+        return true;
+    }
+    return (bool) preg_match('/^u-[a-z0-9]+$/', $type);
 }
 
 function sanitize_armies(mixed $raw, int $cols, int $rows): array {
@@ -211,6 +217,17 @@ function sanitize_level(mixed $level): ?array {
     $updated = isset($level['updatedAt']) && is_numeric($level['updatedAt'])
         ? (int) $level['updatedAt']
         : time() * 1000;
+    $cat = $level['category'] ?? 'free';
+    if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'free') {
+        $cat = 'free';
+    }
+    $unitsPerTurn = isset($level['unitsPerTurn']) ? (int) $level['unitsPerTurn'] : 1;
+    if ($unitsPerTurn < 1) {
+        $unitsPerTurn = 1;
+    }
+    if ($unitsPerTurn > 12) {
+        $unitsPerTurn = 12;
+    }
 
     $out = [
         'id' => $id,
@@ -219,6 +236,8 @@ function sanitize_level(mixed $level): ?array {
         'rows' => $rows,
         'orientation' => $ori,
         'terrain' => $grid,
+        'category' => $cat,
+        'unitsPerTurn' => $unitsPerTurn,
         'updatedAt' => $updated,
     ];
     if (array_key_exists('armies', $level)) {

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Bump package.json patch version and stage it with this commit.
+set -e
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+if [ ! -f package.json ]; then
+  exit 0
+fi
+
+next=$(node -e '
+const fs = require("fs");
+const raw = fs.readFileSync("package.json", "utf8");
+const pkg = JSON.parse(raw);
+const m = String(pkg.version || "").match(/^(\d+)\.(\d+)\.(\d+)/);
+if (!m) process.exit(0);
+const next = m[1] + "." + m[2] + "." + (Number(m[3]) + 1);
+fs.writeFileSync("package.json", raw.replace(/"version":\s*"[^"]+"/, "\"version\": \"" + next + "\""));
+process.stdout.write(next);
+')
+
+if [ -n "$next" ]; then
+  git add package.json
+fi

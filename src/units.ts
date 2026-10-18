@@ -1,15 +1,31 @@
 import {
   DEFAULT_UNIT_STATS,
+  KIT_TRAITS,
+  TRAIT_FIELDS,
+  isCustomUnitId,
+  isUnitRole,
+  STOCK_UNIT_TYPES,
   UNIT_STATS,
   UNIT_TYPES,
+  sanitizeShootArc,
+  sanitizeUnitCategory,
+  statsOf,
+  type ShootArc,
+  type UnitCategory,
+  type UnitRole,
   type UnitStats,
+  type UnitTraits,
   type UnitType,
 } from './engine';
 import { notifyPersist } from './persist-hook';
 
 const STORAGE_KEY = 'chessarmy-unit-stats-v1';
+const MAX_UNITS = 48;
 
-export type EditableStat = Exclude<keyof UnitStats, 'name' | 'chess'>;
+export type EditableStat = Exclude<
+  keyof UnitStats,
+  'name' | 'chess' | 'category' | 'role' | 'shootArc' | keyof UnitTraits
+>;
 
 const INT_FIELDS = [
   'move',
@@ -18,8 +34,9 @@ const INT_FIELDS = [
   'actions',
   'shootCooldown',
   'value',
-  'sprintMove',
   'moveBudget',
+  'stamina',
+  'staminaRegen',
   'ammo',
   'hp',
   'meleeDamage',
@@ -28,8 +45,6 @@ const INT_FIELDS = [
   'armor',
 ] as const satisfies readonly EditableStat[];
 
-const BOOL_FIELDS = ['sprint'] as const satisfies readonly EditableStat[];
-
 const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> = {
   move: { min: 0, max: 8 },
   shoot: { min: 0, max: 12 },
@@ -37,8 +52,9 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   actions: { min: 1, max: 3 },
   shootCooldown: { min: 0, max: 6 },
   value: { min: 0, max: 999 },
-  sprintMove: { min: 1, max: 8 },
   moveBudget: { min: 0, max: 12 },
+  stamina: { min: 0, max: 8 },
+  staminaRegen: { min: 0, max: 8 },
   ammo: { min: 0, max: 20 },
   hp: { min: 1, max: 10 },
   meleeDamage: { min: 0, max: 10 },
@@ -53,22 +69,47 @@ function clampInt(n: unknown, min: number, max: number, fallback: number): numbe
   return Math.max(min, Math.min(max, Math.floor(v)));
 }
 
-function asBool(v: unknown, fallback: boolean): boolean {
-  return typeof v === 'boolean' ? v : fallback;
+function roleFrom(type: UnitType, raw: Partial<UnitStats> | undefined): UnitRole {
+  if (raw && isUnitRole(raw.role)) return raw.role;
+  if (isUnitRole(type)) return type;
+  return 'soldier';
+}
+
+function bool(raw: unknown, fallback: boolean): boolean {
+  return typeof raw === 'boolean' ? raw : fallback;
 }
 
 export function sanitizeUnitStats(
   type: UnitType,
   raw: Partial<UnitStats> | undefined,
 ): UnitStats {
-  const d = DEFAULT_UNIT_STATS[type];
+  const dRole = roleFrom(type, raw);
+  const d = DEFAULT_UNIT_STATS[dRole];
+  const traits = KIT_TRAITS[dRole];
   const s = raw ?? {};
+  const name =
+    typeof s.name === 'string' && s.name.trim()
+      ? s.name.trim().slice(0, 32)
+      : d.name;
+  const chess =
+    typeof s.chess === 'string' && s.chess.trim()
+      ? s.chess.trim().slice(0, 24)
+      : d.chess;
   const next: UnitStats = {
-    name: d.name,
-    chess: d.chess,
+    name,
+    chess,
+    category: sanitizeUnitCategory(s.category ?? d.category),
+    role: dRole,
+    passWater: bool(s.passWater, traits.passWater),
+    passUnits: bool(s.passUnits, traits.passUnits),
+    noHigh: bool(s.noHigh, traits.noHigh),
+    overrun: bool(s.overrun, traits.overrun),
+    infantry: bool(s.infantry, traits.infantry),
+    king: bool(s.king, traits.king),
     move: clampInt(s.move, CLAMP.move.min, CLAMP.move.max, d.move),
     shoot: clampInt(s.shoot, CLAMP.shoot.min, CLAMP.shoot.max, d.shoot),
     shootMin: clampInt(s.shootMin, CLAMP.shootMin.min, CLAMP.shootMin.max, d.shootMin),
+    shootArc: sanitizeShootArc(s.shootArc ?? d.shootArc),
     actions: clampInt(s.actions, CLAMP.actions.min, CLAMP.actions.max, d.actions),
     shootCooldown: clampInt(
       s.shootCooldown,
@@ -77,9 +118,14 @@ export function sanitizeUnitStats(
       d.shootCooldown,
     ),
     value: clampInt(s.value, CLAMP.value.min, CLAMP.value.max, d.value),
-    sprint: asBool(s.sprint, d.sprint),
-    sprintMove: clampInt(s.sprintMove, CLAMP.sprintMove.min, CLAMP.sprintMove.max, d.sprintMove),
     moveBudget: clampInt(s.moveBudget, CLAMP.moveBudget.min, CLAMP.moveBudget.max, d.moveBudget),
+    stamina: clampInt(s.stamina, CLAMP.stamina.min, CLAMP.stamina.max, d.stamina),
+    staminaRegen: clampInt(
+      s.staminaRegen,
+      CLAMP.staminaRegen.min,
+      CLAMP.staminaRegen.max,
+      d.staminaRegen,
+    ),
     ammo: clampInt(s.ammo, CLAMP.ammo.min, CLAMP.ammo.max, d.ammo),
     hp: clampInt(s.hp, CLAMP.hp.min, CLAMP.hp.max, d.hp),
     meleeDamage: clampInt(
@@ -102,17 +148,31 @@ export function sanitizeUnitStats(
     ),
     armor: clampInt(s.armor, CLAMP.armor.min, CLAMP.armor.max, d.armor),
   };
-  // Old saves had a splash checkbox. Off → no blast, even if splashDamage was 1.
   const legacySplash = (s as { splash?: unknown }).splash;
   if (legacySplash === false) next.splashDamage = 0;
   if (next.shootMin > next.shoot) next.shootMin = next.shoot;
   return next;
 }
 
-function writeLive(next: Record<UnitType, UnitStats>): void {
-  for (const type of UNIT_TYPES) {
+function clearCustomUnits(): void {
+  for (const type of [...UNIT_TYPES]) {
+    if (isUnitRole(type)) continue;
+    delete UNIT_STATS[type];
+  }
+  UNIT_TYPES.length = 0;
+  UNIT_TYPES.push(...STOCK_UNIT_TYPES);
+}
+
+function writeStock(next: Record<UnitRole, UnitStats>): void {
+  for (const type of STOCK_UNIT_TYPES) {
     Object.assign(UNIT_STATS[type], next[type]);
   }
+}
+
+function registerCustom(type: UnitType, stats: UnitStats): void {
+  if (isUnitRole(type) || !isCustomUnitId(type)) return;
+  UNIT_STATS[type] = stats;
+  if (!UNIT_TYPES.includes(type)) UNIT_TYPES.push(type);
 }
 
 export function persistUnitStats(): void {
@@ -124,31 +184,41 @@ export function persistUnitStats(): void {
   notifyPersist();
 }
 
+function ingestRoster(raw: Partial<Record<string, Partial<UnitStats>>>): void {
+  clearCustomUnits();
+  for (const type of STOCK_UNIT_TYPES) {
+    Object.assign(UNIT_STATS[type], sanitizeUnitStats(type, raw[type]));
+  }
+  for (const type of Object.keys(raw)) {
+    if (UNIT_TYPES.length >= MAX_UNITS) break;
+    if (!isCustomUnitId(type)) continue;
+    registerCustom(type, sanitizeUnitStats(type, raw[type]));
+  }
+}
+
 export function applyRemoteUnitStats(
   raw: Partial<Record<UnitType, Partial<UnitStats>>>,
 ): void {
   if (!raw || typeof raw !== 'object') return;
-  for (const type of UNIT_TYPES) {
-    Object.assign(UNIT_STATS[type], sanitizeUnitStats(type, raw[type]));
-  }
+  ingestRoster(raw);
 }
 
 export function loadUnitStats(): void {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Partial<Record<UnitType, Partial<UnitStats>>>;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return;
+    const parsed = JSON.parse(stored) as Partial<Record<string, Partial<UnitStats>>>;
     if (!parsed || typeof parsed !== 'object') return;
-    for (const type of UNIT_TYPES) {
-      Object.assign(UNIT_STATS[type], sanitizeUnitStats(type, parsed[type]));
-    }
+    ingestRoster(parsed);
   } catch {
-    writeLive(structuredClone(DEFAULT_UNIT_STATS));
+    clearCustomUnits();
+    writeStock(structuredClone(DEFAULT_UNIT_STATS));
   }
 }
 
 export function resetUnitStats(): void {
-  writeLive(structuredClone(DEFAULT_UNIT_STATS));
+  clearCustomUnits();
+  writeStock(structuredClone(DEFAULT_UNIT_STATS));
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -158,22 +228,100 @@ export function resetUnitStats(): void {
 }
 
 export function unitStatsAreStock(): boolean {
-  return UNIT_TYPES.every((type) => {
+  if (UNIT_TYPES.length !== STOCK_UNIT_TYPES.length) return false;
+  return STOCK_UNIT_TYPES.every((type) => {
     const a = UNIT_STATS[type];
     const b = DEFAULT_UNIT_STATS[type];
-    return (INT_FIELDS as readonly string[]).concat(BOOL_FIELDS).every((k) => a[k as EditableStat] === b[k as EditableStat]);
+    return (
+      a.name === b.name &&
+      a.category === b.category &&
+      a.role === b.role &&
+      INT_FIELDS.every((k) => a[k] === b[k]) &&
+      TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
+      a.shootArc === b.shootArc
+    );
   });
+}
+
+export function patchUnitCategory(type: UnitType, category: UnitCategory): void {
+  const next = sanitizeUnitStats(type, {
+    ...statsOf(type),
+    category: sanitizeUnitCategory(category),
+  });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
+}
+
+export function patchUnitShootArc(type: UnitType, shootArc: ShootArc): void {
+  const next = sanitizeUnitStats(type, {
+    ...statsOf(type),
+    shootArc: sanitizeShootArc(shootArc),
+  });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
+}
+
+/** Writes kit glyph + traits only. Leaves numbers / name / category. */
+export function patchUnitKit(type: UnitType, role: UnitRole): void {
+  if (!isUnitRole(role) || !UNIT_TYPES.includes(type)) return;
+  const kit = DEFAULT_UNIT_STATS[role];
+  const next = sanitizeUnitStats(type, {
+    ...statsOf(type),
+    role,
+    chess: kit.chess,
+    ...KIT_TRAITS[role],
+  });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
+}
+
+export function patchUnitName(type: UnitType, name: string): void {
+  const next = sanitizeUnitStats(type, { ...statsOf(type), name });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
 }
 
 export function patchUnitStat(type: UnitType, field: EditableStat, value: number | boolean): void {
   const next = sanitizeUnitStats(type, {
-    ...UNIT_STATS[type],
+    ...statsOf(type),
     [field]: value,
   });
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();
 }
 
-export { CLAMP, INT_FIELDS, BOOL_FIELDS };
+function uniqueCopyName(base: string): string {
+  const root = base.replace(/\s+\d+$/, '').trim() || 'Unit';
+  const taken = new Set(UNIT_TYPES.map((t) => statsOf(t).name));
+  let n = 2;
+  while (taken.has(`${root} ${n}`)) n += 1;
+  return `${root} ${n}`;
+}
+
+function newUnitId(): UnitType {
+  return `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function copyUnit(from: UnitType): UnitType | null {
+  if (!UNIT_TYPES.includes(from) || UNIT_TYPES.length >= MAX_UNITS) return null;
+  const src = statsOf(from);
+  let id = newUnitId();
+  while (UNIT_TYPES.includes(id)) id = newUnitId();
+  const stats = sanitizeUnitStats(id, { ...src, name: uniqueCopyName(src.name) });
+  registerCustom(id, stats);
+  persistUnitStats();
+  return id;
+}
+
+export function deleteCopiedUnit(type: UnitType): boolean {
+  if (!isCustomUnitId(type) || !UNIT_TYPES.includes(type)) return false;
+  delete UNIT_STATS[type];
+  const i = UNIT_TYPES.indexOf(type);
+  if (i >= 0) UNIT_TYPES.splice(i, 1);
+  persistUnitStats();
+  return true;
+}
+
+export { CLAMP, INT_FIELDS };
 
 loadUnitStats();

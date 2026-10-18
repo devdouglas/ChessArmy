@@ -1,16 +1,21 @@
 /**
  * Greedy AI:
  * - Army: capture value + approach enemy general
- * - Own general: flee the enemy army; only attack if no non-attack option
+ * - King threatened: anyone who can hit the threat does that first;
+ *   only then the king flees (prefer high ground)
  */
 
 import {
   allLegalActions,
   applyAction,
   getPiece,
+  hasSplash,
   hpLeft,
   pieceAt,
   previewMove,
+  splashBlast,
+  statsOf,
+  terrainAt,
   UNIT_STATS,
   type Action,
   type GameState,
@@ -26,11 +31,11 @@ function dist(state: GameState, a: Hex, b: Hex): number {
 const GEN_THREAT_RANGE = 3;
 
 function enemyGeneral(state: GameState, me: Side) {
-  return state.pieces.find((p) => p.side !== me && p.type === 'general');
+  return state.pieces.find((p) => p.side !== me && statsOf(p.type).king);
 }
 
 function myGeneral(state: GameState, me: Side) {
-  return state.pieces.find((p) => p.side === me && p.type === 'general');
+  return state.pieces.find((p) => p.side === me && statsOf(p.type).king);
 }
 
 function minEnemyDist(state: GameState, hex: Hex, me: Side): number {
@@ -62,9 +67,39 @@ function isAttackAction(state: GameState, action: Action, me: Side): boolean {
 }
 
 function generalThreatened(state: GameState, me: Side): boolean {
+  return threatPieces(state, me).length > 0;
+}
+
+function threatPieces(state: GameState, me: Side) {
   const g = myGeneral(state, me);
-  if (!g) return false;
-  return minEnemyDist(state, { col: g.col, row: g.row }, me) <= GEN_THREAT_RANGE;
+  if (!g) return [];
+  const gh: Hex = { col: g.col, row: g.row };
+  return state.pieces.filter(
+    (p) => p.side !== me && dist(state, gh, { col: p.col, row: p.row }) <= GEN_THREAT_RANGE,
+  );
+}
+
+function actionHitsThreats(state: GameState, action: Action, threatIds: Set<string>): boolean {
+  if (!threatIds.size) return false;
+  if (action.kind === 'shoot') {
+    const at = pieceAt(state, action.at);
+    if (at && threatIds.has(at.id)) return true;
+    const shooter = getPiece(state, action.pieceId);
+    if (!shooter || !hasSplash(statsOf(shooter.type))) return false;
+    return splashBlast(state, action.at, { col: shooter.col, row: shooter.row }).some((h) => {
+      const v = pieceAt(state, h);
+      return !!v && threatIds.has(v.id);
+    });
+  }
+  if (action.kind === 'move') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece) return false;
+    const plan = previewMove(state, piece, action.to);
+    if (plan.hits.some((h) => threatIds.has(h.id))) return true;
+    const v = pieceAt(state, plan.stop);
+    return !!v && threatIds.has(v.id);
+  }
+  return false;
 }
 
 function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
@@ -74,10 +109,10 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
     const v = UNIT_STATS[k.type].value * 20;
     if (k.side !== me) {
       score += v;
-      if (k.type === 'general') score += 10_000;
+      if (statsOf(k.type).king) score += 10_000;
     } else {
       score -= v * 1.4;
-      if (k.type === 'general') score -= 10_000;
+      if (statsOf(k.type).king) score -= 10_000;
     }
   }
   for (const p of state.pieces) {
@@ -129,6 +164,12 @@ function scoreGeneralAction(state: GameState, action: Action, me: Side): number 
   if (afterMin > beforeMin) score += 500;
   else if (afterMin < beforeMin) score -= 800;
 
+  const fromHigh = terrainAt(state, from) === 'high';
+  const toHigh = terrainAt(state, stop) === 'high';
+  if (toHigh && !fromHigh) score += 420;
+  else if (toHigh) score += 160;
+  if (fromHigh && !toHigh) score -= 280;
+
   score += Math.random() * 0.3;
   return score;
 }
@@ -155,7 +196,8 @@ function scoreArmyAction(state: GameState, action: Action, me: Side): number {
     );
     score += (beforeDist - afterDist) * 3;
 
-    if (piece.type === 'tank' || piece.type === 'bazooka' || piece.type === 'sniper') {
+    const s = statsOf(piece.type);
+    if (s.value >= 3 && s.shoot >= 4) {
       score += (beforeDist - afterDist) * 2;
     }
 
@@ -184,7 +226,7 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
   if (action.kind === 'skip') return -5;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return -Infinity;
-  if (piece.type === 'general') return scoreGeneralAction(state, action, me);
+  if (statsOf(piece.type).king) return scoreGeneralAction(state, action, me);
   return scoreArmyAction(state, action, me);
 }
 
@@ -208,8 +250,13 @@ export function pickAiAction(state: GameState): Action | null {
 
   const g = myGeneral(state, me);
 
-  // Threatened general: only consider their flee moves (or forced attacks)
   if (g && generalThreatened(state, me)) {
+    const threatIds = new Set(threatPieces(state, me).map((p) => p.id));
+    const defense = actions.filter(
+      (a) => a.kind !== 'skip' && actionHitsThreats(state, a, threatIds),
+    );
+    if (defense.length) return pickBest(defense, state, me);
+
     const genActs = actions.filter((a) => a.kind !== 'skip' && a.pieceId === g.id);
     if (genActs.length) {
       const flee = genActs.filter((a) => !isAttackAction(state, a, me));
@@ -224,7 +271,7 @@ export function pickAiAction(state: GameState): Action | null {
 export function runAiTurn(state: GameState, aiSide: Side): GameState {
   let s = state;
   let guard = 0;
-  while (s.turn === aiSide && !s.winner && guard < 8) {
+  while (s.turn === aiSide && !s.winner && guard < 64) {
     const action = pickAiAction(s);
     if (!action) break;
     s = applyAction(s, action);

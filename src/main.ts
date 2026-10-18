@@ -1,6 +1,11 @@
 import './style.css';
 import {
   applyAction,
+  clampUnitsPerTurn,
+  defeatKind,
+  hasActed,
+  MAX_UNITS_PER_TURN,
+  MIN_UNITS_PER_TURN,
   passTurn,
   getPiece,
   ammoLeft,
@@ -16,14 +21,27 @@ import {
   hasSplash,
   netDamage,
   splashBlast,
+  staminaLeft,
+  staminaMax,
+  STOCK_UNIT_TYPES,
+  UNIT_CATEGORIES,
+  UNIT_CATEGORY_LABEL,
+  UNIT_ROLE_LABEL,
   UNIT_STATS,
   UNIT_TYPES,
+  isCustomUnitId,
+  isUnitRole,
+  SHOOT_ARCS,
+  SHOOT_ARC_LABEL,
+  sanitizeShootArc,
+  sanitizeUnitCategory,
   type Action,
   type GameState,
   type Highlight,
   type Piece,
   type Side,
   type Terrain,
+  type UnitCategory,
   type UnitType,
 } from './engine';
 import {
@@ -59,10 +77,15 @@ import {
   getActiveLevelId,
   getDefaultLevelId,
   getLevel,
+  LEVEL_CATEGORIES,
+  LEVEL_CATEGORY_LABEL,
+  levelsInCategory,
   listLevels,
   saveLevel,
+  sanitizeCategory,
   setActiveLevelId,
   setDefaultLevelId,
+  type LevelCategory,
   type SavedLevel,
 } from './levels';
 import {
@@ -81,9 +104,22 @@ import {
   stockFormation,
 } from './formations';
 import { pickAiAction } from './ai';
-import { ammoBadgeSvg, hpBadgeSvg, pieceIconSvg, reloadBadgeSvg } from './icons';
+import {
+  actedBadgeSvg,
+  ammoBadgeSvg,
+  hpBadgeSvg,
+  pieceIconSvg,
+  reloadBadgeSvg,
+  staminaEmptyBadgeSvg,
+} from './icons';
 import {
   CLAMP,
+  copyUnit,
+  deleteCopiedUnit,
+  patchUnitCategory,
+  patchUnitKit,
+  patchUnitName,
+  patchUnitShootArc,
   patchUnitStat,
   resetUnitStats,
   unitStatsAreStock,
@@ -96,9 +132,13 @@ import {
   syncFromServer,
 } from './sync';
 
+const APP_VERSION = __APP_VERSION__;
+document.title = `Chess Army — v${APP_VERSION}`;
+
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
-type Screen = 'play' | 'editor' | 'units';
+type Screen = 'start' | 'play' | 'editor' | 'units';
+type Playlist = { kind: 'campaign' | 'tutorial'; ids: string[]; index: number };
 type EditorBrush = Terrain | UnitType | 'erase-unit';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
@@ -114,7 +154,7 @@ function isTerrainBrush(b: EditorBrush): b is Terrain {
 }
 
 function isUnitBrush(b: EditorBrush): b is UnitType {
-  return (UNIT_TYPES as string[]).includes(b);
+  return UNIT_TYPES.includes(b);
 }
 
 let mapOpts: MapOptions = { ...DEFAULT_MAP };
@@ -124,7 +164,9 @@ let activeLevelId: string | null = defaultLevelId ?? getActiveLevelId();
 let state: GameState = bootState();
 let mode: Mode = 'ai';
 const humanSide: Side = 'red';
-let screen: Screen = 'play';
+let screen: Screen = 'start';
+let playlist: Playlist | null = null;
+let unitEditorCategory: UnitCategory = 'modern';
 let selectedId: string | null = null;
 /** Hex where both move-onto and shoot are legal — wait for Move/Shoot pick. */
 let pendingHex: Hex | null = null;
@@ -132,7 +174,6 @@ let highlights: Highlight[] = [];
 let hoverShoot: Hex | null = null;
 let aiThinking = false;
 let animating = false;
-let endOverlayDismissed = false;
 
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
@@ -140,8 +181,11 @@ let editorOrientation: HexOrientation = DEFAULT_ORIENTATION;
 let editorBrush: EditorBrush = 'water';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
+let editorCategory: LevelCategory = 'free';
+let editorUnitsPerTurn = 1;
 let editorPieces: ArmyStamp[] = [];
 let editorArmySide: Side = 'red';
+let editorUnitCategory: UnitCategory = 'modern';
 let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
 let editorPainting = false;
@@ -261,11 +305,14 @@ function bootState(): GameState {
     const lvl = getLevel(bootId);
     if (lvl) {
       activeLevelId = bootId;
-      return createStateFromTerrain(
-        lvl.terrain,
-        lvl.name,
-        lvl.orientation,
-        playArmies(lvl.cols, lvl.rows, lvl),
+      return withLevelRules(
+        createStateFromTerrain(
+          lvl.terrain,
+          lvl.name,
+          lvl.orientation,
+          playArmies(lvl.cols, lvl.rows, lvl),
+        ),
+        lvl,
       );
     }
   }
@@ -274,17 +321,19 @@ function bootState(): GameState {
 
 function startMatch(reshuffleRandom = true) {
   clearSelection();
-  endOverlayDismissed = false;
   aiThinking = false;
   animating = false;
   if (activeLevelId) {
     const lvl = getLevel(activeLevelId);
     if (lvl) {
-      state = createStateFromTerrain(
-        lvl.terrain,
-        lvl.name,
-        lvl.orientation,
-        playArmies(lvl.cols, lvl.rows, lvl),
+      state = withLevelRules(
+        createStateFromTerrain(
+          lvl.terrain,
+          lvl.name,
+          lvl.orientation,
+          playArmies(lvl.cols, lvl.rows, lvl),
+        ),
+        lvl,
       );
       applyLayout(computeLayout(), false);
       render();
@@ -296,19 +345,27 @@ function startMatch(reshuffleRandom = true) {
   }
   if (reshuffleRandom) {
     mapOpts = readMapInputs();
-    state = createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS));
+    state = withLevelRules(createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS)));
   } else {
     // Keep current terrain layout; respawn armies
-    state = createStateFromTerrain(
-      state.terrain,
-      undefined,
-      state.orientation,
-      defaultArmyStamps(state.cols, state.rows),
+    state = withLevelRules(
+      createStateFromTerrain(
+        state.terrain,
+        undefined,
+        state.orientation,
+        defaultArmyStamps(state.cols, state.rows),
+      ),
     );
   }
   applyLayout(computeLayout(), false);
   render();
   void maybeAi();
+}
+
+function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
+  s.unitsPerTurn = clampUnitsPerTurn(lvl?.unitsPerTurn ?? 1);
+  s.actedIds = [];
+  return s;
 }
 
 function applyEditorGrid(cols: number, rows: number): void {
@@ -369,11 +426,75 @@ function reset(reshuffle = true) {
   startMatch(reshuffle);
 }
 
+function showStart() {
+  editorPainting = false;
+  screen = 'start';
+  playlist = null;
+  aiThinking = false;
+  animating = false;
+  clearSelection();
+  render();
+}
+
+function startSkirmish(nextMode: Mode) {
+  mode = nextMode;
+  playlist = null;
+  screen = 'play';
+  if (activeLevelId && getLevel(activeLevelId)) {
+    startMatch(false);
+    return;
+  }
+  if (defaultLevelId && getLevel(defaultLevelId)) {
+    activeLevelId = defaultLevelId;
+    setActiveLevelId(activeLevelId);
+    startMatch(false);
+    return;
+  }
+  activeLevelId = null;
+  setActiveLevelId(null);
+  startMatch(true);
+}
+
+function startPlaylist(kind: 'campaign' | 'tutorial') {
+  const levels = levelsInCategory(kind);
+  if (!levels.length) return;
+  playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
+  mode = 'ai';
+  screen = 'play';
+  activeLevelId = playlist.ids[0];
+  setActiveLevelId(activeLevelId);
+  startMatch(false);
+}
+
+function playlistLevel(): SavedLevel | null {
+  if (!playlist) return null;
+  const id = playlist.ids[playlist.index];
+  return id ? getLevel(id) : null;
+}
+
+function playlistHasNext(): boolean {
+  return !!playlist && playlist.index + 1 < playlist.ids.length;
+}
+
+function advancePlaylist() {
+  if (!playlist || !playlistHasNext()) {
+    showStart();
+    return;
+  }
+  playlist = { ...playlist, index: playlist.index + 1 };
+  activeLevelId = playlist.ids[playlist.index];
+  setActiveLevelId(activeLevelId);
+  screen = 'play';
+  startMatch(false);
+}
+
 function loadEditorLevel(lvl: SavedLevel): void {
   editorTerrain = cloneTerrain(lvl.terrain);
   editorOrientation = lvl.orientation;
   editorLevelId = lvl.id;
   editorName = lvl.name;
+  editorCategory = lvl.category;
+  editorUnitsPerTurn = clampUnitsPerTurn(lvl.unitsPerTurn);
   const cols = lvl.cols || editorTerrain[0]?.length || COLS;
   const rows = lvl.rows || editorTerrain.length || ROWS;
   editorPieces = Array.isArray(lvl.armies)
@@ -394,6 +515,8 @@ function enterEditor(fromLevelId?: string | null) {
       editorOrientation = state.orientation;
       editorLevelId = null;
       editorName = 'New level';
+      editorCategory = 'free';
+      editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
       editorPieces = clipStamps(
         stampsFromPieces(state.pieces),
         editorTerrain[0]?.length ?? COLS,
@@ -405,6 +528,8 @@ function enterEditor(fromLevelId?: string | null) {
     editorOrientation = state.orientation;
     editorLevelId = null;
     editorName = 'New level';
+    editorCategory = 'free';
+    editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
     editorPieces = clipStamps(
       stampsFromPieces(state.pieces),
       editorTerrain[0]?.length ?? COLS,
@@ -505,12 +630,18 @@ function paintEditorHex(col: number, row: number) {
 function doSaveLevel(asNew: boolean, asDefault = false): void {
   const nameEl = app.querySelector<HTMLInputElement>('#editor-name');
   if (nameEl) editorName = nameEl.value;
+  const catEl = app.querySelector<HTMLSelectElement>('#editor-category');
+  if (catEl) editorCategory = sanitizeCategory(catEl.value);
+  const uptEl = app.querySelector<HTMLInputElement>('#editor-units-per-turn');
+  if (uptEl) editorUnitsPerTurn = clampUnitsPerTurn(uptEl.value);
   const saved = saveLevel(
     editorName,
     editorTerrain,
     asNew ? null : editorLevelId,
     editorOrientation,
     editorPieces,
+    editorCategory,
+    editorUnitsPerTurn,
   );
   editorLevelId = saved.id;
   editorName = saved.name;
@@ -541,15 +672,13 @@ function canControl(): boolean {
 function hexActions(
   pieceId: string,
   hex: Hex,
-): { canMove: boolean; canShoot: boolean; moveSprint: boolean } {
+): { canMove: boolean; canShoot: boolean } {
   const legal = legalHighlights(state, pieceId).filter(
     (h) => eq(h.hex, hex) && h.kind !== 'shoot-range',
   );
-  const moveHl = legal.find((h) => h.kind === 'move' || h.kind === 'sprint');
   return {
-    canMove: !!moveHl,
+    canMove: legal.some((h) => h.kind === 'move' || h.kind === 'stamina'),
     canShoot: legal.some((h) => h.kind === 'shoot'),
-    moveSprint: moveHl?.kind === 'sprint',
   };
 }
 
@@ -558,7 +687,7 @@ function availableActions(pieceId: string): { canMove: boolean; canShoot: boolea
   const piece = getPiece(state, pieceId);
   if (!piece) return { canMove: false, canShoot: false };
   const all = highlightsFor(pieceId);
-  const canMove = all.some((h) => h.kind === 'move' || h.kind === 'sprint');
+  const canMove = all.some((h) => h.kind === 'move' || h.kind === 'stamina');
   const canShoot =
     !isReloading(piece) && !isDepleted(piece) && all.some((h) => h.kind === 'shoot');
   return { canMove, canShoot };
@@ -570,6 +699,7 @@ function highlightsFor(pieceId: string): Highlight[] {
   if (
     piece.side === state.turn &&
     canControl() &&
+    !hasActed(state, pieceId) &&
     (!state.scoutPieceId || state.scoutPieceId === pieceId)
   ) {
     return legalHighlights(state, pieceId);
@@ -595,6 +725,7 @@ function canActWithSelected(): boolean {
   const p = getPiece(state, selectedId);
   if (!p || p.side !== state.turn) return false;
   if (state.scoutPieceId && state.scoutPieceId !== selectedId) return false;
+  if (hasActed(state, selectedId)) return false;
   return true;
 }
 
@@ -774,13 +905,13 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
 async function tryAct(hex: Hex, kind: ActionMode) {
   if (!canActWithSelected() || !selectedId) return;
 
-  const { canMove, canShoot, moveSprint } = hexActions(selectedId, hex);
+  const { canMove, canShoot } = hexActions(selectedId, hex);
   if (kind === 'move' && !canMove) return;
   if (kind === 'shoot' && !canShoot) return;
 
   const action: Action =
     kind === 'move'
-      ? { kind: 'move', pieceId: selectedId, to: hex, sprint: moveSprint }
+      ? { kind: 'move', pieceId: selectedId, to: hex }
       : { kind: 'shoot', pieceId: selectedId, at: hex };
 
   const actingId = selectedId;
@@ -814,7 +945,7 @@ async function maybeAi() {
   updateChrome();
 
   let guard = 0;
-  while (state.turn !== humanSide && !state.winner && guard < 8) {
+  while (state.turn !== humanSide && !state.winner && guard < 64) {
     const action = pickAiAction(state);
     if (!action) {
       state = passTurn(state);
@@ -822,9 +953,15 @@ async function maybeAi() {
     }
     const turnBefore = state.turn;
     const scoutBefore = state.scoutPieceId;
+    const actedBefore = state.actedIds.length;
     await wait(180);
     await playAnimatedAction(action);
-    if (state.turn === turnBefore && state.scoutPieceId === scoutBefore && !state.winner) {
+    if (
+      state.turn === turnBefore &&
+      state.scoutPieceId === scoutBefore &&
+      state.actedIds.length === actedBefore &&
+      !state.winner
+    ) {
       state = passTurn(state);
       break;
     }
@@ -864,12 +1001,12 @@ function renderBoard(): string {
 
   // Full ranges while selected: move tint + shoot outline together
   const allHl = !editing && selectedId ? highlights : [];
-  const moveMap = new Map<string, 'move' | 'sprint'>();
+  const moveMap = new Map<string, 'move' | 'stamina'>();
   const shootBorder = new Set<string>();
   const shootTargetBorder = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
-    if (hl.kind === 'move' || hl.kind === 'sprint') moveMap.set(k, hl.kind);
+    if (hl.kind === 'move' || hl.kind === 'stamina') moveMap.set(k, hl.kind);
     else if (hl.kind === 'shoot') shootTargetBorder.add(k);
     else if (hl.kind === 'shoot-range') shootBorder.add(k);
   }
@@ -907,7 +1044,7 @@ function renderBoard(): string {
 
       const mv = moveMap.get(k);
       if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
-      else if (mv === 'sprint') hlOverlays += `<polygon class="hl-tint sprint" points="${pts}" />`;
+      else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
 
       if (pendingHex && eq(pendingHex, hex)) {
         hlOverlays += `<polygon class="hl-tint pending" points="${pts}" />`;
@@ -937,13 +1074,26 @@ function renderBoard(): string {
     const { x, y } = pixelOf({ col: p.col, row: p.row });
     const sel = !editing && p.id === selectedId ? ' selected' : '';
     const pr = HEX_SIZE * 0.48;
+    const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
+    const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
+    const staminaIcon = emptyStamina
+      ? staminaEmptyBadgeSvg(pr * 0.65, -pr * 0.7, badgeR)
+      : '';
     const reloadIcon = isReloading(p)
-      ? reloadBadgeSvg(pr * 0.65, -pr * 0.7, Math.max(6.5, HEX_SIZE * 0.22))
+      ? reloadBadgeSvg(
+          emptyStamina ? -pr * 0.15 : pr * 0.65,
+          -pr * 0.7,
+          badgeR,
+        )
       : '';
     const shots = ammoLeft(p);
     const ammoIcon =
       shots !== null
-        ? ammoBadgeSvg(shots, pr * 0.65, pr * 0.7, Math.max(6.5, HEX_SIZE * 0.22))
+        ? ammoBadgeSvg(shots, pr * 0.65, pr * 0.7, badgeR)
+        : '';
+    const actedIcon =
+      !editing && hasActed(state, p.id)
+        ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
     const maxHp = hpMax(p);
     const hpIcon =
@@ -952,7 +1102,7 @@ function renderBoard(): string {
             hpLeft(p),
             -pr * 0.65,
             -pr * 0.7,
-            Math.max(6.5, HEX_SIZE * 0.22),
+            badgeR,
           )
         : '';
     const ring = armorColor(UNIT_STATS[p.type].armor);
@@ -969,8 +1119,10 @@ function renderBoard(): string {
           ${pieceIconSvg(p.type, PIECE_ICON)}
         </g>
         ${reloadIcon}
+        ${staminaIcon}
         ${hpIcon}
         ${ammoIcon}
+        ${actedIcon}
       </g>`;
   }
 
@@ -1023,10 +1175,18 @@ function renderBoard(): string {
   </svg>`;
 }
 
+function endTurnButton(): string {
+  if (!canControl() || state.unitsPerTurn <= 1) return '';
+  const used = state.actedIds.length;
+  const max = state.unitsPerTurn;
+  return `<button type="button" id="end-turn">End turn (${used}/${max})</button>`;
+}
+
 function renderActionBar(): string {
+  const endBtn = endTurnButton();
   const piece = selectedId ? getPiece(state, selectedId) : null;
   if (!piece) {
-    return `<div class="action-bar idle"><span class="action-bar-hint">Select a piece</span></div>`;
+    return `<div class="action-bar idle${endBtn ? ' has-end' : ''}"><span class="action-bar-hint">Select a piece</span>${endBtn}</div>`;
   }
 
   const s = UNIT_STATS[piece.type];
@@ -1039,8 +1199,8 @@ function renderActionBar(): string {
   let hint: string;
   if (choosing) {
     hint = pieceAt(state, pendingHex!)
-      ? 'Melee (take the hex on a kill) or shoot this hex?'
-      : 'Move onto or shoot this hex?';
+      ? 'Pick Melee or Shoot'
+      : 'Pick Move or Shoot';
   } else if (
     pending?.canMove &&
     pieceAt(state, pendingHex!) &&
@@ -1052,7 +1212,11 @@ function renderActionBar(): string {
     state.scoutPieceId !== piece.id &&
     piece.side === state.turn
   ) {
-    hint = 'Scout still has an action — finish or skip it';
+    hint = 'Scout still has an action — finish it or skip';
+  } else if (hasActed(state, piece.id) && piece.side === state.turn) {
+    hint = 'Already acted this turn';
+  } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
+    hint = 'Second scout action — move, shoot, or skip';
   } else if (!canMove && !canShoot) {
     hint = isDepleted(piece)
       ? "Empty — can't shoot"
@@ -1062,115 +1226,156 @@ function renderActionBar(): string {
   } else if (previewOnly) {
     hint = 'Range preview';
   } else {
-    hint = 'Green = move · click enemy in range to shoot';
+    hint = s.actions > 1
+      ? 'Green = move · gold = stamina (double / climb, ends the activation) · click enemy to shoot'
+      : 'Green = move · gold = stamina (double / climb) · click enemy to shoot';
   }
 
+  const left = state.scoutActionsLeft ?? 0;
   const scoutUi =
     state.scoutPieceId && canControl()
-      ? `<button type="button" id="skip-scout">Skip scout</button>`
+      ? `<button type="button" id="skip-scout">Skip remaining action${
+          left > 0 ? ` (${left})` : ''
+        }</button>`
       : '';
 
-  const picker = choosing
-    ? ''
-    : `<div class="action-solo">${
-        canShoot && !canMove ? 'Shoot' : canMove ? 'Move' : '—'
-      }${isDepleted(piece) ? ' · empty' : isReloading(piece) ? ' · reloading' : ''}</div>`;
+  const extra =
+    !choosing && (isDepleted(piece) || isReloading(piece))
+      ? `<span class="action-flag">${isDepleted(piece) ? 'empty' : 'reloading'}</span>`
+      : '';
 
   return `
-    <div class="action-bar">
+    <div class="action-bar${scoutUi ? ' has-skip' : ''}${endBtn ? ' has-end' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2" />
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
-        <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
+        <span>${s.name}${previewOnly ? ' · preview' : ''}${
+          staminaMax(piece) > 0
+            ? ` · ${staminaLeft(piece)}/${staminaMax(piece)} stam`
+            : ''
+        }</span>
       </div>
-      ${picker}
       ${scoutUi}
+      ${endBtn}
+      ${extra}
       <span class="action-bar-hint">${hint}</span>
     </div>`;
+}
+
+function statRow(label: string, value: string, note = '', warn = false): string {
+  return `<div class="stat${warn ? ' warn' : ''}"><dt>${label}</dt><dd>${value}${
+    note ? `<span class="stat-note">${note}</span>` : ''
+  }</dd></div>`;
 }
 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — move + shoot range show together. Pick Move or Shoot to act.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is stamina (double / climb), red is shoot. Dual hex: pick Move or Shoot.</p>';
 
   if (piece) {
     const s = UNIT_STATS[piece.type];
-    const sprintLine =
-      s.sprint
-        ? piece.hasSprint
-          ? `<div><strong>Sprint:</strong> ready (move ${s.sprintMove} once — shooting spends it)</div>`
-          : `<div><strong>Sprint:</strong> spent</div>`
-        : '';
-    const scoutLine =
-      s.actions > 1
-        ? `<div><strong>Actions:</strong> ${s.actions} per turn${
-            s.moveBudget > 0 ? ` · move cap ${s.moveBudget}` : ''
-          }</div>
-           ${
-             piece.type === 'scout'
-               ? `<div><strong>Pathing:</strong> moves through water and pieces (not rocks)</div>`
-               : ''
-           }`
-        : '';
-    const tankLine =
-      piece.type === 'tank'
-        ? `<div><strong>Pathing:</strong> overruns infantry (${s.meleeDamage} dmg; survivor blocks); blocked by rock/wall/high</div>
-           <div><strong>Min range:</strong> cannot shoot closer than ${s.shootMin}</div>`
-        : '';
-    const splashLine = hasSplash(s)
-      ? `<div><strong>Splash:</strong> ${s.splashDamage} dmg · full ring / wall hits = 3 tiles back-arc (FF)</div>`
-      : '';
-    const cd = s.shootCooldown;
-    const reloadLine =
-      cd > 0
-        ? isReloading(piece)
-          ? `<div><strong>Weapon:</strong> reloading (${piece.shootCooldown} left) — can still move</div>`
-          : `<div><strong>Weapon:</strong> ${cd}-turn cooldown after firing</div>`
-        : '';
-    const ammoLine =
-      s.ammo > 0
-        ? `<div><strong>Ammo:</strong> ${ammoLeft(piece) ?? 0}/${s.ammo}${
-            isDepleted(piece) ? ' — empty' : ''
-          }</div>`
-        : '';
-    const hpLine =
-      s.hp > 1 || hpLeft(piece) < s.hp
-        ? `<div><strong>HP:</strong> ${hpLeft(piece)}/${s.hp}</div>`
-        : '';
+    const onHigh = state.terrain[piece.row][piece.col] === 'high';
+    const shootVal = onHigh ? s.shoot + 1 : s.shoot;
+    const shootRange =
+      s.shootMin > 1 ? `${s.shootMin}–${shootVal}` : String(shootVal);
+    const moveNote = [
+      s.actions > 1 ? `${s.actions} actions` : '',
+      s.moveBudget > 0 ? `cap ${s.moveBudget}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    const maxSt = staminaMax(piece);
+    const curSt = staminaLeft(piece);
+    let stamNote = '';
+    let stamWarn = false;
+    if (piece.staminaUsedThisTurn) {
+      stamNote = 'used this turn';
+      stamWarn = true;
+    } else if (curSt < maxSt && s.staminaRegen > 0) {
+      const n = piece.staminaRegenWait ?? s.staminaRegen;
+      stamNote = `+1 after ${n} idle turn${n === 1 ? '' : 's'}`;
+    } else if (s.staminaRegen > 0) {
+      stamNote = `regen ${s.staminaRegen} idle`;
+    }
+
+    const rows = [
+      statRow('Move', String(s.move), moveNote),
+      statRow(
+        'Shoot',
+        shootRange,
+        [s.shootArc === 'arch' ? 'arch over units' : 'straight', onHigh ? '+1 from high' : '']
+          .filter(Boolean)
+          .join(' · '),
+      ),
+      statRow('Melee', `${s.meleeDamage}`),
+      statRow(
+        'Shot',
+        String(s.shootDamage),
+        hasSplash(s) ? `splash ${s.splashDamage} · FF` : '',
+      ),
+      statRow('Armor', `${s.armor > 0 ? '+' : ''}${s.armor}`),
+      statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
+    ];
+    if (maxSt > 0) rows.push(statRow('Stamina', `${curSt}/${maxSt}`, stamNote, stamWarn));
+    if (s.ammo > 0) {
+      rows.push(
+        statRow(
+          'Ammo',
+          `${ammoLeft(piece) ?? 0}/${s.ammo}`,
+          isDepleted(piece) ? 'empty' : '',
+          isDepleted(piece),
+        ),
+      );
+    }
+    if (s.shootCooldown > 0) {
+      rows.push(
+        statRow(
+          'Reload',
+          isReloading(piece) ? `${piece.shootCooldown} left` : `${s.shootCooldown} turn${s.shootCooldown === 1 ? '' : 's'}`,
+          isReloading(piece) ? 'can still move' : 'after firing',
+          isReloading(piece),
+        ),
+      );
+    }
+
+    const notes: string[] = [];
+    if (s.passWater && s.passUnits) notes.push('Pathing through water and pieces (not rocks)');
+    else {
+      if (s.passWater) notes.push('Pathing through water');
+      if (s.passUnits) notes.push('Pathing through pieces');
+    }
+    if (s.overrun) notes.push(`Overruns infantry (${s.meleeDamage} dmg; survivor blocks)`);
+    if (s.noHigh) notes.push('Cannot enter high ground');
+    if (hasSplash(s)) notes.push('Splash: full ring; wall hits 3 tiles back-arc');
+    if (s.king) notes.push('King — killing this wins (only if they fielded a general)');
 
     const previewOnly = piece.side !== state.turn || !canControl();
 
     detail = `
-      <h2>
-        <svg class="side-icon" viewBox="-10 -10 20 20" width="28" height="28" aria-hidden="true">
-          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2" />
-          <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 14)}</g>
-        </svg>
-        ${s.name} <span class="meta">(${s.chess})</span>
-      </h2>
-      <div class="meta">${piece.side.toUpperCase()} · value ${s.value}${
-        previewOnly ? ' · preview' : ''
-      }</div>
-      <div class="stats">
-        <div><strong>Move:</strong> ${s.move}</div>
-        <div><strong>Shoot:</strong> ${
-          s.shootMin > 1 ? `${s.shootMin}–${s.shoot}` : String(s.shoot)
-        }${
-          state.terrain[piece.row][piece.col] === 'high' ? ' (+1 high ground)' : ''
-        }</div>
-        <div><strong>Melee:</strong> ${s.meleeDamage} dmg</div>
-        <div><strong>Shot:</strong> ${s.shootDamage} dmg</div>
-        <div><strong>Armor:</strong> ${s.armor > 0 ? '+' : ''}${s.armor}</div>
-        ${sprintLine}${scoutLine}${tankLine}${splashLine}${reloadLine}${ammoLine}${hpLine}
+      <section class="ability">
+        <header class="ability-head">
+          <svg class="side-icon" viewBox="-10 -10 20 20" width="28" height="28" aria-hidden="true">
+            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2" />
+            <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 14)}</g>
+          </svg>
+          <div>
+            <h3>${s.name}</h3>
+            <p class="ability-sub">${piece.side.toUpperCase()} · ${escapeHtml(s.chess)} · val ${s.value}${
+              previewOnly ? ' · preview' : ''
+            }</p>
+          </div>
+        </header>
+        <dl class="stat-grid">${rows.join('')}</dl>
         ${
-          state.terrain[piece.row][piece.col] === 'high'
-            ? `<div><strong>High ground:</strong> +1 shoot range</div>`
+          notes.length
+            ? `<ul class="ability-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>`
             : ''
         }
-      </div>`;
+      </section>`;
   }
 
   const log = [...state.log]
@@ -1180,45 +1385,58 @@ function renderSidebar(): string {
     .join('');
 
   return `
-    <div class="sidebar">
-      <h2>Abilities</h2>
-      ${detail}
-      <div class="legend">
-        <span class="l-move">Move</span>
-        <span class="l-sprint">Sprint (soldier)</span>
-        <span class="l-shoot">Shoot (target)</span>
-        <span class="l-shoot-range">Shoot range</span>
-        <span class="l-shoot-border">Red border = shoot range</span>
+    <div class="sidebar has-log">
+      <div class="log-block">
+        <h2>Log</h2>
+        <div class="log">${log}</div>
       </div>
-      <div class="meta">
-        Water: shoot over, no cross.<br/>
-        From low: rock/wall + pieces + high block LOS.<br/>
-        From high: +1 shoot; over pieces & along ridge; rock/wall still block.<br/>
-        Walls = rock but rockets demolish them. Climb from low −1; high→high free.<br/>
-        Melee: move into an occupied hex — melee dmg; a kill takes the hex, else you stop before.<br/>
-        Shot / splash / melee each use their own damage, minus the target's armor.<br/>
-        Win: kill the enemy General.
+      <div class="sidebar-rest">
+        <h2>Abilities</h2>
+        ${detail}
+        <div class="legend">
+          <span class="l-move">Move</span>
+          <span class="l-stamina">Stamina (double / climb)</span>
+          <span class="l-shoot">Shoot (target)</span>
+          <span class="l-shoot-range">Shoot range</span>
+          <span class="l-shoot-border">Red border = shoot range</span>
+        </div>
+        <dl class="rules">
+          <div><dt>Water</dt><dd>shoot over, cannot cross</dd></div>
+          <div><dt>LOS low</dt><dd>rock, wall, high block; straight blocked by units</dd></div>
+          <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
+          <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
+          <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
+          <div><dt>Stamina</dt><dd>climb low→high or double move, once / turn</dd></div>
+          <div><dt>Melee</dt><dd>enter occupied hex; kill takes it</dd></div>
+          <div><dt>Shield</dt><dd>DMG = attack − shield; negative shield adds damage</dd></div>
+          <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
+          <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
+        </dl>
       </div>
-      <h2>Log</h2>
-      <div class="log">${log}</div>
     </div>`;
 }
 
 function turnLabel(): string {
   if (state.winner) {
-    return `<span class="${state.winner}">${state.winner.toUpperCase()} wins</span> — general down`;
+    const loser = state.winner === 'red' ? 'blue' : 'red';
+    const how = defeatKind(state, loser) === 'wipeout' ? 'army destroyed' : 'general down';
+    return `<span class="${state.winner}">${state.winner.toUpperCase()} wins</span> — ${how}`;
   }
   if (aiThinking || animating) {
     if (mode === 'ai' && state.turn !== humanSide) {
       return `<span class="blue">Blue (AI)</span> moving…`;
     }
   }
+  const quota =
+    state.unitsPerTurn > 1
+      ? ` · ${state.actedIds.length}/${state.unitsPerTurn} units`
+      : '';
   if (mode === 'ai') {
     return state.turn === humanSide
-      ? `<span class="red">Your turn (Red)</span>`
-      : `<span class="blue">Blue (AI)</span>`;
+      ? `<span class="red">Your turn (Red)</span>${quota}`
+      : `<span class="blue">Blue (AI)</span>${quota}`;
   }
-  return `<span class="${state.turn}">${state.turn.toUpperCase()} to move</span>`;
+  return `<span class="${state.turn}">${state.turn.toUpperCase()} to move</span>${quota}`;
 }
 
 function renderEndOverlay(): string {
@@ -1227,20 +1445,49 @@ function renderEndOverlay(): string {
   const youWon = mode === 'ai' && state.winner === humanSide;
   const youLost = mode === 'ai' && state.winner !== humanSide;
   const tone = youLost ? 'defeat' : 'victory';
+  const inList = !!playlist;
+  const lastInList = inList && !playlistHasNext();
+  const listName = playlist
+    ? playlist.kind === 'campaign'
+      ? 'Campaign'
+      : 'Tutorial'
+    : '';
 
-  const title = youWon
-    ? 'VICTORY'
-    : youLost
-      ? 'DEFEAT'
-      : `${state.winner.toUpperCase()} WINS`;
+  const title =
+    youWon && lastInList
+      ? `${listName.toUpperCase()} COMPLETE`
+      : youWon
+        ? 'VICTORY'
+        : youLost
+          ? 'DEFEAT'
+          : `${state.winner.toUpperCase()} WINS`;
 
-  const sub = youWon
-    ? 'Enemy general eliminated.'
-    : youLost
-      ? 'Your general has fallen.'
-      : `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing general.`;
+  const loser = state.winner === 'red' ? 'blue' : 'red';
+  const wiped = defeatKind(state, loser) === 'wipeout';
+  const winHow = wiped ? 'Enemy army destroyed.' : 'Enemy general eliminated.';
+  const loseHow = wiped ? 'Your army was destroyed.' : 'Your general has fallen.';
+  const hotseatHow = wiped
+    ? `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing army.`
+    : `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing general.`;
+
+  const sub = youWon && lastInList
+    ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
+    : youWon && inList
+      ? `${winHow} ${playlist!.index + 1} / ${playlist!.ids.length}`
+      : youWon
+        ? winHow
+        : youLost
+          ? loseHow
+          : hotseatHow;
 
   const winnerSide = state.winner;
+  const nextBtn =
+    youWon && inList && !lastInList
+      ? `<button type="button" id="end-next">Next map</button>`
+      : '';
+  const startBtn = inList
+    ? `<button type="button" id="end-start" class="ghost">Start</button>`
+    : '';
 
   return `
     <div class="end-overlay ${tone}" role="dialog" aria-label="${title}">
@@ -1253,8 +1500,9 @@ function renderEndOverlay(): string {
         <h2 class="end-title">${title}</h2>
         <p class="end-sub">${sub}</p>
         <div class="end-actions">
+          ${nextBtn}
           <button type="button" id="end-rematch">Rematch</button>
-          <button type="button" id="end-dismiss" class="ghost">Keep board</button>
+          ${startBtn}
         </div>
       </div>
     </div>`;
@@ -1273,9 +1521,7 @@ function choicePending(): boolean {
 
 function renderHexChoice(): string {
   if (!choicePending() || !pendingHex || !selectedId) return '';
-  const piece = getPiece(state, selectedId);
-  const occ = pieceAt(state, pendingHex);
-  const melee = !!(piece && occ && occ.side !== piece.side);
+  const melee = !!pieceAt(state, pendingHex);
   return `<div class="hex-choice">
     <button type="button" data-action-mode="move">${melee ? 'Melee' : 'Move'}</button>
     <button type="button" data-action-mode="shoot">Shoot</button>
@@ -1314,6 +1560,11 @@ function onHexClick(col: number, row: number) {
   if (canActWithSelected() && selectedId) {
     const { canMove, canShoot } = hexActions(selectedId, hex);
     if (canMove && canShoot) {
+      if (pendingHex && eq(pendingHex, hex)) {
+        pendingHex = null;
+        render();
+        return;
+      }
       pendingHex = hex;
       hoverShoot = null;
       render();
@@ -1453,13 +1704,24 @@ function bindBoardOnly() {
 }
 
 function levelSelectOptions(selectedId: string | null): string {
-  const levels = listLevels();
+  const groups = LEVEL_CATEGORIES.map((cat) => ({
+    cat,
+    levels: listLevels()
+      .filter((l) => l.category === cat)
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+      ),
+  })).filter((g) => g.levels.length);
   const opts = [`<option value="random"${!selectedId ? ' selected' : ''}>Random map</option>`];
-  for (const l of levels) {
-    const tag = l.id === defaultLevelId ? ' (default)' : '';
-    opts.push(
-      `<option value="${l.id}"${selectedId === l.id ? ' selected' : ''}>${escapeHtml(l.name)}${tag}</option>`,
-    );
+  for (const g of groups) {
+    opts.push(`<optgroup label="${LEVEL_CATEGORY_LABEL[g.cat]}">`);
+    for (const l of g.levels) {
+      const tag = l.id === defaultLevelId ? ' (default)' : '';
+      opts.push(
+        `<option value="${l.id}"${selectedId === l.id ? ' selected' : ''}>${escapeHtml(l.name)}${tag}</option>`,
+      );
+    }
+    opts.push('</optgroup>');
   }
   return opts.join('');
 }
@@ -1477,32 +1739,61 @@ function syncStatusHtml(): string {
 
 function renderToolbar(): string {
   return `<div class="toolbar">
-    <h1>CHESS ARMY</h1>
-    <button type="button" data-mode="ai" class="${mode === 'ai' ? 'active' : ''}">vs AI</button>
-    <button type="button" data-mode="hotseat" class="${mode === 'hotseat' ? 'active' : ''}">Hotseat</button>
-    <button type="button" id="reset">Reset</button>
+    <h1>CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h1>
+    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Start</button>
     <button type="button" id="open-editor" class="${screen === 'editor' ? 'active' : ''}">Editor</button>
     <button type="button" id="open-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
     ${syncStatusHtml()}
   </div>`;
 }
 
-function leaveEditors() {
-  if (screen === 'editor') editorPainting = false;
-  screen = 'play';
+function renderStartScreen(): string {
+  const campaignN = levelsInCategory('campaign').length;
+  const tutorialN = levelsInCategory('tutorial').length;
+  const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
+  return `
+    <div class="board-wrap start-wrap">
+      ${renderToolbar()}
+      <div class="start-screen">
+        <p class="start-kicker">Hex army-chess</p>
+        <h2 class="start-title">CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h2>
+        <p class="start-tag">Kill the enemy General — or the whole army.</p>
+        <div class="start-menu">
+          <button type="button" class="start-opt" data-start="campaign"${campaignN ? '' : ' disabled'}
+            title="${campaignN ? 'Play campaign maps in alphabetical order, vs AI' : 'Mark saved levels as Campaign in the Editor'}">
+            <span class="start-opt-name">Campaign</span>
+            <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI · A–Z` : 'No campaign maps'}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="ai">
+            <span class="start-opt-name">vs AI</span>
+            <span class="start-opt-meta">Skirmish · pick any map</span>
+          </button>
+          <button type="button" class="start-opt" data-start="hotseat">
+            <span class="start-opt-name">Hotseat</span>
+            <span class="start-opt-meta">Two players, one device</span>
+          </button>
+          <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
+            title="${tutorialN ? 'Tutorial maps in alphabetical order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
+            <span class="start-opt-name">Tutorial</span>
+            <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI · A–Z` : 'No tutorial maps'}</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
 }
 
 function bindToolbarEvents() {
-  app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      mode = btn.dataset.mode as Mode;
-      leaveEditors();
-      startMatch(false);
-    });
+  app.querySelector('#go-start')?.addEventListener('click', () => {
+    if (screen === 'start') return;
+    showStart();
   });
-  app.querySelector('#reset')?.addEventListener('click', () => {
-    leaveEditors();
-    reset(false);
+  app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.start;
+      if (kind === 'campaign' || kind === 'tutorial') startPlaylist(kind);
+      else if (kind === 'ai') startSkirmish('ai');
+      else if (kind === 'hotseat') startSkirmish('hotseat');
+    });
   });
   app.querySelectorAll('#open-editor').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1518,20 +1809,38 @@ function bindToolbarEvents() {
   });
 }
 
-function renderEditorBar(): string {
-  const levels = listLevels();
-  const forms = listFormations();
-  const grid = currentGrid();
+function renderMapPanel(): string {
   const brushes = TERRAIN_BRUSHES.map(
     (b) =>
       `<button type="button" class="brush ${b.id}${editorBrush === b.id ? ' active' : ''}" data-brush="${b.id}">${b.label}</button>`,
   ).join('');
+  return `
+    <section class="editor-panel editor-panel-map">
+      <h3>Map</h3>
+      <div class="editor-brushes">
+        ${brushes}
+        <button type="button" id="editor-clear" class="ghost">Clear board</button>
+      </div>
+    </section>`;
+}
+
+function renderEditorBar(): string {
+  const levels = listLevels();
+  const forms = listFormations();
+  const grid = currentGrid();
+  const catUnits = UNIT_TYPES.filter(
+    (t) => UNIT_STATS[t].category === editorUnitCategory,
+  );
+  const eraOpts = UNIT_CATEGORIES.map(
+    (c) =>
+      `<option value="${c}"${editorUnitCategory === c ? ' selected' : ''}>${UNIT_CATEGORY_LABEL[c]}</option>`,
+  ).join('');
   const unitBrushes = [
-    ...UNIT_TYPES.map(
+    ...catUnits.map(
       (t) =>
-        `<button type="button" class="brush unit ${t}${editorBrush === t ? ' active' : ''}" data-brush="${t}">${escapeHtml(UNIT_STATS[t].name)}</button>`,
+        `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${escapeHtml(UNIT_STATS[t].name)}</button>`,
     ),
-    `<button type="button" class="brush unit erase${editorBrush === 'erase-unit' ? ' active' : ''}" data-brush="erase-unit">Erase</button>`,
+    `<button type="button" class="brush unit erase${editorBrush === 'erase-unit' ? ' active' : ''}" data-brush="erase-unit">Erase <svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg></button>`,
   ].join('');
 
   const levelList =
@@ -1540,7 +1849,7 @@ function renderEditorBar(): string {
       : `<ul class="editor-levels">${levels
           .map(
             (l) => `<li class="${l.id === editorLevelId ? 'active' : ''}">
-              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
+              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
               <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
             </li>`,
           )
@@ -1566,53 +1875,69 @@ function renderEditorBar(): string {
 
   return `
     <div class="editor-bar">
-      <div class="editor-grid">
-        <span class="editor-label">Grid</span>
-        <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
-        <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
-        <span class="editor-label">Tiles</span>
-        <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
-        <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
-      </div>
-      <div class="editor-brushes">
-        <span class="editor-label">Paint</span>
-        ${brushes}
-      </div>
-      <div class="editor-army">
-        <span class="editor-label">Army</span>
-        <button type="button" class="editor-side red${editorArmySide === 'red' ? ' active' : ''}" data-army-side="red">Red</button>
-        <button type="button" class="editor-side blue${editorArmySide === 'blue' ? ' active' : ''}" data-army-side="blue">Blue</button>
-        <span class="editor-label">Units</span>
-        ${unitBrushes}
-      </div>
-      <div class="editor-save editor-army-save">
-        <input type="text" id="army-name" value="${escapeHtml(editorFormationName)}" placeholder="Army name" maxlength="48" />
-        <button type="button" id="army-save">${namedForm ? 'Save' : 'Save new'}</button>
-        <button type="button" id="army-save-as" class="ghost">Save as new</button>
-        <button type="button" id="army-save-default" class="${isDefaultForm ? 'active' : ''}">${isDefaultForm ? 'Default army' : 'Save as default'}</button>
-        <button type="button" id="army-clear" class="ghost">Clear</button>
-      </div>
-      <div class="editor-library editor-army-library">
-        <span class="editor-label">Saved armies · load onto ${editorArmySide === 'red' ? 'Red' : 'Blue'}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
-        ${formList}
-      </div>
-      <div class="editor-save">
-        <input type="text" id="editor-name" value="${escapeHtml(editorName)}" placeholder="Level name" maxlength="48" />
-        <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
-        <button type="button" id="editor-save-as" class="ghost">Save as new</button>
-        <button type="button" id="editor-save-default" class="${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'active' : ''}">${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'Default map' : 'Save as default'}</button>
-        <button type="button" id="editor-clear" class="ghost">Clear board</button>
-      </div>
-      <div class="editor-library">
-        <span class="editor-label" id="editor-lib-label">Saved levels${editorDirty ? ' · unsaved changes' : ''}</span>
-        ${levelList}
-      </div>
+      <section class="editor-panel editor-panel-army">
+        <h3>Army</h3>
+        <div class="editor-army">
+          <button type="button" class="editor-side red${editorArmySide === 'red' ? ' active' : ''}" data-army-side="red">Red</button>
+          <button type="button" class="editor-side blue${editorArmySide === 'blue' ? ' active' : ''}" data-army-side="blue">Blue</button>
+          <label class="editor-cat">Era
+            <select id="editor-unit-cat">${eraOpts}</select>
+          </label>
+        </div>
+        <div class="editor-army">
+          ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
+          ${unitBrushes}
+        </div>
+      </section>
+      <section class="editor-panel editor-panel-armies">
+        <h3>Armies</h3>
+        <div class="editor-save editor-army-save">
+          <input type="text" id="army-name" value="${escapeHtml(editorFormationName)}" placeholder="Army name" maxlength="48" />
+          <button type="button" id="army-save">${namedForm ? 'Save' : 'Save new'}</button>
+          <button type="button" id="army-save-as" class="ghost">Save as new</button>
+          <button type="button" id="army-save-default" class="${isDefaultForm ? 'active' : ''}">${isDefaultForm ? 'Default army' : 'Save as default'}</button>
+          <button type="button" id="army-clear" class="ghost">Clear</button>
+        </div>
+        <div class="editor-library editor-army-library">
+          <span class="editor-label">Load onto ${editorArmySide === 'red' ? 'Red' : 'Blue'}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
+          ${formList}
+        </div>
+      </section>
+      <section class="editor-panel editor-panel-level">
+        <h3>Level</h3>
+        <div class="editor-grid">
+          <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
+          <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
+          <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
+          <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
+        </div>
+        <div class="editor-save">
+          <input type="text" id="editor-name" value="${escapeHtml(editorName)}" placeholder="Level name" maxlength="48" />
+          <label class="editor-cat">Category
+            <select id="editor-category">
+              ${LEVEL_CATEGORIES.map(
+                (c) =>
+                  `<option value="${c}"${editorCategory === c ? ' selected' : ''}>${LEVEL_CATEGORY_LABEL[c]}</option>`,
+              ).join('')}
+            </select>
+          </label>
+          <label class="editor-cat">Max units / turn
+            <input type="number" id="editor-units-per-turn" min="${MIN_UNITS_PER_TURN}" max="${MAX_UNITS_PER_TURN}" value="${editorUnitsPerTurn}" />
+          </label>
+          <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
+          <button type="button" id="editor-save-as" class="ghost">Save as new</button>
+          <button type="button" id="editor-save-default" class="${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'active' : ''}">${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'Default map' : 'Save as default'}</button>
+        </div>
+        <div class="editor-library">
+          <span class="editor-label" id="editor-lib-label">Saved${editorDirty ? ' · unsaved changes' : ''}</span>
+          ${levelList}
+        </div>
+      </section>
     </div>`;
 }
 
 function gameOverClass(): string {
   if (!state.winner) return '';
-  if (endOverlayDismissed) return 'game-over';
   if (mode === 'ai') {
     return state.winner === humanSide ? 'game-over won' : 'game-over lost';
   }
@@ -1631,23 +1956,39 @@ function unitNumField(
   return `<label>${label} <input type="number" min="${min}" max="${max}" value="${val}" data-unit="${type}" data-field="${field}" /></label>`;
 }
 
-function unitChkField(type: UnitType, field: EditableStat, label: string): string {
-  const on = UNIT_STATS[type][field] as boolean;
-  return `<label class="chk"><input type="checkbox" data-unit="${type}" data-field="${field}"${on ? ' checked' : ''} /> ${label}</label>`;
-}
-
 function renderUnitEditor(): string {
-  const cards = UNIT_TYPES.map((type) => {
-    const s = UNIT_STATS[type];
-    return `<article class="unit-card">
+  const shown = UNIT_TYPES.filter(
+    (type) => UNIT_STATS[type].category === unitEditorCategory,
+  );
+  const cards = shown
+    .map((type) => {
+      const s = UNIT_STATS[type];
+      const catOpts = UNIT_CATEGORIES.map(
+        (c) =>
+          `<option value="${c}"${s.category === c ? ' selected' : ''}>${UNIT_CATEGORY_LABEL[c]}</option>`,
+      ).join('');
+      const kitOpts = STOCK_UNIT_TYPES.map(
+        (r) =>
+          `<option value="${r}"${s.role === r ? ' selected' : ''}>${UNIT_ROLE_LABEL[r]}</option>`,
+      ).join('');
+      const copied = isCustomUnitId(type);
+      return `<article class="unit-card">
       <header>
         <svg class="side-icon" viewBox="-10 -10 20 20" width="32" height="32" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="#3d4a3a" stroke="${armorColor(s.armor)}" stroke-width="2" />
           <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
         </svg>
-        <div>
-          <h3>${escapeHtml(s.name)}</h3>
-          <span class="lvl-meta">${escapeHtml(s.chess)}</span>
+        <div class="unit-card-id">
+          <input type="text" class="unit-name" maxlength="32" value="${escapeHtml(s.name)}" data-unit-name="${type}" />
+          <span class="lvl-meta">${escapeHtml(s.chess)}${copied ? ' · copy' : ''}</span>
+        </div>
+        <div class="unit-card-selects">
+          <label class="unit-cat">Kit
+            <select data-unit-kit="${type}">${kitOpts}</select>
+          </label>
+          <label class="unit-cat">Category
+            <select data-unit-cat="${type}">${catOpts}</select>
+          </label>
         </div>
       </header>
       <div class="unit-fields">
@@ -1656,14 +1997,22 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'move', 'Range')}
           ${unitNumField(type, 'actions', 'Actions')}
           ${unitNumField(type, 'moveBudget', 'Move cap')}
-          ${unitNumField(type, 'sprintMove', 'Sprint mv')}
+          ${unitNumField(type, 'stamina', 'Stamina')}
+          ${unitNumField(type, 'staminaRegen', 'Stam regen')}
           ${unitNumField(type, 'meleeDamage', 'Melee dmg')}
-          ${unitChkField(type, 'sprint', 'Sprint')}
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Shoot</span>
           ${unitNumField(type, 'shoot', 'Range')}
           ${unitNumField(type, 'shootMin', 'Min rng')}
+          <label class="unit-cat">Arc
+            <select data-unit-arc="${type}">
+              ${SHOOT_ARCS.map(
+                (a) =>
+                  `<option value="${a}"${s.shootArc === a ? ' selected' : ''}>${SHOOT_ARC_LABEL[a]}</option>`,
+              ).join('')}
+            </select>
+          </label>
           ${unitNumField(type, 'shootCooldown', 'Reload')}
           ${unitNumField(type, 'ammo', 'Ammo')}
           ${unitNumField(type, 'shootDamage', 'Shot dmg')}
@@ -1676,17 +2025,35 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'value', 'Value')}
         </div>
       </div>
+      <div class="unit-card-actions">
+        <button type="button" data-copy-unit="${type}">Copy</button>
+        ${copied ? `<button type="button" class="ghost danger" data-del-unit="${type}">Delete</button>` : ''}
+      </div>
     </article>`;
-  }).join('');
+    })
+    .join('');
+
+  const empty = shown.length
+    ? ''
+    : `<p class="editor-empty">No ${UNIT_CATEGORY_LABEL[unitEditorCategory]} units. Copy one from another era and set its category.</p>`;
+
+  const filters = UNIT_CATEGORIES.map(
+    (c) =>
+      `<button type="button" data-unit-filter="${c}" class="${unitEditorCategory === c ? 'active' : ''}">${UNIT_CATEGORY_LABEL[c]}</button>`,
+  ).join('');
 
   return `
     <div class="unit-editor">
-      <p class="editor-label" id="units-status">${
-        unitStatsAreStock()
-          ? 'Stock stats'
-          : 'Custom stats · saved in this browser'
-      }</p>
+      <div class="unit-editor-head">
+        <div class="unit-filter">${filters}</div>
+        <p class="editor-label" id="units-status">${
+          unitStatsAreStock()
+            ? 'Stock stats'
+            : 'Custom stats · saved in this browser'
+        }</p>
+      </div>
       <div class="unit-cards">${cards}</div>
+      ${empty}
       <div class="editor-save">
         <button type="button" id="units-reset" class="ghost">Reset to stock</button>
       </div>
@@ -1717,6 +2084,63 @@ function bindUnitEditorEvents() {
   app.querySelectorAll<HTMLInputElement>('input[data-unit]').forEach((el) => {
     el.addEventListener('change', () => onField(el));
   });
+  app.querySelectorAll<HTMLButtonElement>('[data-unit-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      unitEditorCategory = sanitizeUnitCategory(btn.dataset.unitFilter);
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('[data-unit-cat]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitCat as UnitType | undefined;
+      if (!type) return;
+      patchUnitCategory(type, sanitizeUnitCategory(el.value));
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('[data-unit-kit]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitKit as UnitType | undefined;
+      if (!type || !isUnitRole(el.value)) return;
+      patchUnitKit(type, el.value);
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('[data-unit-arc]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitArc as UnitType | undefined;
+      if (!type) return;
+      patchUnitShootArc(type, sanitizeShootArc(el.value));
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLInputElement>('[data-unit-name]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitName as UnitType | undefined;
+      if (!type) return;
+      patchUnitName(type, el.value);
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-copy-unit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.copyUnit as UnitType | undefined;
+      if (!type) return;
+      const id = copyUnit(type);
+      if (!id) return;
+      unitEditorCategory = UNIT_STATS[id]?.category ?? unitEditorCategory;
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-del-unit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.delUnit as UnitType | undefined;
+      if (!type) return;
+      if (!confirm(`Delete ${UNIT_STATS[type]?.name ?? 'this unit'}?`)) return;
+      deleteCopiedUnit(type);
+      render();
+    });
+  });
   app.querySelector('#units-reset')?.addEventListener('click', () => {
     if (!unitStatsAreStock() && !confirm('Reset all units to stock stats?')) return;
     resetUnitStats();
@@ -1730,6 +2154,14 @@ function bindEditorEvents() {
       editorBrush = btn.dataset.brush as EditorBrush;
       render();
     });
+  });
+  app.querySelector('#editor-unit-cat')?.addEventListener('change', (e) => {
+    editorUnitCategory = sanitizeUnitCategory((e.target as HTMLSelectElement).value);
+    if (isUnitBrush(editorBrush) && UNIT_STATS[editorBrush]?.category !== editorUnitCategory) {
+      const first = UNIT_TYPES.find((t) => UNIT_STATS[t].category === editorUnitCategory);
+      editorBrush = first ?? 'erase-unit';
+    }
+    render();
   });
   app.querySelector('#editor-save')?.addEventListener('click', () => doSaveLevel(false));
   app.querySelector('#editor-save-as')?.addEventListener('click', () => doSaveLevel(true));
@@ -1759,6 +2191,16 @@ function bindEditorEvents() {
   });
   app.querySelector('#editor-name')?.addEventListener('change', (e) => {
     editorName = (e.target as HTMLInputElement).value;
+  });
+  app.querySelector('#editor-category')?.addEventListener('change', (e) => {
+    editorCategory = sanitizeCategory((e.target as HTMLSelectElement).value);
+    editorDirty = true;
+  });
+  app.querySelector('#editor-units-per-turn')?.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement;
+    editorUnitsPerTurn = clampUnitsPerTurn(el.value);
+    el.value = String(editorUnitsPerTurn);
+    editorDirty = true;
   });
   app.querySelector('#army-name')?.addEventListener('change', (e) => {
     editorFormationName = (e.target as HTMLInputElement).value;
@@ -1858,6 +2300,7 @@ function bindEditorEvents() {
       if (editorLevelId === id) {
         editorLevelId = null;
         editorName = 'New level';
+        editorCategory = 'free';
       }
       if (defaultLevelId === id) defaultLevelId = null;
       render();
@@ -1868,6 +2311,7 @@ function bindEditorEvents() {
 
 function bindEvents() {
   bindToolbarEvents();
+  if (screen === 'start') return;
   if (screen === 'editor') {
     bindEditorEvents();
     return;
@@ -1882,10 +2326,8 @@ function bindEvents() {
     else reset(true);
   });
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
-  app.querySelector('#end-dismiss')?.addEventListener('click', () => {
-    endOverlayDismissed = true;
-    render();
-  });
+  app.querySelector('#end-next')?.addEventListener('click', () => advancePlaylist());
+  app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   app.querySelector('#level-select')?.addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
     if (v === 'random') {
@@ -1900,6 +2342,13 @@ function bindEvents() {
   });
   app.querySelector('#skip-scout')?.addEventListener('click', () => {
     void skipScout();
+  });
+  app.querySelector('#end-turn')?.addEventListener('click', () => {
+    if (!canControl()) return;
+    state = passTurn(state);
+    clearSelection();
+    render();
+    void maybeAi();
   });
   app.querySelector('.hex-choice')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1928,7 +2377,13 @@ function bindEvents() {
 
 function render() {
   const maxT = maxTerrainCells();
-  if (!state.winner) endOverlayDismissed = false;
+  app.classList.toggle('start-screen', screen === 'start');
+
+  if (screen === 'start') {
+    app.innerHTML = renderStartScreen();
+    bindEvents();
+    return;
+  }
 
   if (screen === 'units') {
     app.innerHTML = `
@@ -1938,16 +2393,18 @@ function render() {
       </div>
       <aside class="sidebar">
         <h2>Units</h2>
-        <p class="muted">Live immediately. New match to respawn sprint, ammo, and HP.</p>
+        <p class="muted">Live immediately. New match to respawn ammo and HP.</p>
         <dl class="help-list">
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes per action</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Sprint</strong> once-per-game extra move; shooting spends it</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb low→high or double move range, once per turn</dd>
+          <dd><strong>Stam regen</strong> consecutive idle own turns (no move) to recover 1. Moving resets the count. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before</dd>
           <dt>Shoot</dt>
           <dd><strong>Range / min</strong> fire distance</dd>
+          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (rock / wall / high) unchanged</dd>
           <dd><strong>Reload</strong> own turns you can't shoot after firing</dd>
           <dd><strong>Ammo</strong> shots this match (0 = unlimited)</dd>
           <dd><strong>Shot dmg</strong> bullets</dd>
@@ -1956,7 +2413,9 @@ function render() {
           <dd><strong>HP</strong> default 1</dd>
           <dd><strong>Armor</strong> subtracted from incoming dmg (can be negative). Ring: +2 green, +1 orange, 0 red, −1 purple. Stock: tank +2, general +1</dd>
           <dd><strong>Value</strong> scoring / AI</dd>
-          <dd>Tank overrun and scout water-walk stay type-locked.</dd>
+          <dd><strong>Category</strong> Modern / Roman / Greek — filter above. Stock is Modern</dd>
+          <dd><strong>Kit</strong> icon + specials (water, overrun, high, king). Does not reset numbers</dd>
+          <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
         </dl>
       </aside>
     `;
@@ -1968,7 +2427,7 @@ function render() {
     app.innerHTML = `
       <div class="board-wrap editor-mode">
         ${renderToolbar()}
-        <div class="turn-banner">Paint terrain or units · load an army onto Red / Blue (Blue is flipped)</div>
+        ${renderMapPanel()}
         <div class="board-stage">
           ${renderBoard()}
         </div>
@@ -1977,21 +2436,28 @@ function render() {
       <aside class="sidebar">
         <h2>Editor</h2>
         <p class="muted">Set width × height (tiles) and hex orientation, then paint land, water, rock, concrete wall, and high ground. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Point up = pointy-top hexes. Flat up = flat-top. Topology (neighbors / LOS) follows the orientation. Saving a level stores the pieces currently on the board.</p>
+        <p class="muted">Point up = pointy-top hexes. Flat up = flat-top. Topology (neighbors / LOS) follows the orientation. Saving a level stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on the Start screen (A–Z), <strong>Free</strong> is skirmish-only.</p>
       </aside>
     `;
     bindEvents();
     return;
   }
 
-  const randomParams = !activeLevelId
+  const pl = playlist;
+  const plLvl = playlistLevel();
+  const randomParams = pl
+    ? `<div class="map-params">
+        <button type="button" id="new-map">Restart level</button>
+        <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${pl.index + 1} / ${pl.ids.length}${plLvl ? ` · ${escapeHtml(plLvl.name)}` : ''}</span>
+      </div>`
+    : !activeLevelId
     ? `<div class="map-params">
         <label>Water <input type="number" id="map-water" min="0" max="${maxT}" value="${mapOpts.waterCount}" /></label>
         <label>Rocks <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Walls <input type="number" id="map-wall" min="0" max="${maxT}" value="${mapOpts.wallCount}" /></label>
         <label>High <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
         <button type="button" id="new-map">New map</button>
-        <span class="map-hint">mid belt · climb from low −1 · high→high free · high +1 shoot</span>
+        <span class="map-hint">mid belt · climb costs stamina · high→high free · high +1 shoot</span>
       </div>`
     : `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
@@ -1999,20 +2465,25 @@ function render() {
         <span class="map-hint">Playing saved level</span>
       </div>`;
 
-  app.innerHTML = `
-    <div class="board-wrap ${gameOverClass()}">
-      ${renderToolbar()}
-      <div class="map-params level-row">
+  const levelRow = pl
+    ? ''
+    : `<div class="map-params level-row">
         <label>Level
           <select id="level-select">${levelSelectOptions(activeLevelId)}</select>
         </label>
-      </div>
+        <span class="map-hint">${mode === 'hotseat' ? 'Hotseat' : 'vs AI'}</span>
+      </div>`;
+
+  app.innerHTML = `
+    <div class="board-wrap ${gameOverClass()}">
+      ${renderToolbar()}
+      ${levelRow}
       ${randomParams}
       <div class="turn-banner">${turnLabel()}</div>
       <div class="board-stage">
         ${renderBoard()}
         ${renderHexChoice()}
-        ${!endOverlayDismissed ? renderEndOverlay() : ''}
+        ${state.winner ? renderEndOverlay() : ''}
       </div>
       ${renderActionBar()}
     </div>
@@ -2035,7 +2506,7 @@ onServerStatus((s) => {
 async function initServerSync(): Promise<void> {
   const { applied } = await syncFromServer();
   defaultLevelId = getDefaultLevelId();
-  if (applied && screen === 'play') {
+  if (applied && screen === 'play' && !playlist) {
     activeLevelId = defaultLevelId ?? getActiveLevelId();
     state = bootState();
     applyLayout(computeLayout(), false);

@@ -1,6 +1,6 @@
 # Chess Army
 
-Hex army-chess. Kill the enemy **General**. You are **Red**. Default is vs AI (Blue); **Hotseat** is two humans.
+Hex army-chess. Kill the enemy **General** (only if they fielded one), or every enemy piece. You are **Red**. Default is vs AI (Blue); **Hotseat** is two humans.
 
 Rules live in `src/engine.ts`. Vite + SVG UI is throwaway.
 
@@ -30,14 +30,18 @@ Live numbers are editable in **Units**. PHP/`localStorage` override these.
 
 | Chess  | Unit    | Move | Shoot | Notes                                                      | Value |
 |--------|---------|------|-------|------------------------------------------------------------|-------|
-| Pawn   | Soldier | 1    | 2     | Sprint once (move 2); shooting spends it                   | 1     |
-| Knight | Scout   | 2    | 3     | 2 actions; move budget 3 so 1+1 / 2+1 / 1+2, not 2+2       | 3     |
+| Pawn   | Soldier | 1    | 2     | Infantry (can be overrun). Stamina 1, regen 1              | 1     |
+| Knight | Scout   | 2    | 3     | Water + through pieces. 2 actions; move cap 3. Stamina ends the 2nd action | 3 |
 | Bishop | Bazooka | 1    | 4     | Splash (friendly fire); 2-turn shoot CD                    | 3     |
 | Rook   | Sniper  | 1    | 6     | —                                                          | 5     |
-| Queen  | Tank    | 3    | 3–4   | Overrun infantry; splash FF; min range 3; armor 2          | 9     |
-| King   | General | 1    | 2     | Win condition; armor 1                                     | —     |
+| Queen  | Tank    | 3    | 3–4   | Overrun infantry; no high; splash FF; min range 3; armor 2 | 9     |
+| King   | General | 1    | 2     | King (win piece); armor 1                                  | —     |
 
-Click a piece: gold = move, orange = sprint, red = legal shot, faded red = in range but not a shot. Ambiguous hexes ask Move vs Shoot.
+Click a piece: green = move, gold = stamina (double range or climb), red = legal shot. Dual hex: Shoot, or click again to move.
+
+**Stamina:** once per turn, spend 1 to climb low→high and/or double that action's move range. Spending it on a multi-action unit (scout) ends the activation — no second action. Empty pool shows a bolt badge on the piece (top-right, above ammo). Regen is consecutive **idle** own turns per point (no move that turn; walking resets the count). Regen 2 = sit still two turns. 0 = never.
+
+**Max units / turn** (Level panel in the Editor, default 1): that many pieces may activate before the side-turn ends. Played pieces get a green check. **End turn** below the board skips leftovers. AI uses the same quota. Scout’s 2 actions still happen inside one of those activations. Random maps stay at 1.
 
 ## Terrain
 
@@ -49,18 +53,22 @@ Random maps scatter water / rock / wall / high on the **mid belt** (rows 3–7).
 | Water   | scout only                   | open                                     | —                                          |
 | Rock    | no                           | blocks                                   | permanent                                  |
 | Wall    | no                           | blocks                                   | bazooka/tank splash demolishes             |
-| High    | climb from low costs −1 move | from low: blocks. from high: over pieces | high→high free; shooter on high gets +1 range |
+| High    | climb from low costs 1 stamina | from low: blocks. from high: over pieces | high→high free; shooter on high gets +1 range |
 
-Pieces also block LOS from low ground. High shooters see along the ridge and over pieces; rock/wall still block.
+**Straight** shots: pieces block LOS from low ground. **Arch** shots: fire over units; terrain LOS (rock / wall / high) is unchanged. High shooters see along the ridge and over pieces either way; rock/wall still block.
 
 Armor ring: **green** ≥2, **orange** 1, **red** 0, **purple** negative. Damage is `max(0, amount − armor)`.
 
 AI is greedy: captures by material, then walks toward your general.
 
+Start screen: **Campaign** / **vs AI** / **Hotseat** / **Tutorial**. Campaign and Tutorial walk saved maps of that category A–Z vs AI. **Start** in the toolbar returns here.
+
+Saved levels have a category: `campaign` | `tutorial` | `free` (old saves → free) and **max units / turn** (old saves → 1). Set both in the Editor Level panel.
+
 ## Editors
 
-- **Editor** — paint terrain, stamp armies, save levels, set default level.
-- **Units** — mutate stats live (move, shoot, HP, armor, ammo, splash, …). New match to respawn sprint / ammo / HP.
+- **Editor** — paint terrain, stamp armies, save levels, set category, max units / turn, and default level.
+- **Units** — mutate stats live (move, shoot, HP, armor, ammo, splash, …). **Kit** sets icon + specials (water, overrun, high, king) without resetting numbers. Category: Modern / Roman / Greek (stock is Modern); filter the editor by era. New match to respawn ammo / HP. Catalog is `src/roster.ts`.
 - Formations — saved army presets; Blue gets the layout flipped. Default formation is used on random maps and on levels with no stamped armies.
 
 ## Shared store

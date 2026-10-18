@@ -1,7 +1,7 @@
-import type { UnitType } from './engine';
+import { roleOf, type UnitRole, type UnitType } from './engine';
 
 /** Compact silhouettes centered at 0,0 — viewBox roughly -10..10. */
-const ICONS: Record<UnitType, string> = {
+const ICONS: Record<UnitRole, string> = {
   // Helmet + torso
   soldier: `
     <circle cx="0" cy="-4.2" r="2.6"/>
@@ -9,16 +9,25 @@ const ICONS: Record<UnitType, string> = {
     <path d="M-3.4 1.2 H3.4 L2.6 6.5 H-2.6 Z"/>
     <rect x="-0.7" y="1.5" width="1.4" height="4.5" rx="0.4"/>
   `,
-  // Runner + speed lines
+  // Horse head (chess knight) + speed lines
   scout: `
     <g fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round">
-      <path d="M4.2 -6.2 L8.2 -6.2"/>
-      <path d="M3.6 -3.6 L8.5 -3.6"/>
-      <path d="M4.5 -1 L7.8 -1"/>
-      <path d="M3.2 1.6 L7.2 1.6"/>
+      <path d="M-9.2 -5.4 L-5.6 -5.4"/>
+      <path d="M-9.6 -2.6 L-5.8 -2.6"/>
+      <path d="M-9.0 0.2 L-5.6 0.2"/>
+      <path d="M-8.6 2.8 L-5.4 2.8"/>
     </g>
-    <circle cx="-2.2" cy="-4.5" r="2.2"/>
-    <path d="M-3.5 -1.8 L0.5 -2.5 L1.8 1.2 L-0.8 0.8 L0.8 6.2 L-1.5 6.5 L-3.2 2.2 L-5.2 4.8 L-6.5 3.5 Z"/>
+    <path d="M-5.4 7.2
+      L-5.8 2.2
+      C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
+      C-0.8 -7.4 0.4 -8.4 1.6 -8.8
+      L2.4 -6.6
+      C4.4 -6.2 6.6 -4.8 7.8 -3.2
+      C8.8 -2.0 8.6 -0.4 7.2 0.1
+      C6.2 0.4 5.4 -0.5 4.8 -1.1
+      C3.2 0.6 1.6 2.8 0.6 5.0
+      L0.1 7.2
+      Z"/>
   `,
   // Bazooka rocket — nose cone + body + fins
   bazooka: `
@@ -58,7 +67,7 @@ const ICONS: Record<UnitType, string> = {
 
 export function pieceIconSvg(type: UnitType, size = 16): string {
   const s = size / 20;
-  return `<g class="piece-icon" transform="scale(${s})">${ICONS[type]}</g>`;
+  return `<g class="piece-icon" transform="scale(${s})">${ICONS[roleOf(type)]}</g>`;
 }
 
 /** Small reload badge — place at piece top-right (cx, cy relative to piece center). */
@@ -86,6 +95,30 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
+/** Empty-stamina mark — top-right of the piece, above ammo. */
+export function staminaEmptyBadgeSvg(cx: number, cy: number, r = 7): string {
+  const sw = Math.max(1.1, r * 0.2);
+  return `
+    <g class="stamina-badge empty" transform="translate(${cx}, ${cy})">
+      <circle cx="0" cy="0" r="${r}" fill="#2a2414" stroke="#c9a227" stroke-width="1.3"/>
+      <path d="M ${r * 0.18} ${-r * 0.55} L ${-r * 0.28} ${r * 0.05} H ${r * 0.08} L ${-r * 0.22} ${r * 0.55} L ${r * 0.32} ${-r * 0.02} H ${-r * 0.04} Z"
+            fill="#e6c04a"/>
+      <path d="M ${-r * 0.45} ${r * 0.42} L ${r * 0.45} ${-r * 0.42}"
+            fill="none" stroke="#1a1508" stroke-width="${sw}" stroke-linecap="round"/>
+    </g>`;
+}
+
+/** Played-this-turn check — right side of the piece. */
+export function actedBadgeSvg(cx: number, cy: number, r = 7): string {
+  const sw = Math.max(1.4, r * 0.28);
+  return `
+    <g class="acted-badge" transform="translate(${cx}, ${cy})">
+      <circle cx="0" cy="0" r="${r}" fill="#16301c" stroke="#3dba5f" stroke-width="1.3"/>
+      <path d="M ${-r * 0.38} ${0.04} L ${-r * 0.08} ${r * 0.36} L ${r * 0.44} ${-r * 0.34}"
+        fill="none" stroke="#7ee89a" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>`;
+}
+
 /** Remaining-ammo pip — bottom-right of the piece. */
 export function ammoBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
   const empty = n <= 0;
@@ -101,9 +134,9 @@ export function ammoBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
-export const ICON_LABEL: Record<UnitType, string> = {
+export const ICON_LABEL: Record<UnitRole, string> = {
   soldier: 'infantry helmet',
-  scout: 'runner',
+  scout: 'horse',
   bazooka: 'rocket',
   sniper: 'scoped rifle',
   tank: 'tracked hull',
