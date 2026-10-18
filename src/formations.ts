@@ -1,0 +1,193 @@
+import { UNIT_TYPES, type UnitType } from './engine';
+import {
+  COLS,
+  ROWS,
+  placeSlots,
+  slotsFromSide,
+  stockSlots,
+  type ArmySlot,
+  type ArmyStamp,
+} from './map';
+import { notifyPersist } from './persist-hook';
+
+const STORAGE_KEY = 'chessarmy-formations-v1';
+const DEFAULT_KEY = 'chessarmy-default-formation';
+
+export const STOCK_FORMATION_ID = 'stock';
+
+export type SavedFormation = {
+  id: string;
+  name: string;
+  cols: number;
+  slots: ArmySlot[];
+  updatedAt: number;
+};
+
+function uid(): string {
+  return `frm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function validType(t: unknown): t is UnitType {
+  return typeof t === 'string' && (UNIT_TYPES as string[]).includes(t);
+}
+
+function sanitizeSlot(raw: unknown): ArmySlot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Partial<ArmySlot>;
+  if (!validType(s.type)) return null;
+  const col = Math.floor(Number(s.col));
+  const fromBack = Math.floor(Number(s.fromBack));
+  if (!Number.isFinite(col) || !Number.isFinite(fromBack)) return null;
+  if (col < 0 || col > 32 || fromBack < 0 || fromBack > 32) return null;
+  return { type: s.type, col, fromBack };
+}
+
+function normalize(list: SavedFormation[]): SavedFormation[] {
+  return list
+    .filter((f) => f && f.id && f.id !== STOCK_FORMATION_ID && f.name && Array.isArray(f.slots))
+    .map((f) => ({
+      ...f,
+      cols: Math.max(1, Math.min(32, Math.floor(f.cols) || COLS)),
+      slots: f.slots.map(sanitizeSlot).filter((s): s is ArmySlot => !!s).slice(0, 48),
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function write(list: SavedFormation[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  notifyPersist();
+}
+
+export function listFormations(): SavedFormation[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SavedFormation[];
+    if (!Array.isArray(parsed)) return [];
+    return normalize(parsed);
+  } catch {
+    return [];
+  }
+}
+
+export function replaceFormations(list: SavedFormation[]): void {
+  write(normalize(list));
+}
+
+export function getFormation(id: string): SavedFormation | null {
+  if (id === STOCK_FORMATION_ID) return null;
+  return listFormations().find((f) => f.id === id) ?? null;
+}
+
+export function stockFormation(cols: number, rows: number): SavedFormation {
+  return {
+    id: STOCK_FORMATION_ID,
+    name: 'Standard',
+    cols,
+    slots: stockSlots(cols, rows),
+    updatedAt: 0,
+  };
+}
+
+export function saveFormation(
+  name: string,
+  slots: ArmySlot[],
+  cols: number,
+  existingId?: string | null,
+): SavedFormation {
+  const list = listFormations();
+  const trimmed = name.trim() || 'Untitled army';
+  const now = Date.now();
+  const cleanSlots = slots.map(sanitizeSlot).filter((s): s is ArmySlot => !!s).slice(0, 48);
+  const width = Math.max(1, Math.min(32, Math.floor(cols) || COLS));
+  if (existingId && existingId !== STOCK_FORMATION_ID) {
+    const idx = list.findIndex((f) => f.id === existingId);
+    if (idx >= 0) {
+      const updated: SavedFormation = {
+        ...list[idx],
+        name: trimmed,
+        cols: width,
+        slots: cleanSlots,
+        updatedAt: now,
+      };
+      list[idx] = updated;
+      write(list);
+      return updated;
+    }
+  }
+  const created: SavedFormation = {
+    id: uid(),
+    name: trimmed,
+    cols: width,
+    slots: cleanSlots,
+    updatedAt: now,
+  };
+  list.unshift(created);
+  write(list);
+  return created;
+}
+
+export function deleteFormation(id: string): void {
+  if (id === STOCK_FORMATION_ID) return;
+  write(listFormations().filter((f) => f.id !== id));
+  if (getDefaultFormationId() === id) setDefaultFormationId(null);
+}
+
+export function getDefaultFormationId(): string | null {
+  try {
+    const v = localStorage.getItem(DEFAULT_KEY);
+    return v && v !== STOCK_FORMATION_ID ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setDefaultFormationId(id: string | null): void {
+  if (!id || id === STOCK_FORMATION_ID) localStorage.removeItem(DEFAULT_KEY);
+  else localStorage.setItem(DEFAULT_KEY, id);
+  notifyPersist();
+}
+
+export function captureFormation(
+  pieces: ArmyStamp[],
+  side: 'red' | 'blue',
+  cols: number,
+  rows: number,
+): { slots: ArmySlot[]; cols: number } {
+  return { slots: slotsFromSide(pieces, side, cols, rows), cols };
+}
+
+export function stampFormation(
+  form: Pick<SavedFormation, 'slots' | 'cols'>,
+  side: 'red' | 'blue',
+  cols: number,
+  rows: number,
+): ArmyStamp[] {
+  return placeSlots(form.slots, side, cols, rows, form.cols);
+}
+
+export function defaultArmyStamps(cols: number, rows: number): ArmyStamp[] | null {
+  const id = getDefaultFormationId();
+  const saved = id ? getFormation(id) : null;
+  if (!saved) return null;
+  return [
+    ...stampFormation(saved, 'red', cols, rows),
+    ...stampFormation(saved, 'blue', cols, rows),
+  ];
+}
+
+export function slotsEqual(a: ArmySlot[], b: ArmySlot[]): boolean {
+  if (a.length !== b.length) return false;
+  const key = (s: ArmySlot) => `${s.type}:${s.col}:${s.fromBack}`;
+  const left = a.map(key).sort();
+  const right = b.map(key).sort();
+  return left.every((k, i) => k === right[i]);
+}
+
+export function bothStockStamps(cols = COLS, rows = ROWS): ArmyStamp[] {
+  const form = stockFormation(cols, rows);
+  return [
+    ...stampFormation(form, 'red', cols, rows),
+    ...stampFormation(form, 'blue', cols, rows),
+  ];
+}
