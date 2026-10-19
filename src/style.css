@@ -6,14 +6,37 @@
   --land: #3d4a3a;
   --land2: #354235;
   --water: #2a4a5c;
-  --rock: #5a5650;
+  --water-hi: #3d6a82;
+  --water-lo: #1e3a4a;
+  --rock: #5c574f;
+  --rock-hi: #6a655c;
+  --rock-lo: #4a463f;
+  --rock-ink: #3a3630;
+  --wall: #6e7278;
+  --wall-hi: #7a7e84;
+  --wall-lo: #63676d;
+  --wall-ink: #4a4e54;
+  --high: #8a7348;
+  --high-hi: #a08a55;
+  --high-lo: #6b5530;
+  --high-shadow: #3d2e18;
+  --hex-stroke: #1a1f1c;
+  --water-stroke: #1a3344;
+  --high-stroke: #4a3820;
+  --rock-stroke: #0e0d0b;
+  --wall-stroke: #2a2e34;
   --red: #c44;
   --blue: #4a7ec8;
+  --piece-red: #a33;
+  --piece-blue: #356;
+  --piece-red-ink: #ffe4e0;
+  --piece-blue-ink: #e0ecff;
   --move: rgba(90, 210, 130, 0.28);
   --stamina: rgba(230, 185, 60, 0.32);
   --shoot: rgba(220, 70, 70, 0.3);
   --splash: rgba(255, 140, 40, 0.25);
   --sel: #f0e6a0;
+  --line: #3a453c;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -25,6 +48,88 @@
 
 * {
   box-sizing: border-box;
+}
+
+html[data-period='ancient'] {
+  --bg: #1c1610;
+  --panel: #2a2218;
+  --ink: #efe4d0;
+  --muted: #a89478;
+  --land: #5a4a32;
+  --land2: #4e402c;
+  --water: #3a5560;
+  --water-hi: #6a8a90;
+  --water-lo: #243840;
+  --rock: #6a5e52;
+  --rock-hi: #7a6e62;
+  --rock-lo: #524840;
+  --rock-ink: #3a3228;
+  --wall: #8a7a64;
+  --wall-hi: #9a8a74;
+  --wall-lo: #6e6254;
+  --wall-ink: #4a4034;
+  --high: #9a7a48;
+  --high-hi: #c4a86a;
+  --high-lo: #6b5530;
+  --high-shadow: #3d2e18;
+  --hex-stroke: #1c1610;
+  --water-stroke: #243840;
+  --high-stroke: #5a4020;
+  --rock-stroke: #1a1410;
+  --wall-stroke: #3a3228;
+  --red: #c45a38;
+  --blue: #3d6a78;
+  --piece-red: #a84830;
+  --piece-blue: #2e5460;
+  --piece-red-ink: #ffe8d4;
+  --piece-blue-ink: #d8eef0;
+  --move: rgba(200, 170, 90, 0.3);
+  --stamina: rgba(220, 170, 70, 0.34);
+  --shoot: rgba(200, 80, 50, 0.32);
+  --splash: rgba(210, 140, 50, 0.28);
+  --sel: #e0c070;
+  --line: #5a4a30;
+}
+
+html[data-period='futuristic'] {
+  --bg: #0c1018;
+  --panel: #141c28;
+  --ink: #d8e8f8;
+  --muted: #6a8498;
+  --land: #1a2a38;
+  --land2: #152230;
+  --water: #082838;
+  --water-hi: #20b8e0;
+  --water-lo: #041820;
+  --rock: #3a4458;
+  --rock-hi: #4a5870;
+  --rock-lo: #2a3448;
+  --rock-ink: #10141c;
+  --wall: #4a5568;
+  --wall-hi: #5a6a80;
+  --wall-lo: #343e50;
+  --wall-ink: #1a2030;
+  --high: #2a4858;
+  --high-hi: #3a7088;
+  --high-lo: #183040;
+  --high-shadow: #061018;
+  --hex-stroke: #06080c;
+  --water-stroke: #041820;
+  --high-stroke: #183848;
+  --rock-stroke: #080a10;
+  --wall-stroke: #121820;
+  --red: #e04070;
+  --blue: #20b8e0;
+  --piece-red: #c02858;
+  --piece-blue: #1488a8;
+  --piece-red-ink: #ffe0ec;
+  --piece-blue-ink: #d8f8ff;
+  --move: rgba(80, 255, 200, 0.22);
+  --stamina: rgba(80, 200, 255, 0.3);
+  --shoot: rgba(255, 60, 140, 0.32);
+  --splash: rgba(255, 120, 60, 0.28);
+  --sel: #7dffd4;
+  --line: #2a3a50;
 }
 
 html,
@@ -152,6 +257,35 @@ body {
   margin: 0.45rem 0 1.5rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.period-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0 0 1.15rem;
+}
+
+.period-pick {
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 0.55rem 0.4rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  min-height: var(--touch);
+}
+
+.period-pick.active {
+  border-color: var(--sel);
+  color: var(--sel);
+}
+
+.period-pick:hover {
+  border-color: var(--muted);
 }
 
 .start-menu {
@@ -1029,7 +1163,7 @@ svg.board .hex {
 }
 
 .hex {
-  stroke: #1a1f1c;
+  stroke: var(--hex-stroke);
   stroke-width: 1.5;
   cursor: pointer;
 }
@@ -1042,15 +1176,15 @@ svg.board .hex {
 }
 .hex.water {
   fill: url(#water-tex);
-  stroke: #1a3344;
+  stroke: var(--water-stroke);
   stroke-width: 1.8;
 }
 .hex.high {
   fill: url(#high-tex);
-  stroke: #4a3820;
+  stroke: var(--high-stroke);
   stroke-width: 2.8;
   stroke-linejoin: miter;
-  filter: drop-shadow(0 2px 0 #3d2e18);
+  filter: drop-shadow(0 2px 0 var(--high-shadow));
 }
 
 .hex-high-rim {
@@ -1068,13 +1202,13 @@ svg.board .hex {
 }
 .hex.rock {
   fill: url(#rock-tex);
-  stroke: #0e0d0b;
+  stroke: var(--rock-stroke);
   stroke-width: 3.6;
   stroke-linejoin: miter;
 }
 .hex.wall {
   fill: url(#wall-tex);
-  stroke: #2a2e34;
+  stroke: var(--wall-stroke);
   stroke-width: 3.2;
   stroke-linejoin: miter;
 }

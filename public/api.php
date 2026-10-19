@@ -222,6 +222,10 @@ function sanitize_level(mixed $level): ?array {
     if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'free') {
         $cat = 'free';
     }
+    $period = $level['period'] ?? 'modern';
+    if ($period !== 'ancient' && $period !== 'modern' && $period !== 'futuristic') {
+        $period = 'modern';
+    }
     $unitsPerTurn = isset($level['unitsPerTurn']) ? (int) $level['unitsPerTurn'] : 1;
     if ($unitsPerTurn < 1) {
         $unitsPerTurn = 1;
@@ -238,6 +242,7 @@ function sanitize_level(mixed $level): ?array {
         'orientation' => $ori,
         'terrain' => $grid,
         'category' => $cat,
+        'period' => $period,
         'unitsPerTurn' => $unitsPerTurn,
         'updatedAt' => $updated,
     ];

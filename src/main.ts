@@ -89,6 +89,15 @@ import {
   type SavedLevel,
 } from './levels';
 import {
+  PERIODS,
+  PERIOD_LABEL,
+  applyPeriodTheme,
+  getSelectedPeriod,
+  sanitizePeriod,
+  setSelectedPeriod,
+  type Period,
+} from './period';
+import {
   STOCK_FORMATION_ID,
   bothStockStamps,
   captureFormation,
@@ -165,6 +174,7 @@ let state: GameState = bootState();
 let mode: Mode = 'ai';
 const humanSide: Side = 'red';
 let screen: Screen = 'start';
+let selectedPeriod: Period = getSelectedPeriod();
 let playlist: Playlist | null = null;
 let unitEditorCategory: UnitCategory = 'modern';
 let selectedId: string | null = null;
@@ -182,6 +192,7 @@ let editorBrush: EditorBrush = 'water';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
 let editorCategory: LevelCategory = 'free';
+let editorPeriod: Period = selectedPeriod;
 let editorUnitsPerTurn = 1;
 let editorPieces: ArmyStamp[] = [];
 let editorArmySide: Side = 'red';
@@ -456,7 +467,7 @@ function startSkirmish(nextMode: Mode) {
 }
 
 function startPlaylist(kind: 'campaign' | 'tutorial') {
-  const levels = levelsInCategory(kind);
+  const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
   playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
   mode = 'ai';
@@ -494,6 +505,7 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorLevelId = lvl.id;
   editorName = lvl.name;
   editorCategory = lvl.category;
+  editorPeriod = lvl.period;
   editorUnitsPerTurn = clampUnitsPerTurn(lvl.unitsPerTurn);
   const cols = lvl.cols || editorTerrain[0]?.length || COLS;
   const rows = lvl.rows || editorTerrain.length || ROWS;
@@ -516,6 +528,7 @@ function enterEditor(fromLevelId?: string | null) {
       editorLevelId = null;
       editorName = 'New level';
       editorCategory = 'free';
+      editorPeriod = selectedPeriod;
       editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
       editorPieces = clipStamps(
         stampsFromPieces(state.pieces),
@@ -529,6 +542,7 @@ function enterEditor(fromLevelId?: string | null) {
     editorLevelId = null;
     editorName = 'New level';
     editorCategory = 'free';
+    editorPeriod = selectedPeriod;
     editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
     editorPieces = clipStamps(
       stampsFromPieces(state.pieces),
@@ -632,6 +646,8 @@ function doSaveLevel(asNew: boolean, asDefault = false): void {
   if (nameEl) editorName = nameEl.value;
   const catEl = app.querySelector<HTMLSelectElement>('#editor-category');
   if (catEl) editorCategory = sanitizeCategory(catEl.value);
+  const periodEl = app.querySelector<HTMLSelectElement>('#editor-period');
+  if (periodEl) editorPeriod = sanitizePeriod(periodEl.value);
   const uptEl = app.querySelector<HTMLInputElement>('#editor-units-per-turn');
   if (uptEl) editorUnitsPerTurn = clampUnitsPerTurn(uptEl.value);
   const saved = saveLevel(
@@ -642,6 +658,7 @@ function doSaveLevel(asNew: boolean, asDefault = false): void {
     editorPieces,
     editorCategory,
     editorUnitsPerTurn,
+    editorPeriod,
   );
   editorLevelId = saved.id;
   editorName = saved.name;
@@ -978,11 +995,20 @@ async function maybeAi() {
 }
 
 function pieceColor(side: Side): string {
-  return side === 'red' ? '#a33' : '#356';
+  return side === 'red' ? 'var(--piece-red)' : 'var(--piece-blue)';
 }
 
 function iconInk(side: Side): string {
-  return side === 'red' ? '#ffe4e0' : '#e0ecff';
+  return side === 'red' ? 'var(--piece-red-ink)' : 'var(--piece-blue-ink)';
+}
+
+function activePeriod(): Period {
+  if (screen === 'editor') return editorPeriod;
+  if (screen === 'play' && activeLevelId) {
+    const lvl = getLevel(activeLevelId);
+    if (lvl) return lvl.period;
+  }
+  return selectedPeriod;
 }
 
 function viewTerrain(): Terrain[][] {
@@ -1129,40 +1155,39 @@ function renderBoard(): string {
   const defs = `
     <defs>
       <pattern id="rock-tex" patternUnits="userSpaceOnUse" width="14" height="14">
-        <rect width="14" height="14" fill="#5c574f"/>
-        <path d="M0 3 L4 1 L8 4 L6 8 L2 7 Z" fill="#6a655c" opacity="0.85"/>
-        <path d="M7 8 L12 6 L14 10 L10 13 L7 11 Z" fill="#4a463f" opacity="0.9"/>
-        <path d="M1 10 L5 9 L6 13 L2 14 Z" fill="#706b60" opacity="0.7"/>
+        <rect width="14" height="14" fill="var(--rock)"/>
+        <path d="M0 3 L4 1 L8 4 L6 8 L2 7 Z" fill="var(--rock-hi)" opacity="0.85"/>
+        <path d="M7 8 L12 6 L14 10 L10 13 L7 11 Z" fill="var(--rock-lo)" opacity="0.9"/>
+        <path d="M1 10 L5 9 L6 13 L2 14 Z" fill="var(--rock-hi)" opacity="0.7"/>
         <path d="M0 0 L14 14 M14 0 L0 14 M4 0 L14 10 M0 6 L8 14"
-          stroke="#3a3630" stroke-width="0.7" opacity="0.55" fill="none"/>
-        <circle cx="3" cy="5" r="0.7" fill="#2e2b26" opacity="0.5"/>
-        <circle cx="10" cy="3" r="0.5" fill="#7a756a" opacity="0.45"/>
-        <circle cx="9" cy="11" r="0.6" fill="#2e2b26" opacity="0.4"/>
+          stroke="var(--rock-ink)" stroke-width="0.7" opacity="0.55" fill="none"/>
+        <circle cx="3" cy="5" r="0.7" fill="var(--rock-ink)" opacity="0.5"/>
+        <circle cx="10" cy="3" r="0.5" fill="var(--rock-hi)" opacity="0.45"/>
+        <circle cx="9" cy="11" r="0.6" fill="var(--rock-ink)" opacity="0.4"/>
       </pattern>
       <pattern id="wall-tex" patternUnits="userSpaceOnUse" width="12" height="12">
-        <rect width="12" height="12" fill="#6e7278"/>
-        <rect x="0" y="0" width="12" height="5.5" fill="#7a7e84"/>
-        <rect x="0" y="6" width="12" height="5.5" fill="#63676d"/>
-        <path d="M0 6 H12 M6 0 V6 M0 12 H12" stroke="#4a4e54" stroke-width="1"/>
-        <path d="M0 0 H12 M0 0 V12" stroke="#8a8e94" stroke-width="0.6" opacity="0.5"/>
+        <rect width="12" height="12" fill="var(--wall)"/>
+        <rect x="0" y="0" width="12" height="5.5" fill="var(--wall-hi)"/>
+        <rect x="0" y="6" width="12" height="5.5" fill="var(--wall-lo)"/>
+        <path d="M0 6 H12 M6 0 V6 M0 12 H12" stroke="var(--wall-ink)" stroke-width="1"/>
+        <path d="M0 0 H12 M0 0 V12" stroke="var(--wall-hi)" stroke-width="0.6" opacity="0.5"/>
       </pattern>
       <pattern id="water-tex" patternUnits="userSpaceOnUse" width="18" height="12">
-        <rect width="18" height="12" fill="#2a4a5c"/>
-        <path d="M-2 3 Q2 1 6 3 T14 3 T22 3" fill="none" stroke="#3d6a82" stroke-width="1.2" opacity="0.75"/>
-        <path d="M-2 7 Q2 5 6 7 T14 7 T22 7" fill="none" stroke="#1e3a4a" stroke-width="1.1" opacity="0.7"/>
-        <path d="M-2 11 Q3 9 7 11 T15 11 T23 11" fill="none" stroke="#4a7a94" stroke-width="1" opacity="0.55"/>
-        <ellipse cx="4" cy="2" rx="1.8" ry="0.6" fill="#6a9ab0" opacity="0.25"/>
-        <ellipse cx="13" cy="8" rx="2.2" ry="0.7" fill="#6a9ab0" opacity="0.2"/>
+        <rect width="18" height="12" fill="var(--water)"/>
+        <path d="M-2 3 Q2 1 6 3 T14 3 T22 3" fill="none" stroke="var(--water-hi)" stroke-width="1.2" opacity="0.75"/>
+        <path d="M-2 7 Q2 5 6 7 T14 7 T22 7" fill="none" stroke="var(--water-lo)" stroke-width="1.1" opacity="0.7"/>
+        <path d="M-2 11 Q3 9 7 11 T15 11 T23 11" fill="none" stroke="var(--water-hi)" stroke-width="1" opacity="0.55"/>
+        <ellipse cx="4" cy="2" rx="1.8" ry="0.6" fill="var(--water-hi)" opacity="0.25"/>
+        <ellipse cx="13" cy="8" rx="2.2" ry="0.7" fill="var(--water-hi)" opacity="0.2"/>
       </pattern>
       <pattern id="high-tex" patternUnits="userSpaceOnUse" width="20" height="20">
-        <rect width="20" height="20" fill="#8a7348"/>
-        <rect width="20" height="20" fill="#a08a55" opacity="0.45"/>
-        <!-- topo contours -->
-        <ellipse cx="10" cy="10" rx="8" ry="6.5" fill="none" stroke="#6b5530" stroke-width="1" opacity="0.55"/>
-        <ellipse cx="10" cy="10" rx="5" ry="4" fill="none" stroke="#c4b07a" stroke-width="1" opacity="0.5"/>
-        <ellipse cx="10" cy="10" rx="2.2" ry="1.8" fill="#d2c08a" opacity="0.35"/>
-        <path d="M1 15 Q6 12 10 14 T19 13" fill="none" stroke="#5c4828" stroke-width="0.8" opacity="0.4"/>
-        <path d="M2 6 Q8 3 14 5" fill="none" stroke="#efe0b0" stroke-width="0.7" opacity="0.35"/>
+        <rect width="20" height="20" fill="var(--high)"/>
+        <rect width="20" height="20" fill="var(--high-hi)" opacity="0.45"/>
+        <ellipse cx="10" cy="10" rx="8" ry="6.5" fill="none" stroke="var(--high-lo)" stroke-width="1" opacity="0.55"/>
+        <ellipse cx="10" cy="10" rx="5" ry="4" fill="none" stroke="var(--high-hi)" stroke-width="1" opacity="0.5"/>
+        <ellipse cx="10" cy="10" rx="2.2" ry="1.8" fill="var(--high-hi)" opacity="0.35"/>
+        <path d="M1 15 Q6 12 10 14 T19 13" fill="none" stroke="var(--high-lo)" stroke-width="0.8" opacity="0.4"/>
+        <path d="M2 6 Q8 3 14 5" fill="none" stroke="var(--high-hi)" stroke-width="0.7" opacity="0.35"/>
       </pattern>
     </defs>`;
 
@@ -1749,9 +1774,13 @@ function renderToolbar(): string {
 }
 
 function renderStartScreen(): string {
-  const campaignN = levelsInCategory('campaign').length;
-  const tutorialN = levelsInCategory('tutorial').length;
+  const campaignN = levelsInCategory('campaign', selectedPeriod).length;
+  const tutorialN = levelsInCategory('tutorial', selectedPeriod).length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
+  const periodPicks = PERIODS.map(
+    (p) =>
+      `<button type="button" class="period-pick${selectedPeriod === p ? ' active' : ''}" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
+  ).join('');
   return `
     <div class="board-wrap start-wrap">
       ${renderToolbar()}
@@ -1759,6 +1788,7 @@ function renderStartScreen(): string {
         <p class="start-kicker">Hex army-chess</p>
         <h2 class="start-title">CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h2>
         <p class="start-tag">Kill the enemy General — or the whole army.</p>
+        <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
           <button type="button" class="start-opt" data-start="campaign"${campaignN ? '' : ' disabled'}
             title="${campaignN ? 'Play campaign maps in alphabetical order, vs AI' : 'Mark saved levels as Campaign in the Editor'}">
@@ -1787,6 +1817,14 @@ function bindToolbarEvents() {
   app.querySelector('#go-start')?.addEventListener('click', () => {
     if (screen === 'start') return;
     showStart();
+  });
+  app.querySelectorAll<HTMLButtonElement>('.period-pick').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedPeriod = sanitizePeriod(btn.dataset.period);
+      setSelectedPeriod(selectedPeriod);
+      applyPeriodTheme(selectedPeriod);
+      render();
+    });
   });
   app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1850,7 +1888,7 @@ function renderEditorBar(): string {
       : `<ul class="editor-levels">${levels
           .map(
             (l) => `<li class="${l.id === editorLevelId ? 'active' : ''}">
-              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
+              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · ${PERIOD_LABEL[l.period]} · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
               <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
             </li>`,
           )
@@ -1919,6 +1957,14 @@ function renderEditorBar(): string {
               ${LEVEL_CATEGORIES.map(
                 (c) =>
                   `<option value="${c}"${editorCategory === c ? ' selected' : ''}>${LEVEL_CATEGORY_LABEL[c]}</option>`,
+              ).join('')}
+            </select>
+          </label>
+          <label class="editor-cat">Period
+            <select id="editor-period">
+              ${PERIODS.map(
+                (p) =>
+                  `<option value="${p}"${editorPeriod === p ? ' selected' : ''}>${PERIOD_LABEL[p]}</option>`,
               ).join('')}
             </select>
           </label>
@@ -2197,6 +2243,12 @@ function bindEditorEvents() {
     editorCategory = sanitizeCategory((e.target as HTMLSelectElement).value);
     editorDirty = true;
   });
+  app.querySelector('#editor-period')?.addEventListener('change', (e) => {
+    editorPeriod = sanitizePeriod((e.target as HTMLSelectElement).value);
+    editorDirty = true;
+    applyPeriodTheme(editorPeriod);
+    render();
+  });
   app.querySelector('#editor-units-per-turn')?.addEventListener('change', (e) => {
     const el = e.target as HTMLInputElement;
     editorUnitsPerTurn = clampUnitsPerTurn(el.value);
@@ -2302,6 +2354,7 @@ function bindEditorEvents() {
         editorLevelId = null;
         editorName = 'New level';
         editorCategory = 'free';
+        editorPeriod = selectedPeriod;
       }
       if (defaultLevelId === id) defaultLevelId = null;
       render();
@@ -2378,6 +2431,7 @@ function bindEvents() {
 
 function render() {
   const maxT = maxTerrainCells();
+  applyPeriodTheme(activePeriod());
   app.classList.toggle('start-screen', screen === 'start');
 
   if (screen === 'start') {

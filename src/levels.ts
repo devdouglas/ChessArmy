@@ -8,6 +8,7 @@ import {
   type ArmyStamp,
 } from './map';
 import { notifyPersist } from './persist-hook';
+import { sanitizePeriod, type Period } from './period';
 
 const STORAGE_KEY = 'chessarmy-levels-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
@@ -41,6 +42,8 @@ export type SavedLevel = {
   armies?: ArmyStamp[];
   /** Missing on old saves → free. */
   category: LevelCategory;
+  /** Missing on old saves → modern. */
+  period: Period;
   /** Pieces a side may activate per turn. Missing on old saves → 1. */
   unitsPerTurn: number;
   updatedAt: number;
@@ -105,6 +108,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         rows,
         terrain: cloneTerrain(l.terrain),
         category: sanitizeCategory(l.category),
+        period: sanitizePeriod(l.period),
         unitsPerTurn: clampUnitsPerTurn(l.unitsPerTurn ?? 1),
         ...(armies !== undefined ? { armies } : {}),
       };
@@ -127,9 +131,13 @@ export function getLevel(id: string): SavedLevel | null {
 }
 
 /** Category playlist order: name A–Z, numeric-aware. */
-export function levelsInCategory(category: LevelCategory): SavedLevel[] {
+export function levelsInCategory(
+  category: LevelCategory,
+  period?: Period,
+): SavedLevel[] {
   return listLevels()
     .filter((l) => l.category === category)
+    .filter((l) => !period || l.period === period)
     .sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
     );
@@ -143,6 +151,7 @@ export function saveLevel(
   armies?: ArmyStamp[],
   category?: LevelCategory,
   unitsPerTurn?: number,
+  period?: Period,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -162,6 +171,7 @@ export function saveLevel(
         terrain: cloneTerrain(terrain),
         armies: stamped,
         category: sanitizeCategory(category ?? levels[idx].category),
+        period: sanitizePeriod(period ?? levels[idx].period),
         unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? levels[idx].unitsPerTurn ?? 1),
         updatedAt: now,
       };
@@ -179,6 +189,7 @@ export function saveLevel(
     terrain: cloneTerrain(terrain),
     armies: stamped,
     category: sanitizeCategory(category),
+    period: sanitizePeriod(period),
     unitsPerTurn: clampUnitsPerTurn(unitsPerTurn),
     updatedAt: now,
   };
