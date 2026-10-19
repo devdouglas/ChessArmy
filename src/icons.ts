@@ -1,4 +1,4 @@
-import { roleOf, type UnitRole, type UnitType } from './engine';
+import { roleOf, type AbilityId, type UnitRole, type UnitType } from './engine';
 
 /** Compact silhouettes centered at 0,0 — viewBox roughly -10..10. */
 const ICONS: Record<UnitRole, string> = {
@@ -36,6 +36,18 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M-7 -2.2 L-9.5 -4.2 L-7 -0.4 Z"/>
     <path d="M-7 2.2 L-9.5 4.2 L-7 0.4 Z"/>
     <path d="M-7 -1.2 L-9.2 0 L-7 1.2 Z"/>
+  `,
+  // Bow + nocked arrow
+  archer: `
+    <path d="M-4.8 -8.0
+      C-8.4 -4.4 -8.4 4.4 -4.8 8.0
+      L-3.0 6.4
+      C-5.8 3.2 -5.8 -3.2 -3.0 -6.4
+      Z"/>
+    <path d="M-3.2 -6.6 L-3.2 6.6 L-1.8 6.6 L-1.8 -6.6 Z"/>
+    <rect x="-7.0" y="-0.7" width="13.4" height="1.4" rx="0.35"/>
+    <path d="M5.6 -2.6 L9.2 0 L5.6 2.6 Z"/>
+    <path d="M-7.0 -2.3 L-4.4 0 L-7.0 2.3 Z"/>
   `,
   // Rifle + large crosshair scope
   sniper: `
@@ -145,11 +157,26 @@ export function ammoBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
+/** Ability pip — bottom-left of the piece. Star = General. */
+export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): string {
+  const sw = Math.max(0.7, r * 0.12);
+  const star = `M0 ${-r * 0.62} L${r * 0.18} ${-r * 0.18} H${r * 0.58} L${r * 0.24} ${r * 0.08} L${r * 0.36} ${r * 0.52} L0 ${r * 0.22} L${-r * 0.36} ${r * 0.52} L${-r * 0.24} ${r * 0.08} L${-r * 0.58} ${-r * 0.18} H${-r * 0.18} Z`;
+  if (id === 'general') {
+    return `
+      <g class="ability-badge general" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#2a2410" stroke="#e0c070" stroke-width="1.3"/>
+        <path d="${star}" fill="#f0d060" stroke="#8a7030" stroke-width="${sw}" stroke-linejoin="round"/>
+      </g>`;
+  }
+  return '';
+}
+
 export const ICON_LABEL: Record<UnitRole, string> = {
   soldier: 'infantry helmet',
   scout: 'horse',
   bazooka: 'rocket',
   sniper: 'scoped rifle',
+  archer: 'bow',
   tank: 'tracked hull',
   general: 'command star',
   tower: 'keep',

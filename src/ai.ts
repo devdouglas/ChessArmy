@@ -7,10 +7,10 @@ import {
   allLegalActions,
   applyAction,
   getPiece,
+  hasAbility,
   hpLeft,
   pieceAt,
   previewMove,
-  statsOf,
   terrainAt,
   UNIT_STATS,
   type Action,
@@ -23,12 +23,22 @@ function dist(state: GameState, a: Hex, b: Hex): number {
   return distance(a, b, state.orientation);
 }
 
-function enemyGeneral(state: GameState, me: Side) {
-  return state.pieces.find((p) => p.side !== me && statsOf(p.type).king);
+function enemyGeneral(state: GameState, me: Side, from: Hex) {
+  let best: (typeof state.pieces)[number] | null = null;
+  let bestD = Infinity;
+  for (const p of state.pieces) {
+    if (p.side === me || !hasAbility(p, 'general')) continue;
+    const d = dist(state, from, { col: p.col, row: p.row });
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
 }
 
 function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
-  const gen = enemyGeneral(state, me);
+  const gen = enemyGeneral(state, me, from);
   if (gen) return { col: gen.col, row: gen.row };
   let best: Hex | null = null;
   let bestD = Infinity;
@@ -69,10 +79,10 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
     const v = UNIT_STATS[k.type].value * 24;
     if (k.side !== me) {
       score += v;
-      if (statsOf(k.type).king) score += 10_000;
+      if (hasAbility(k, 'general')) score += 10_000;
     } else {
       score -= v * 0.5;
-      if (statsOf(k.type).king) score -= 10_000;
+      if (hasAbility(k, 'general')) score -= 10_000;
     }
   }
   for (const p of state.pieces) {

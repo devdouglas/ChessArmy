@@ -102,6 +102,7 @@ function allowed_unit(mixed $type): bool {
         'scout' => true,
         'bazooka' => true,
         'sniper' => true,
+        'archer' => true,
         'tank' => true,
         'general' => true,
         'tower' => true,

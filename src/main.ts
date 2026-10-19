@@ -1,5 +1,9 @@
 import './style.css';
 import {
+  ABILITY_BLURB,
+  ABILITY_IDS,
+  ABILITY_LABEL,
+  abilitiesOf,
   applyAction,
   clampUnitsPerTurn,
   defeatKind,
@@ -18,7 +22,10 @@ import {
   previewMove,
   rangeHighlights,
   armorColor,
+  facingOf,
   hasSplash,
+  HEX_ARMOR_LABEL,
+  HEX_ARMOR_SIDES,
   netDamage,
   splashBlast,
   staminaLeft,
@@ -29,6 +36,7 @@ import {
   UNIT_ROLE_LABEL,
   UNIT_STATS,
   UNIT_TYPES,
+  isAbilityId,
   isCustomUnitId,
   isUnitRole,
   SHOOT_ARCS,
@@ -45,11 +53,13 @@ import {
   type UnitType,
 } from './engine';
 import {
+  defaultFacing,
   eq,
   hexCorners,
   hexGridExtent,
   hexToPixel,
   key,
+  neighborInDir,
   pixelToHex,
   type Hex,
   type HexOrientation,
@@ -117,6 +127,7 @@ import {
   actedBadgeSvg,
   ammoBadgeSvg,
   hpBadgeSvg,
+  abilityBadgeSvg,
   pieceIconSvg,
   reloadBadgeSvg,
   staminaEmptyBadgeSvg,
@@ -125,6 +136,7 @@ import {
   CLAMP,
   copyUnit,
   deleteCopiedUnit,
+  patchUnitAbility,
   patchUnitCategory,
   patchUnitKit,
   patchUnitName,
@@ -134,6 +146,7 @@ import {
   unitStatsAreStock,
   type EditableStat,
 } from './units';
+import type { AbilityId } from './abilities';
 import {
   getServerStatus,
   onServerStatus,
@@ -177,6 +190,7 @@ let screen: Screen = 'start';
 let selectedPeriod: Period = getSelectedPeriod();
 let playlist: Playlist | null = null;
 let unitEditorCategory: UnitCategory = 'modern';
+const unitEditorOpen = new Set<UnitType>();
 let selectedId: string | null = null;
 /** Hex where both move-onto and shoot are legal — wait for Move/Shoot pick. */
 let pendingHex: Hex | null = null;
@@ -252,7 +266,7 @@ function computeLayout() {
   return {
     hexSize: hex,
     pad: Math.max(18, Math.round(hex * 1.05)),
-    pieceIcon: Math.max(14, Math.round(hex * 0.62)),
+    pieceIcon: Math.max(14, Math.round(hex * 0.75)),
   };
 }
 
@@ -418,6 +432,54 @@ function viewOrientation(): HexOrientation {
 function pixelOf(h: Hex): { x: number; y: number } {
   const { x, y } = hexToPixel(h, HEX_SIZE, viewOrientation());
   return { x: x + PAD, y: y + PAD };
+}
+
+/** Degrees to rotate a piece so local -Y (icon "up") matches current facing. */
+function facingRotation(piece: Piece): number {
+  const o = viewOrientation();
+  const from = { col: piece.col, row: piece.row };
+  const n = neighborInDir(from, facingOf(piece), o);
+  const a = hexToPixel(from, HEX_SIZE, o);
+  const b = hexToPixel(n, HEX_SIZE, o);
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90;
+}
+
+/** `to` as an equivalent angle within ±180° of `from` (short arc). */
+function shortestAngle(from: number, to: number): number {
+  let d = (to - from) % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  return from + d;
+}
+
+function tweenFacing(
+  el: Element | null,
+  from: number,
+  to: number,
+  ms: number,
+): Promise<void> {
+  if (!el) return Promise.resolve();
+  const target = shortestAngle(from, to);
+  if (Math.abs(target - from) < 0.25) {
+    el.setAttribute('transform', `rotate(${target})`);
+    return Promise.resolve();
+  }
+  const t0 = performance.now();
+  return new Promise((resolve) => {
+    const tick = (now: number) => {
+      const u = Math.min(1, (now - t0) / ms);
+      const e = 1 - (1 - u) * (1 - u);
+      el.setAttribute('transform', `rotate(${from + (target - from) * e})`);
+      if (u < 1) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+function ringArmor(type: UnitType): number {
+  const s = UNIT_STATS[type];
+  return s.hexArmor ? s.armorFront : s.armor;
 }
 
 function readMapInputs(): MapOptions {
@@ -783,6 +845,10 @@ async function playAnimatedAction(action: Action): Promise<void> {
         .querySelector(`g.piece-unit[data-id="${CSS.escape(hit.id)}"]`)
         ?.classList.add(hit.fatal ? 'dying' : 'hit');
     }
+    const facingEl = g?.querySelector('.piece-facing') ?? null;
+    const fromDeg = facingRotation(piece);
+    const toDeg = facingRotation({ ...piece, facing: plan.facing });
+    const turn = tweenFacing(facingEl, fromDeg, toDeg, MOVE_MS);
     if (g) {
       g.classList.add('moving');
       g.style.transition = `transform ${MOVE_MS}ms ease-out`;
@@ -804,6 +870,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
     } else {
       await wait(MOVE_MS);
     }
+    await turn;
   } else {
     await animateShot(piece, action.at);
   }
@@ -899,7 +966,8 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     // Splash hits everyone (incl. friendlies); bullets skip friendlies
     if (!hasSplash(stats) && t.side === piece.side) continue;
     const dmgAmt = hasSplash(stats) ? stats.splashDamage : stats.shootDamage;
-    const fatal = hpLeft(t) <= netDamage(t, dmgAmt);
+    const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
+    const fatal = hpLeft(t) <= netDamage(t, dmgAmt, 0, origin, state.orientation);
     document
       .querySelector(`g.piece-unit[data-id="${CSS.escape(t.id)}"]`)
       ?.classList.add(fatal ? 'dying' : 'hit');
@@ -1087,19 +1155,20 @@ function renderBoard(): string {
   }
 
   let piecesSvg = '';
-  const drawPieces: Piece[] = editing
+    const drawPieces: Piece[] = editing
     ? editorPieces.map((p) => ({
         id: `ed-${p.side}-${p.col}-${p.row}`,
         side: p.side,
         type: p.type,
         col: p.col,
         row: p.row,
+        facing: defaultFacing(p.side),
       }))
     : state.pieces;
   for (const p of drawPieces) {
     const { x, y } = pixelOf({ col: p.col, row: p.row });
     const sel = !editing && p.id === selectedId ? ' selected' : '';
-    const pr = HEX_SIZE * 0.48;
+    const pr = HEX_SIZE * 0.581;
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
     const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
     const staminaIcon = emptyStamina
@@ -1121,6 +1190,11 @@ function renderBoard(): string {
       !editing && hasActed(state, p.id)
         ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
+    const abilityIcons = abilitiesOf(p)
+      .map((id, i) =>
+        abilityBadgeSvg(id, -pr * 0.65 + i * badgeR * 1.65, pr * 0.7, badgeR),
+      )
+      .join('');
     const maxHp = hpMax(p);
     const hpIcon =
       maxHp > 1
@@ -1131,7 +1205,9 @@ function renderBoard(): string {
             badgeR,
           )
         : '';
-    const ring = armorColor(UNIT_STATS[p.type].armor);
+    const ring = armorColor(ringArmor(p.type));
+    const rot = facingRotation(p);
+    const notch = pr + 1.2;
     piecesSvg += `
       <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
         ${
@@ -1141,14 +1217,18 @@ function renderBoard(): string {
         }
         <circle class="piece-bg" cx="0" cy="0" r="${pr}"
           fill="${pieceColor(p.side)}" stroke="${ring}" stroke-width="2.2" />
-        <g class="piece-glyph ${p.side}" fill="${iconInk(p.side)}" stroke="none" color="${iconInk(p.side)}">
-          ${pieceIconSvg(p.type, PIECE_ICON)}
+        <g class="piece-facing" transform="rotate(${rot.toFixed(1)})">
+          <polygon class="facing-notch" points="0,${(-notch).toFixed(1)} 3.6,${(-notch + 6.5).toFixed(1)} -3.6,${(-notch + 6.5).toFixed(1)}" fill="${iconInk(p.side)}" />
+          <g class="piece-glyph ${p.side}" fill="${iconInk(p.side)}" stroke="none" color="${iconInk(p.side)}">
+            ${pieceIconSvg(p.type, PIECE_ICON)}
+          </g>
         </g>
         ${reloadIcon}
         ${staminaIcon}
         ${hpIcon}
         ${ammoIcon}
         ${actedIcon}
+        ${abilityIcons}
       </g>`;
   }
 
@@ -1274,7 +1354,7 @@ function renderActionBar(): string {
     <div class="action-bar${scoutUi ? ' has-skip' : ''}${endBtn ? ' has-end' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
-          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2" />
+          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
         <span>${s.name}${previewOnly ? ' · preview' : ''}${
@@ -1343,7 +1423,20 @@ function renderSidebar(): string {
         String(s.shootDamage),
         hasSplash(s) ? `splash ${s.splashDamage} · FF` : '',
       ),
-      statRow('Armor', `${s.armor > 0 ? '+' : ''}${s.armor}`),
+      statRow(
+        'Armor',
+        s.hexArmor
+          ? HEX_ARMOR_SIDES.map((side) => {
+              const n = s[side];
+              const tag = HEX_ARMOR_LABEL[side]
+                .split(' ')
+                .map((w) => w[0])
+                .join('');
+              return `${tag}${n > 0 ? '+' : ''}${n}`;
+            }).join(' ')
+          : `${s.armor > 0 ? '+' : ''}${s.armor}`,
+        s.hexArmor ? 'hex · front follows last move' : '',
+      ),
       statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
     ];
     if (maxSt > 0) rows.push(statRow('Stamina', `${curSt}/${maxSt}`, stamNote, stamWarn));
@@ -1377,7 +1470,7 @@ function renderSidebar(): string {
     if (s.overrun) notes.push(`Overruns infantry (${s.meleeDamage} dmg; survivor blocks)`);
     if (s.noHigh) notes.push('Cannot enter high ground');
     if (hasSplash(s)) notes.push('Splash: full ring; wall hits 3 tiles back-arc');
-    if (s.king) notes.push('King — killing this wins (only if they fielded a general)');
+    for (const id of abilitiesOf(piece)) notes.push(ABILITY_BLURB[id]);
 
     const previewOnly = piece.side !== state.turn || !canControl();
 
@@ -1385,7 +1478,7 @@ function renderSidebar(): string {
       <section class="ability">
         <header class="ability-head">
           <svg class="side-icon" viewBox="-10 -10 20 20" width="28" height="28" aria-hidden="true">
-            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2" />
+            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
             <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 14)}</g>
           </svg>
           <div>
@@ -1888,7 +1981,7 @@ function renderEditorBar(): string {
       : `<ul class="editor-levels">${levels
           .map(
             (l) => `<li class="${l.id === editorLevelId ? 'active' : ''}">
-              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · ${PERIOD_LABEL[l.period]} · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
+              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
               <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
             </li>`,
           )
@@ -1944,36 +2037,40 @@ function renderEditorBar(): string {
       </section>
       <section class="editor-panel editor-panel-level">
         <h3>Level</h3>
-        <div class="editor-grid">
-          <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
-          <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
-          <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
-          <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
-        </div>
-        <div class="editor-save">
+        <div class="level-settings">
           <input type="text" id="editor-name" value="${escapeHtml(editorName)}" placeholder="Level name" maxlength="48" />
-          <label class="editor-cat">Category
-            <select id="editor-category">
-              ${LEVEL_CATEGORIES.map(
-                (c) =>
-                  `<option value="${c}"${editorCategory === c ? ' selected' : ''}>${LEVEL_CATEGORY_LABEL[c]}</option>`,
-              ).join('')}
-            </select>
-          </label>
-          <label class="editor-cat">Period
-            <select id="editor-period">
-              ${PERIODS.map(
-                (p) =>
-                  `<option value="${p}"${editorPeriod === p ? ' selected' : ''}>${PERIOD_LABEL[p]}</option>`,
-              ).join('')}
-            </select>
-          </label>
-          <label class="editor-cat">Max units / turn
+          <div class="level-settings-row">
+            <label class="editor-cat">Category
+              <select id="editor-category">
+                ${LEVEL_CATEGORIES.map(
+                  (c) =>
+                    `<option value="${c}"${editorCategory === c ? ' selected' : ''}>${LEVEL_CATEGORY_LABEL[c]}</option>`,
+                ).join('')}
+              </select>
+            </label>
+            <label class="editor-cat">Period
+              <select id="editor-period" data-period="${editorPeriod}">
+                ${PERIODS.map(
+                  (p) =>
+                    `<option value="${p}"${editorPeriod === p ? ' selected' : ''}>${PERIOD_LABEL[p]}</option>`,
+                ).join('')}
+              </select>
+            </label>
+          </div>
+          <label class="editor-cat level-settings-upt">Max units / turn
             <input type="number" id="editor-units-per-turn" min="${MIN_UNITS_PER_TURN}" max="${MAX_UNITS_PER_TURN}" value="${editorUnitsPerTurn}" />
           </label>
-          <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
-          <button type="button" id="editor-save-as" class="ghost">Save as new</button>
-          <button type="button" id="editor-save-default" class="${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'active' : ''}">${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'Default map' : 'Save as default'}</button>
+          <div class="editor-grid">
+            <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
+            <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
+            <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
+            <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
+          </div>
+          <div class="editor-save level-settings-actions">
+            <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
+            <button type="button" id="editor-save-as" class="ghost">Save as new</button>
+            <button type="button" id="editor-save-default" class="${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'active' : ''}">${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'Default map' : 'Save as default'}</button>
+          </div>
         </div>
         <div class="editor-library">
           <span class="editor-label" id="editor-lib-label">Saved${editorDirty ? ' · unsaved changes' : ''}</span>
@@ -2000,7 +2097,75 @@ function unitNumField(
   const min = spec?.min ?? 0;
   const max = spec?.max ?? 99;
   const val = UNIT_STATS[type][field] as number;
-  return `<label>${label} <input type="number" min="${min}" max="${max}" value="${val}" data-unit="${type}" data-field="${field}" /></label>`;
+  const armorish = field === 'armor' || String(field).startsWith('armor');
+  const tint = armorish ? ` style="border-color:${armorColor(val)}"` : '';
+  return `<label>${label} <input type="number" min="${min}" max="${max}" value="${val}" data-unit="${type}" data-field="${field}"${tint} /></label>`;
+}
+
+function abilityGlyph(id: AbilityId): string {
+  if (id === 'general') {
+    return `<svg class="ability-glyph" viewBox="-8 -8 16 16" width="16" height="16" aria-hidden="true"><path d="M0 -6.5 L1.5 -2 H6 L2.2 0.6 L3.6 5 L0 2.2 L-3.6 5 L-2.2 0.6 L-6 -2 H-1.5 Z" fill="currentColor"/></svg>`;
+  }
+  return '';
+}
+
+function abilityPanel(type: UnitType, abilities: AbilityId[]): string {
+  const picks = ABILITY_IDS.map((id) => {
+    const on = abilities.includes(id);
+    return `<button type="button" class="ability-pick${on ? ' active' : ''}" data-unit="${type}" data-ability="${id}" aria-pressed="${on}">
+      ${abilityGlyph(id)}
+      ${ABILITY_LABEL[id]}
+    </button>`;
+  }).join('');
+  const active = abilities[0];
+  const blurb = active ? ABILITY_BLURB[active] : 'None. Toggle General to make this a command piece.';
+  return `<div class="ability-panel">
+    <span class="unit-group-label">Abilities</span>
+    <div class="ability-picks">${picks}</div>
+    <p class="ability-blurb">${blurb}</p>
+  </div>`;
+}
+
+function hexArmorEditor(type: UnitType): string {
+  const s = UNIT_STATS[type];
+  // Flat-top hex, clockwise from east. Faces: N / NE / SE / S / SW / NW.
+  const v = [
+    [10, 0],
+    [5, 8.66],
+    [-5, 8.66],
+    [-10, 0],
+    [-5, -8.66],
+    [5, -8.66],
+  ] as const;
+  const faces: { field: EditableStat; a: number; b: number }[] = [
+    { field: 'armorFront', a: 4, b: 5 },
+    { field: 'armorFrontRight', a: 5, b: 0 },
+    { field: 'armorFlankRight', a: 0, b: 1 },
+    { field: 'armorRear', a: 1, b: 2 },
+    { field: 'armorFlankLeft', a: 2, b: 3 },
+    { field: 'armorFrontLeft', a: 3, b: 4 },
+  ];
+  const wedges = faces
+    .map(({ field, a, b }) => {
+      const fill = armorColor(s[field] as number);
+      return `<polygon data-unit="${type}" data-hex-face="${field}" points="0,0 ${v[a][0]},${v[a][1]} ${v[b][0]},${v[b][1]}" fill="${fill}" stroke="#1a1f1c" stroke-width="0.6"/>`;
+    })
+    .join('');
+  return `<div class="hex-armor">
+    <span class="unit-group-label">Hex sides</span>
+    <div class="hex-armor-grid">
+      <div class="hex-armor-cell fl">${unitNumField(type, 'armorFrontLeft', 'Front left')}</div>
+      <div class="hex-armor-cell front">${unitNumField(type, 'armorFront', 'Front')}</div>
+      <div class="hex-armor-cell fr">${unitNumField(type, 'armorFrontRight', 'Front right')}</div>
+      <div class="hex-armor-cell left">${unitNumField(type, 'armorFlankLeft', 'Flank left')}</div>
+      <svg class="hex-armor-glyph" viewBox="-12 -12 24 24" aria-hidden="true">
+        ${wedges}
+        <polygon points="0,-9.4 2.1,-5.2 -2.1,-5.2" fill="#efe4d0"/>
+      </svg>
+      <div class="hex-armor-cell right">${unitNumField(type, 'armorFlankRight', 'Flank right')}</div>
+      <div class="hex-armor-cell rear">${unitNumField(type, 'armorRear', 'Rear')}</div>
+    </div>
+  </div>`;
 }
 
 function renderUnitEditor(): string {
@@ -2019,12 +2184,18 @@ function renderUnitEditor(): string {
           `<option value="${r}"${s.role === r ? ' selected' : ''}>${UNIT_ROLE_LABEL[r]}</option>`,
       ).join('');
       const copied = isCustomUnitId(type);
+      const open = unitEditorOpen.has(type);
       return `<article class="unit-card">
-      <header>
+      <details data-unit-fold="${type}"${open ? ' open' : ''}>
+      <summary>
         <svg class="side-icon" viewBox="-10 -10 20 20" width="32" height="32" aria-hidden="true">
-          <circle cx="0" cy="0" r="9.5" fill="#3d4a3a" stroke="${armorColor(s.armor)}" stroke-width="2" />
+          <circle cx="0" cy="0" r="9.5" fill="#3d4a3a" stroke="${armorColor(ringArmor(type))}" stroke-width="2" data-armor-ring="${type}" />
           <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
         </svg>
+        <span class="unit-card-title">${escapeHtml(s.name)}</span>
+      </summary>
+      <div class="unit-card-body">
+      <header>
         <div class="unit-card-id">
           <input type="text" class="unit-name" maxlength="32" value="${escapeHtml(s.name)}" data-unit-name="${type}" />
           <span class="lvl-meta">${escapeHtml(s.chess)}${copied ? ' · copy' : ''}</span>
@@ -2068,14 +2239,22 @@ function renderUnitEditor(): string {
         <div class="unit-group">
           <span class="unit-group-label">Piece</span>
           ${unitNumField(type, 'hp', 'HP')}
-          ${unitNumField(type, 'armor', 'Armor')}
+          ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value')}
         </div>
+        <label class="chk hex-armor-toggle">
+          <input type="checkbox" data-unit="${type}" data-field="hexArmor"${s.hexArmor ? ' checked' : ''} />
+          Hex armor
+        </label>
+        ${s.hexArmor ? hexArmorEditor(type) : ''}
+        ${abilityPanel(type, s.abilities)}
       </div>
       <div class="unit-card-actions">
         <button type="button" data-copy-unit="${type}">Copy</button>
         ${copied ? `<button type="button" class="ghost danger" data-del-unit="${type}">Delete</button>` : ''}
       </div>
+      </div>
+      </details>
     </article>`;
     })
     .join('');
@@ -2114,13 +2293,30 @@ function bindUnitEditorEvents() {
     if (!type || !field) return;
     if (el.type === 'checkbox') patchUnitStat(type, field, el.checked);
     else patchUnitStat(type, field, Number(el.value));
+    if (field === 'hexArmor') {
+      render();
+      return;
+    }
     // Sanitize may clamp min>max; sync the live input values for this unit
     app.querySelectorAll<HTMLInputElement>(`input[data-unit="${type}"]`).forEach((inp) => {
       const f = inp.dataset.field as EditableStat;
       const v = UNIT_STATS[type][f];
       if (inp.type === 'checkbox') inp.checked = Boolean(v);
-      else if (Number(inp.value) !== v) inp.value = String(v);
+      else {
+        if (Number(inp.value) !== v) inp.value = String(v);
+        if (f === 'armor' || String(f).startsWith('armor')) {
+          inp.style.borderColor = armorColor(Number(v));
+        }
+      }
     });
+    app.querySelectorAll<SVGPolygonElement>(`polygon[data-hex-face][data-unit="${type}"]`).forEach((poly) => {
+      const f = poly.dataset.hexFace as EditableStat;
+      poly.setAttribute('fill', armorColor(Number(UNIT_STATS[type][f])));
+    });
+    app.querySelector(`circle[data-armor-ring="${type}"]`)?.setAttribute(
+      'stroke',
+      armorColor(ringArmor(type)),
+    );
     const status = app.querySelector('#units-status');
     if (status) {
       status.textContent = unitStatsAreStock()
@@ -2130,6 +2326,14 @@ function bindUnitEditorEvents() {
   };
   app.querySelectorAll<HTMLInputElement>('input[data-unit]').forEach((el) => {
     el.addEventListener('change', () => onField(el));
+  });
+  app.querySelectorAll<HTMLDetailsElement>('[data-unit-fold]').forEach((el) => {
+    el.addEventListener('toggle', () => {
+      const type = el.dataset.unitFold as UnitType | undefined;
+      if (!type) return;
+      if (el.open) unitEditorOpen.add(type);
+      else unitEditorOpen.delete(type);
+    });
   });
   app.querySelectorAll<HTMLButtonElement>('[data-unit-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2150,6 +2354,16 @@ function bindUnitEditorEvents() {
       const type = el.dataset.unitKit as UnitType | undefined;
       if (!type || !isUnitRole(el.value)) return;
       patchUnitKit(type, el.value);
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('.ability-pick').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.unit as UnitType | undefined;
+      const id = btn.dataset.ability;
+      if (!type || !isAbilityId(id)) return;
+      const on = !UNIT_STATS[type].abilities.includes(id);
+      patchUnitAbility(type, id, on);
       render();
     });
   });
@@ -2175,6 +2389,7 @@ function bindUnitEditorEvents() {
       if (!type) return;
       const id = copyUnit(type);
       if (!id) return;
+      unitEditorOpen.add(id);
       unitEditorCategory = UNIT_STATS[id]?.category ?? unitEditorCategory;
       render();
     });
@@ -2184,6 +2399,7 @@ function bindUnitEditorEvents() {
       const type = btn.dataset.delUnit as UnitType | undefined;
       if (!type) return;
       if (!confirm(`Delete ${UNIT_STATS[type]?.name ?? 'this unit'}?`)) return;
+      unitEditorOpen.delete(type);
       deleteCopiedUnit(type);
       render();
     });
@@ -2466,10 +2682,11 @@ function render() {
           <dd><strong>Splash dmg</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> subtracted from incoming dmg (can be negative). Ring: +2 green, +1 orange, 0 red, −1 purple. Stock: tank +2, general +1</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg. Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1</dd>
           <dd><strong>Value</strong> scoring / AI</dd>
-          <dd><strong>Category</strong> Modern / Roman / Greek — filter above. Stock is Modern</dd>
-          <dd><strong>Kit</strong> icon + specials (water, overrun, high, king). Does not reset numbers. Tower is glyph only</dd>
+          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock is Modern except Archer (Ancient)</dd>
+          <dd><strong>Kit</strong> icon + specials (water, overrun, high). Does not reset numbers. Tower is glyph only</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
         </dl>
       </aside>

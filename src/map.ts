@@ -1,5 +1,5 @@
-import { statsOf, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
-import type { HexOrientation } from './hex';
+import { hasGeneral, statsOf, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
+import { defaultFacing, type HexOrientation } from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
@@ -282,6 +282,7 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
     type: p.type,
     col: p.col,
     row: p.row,
+    facing: defaultFacing(p.side),
     ...spawnExtras(p.type),
   }));
 }
@@ -301,6 +302,7 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
       type: BACK[i],
       col,
       row: backRow,
+      facing: defaultFacing(side),
       ...spawnExtras(BACK[i]),
     });
   }
@@ -315,6 +317,7 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
       type: 'soldier',
       col,
       row: pawnRow,
+      facing: defaultFacing(side),
       ...spawnExtras('soldier'),
     });
   }
@@ -330,6 +333,7 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
         type: 'soldier',
         col: flankCol,
         row: pawnRow,
+        facing: defaultFacing(side),
         ...spawnExtras('soldier'),
       });
     }
@@ -367,7 +371,7 @@ function freshGame(
   const pieces = custom
     ? piecesFromStamps(armies.filter(inBounds))
     : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)];
-  const king = (side: Side) => pieces.some((p) => p.side === side && statsOf(p.type).king);
+  const king = (side: Side) => hasGeneral(pieces, side);
   return {
     cols,
     rows,

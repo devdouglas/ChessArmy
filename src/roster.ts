@@ -3,11 +3,15 @@
  * `role` is kit + glyph; KIT_TRAITS is what that kit writes.
  */
 
+export type { AbilityId } from './abilities';
+import type { AbilityId } from './abilities';
+
 export type UnitRole =
   | 'soldier'
   | 'scout'
   | 'bazooka'
   | 'sniper'
+  | 'archer'
   | 'tank'
   | 'general'
   | 'tower';
@@ -20,6 +24,7 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'scout',
   'bazooka',
   'sniper',
+  'archer',
   'tank',
   'general',
   'tower',
@@ -40,14 +45,13 @@ export function isKnownUnit(t: unknown): t is UnitType {
   return typeof t === 'string' && UNIT_TYPES.includes(t);
 }
 
-export type UnitCategory = 'modern' | 'roman' | 'greek';
+export type UnitCategory = 'modern' | 'ancient';
 
-export const UNIT_CATEGORIES: UnitCategory[] = ['modern', 'roman', 'greek'];
+export const UNIT_CATEGORIES: UnitCategory[] = ['modern', 'ancient'];
 
 export const UNIT_CATEGORY_LABEL: Record<UnitCategory, string> = {
   modern: 'Modern',
-  roman: 'Roman',
-  greek: 'Greek',
+  ancient: 'Ancient',
 };
 
 export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
@@ -55,13 +59,15 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   scout: 'Scout',
   bazooka: 'Bazooka',
   sniper: 'Sniper',
+  archer: 'Archer',
   tank: 'Tank',
   general: 'General',
   tower: 'Tower',
 };
 
 export function sanitizeUnitCategory(raw: unknown): UnitCategory {
-  if (raw === 'modern' || raw === 'roman' || raw === 'greek') return raw;
+  if (raw === 'modern' || raw === 'ancient') return raw;
+  if (raw === 'roman' || raw === 'greek') return 'ancient';
   return 'modern';
 }
 
@@ -137,6 +143,14 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     infantry: false,
     king: false,
   },
+  archer: {
+    passWater: false,
+    passUnits: false,
+    noHigh: false,
+    overrun: false,
+    infantry: true,
+    king: false,
+  },
   tank: {
     passWater: false,
     passUnits: false,
@@ -199,7 +213,59 @@ export type UnitStats = UnitTraits & {
   splashDamage: number;
   /** Subtracted from incoming damage (can be negative). */
   armor: number;
+  /** When true, incoming hits use the six facing sides instead of `armor`. */
+  hexArmor: boolean;
+  armorFront: number;
+  armorFrontLeft: number;
+  armorFrontRight: number;
+  armorFlankLeft: number;
+  armorFlankRight: number;
+  armorRear: number;
+  /** Granted in the unit editor; pieces may override at runtime. */
+  abilities: AbilityId[];
 };
+
+/** Relative to facing, CCW: front → front-left → flank-left → rear → flank-right → front-right. */
+export const HEX_ARMOR_SIDES = [
+  'armorFront',
+  'armorFrontLeft',
+  'armorFlankLeft',
+  'armorRear',
+  'armorFlankRight',
+  'armorFrontRight',
+] as const;
+
+export type HexArmorSide = (typeof HEX_ARMOR_SIDES)[number];
+
+export const HEX_ARMOR_LABEL: Record<HexArmorSide, string> = {
+  armorFront: 'Front',
+  armorFrontLeft: 'Front left',
+  armorFrontRight: 'Front right',
+  armorFlankLeft: 'Flank left',
+  armorFlankRight: 'Flank right',
+  armorRear: 'Rear',
+};
+
+function hexArmorDefaults(n: number): Pick<
+  UnitStats,
+  | 'hexArmor'
+  | 'armorFront'
+  | 'armorFrontLeft'
+  | 'armorFrontRight'
+  | 'armorFlankLeft'
+  | 'armorFlankRight'
+  | 'armorRear'
+> {
+  return {
+    hexArmor: false,
+    armorFront: n,
+    armorFrontLeft: n,
+    armorFrontRight: n,
+    armorFlankLeft: n,
+    armorFlankRight: n,
+    armorRear: n,
+  };
+}
 
 export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
   soldier: {
@@ -223,7 +289,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
+    ...hexArmorDefaults(0),
     ...KIT_TRAITS.soldier,
+    abilities: [],
   },
   scout: {
     name: 'Scout',
@@ -246,7 +314,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
+    ...hexArmorDefaults(0),
     ...KIT_TRAITS.scout,
+    abilities: [],
   },
   bazooka: {
     name: 'Bazooka',
@@ -269,7 +339,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 1,
     armor: 0,
+    ...hexArmorDefaults(0),
     ...KIT_TRAITS.bazooka,
+    abilities: [],
   },
   sniper: {
     name: 'Sniper',
@@ -292,7 +364,34 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
+    ...hexArmorDefaults(0),
     ...KIT_TRAITS.sniper,
+    abilities: [],
+  },
+  archer: {
+    name: 'Archer',
+    chess: 'Bow',
+    category: 'ancient',
+    role: 'archer',
+    move: 1,
+    shoot: 4,
+    shootMin: 2,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 3,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...KIT_TRAITS.archer,
+    abilities: [],
   },
   tank: {
     name: 'Tank',
@@ -315,7 +414,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 1,
     armor: 2,
+    ...hexArmorDefaults(2),
     ...KIT_TRAITS.tank,
+    abilities: [],
   },
   general: {
     name: 'General',
@@ -338,7 +439,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 0,
     armor: 1,
+    ...hexArmorDefaults(1),
     ...KIT_TRAITS.general,
+    abilities: ['general'],
   },
   tower: {
     name: 'Tower',
@@ -361,7 +464,9 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
+    ...hexArmorDefaults(0),
     ...KIT_TRAITS.tower,
+    abilities: [],
   },
 };
 

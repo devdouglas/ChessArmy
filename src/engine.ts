@@ -4,21 +4,43 @@
  */
 
 import {
+  defaultFacing,
+  dirBetween,
   distance,
   eq,
+  incomingDir,
+  isHexDir,
   line,
   neighbors,
   parseKey,
   pathTo,
   reachable,
   type Hex,
+  type HexDir,
   type HexOrientation,
   type PathOpts,
 } from './hex';
-import { statsOf, type UnitStats, type UnitType } from './roster';
+import {
+  HEX_ARMOR_LABEL,
+  HEX_ARMOR_SIDES,
+  statsOf,
+  type HexArmorSide,
+  type UnitStats,
+  type UnitType,
+} from './roster';
+import { type AbilityId } from './abilities';
+
+export {
+  ABILITY_BLURB,
+  ABILITY_IDS,
+  ABILITY_LABEL,
+  isAbilityId,
+} from './abilities';
 
 export {
   DEFAULT_UNIT_STATS,
+  HEX_ARMOR_LABEL,
+  HEX_ARMOR_SIDES,
   KIT_TRAITS,
   SHOOT_ARCS,
   SHOOT_ARC_LABEL,
@@ -36,6 +58,8 @@ export {
   sanitizeShootArc,
   sanitizeUnitCategory,
   statsOf,
+  type AbilityId,
+  type HexArmorSide,
   type ShootArc,
   type UnitCategory,
   type UnitRole,
@@ -74,6 +98,10 @@ export type Piece = {
   movedThisTurn?: boolean;
   /** Own-turn Ends left until +1 stamina can land (grant only while idle). */
   staminaRegenWait?: number;
+  /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
+  facing?: HexDir;
+  /** Runtime ability overlay. Missing → unit stats. */
+  abilities?: AbilityId[];
 };
 
 export type GameState = {
@@ -112,21 +140,48 @@ export type Highlight =
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
   | { kind: 'shoot-range'; hex: Hex };
 
-/** Ring color for the current armor scale. */
+/** Ring / hex-face color. Scale is −2..+2. */
 export function armorColor(armor: number): string {
-  if (armor >= 2) return '#3dba6a';
-  if (armor === 1) return '#e89030';
-  if (armor <= -1) return '#8b5cf6';
-  return '#dc4646';
+  if (armor <= -2) return '#dc4646';
+  if (armor === -1) return '#e89030';
+  if (armor === 1) return '#3d8ee0';
+  if (armor >= 2) return '#8b5cf6';
+  return '#3dba6a';
 }
 
-export function armorOf(piece: Piece): number {
-  return statsOf(piece.type).armor;
+export function facingOf(piece: Piece): HexDir {
+  return isHexDir(piece.facing) ? piece.facing : defaultFacing(piece.side);
+}
+
+export function armorSideHit(
+  piece: Piece,
+  from?: Hex,
+  orientation?: HexOrientation,
+): HexArmorSide | null {
+  const s = statsOf(piece.type);
+  if (!s.hexArmor || !from || orientation === undefined) return null;
+  const incoming = incomingDir(from, { col: piece.col, row: piece.row }, orientation);
+  if (incoming === null) return null;
+  const rel = (((incoming - facingOf(piece)) % 6) + 6) % 6;
+  return HEX_ARMOR_SIDES[rel] ?? null;
+}
+
+export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation): number {
+  const s = statsOf(piece.type);
+  const side = armorSideHit(piece, from, orientation);
+  if (side) return s[side];
+  return s.armor;
 }
 
 /** Damage after the target's armor. Negative armor increases the hit. Melee uses min 1. */
-export function netDamage(piece: Piece, amount: number, min = 0): number {
-  return Math.max(min, amount - armorOf(piece));
+export function netDamage(
+  piece: Piece,
+  amount: number,
+  min = 0,
+  from?: Hex,
+  orientation?: HexOrientation,
+): number {
+  return Math.max(min, amount - armorOf(piece, from, orientation));
 }
 
 export function hasSplash(stats: UnitStats): boolean {
@@ -208,8 +263,12 @@ function applyDamage(
   victim: Piece,
   amount: number,
   min = 0,
+  from?: Hex,
 ): { fatal: boolean; remaining: number } {
-  const remaining = Math.max(0, hpLeft(victim) - netDamage(victim, amount, min));
+  const remaining = Math.max(
+    0,
+    hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation),
+  );
   victim.hp = remaining;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
@@ -235,10 +294,18 @@ function hpBit(victim: Piece, fatal: boolean, remaining: number): string {
 }
 
 /** net = attack − shield; negative shield adds damage. Melee floors at 1. */
-function dmgLine(victim: Piece, amount: number, min = 0): string {
-  const shield = armorOf(victim);
-  const net = netDamage(victim, amount, min);
-  return `<span class="log-dmg">DMG: ${net} (attack ${amount} - shield ${shield})</span>`;
+function dmgLine(
+  state: GameState,
+  victim: Piece,
+  amount: number,
+  min = 0,
+  from?: Hex,
+): string {
+  const side = armorSideHit(victim, from, state.orientation);
+  const shield = armorOf(victim, from, state.orientation);
+  const net = netDamage(victim, amount, min, from, state.orientation);
+  const face = side ? ` ${HEX_ARMOR_LABEL[side].toLowerCase()}` : '';
+  return `<span class="log-dmg">DMG: ${net} (attack ${amount} - shield ${shield}${face})</span>`;
 }
 
 export type MoveHit = {
@@ -246,11 +313,13 @@ export type MoveHit = {
   amount: number;
   fatal: boolean;
   remaining: number;
+  from: Hex;
 };
 
 export type MovePlan = {
   stop: Hex;
   hits: MoveHit[];
+  facing: HexDir;
 };
 
 function activationMoveRange(state: GameState, piece: Piece): number {
@@ -285,41 +354,58 @@ export function previewMove(
     pathTo(from, to, {
       ...movePathOpts(state, piece),
       maxDist: Math.max(1, effectiveMoveRange(state, piece)),
-    }) ?? (eq(from, to) ? [] : [to]);
+    }) ?? [];
 
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
   const hits: MoveHit[] = [];
-  let stop = to;
+  // Last hex this piece may occupy. Friends / living enemies are pass-through only.
+  let stop = from;
+  let facing = facingOf(piece);
+  let prev = from;
 
-  const strike = (victim: Piece): boolean => {
+  const strike = (victim: Piece, atkFrom: Hex): boolean => {
     if (melee <= 0) return false;
-    const nextHp = hpOf(victim, hpMap) - netDamage(victim, melee, 1);
+    const nextHp =
+      hpOf(victim, hpMap) - netDamage(victim, melee, 1, atkFrom, state.orientation);
     hpMap.set(victim.id, nextHp);
     hits.push({
       id: victim.id,
       amount: melee,
       fatal: nextHp <= 0,
       remaining: Math.max(0, nextHp),
+      from: atkFrom,
     });
     return nextHp <= 0;
   };
 
   for (let i = 0; i < path.length; i++) {
     const h = path[i];
+    const step = dirBetween(prev, h, state.orientation);
+    if (step !== null) facing = step;
     const occ = pieceAt(state, h);
-    if (!occ || occ.side === piece.side) continue;
+    if (!occ || occ.id === piece.id) {
+      stop = h;
+      prev = h;
+      continue;
+    }
+    if (occ.side === piece.side) {
+      prev = h;
+      continue;
+    }
     const isDest = i === path.length - 1;
     const overrun =
       statsOf(piece.type).overrun && statsOf(occ.type).infantry && !isDest;
-    if (!isDest && !overrun) continue;
-    const died = strike(occ);
-    if (!died) {
-      stop = i === 0 ? from : path[i - 1];
-      break;
+    if (!isDest && !overrun) {
+      prev = h;
+      continue;
     }
+    const died = strike(occ, prev);
+    if (!died) break;
+    stop = h;
+    prev = h;
   }
 
-  return { stop, hits };
+  return { stop, hits, facing };
 }
 
 export function pieceAt(state: GameState, h: Hex): Piece | undefined {
@@ -454,10 +540,44 @@ function cloneState(state: GameState): GameState {
   return {
     ...state,
     terrain: state.terrain.map((r) => [...r]),
-    pieces: state.pieces.map((p) => ({ ...p })),
+    pieces: state.pieces.map((p) => ({
+      ...p,
+      abilities: p.abilities ? [...p.abilities] : undefined,
+    })),
     log: [...state.log],
     actedIds: [...state.actedIds],
   };
+}
+
+export function abilitiesOf(piece: Piece): AbilityId[] {
+  return piece.abilities ?? statsOf(piece.type).abilities ?? [];
+}
+
+export function hasAbility(piece: Piece, id: AbilityId): boolean {
+  return abilitiesOf(piece).includes(id);
+}
+
+export function grantAbility(piece: Piece, id: AbilityId): void {
+  const cur = abilitiesOf(piece);
+  if (cur.includes(id)) {
+    piece.abilities = [...cur];
+    return;
+  }
+  piece.abilities = [...cur, id];
+}
+
+export function revokeAbility(piece: Piece, id: AbilityId): void {
+  piece.abilities = abilitiesOf(piece).filter((a) => a !== id);
+}
+
+export function hasGeneral(pieces: Piece[], side: Side): boolean {
+  return pieces.some((p) => p.side === side && hasAbility(p, 'general'));
+}
+
+/** If a piece just became a general, command-kill is now in play for that side. */
+export function noteGenerals(state: GameState): void {
+  if (hasGeneral(state.pieces, 'red')) state.hadKing.red = true;
+  if (hasGeneral(state.pieces, 'blue')) state.hadKing.blue = true;
 }
 
 function other(side: Side): Side {
@@ -533,14 +653,10 @@ function finishActivation(state: GameState, piece: Piece): void {
   checkWin(state);
 }
 
-function hasKing(pieces: Piece[], side: Side): boolean {
-  return pieces.some((p) => p.side === side && statsOf(p.type).king);
-}
-
 function sideDefeated(state: GameState, side: Side): boolean {
   const mine = state.pieces.filter((p) => p.side === side);
   if (mine.length === 0) return true;
-  if (state.hadKing[side] && !hasKing(mine, side)) return true;
+  if (state.hadKing[side] && !hasGeneral(mine, side)) return true;
   return false;
 }
 
@@ -783,9 +899,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
     for (const mh of plan.hits) {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
-      applyDamage(next, victim, mh.amount, 1);
+      applyDamage(next, victim, mh.amount, 1, mh.from);
       hitBits.push(hpBit(victim, mh.fatal, mh.remaining));
-      dmgLines.push(dmgLine(victim, mh.amount, 1));
+      dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
     }
 
     const bounced = !eq(plan.stop, action.to);
@@ -817,8 +933,14 @@ function applyActionInner(state: GameState, action: Action): GameState {
       );
     }
 
-    piece.col = plan.stop.col;
-    piece.row = plan.stop.row;
+    const taken = next.pieces.some(
+      (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
+    );
+    if (!taken) {
+      piece.col = plan.stop.col;
+      piece.row = plan.stop.row;
+    }
+    piece.facing = plan.facing;
     if (hit.kind === 'stamina') spendStamina(piece);
     markMoved(piece);
     if (statsOf(piece.type).moveBudget > 0) {
@@ -852,9 +974,10 @@ function applyActionInner(state: GameState, action: Action): GameState {
       const t = pieceAt(next, h);
       // Splash hits everyone in the blast — friendlies included
       if (t && stats.splashDamage > 0) {
-        const dmg = applyDamage(next, t, stats.splashDamage);
+        const origin = eq(h, action.at) ? fromHex : action.at;
+        const dmg = applyDamage(next, t, stats.splashDamage, 0, origin);
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
-        dmgLines.push(dmgLine(t, stats.splashDamage));
+        dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin));
       }
       // Concrete walls crumble under rockets
       if (terrainAt(next, h) === 'wall') {
@@ -873,13 +996,14 @@ function applyActionInner(state: GameState, action: Action): GameState {
   } else {
     const t = pieceAt(next, action.at);
     if (!t || t.side === piece.side) return state;
-    const dmg = applyDamage(next, t, stats.shootDamage);
+    const fromHex: Hex = { col: piece.col, row: piece.row };
+    const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
         (dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
         ammoLog(piece, stats) +
-        dmgLine(t, stats.shootDamage),
+        dmgLine(next, t, stats.shootDamage, 0, fromHex),
     );
   }
 

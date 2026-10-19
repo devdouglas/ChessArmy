@@ -47,7 +47,8 @@ export function distance(a: Hex, b: Hex, o: HexOrientation): number {
   return cubeDistance(offsetToCube(a, o), offsetToCube(b, o));
 }
 
-const CUBE_DIRS: Cube[] = [
+/** Cube steps, CCW from +q (pointy east / flat SE). */
+export const CUBE_DIRS: Cube[] = [
   { q: 1, r: 0, s: -1 },
   { q: 1, r: -1, s: 0 },
   { q: 0, r: -1, s: 1 },
@@ -55,6 +56,50 @@ const CUBE_DIRS: Cube[] = [
   { q: -1, r: 1, s: 0 },
   { q: 0, r: 1, s: -1 },
 ];
+
+export type HexDir = 0 | 1 | 2 | 3 | 4 | 5;
+
+export function isHexDir(n: unknown): n is HexDir {
+  return n === 0 || n === 1 || n === 2 || n === 3 || n === 4 || n === 5;
+}
+
+/** Red faces up-board (dir 2), blue faces down-board (dir 5). */
+export function defaultFacing(side: 'red' | 'blue'): HexDir {
+  return side === 'red' ? 2 : 5;
+}
+
+/** Adjacent step `from` → `to`, or null if not a cube neighbor. */
+export function dirBetween(from: Hex, to: Hex, o: HexOrientation): HexDir | null {
+  const a = offsetToCube(from, o);
+  const b = offsetToCube(to, o);
+  const dq = b.q - a.q;
+  const dr = b.r - a.r;
+  const ds = b.s - a.s;
+  for (let i = 0; i < 6; i++) {
+    const d = CUBE_DIRS[i];
+    if (d.q === dq && d.r === dr && d.s === ds) return i as HexDir;
+  }
+  return null;
+}
+
+export function neighborInDir(h: Hex, dir: HexDir, o: HexOrientation): Hex {
+  const c = offsetToCube(h, o);
+  const d = CUBE_DIRS[dir];
+  return cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s }, o);
+}
+
+/**
+ * Side of `to` that faces `from` (the incoming attack / last LOS step).
+ * Adjacent uses the shared edge; longer shots use the hex before `to` on the line.
+ */
+export function incomingDir(from: Hex, to: Hex, o: HexOrientation): HexDir | null {
+  const adj = dirBetween(to, from, o);
+  if (adj !== null) return adj;
+  const cells = line(from, to, o);
+  if (cells.length === 0) return null;
+  const prev = cells.length === 1 ? from : cells[cells.length - 2];
+  return dirBetween(to, prev, o);
+}
 
 export function neighbors(h: Hex, o: HexOrientation): Hex[] {
   const c = offsetToCube(h, o);

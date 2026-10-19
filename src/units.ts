@@ -1,4 +1,9 @@
 import {
+  abilitiesEqual,
+  sanitizeAbilities,
+  type AbilityId,
+} from './abilities';
+import {
   DEFAULT_UNIT_STATS,
   KIT_TRAITS,
   TRAIT_FIELDS,
@@ -24,7 +29,7 @@ const MAX_UNITS = 48;
 
 export type EditableStat = Exclude<
   keyof UnitStats,
-  'name' | 'chess' | 'category' | 'role' | 'shootArc' | keyof UnitTraits
+  'name' | 'chess' | 'category' | 'role' | 'shootArc' | 'abilities' | keyof UnitTraits
 >;
 
 const INT_FIELDS = [
@@ -43,6 +48,12 @@ const INT_FIELDS = [
   'shootDamage',
   'splashDamage',
   'armor',
+  'armorFront',
+  'armorFrontLeft',
+  'armorFrontRight',
+  'armorFlankLeft',
+  'armorFlankRight',
+  'armorRear',
 ] as const satisfies readonly EditableStat[];
 
 const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> = {
@@ -60,7 +71,13 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   meleeDamage: { min: 0, max: 10 },
   shootDamage: { min: 0, max: 10 },
   splashDamage: { min: 0, max: 10 },
-  armor: { min: -5, max: 5 },
+  armor: { min: -2, max: 2 },
+  armorFront: { min: -2, max: 2 },
+  armorFrontLeft: { min: -2, max: 2 },
+  armorFrontRight: { min: -2, max: 2 },
+  armorFlankLeft: { min: -2, max: 2 },
+  armorFlankRight: { min: -2, max: 2 },
+  armorRear: { min: -2, max: 2 },
 };
 
 function clampInt(n: unknown, min: number, max: number, fallback: number): number {
@@ -95,6 +112,12 @@ export function sanitizeUnitStats(
     typeof s.chess === 'string' && s.chess.trim()
       ? s.chess.trim().slice(0, 24)
       : d.chess;
+  const armor = clampInt(s.armor, CLAMP.armor.min, CLAMP.armor.max, d.armor);
+  const kingHint = bool(s.king, d.king);
+  const abilities = sanitizeAbilities(
+    s.abilities,
+    s.abilities === undefined && kingHint ? ['general'] : d.abilities,
+  );
   const next: UnitStats = {
     name,
     chess,
@@ -105,7 +128,8 @@ export function sanitizeUnitStats(
     noHigh: bool(s.noHigh, traits.noHigh),
     overrun: bool(s.overrun, traits.overrun),
     infantry: bool(s.infantry, traits.infantry),
-    king: bool(s.king, traits.king),
+    king: abilities.includes('general'),
+    abilities,
     move: clampInt(s.move, CLAMP.move.min, CLAMP.move.max, d.move),
     shoot: clampInt(s.shoot, CLAMP.shoot.min, CLAMP.shoot.max, d.shoot),
     shootMin: clampInt(s.shootMin, CLAMP.shootMin.min, CLAMP.shootMin.max, d.shootMin),
@@ -146,7 +170,34 @@ export function sanitizeUnitStats(
       CLAMP.splashDamage.max,
       d.splashDamage,
     ),
-    armor: clampInt(s.armor, CLAMP.armor.min, CLAMP.armor.max, d.armor),
+    armor,
+    hexArmor: bool(s.hexArmor, d.hexArmor),
+    armorFront: clampInt(s.armorFront, CLAMP.armorFront.min, CLAMP.armorFront.max, armor),
+    armorFrontLeft: clampInt(
+      s.armorFrontLeft,
+      CLAMP.armorFrontLeft.min,
+      CLAMP.armorFrontLeft.max,
+      armor,
+    ),
+    armorFrontRight: clampInt(
+      s.armorFrontRight,
+      CLAMP.armorFrontRight.min,
+      CLAMP.armorFrontRight.max,
+      armor,
+    ),
+    armorFlankLeft: clampInt(
+      s.armorFlankLeft,
+      CLAMP.armorFlankLeft.min,
+      CLAMP.armorFlankLeft.max,
+      armor,
+    ),
+    armorFlankRight: clampInt(
+      s.armorFlankRight,
+      CLAMP.armorFlankRight.min,
+      CLAMP.armorFlankRight.max,
+      armor,
+    ),
+    armorRear: clampInt(s.armorRear, CLAMP.armorRear.min, CLAMP.armorRear.max, armor),
   };
   const legacySplash = (s as { splash?: unknown }).splash;
   if (legacySplash === false) next.splashDamage = 0;
@@ -238,7 +289,9 @@ export function unitStatsAreStock(): boolean {
       a.role === b.role &&
       INT_FIELDS.every((k) => a[k] === b[k]) &&
       TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
-      a.shootArc === b.shootArc
+      a.shootArc === b.shootArc &&
+      a.hexArmor === b.hexArmor &&
+      abilitiesEqual(a.abilities, b.abilities)
     );
   });
 }
@@ -281,11 +334,32 @@ export function patchUnitName(type: UnitType, name: string): void {
   persistUnitStats();
 }
 
+export function patchUnitAbility(type: UnitType, id: AbilityId, on: boolean): void {
+  const prev = statsOf(type);
+  const abilities = on
+    ? sanitizeAbilities([...prev.abilities, id])
+    : prev.abilities.filter((a) => a !== id);
+  const next = sanitizeUnitStats(type, { ...prev, abilities, king: abilities.includes('general') });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
+}
+
 export function patchUnitStat(type: UnitType, field: EditableStat, value: number | boolean): void {
-  const next = sanitizeUnitStats(type, {
-    ...statsOf(type),
-    [field]: value,
-  });
+  const prev = statsOf(type);
+  const seed =
+    field === 'hexArmor' && value === true
+      ? {
+          ...prev,
+          hexArmor: true,
+          armorFront: prev.armor,
+          armorFrontLeft: prev.armor,
+          armorFrontRight: prev.armor,
+          armorFlankLeft: prev.armor,
+          armorFlankRight: prev.armor,
+          armorRear: prev.armor,
+        }
+      : { ...prev, [field]: value };
+  const next = sanitizeUnitStats(type, seed);
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();
 }
