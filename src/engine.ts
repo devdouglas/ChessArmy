@@ -173,15 +173,18 @@ export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation):
   return s.armor;
 }
 
-/** Damage after the target's armor. Negative armor increases the hit. Melee uses min 1. */
+/** Damage after the target's armor. Negative armor boosts melee only; shots ignore it. Melee uses min 1. */
 export function netDamage(
   piece: Piece,
   amount: number,
   min = 0,
   from?: Hex,
   orientation?: HexOrientation,
+  ranged = false,
 ): number {
-  return Math.max(min, amount - armorOf(piece, from, orientation));
+  const shield = armorOf(piece, from, orientation);
+  const soak = ranged ? Math.max(0, shield) : shield;
+  return Math.max(min, amount - soak);
 }
 
 export function hasSplash(stats: UnitStats): boolean {
@@ -264,10 +267,11 @@ function applyDamage(
   amount: number,
   min = 0,
   from?: Hex,
+  ranged = false,
 ): { fatal: boolean; remaining: number } {
   const remaining = Math.max(
     0,
-    hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation),
+    hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
   );
   victim.hp = remaining;
   if (remaining <= 0) {
@@ -293,17 +297,19 @@ function hpBit(victim: Piece, fatal: boolean, remaining: number): string {
   return fatal ? `${unitLog(victim)} killed` : `${unitLog(victim)} (${remaining} HP)`;
 }
 
-/** net = attack − shield; negative shield adds damage. Melee floors at 1. */
+/** net = attack − shield; negative shield adds melee only. Melee floors at 1. */
 function dmgLine(
   state: GameState,
   victim: Piece,
   amount: number,
   min = 0,
   from?: Hex,
+  ranged = false,
 ): string {
   const side = armorSideHit(victim, from, state.orientation);
-  const shield = armorOf(victim, from, state.orientation);
-  const net = netDamage(victim, amount, min, from, state.orientation);
+  const raw = armorOf(victim, from, state.orientation);
+  const shield = ranged ? Math.max(0, raw) : raw;
+  const net = netDamage(victim, amount, min, from, state.orientation, ranged);
   const face = side ? ` ${HEX_ARMOR_LABEL[side].toLowerCase()}` : '';
   return `<span class="log-dmg">DMG: ${net} (attack ${amount} - shield ${shield}${face})</span>`;
 }
@@ -341,7 +347,7 @@ function effectiveMoveRange(state: GameState, piece: Piece): number {
 /**
  * Where a move actually ends: occupying an enemy hex is melee.
  * A kill takes the hex; a survivor leaves the attacker on the hex before.
- * Tank overrun still walks through infantry that die; a survivor blocks.
+ * Charge (charge > 0) still walks through enemies that die; a survivor blocks.
  */
 export function previewMove(
   state: GameState,
@@ -349,7 +355,9 @@ export function previewMove(
   to: Hex,
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
-  const melee = Math.max(0, statsOf(piece.type).meleeDamage);
+  const stats = statsOf(piece.type);
+  const melee = Math.max(0, stats.meleeDamage);
+  const charge = Math.max(0, stats.charge);
   const path =
     pathTo(from, to, {
       ...movePathOpts(state, piece),
@@ -363,14 +371,14 @@ export function previewMove(
   let facing = facingOf(piece);
   let prev = from;
 
-  const strike = (victim: Piece, atkFrom: Hex): boolean => {
-    if (melee <= 0) return false;
+  const strike = (victim: Piece, atkFrom: Hex, amount: number): boolean => {
+    if (amount <= 0) return false;
     const nextHp =
-      hpOf(victim, hpMap) - netDamage(victim, melee, 1, atkFrom, state.orientation);
+      hpOf(victim, hpMap) - netDamage(victim, amount, 1, atkFrom, state.orientation);
     hpMap.set(victim.id, nextHp);
     hits.push({
       id: victim.id,
-      amount: melee,
+      amount,
       fatal: nextHp <= 0,
       remaining: Math.max(0, nextHp),
       from: atkFrom,
@@ -393,13 +401,12 @@ export function previewMove(
       continue;
     }
     const isDest = i === path.length - 1;
-    const overrun =
-      statsOf(piece.type).overrun && statsOf(occ.type).infantry && !isDest;
-    if (!isDest && !overrun) {
+    const charging = charge > 0 && !isDest;
+    if (!isDest && !charging) {
       prev = h;
       continue;
     }
-    const died = strike(occ, prev);
+    const died = strike(occ, prev, isDest ? melee : charge);
     if (!died) break;
     stop = h;
     prev = h;
@@ -697,7 +704,7 @@ function afterAction(state: GameState, piece: Piece): void {
   finishActivation(state, piece);
 }
 
-/** Path rules for a piece (shared by highlights + overrun resolution). */
+/** Path rules for a piece (shared by highlights + charge resolution). */
 function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'> {
   const stats = statsOf(piece.type);
   const fromTerrain = terrainAt(state, { col: piece.col, row: piece.row });
@@ -728,9 +735,7 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
       if (stats.passUnits) return true;
       const occ = pieceAt(state, h);
       if (!occ) return true;
-      if (stats.overrun) {
-        return occ.side !== piece.side && statsOf(occ.type).infantry;
-      }
+      if (stats.charge > 0) return occ.side !== piece.side;
       return occ.side === piece.side;
     },
   };
@@ -913,8 +918,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
             ? 'strikes'
             : plan.hits.some((h) => h.fatal)
               ? 'captures'
-              : statsOf(piece.type).overrun
-                ? 'overruns'
+              : statsOf(piece.type).charge > 0
+                ? 'charges'
                 : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
@@ -975,9 +980,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
       // Splash hits everyone in the blast — friendlies included
       if (t && stats.splashDamage > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
-        const dmg = applyDamage(next, t, stats.splashDamage, 0, origin);
+        const dmg = applyDamage(next, t, stats.splashDamage, 0, origin, true);
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
-        dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin));
+        dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin, true));
       }
       // Concrete walls crumble under rockets
       if (terrainAt(next, h) === 'wall') {
@@ -997,13 +1002,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const t = pieceAt(next, action.at);
     if (!t || t.side === piece.side) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
-    const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex);
+    const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
         (dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
         ammoLog(piece, stats) +
-        dmgLine(next, t, stats.shootDamage, 0, fromHex),
+        dmgLine(next, t, stats.shootDamage, 0, fromHex, true),
     );
   }
 

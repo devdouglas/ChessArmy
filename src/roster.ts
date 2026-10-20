@@ -93,9 +93,6 @@ export type UnitTraits = {
   passUnits: boolean;
   /** Cannot enter high even with stamina. */
   noHigh: boolean;
-  /** Walk through dying infantry mid-path. */
-  overrun: boolean;
-  /** Can be overrun. */
   infantry: boolean;
   /** Killing this wins — only if the side started the match with a king. Wipeout always wins. */
   king: boolean;
@@ -105,7 +102,6 @@ export const TRAIT_FIELDS = [
   'passWater',
   'passUnits',
   'noHigh',
-  'overrun',
   'infantry',
   'king',
 ] as const satisfies readonly (keyof UnitTraits)[];
@@ -115,7 +111,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: true,
     king: false,
   },
@@ -123,7 +118,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: true,
     passUnits: true,
     noHigh: false,
-    overrun: false,
     infantry: false,
     king: false,
   },
@@ -131,7 +125,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: false,
     king: false,
   },
@@ -139,7 +132,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: false,
     king: false,
   },
@@ -147,7 +139,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: true,
     king: false,
   },
@@ -155,7 +146,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: true,
-    overrun: true,
     infantry: false,
     king: false,
   },
@@ -163,7 +153,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: false,
     king: true,
   },
@@ -171,7 +160,6 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
     passWater: false,
     passUnits: false,
     noHigh: false,
-    overrun: false,
     infantry: false,
     king: false,
   },
@@ -205,8 +193,10 @@ export type UnitStats = UnitTraits & {
   ammo: number;
   /** Hitpoints. */
   hp: number;
-  /** Damage when bumping / overrunning an occupied hex. */
+  /** Damage when bumping an occupied dest hex. */
   meleeDamage: number;
+  /** Mid-path charge-through damage. 0 = cannot charge through units. */
+  charge: number;
   /** Damage of a non-splash shot. */
   shootDamage: number;
   /** Damage per hex in a splash blast. 0 = no splash (bullet shot). */
@@ -286,6 +276,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
@@ -311,6 +302,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
@@ -336,6 +328,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 1,
     armor: 0,
@@ -361,6 +354,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
@@ -386,6 +380,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,
@@ -411,6 +406,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 1,
     shootDamage: 1,
     splashDamage: 1,
     armor: 2,
@@ -436,6 +432,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 1,
@@ -461,6 +458,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ammo: 0,
     hp: 1,
     meleeDamage: 1,
+    charge: 0,
     shootDamage: 1,
     splashDamage: 0,
     armor: 0,

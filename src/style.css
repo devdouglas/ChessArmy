@@ -1570,7 +1570,8 @@ svg.board .hex {
   font-family: inherit;
 }
 
-.piece-unit.hit .piece-bg {
+.piece-unit.hit .piece-bg,
+.piece-unit.hit .piece-shield {
   animation: piece-hit 0.28s ease-out;
 }
 
@@ -1597,7 +1598,8 @@ svg.board .hex {
   pointer-events: none;
 }
 
-.piece-bg {
+.piece-bg,
+.piece-shield {
   pointer-events: none;
 }
 

@@ -62,6 +62,7 @@ import {
   neighborInDir,
   pixelToHex,
   type Hex,
+  type HexDir,
   type HexOrientation,
 } from './hex';
 import {
@@ -480,6 +481,62 @@ function tweenFacing(
 function ringArmor(type: UnitType): number {
   const s = UNIT_STATS[type];
   return s.hexArmor ? s.armorFront : s.armor;
+}
+
+function hexVerts(r: number, o: HexOrientation): { x: number; y: number }[] {
+  const start = o === 'flat' ? 0 : -30;
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 180) * (60 * i + start);
+    return { x: r * Math.cos(a), y: r * Math.sin(a) };
+  });
+}
+
+/** Cube dir whose neighbor sits behind board-hex edge `i`. */
+function edgeCubeDir(edge: number, o: HexOrientation): HexDir {
+  const start = o === 'flat' ? 0 : -30;
+  const edgeAng = ((60 * edge + start + 30) * Math.PI) / 180;
+  const origin: Hex = { col: 2, row: 2 };
+  let best: HexDir = 0;
+  let bestD = Infinity;
+  for (let d = 0; d < 6; d++) {
+    const n = neighborInDir(origin, d as HexDir, o);
+    const a = hexToPixel(origin, 10, o);
+    const b = hexToPixel(n, 10, o);
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const diff = Math.abs(Math.atan2(Math.sin(ang - edgeAng), Math.cos(ang - edgeAng)));
+    if (diff < bestD) {
+      bestD = diff;
+      best = d as HexDir;
+    }
+  }
+  return best;
+}
+
+function pieceBodySvg(piece: Piece, pr: number): string {
+  const s = UNIT_STATS[piece.type];
+  if (!s.hexArmor) {
+    return `<circle class="piece-bg" cx="0" cy="0" r="${pr}"
+      fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2.2" />`;
+  }
+  const o = viewOrientation();
+  const facing = facingOf(piece);
+  const rim = 3;
+  const outer = hexVerts(pr, o);
+  const innerR = Math.max(2, pr - rim);
+  const inner = hexVerts(innerR, o);
+  const bands = outer
+    .map((a, i) => {
+      const b = outer[(i + 1) % 6];
+      const c = inner[(i + 1) % 6];
+      const d = inner[i];
+      const dir = edgeCubeDir(i, o);
+      const rel = (((dir - facing) % 6) + 6) % 6;
+      const fill = armorColor(s[HEX_ARMOR_SIDES[rel]]);
+      return `<polygon class="piece-shield" points="${a.x.toFixed(2)},${a.y.toFixed(2)} ${b.x.toFixed(2)},${b.y.toFixed(2)} ${c.x.toFixed(2)},${c.y.toFixed(2)} ${d.x.toFixed(2)},${d.y.toFixed(2)}" fill="${fill}" />`;
+    })
+    .join('');
+  return `${bands}
+    <polygon class="piece-bg" points="${hexCorners(0, 0, innerR, o)}" fill="${pieceColor(piece.side)}" />`;
 }
 
 function readMapInputs(): MapOptions {
@@ -967,7 +1024,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     if (!hasSplash(stats) && t.side === piece.side) continue;
     const dmgAmt = hasSplash(stats) ? stats.splashDamage : stats.shootDamage;
     const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
-    const fatal = hpLeft(t) <= netDamage(t, dmgAmt, 0, origin, state.orientation);
+    const fatal = hpLeft(t) <= netDamage(t, dmgAmt, 0, origin, state.orientation, true);
     document
       .querySelector(`g.piece-unit[data-id="${CSS.escape(t.id)}"]`)
       ?.classList.add(fatal ? 'dying' : 'hit');
@@ -1168,7 +1225,8 @@ function renderBoard(): string {
   for (const p of drawPieces) {
     const { x, y } = pixelOf({ col: p.col, row: p.row });
     const sel = !editing && p.id === selectedId ? ' selected' : '';
-    const pr = HEX_SIZE * 0.581;
+    const hexed = UNIT_STATS[p.type].hexArmor;
+    const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
     const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
     const staminaIcon = emptyStamina
@@ -1205,22 +1263,23 @@ function renderBoard(): string {
             badgeR,
           )
         : '';
-    const ring = armorColor(ringArmor(p.type));
     const rot = facingRotation(p);
     const notch = pr + 1.2;
+    const selRing = hexed
+      ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
+      : `<circle class="piece-sel" cx="0" cy="0" r="${pr + 3.2}" fill="none" stroke="var(--sel)" stroke-width="2" />`;
     piecesSvg += `
       <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
-        ${
-          sel
-            ? `<circle class="piece-sel" cx="0" cy="0" r="${pr + 3.2}" fill="none" stroke="var(--sel)" stroke-width="2" />`
-            : ''
-        }
-        <circle class="piece-bg" cx="0" cy="0" r="${pr}"
-          fill="${pieceColor(p.side)}" stroke="${ring}" stroke-width="2.2" />
+        ${sel ? selRing : ''}
+        ${pieceBodySvg(p, pr)}
         <g class="piece-facing" transform="rotate(${rot.toFixed(1)})">
-          <polygon class="facing-notch" points="0,${(-notch).toFixed(1)} 3.6,${(-notch + 6.5).toFixed(1)} -3.6,${(-notch + 6.5).toFixed(1)}" fill="${iconInk(p.side)}" />
+          ${
+            hexed
+              ? ''
+              : `<polygon class="facing-notch" points="0,${(-notch).toFixed(1)} 3.6,${(-notch + 6.5).toFixed(1)} -3.6,${(-notch + 6.5).toFixed(1)}" fill="${iconInk(p.side)}" />`
+          }
           <g class="piece-glyph ${p.side}" fill="${iconInk(p.side)}" stroke="none" color="${iconInk(p.side)}">
-            ${pieceIconSvg(p.type, PIECE_ICON)}
+            ${pieceIconSvg(p.type, hexed ? Math.round(PIECE_ICON * 1.2) : PIECE_ICON)}
           </g>
         </g>
         ${reloadIcon}
@@ -1418,6 +1477,7 @@ function renderSidebar(): string {
           .join(' · '),
       ),
       statRow('Melee', `${s.meleeDamage}`),
+      statRow('Charge', s.charge > 0 ? String(s.charge) : '0'),
       statRow(
         'Shot',
         String(s.shootDamage),
@@ -1467,7 +1527,7 @@ function renderSidebar(): string {
       if (s.passWater) notes.push('Pathing through water');
       if (s.passUnits) notes.push('Pathing through pieces');
     }
-    if (s.overrun) notes.push(`Overruns infantry (${s.meleeDamage} dmg; survivor blocks)`);
+    if (s.charge > 0) notes.push(`Charge through ${s.charge} dmg (armor applies; survivor blocks)`);
     if (s.noHigh) notes.push('Cannot enter high ground');
     if (hasSplash(s)) notes.push('Splash: full ring; wall hits 3 tiles back-arc');
     for (const id of abilitiesOf(piece)) notes.push(ABILITY_BLURB[id]);
@@ -1527,7 +1587,7 @@ function renderSidebar(): string {
           <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
           <div><dt>Stamina</dt><dd>climb low→high or double move, once / turn</dd></div>
           <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
-          <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1); negative shield adds</dd></div>
+          <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0</dd></div>
           <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
           <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
         </dl>
@@ -2218,6 +2278,7 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'stamina', 'Stamina')}
           ${unitNumField(type, 'staminaRegen', 'Stam regen')}
           ${unitNumField(type, 'meleeDamage', 'Melee dmg')}
+          ${unitNumField(type, 'charge', 'Charge')}
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Shoot</span>
@@ -2673,6 +2734,7 @@ function render() {
           <dd><strong>Stamina</strong> pool. Spend 1 to climb low→high or double move range, once per turn</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivor blocks</dd>
           <dt>Shoot</dt>
           <dd><strong>Range / min</strong> fire distance</dd>
           <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (rock / wall / high) unchanged</dd>
@@ -2682,10 +2744,10 @@ function render() {
           <dd><strong>Splash dmg</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg. Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1</dd>
           <dd><strong>Value</strong> scoring / AI</dd>
           <dd><strong>Category</strong> Modern / Ancient — filter above. Stock is Modern except Archer (Ancient)</dd>
-          <dd><strong>Kit</strong> icon + specials (water, overrun, high). Does not reset numbers. Tower is glyph only</dd>
+          <dd><strong>Kit</strong> icon + specials (water, high). Does not reset numbers. Tower is glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
         </dl>
