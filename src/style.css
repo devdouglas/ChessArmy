@@ -1566,6 +1566,47 @@ svg.board .hex {
   fill: var(--splash);
 }
 
+svg.board:has(.hl-tint.path) .hl-tint.move,
+svg.board:has(.hl-tint.path) .hl-tint.stamina {
+  opacity: 0.38;
+}
+
+.hl-tint.path {
+  fill: color-mix(in srgb, var(--sel) 28%, transparent);
+  stroke: var(--sel);
+  stroke-width: 2.2;
+  stroke-opacity: 0.9;
+}
+
+.hl-tint.path.path-end {
+  fill: color-mix(in srgb, var(--sel) 42%, transparent);
+}
+
+.hl-tint.path.stamina {
+  fill: color-mix(in srgb, #e08930 34%, transparent);
+  stroke: var(--sel);
+}
+
+.hl-tint.path.stamina.path-end {
+  fill: color-mix(in srgb, #e08930 52%, transparent);
+}
+
+.hl-tint.path.path-via {
+  fill: color-mix(in srgb, var(--sel) 50%, transparent);
+}
+
+.hl-tint.path.stamina.path-via {
+  fill: color-mix(in srgb, #e08930 58%, transparent);
+}
+
+.path-via-mark {
+  fill: none;
+  stroke: var(--sel);
+  stroke-width: 1.8;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
 .shoot-outline {
   fill: none;
   stroke: rgba(220, 70, 70, 0.75);
@@ -1605,13 +1646,13 @@ svg.board .hex {
 
 .piece-unit.hit,
 .piece-unit.dying {
-  animation: piece-hurt 0.28s ease-in-out;
+  animation: piece-hurt 0.11s ease-in-out var(--hit-n, 1);
 }
 
 .piece-unit.dying {
   animation:
-    piece-hurt 0.28s ease-in-out,
-    piece-die 0.16s ease-in 0.28s forwards;
+    piece-hurt 0.11s ease-in-out var(--hit-n, 1),
+    piece-die 0.14s ease-in calc(var(--hit-n, 1) * 0.11s) forwards;
 }
 
 @keyframes piece-hurt {
@@ -1619,8 +1660,8 @@ svg.board .hex {
   100% {
     filter: none;
   }
-  35%,
-  55% {
+  40%,
+  60% {
     filter: brightness(0.42) sepia(1) hue-rotate(-18deg) saturate(5.5) contrast(1.15)
       drop-shadow(0 0 6px #4a0808);
   }

@@ -7,10 +7,14 @@ import {
   type Action,
   type GameState,
 } from '../src/engine';
+import { neighborInDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
 function make(unitsPerTurn: number, type: string): { s: GameState; id: string } {
-  const s = createStateFromTerrain(emptyTerrain(8, 10), 'repro', 'pointy', [
+  const t = emptyTerrain(8, 10);
+  const high = neighborInDir({ col: 3, row: 2 }, 0, 'pointy');
+  t[high.row][high.col] = 'high';
+  const s = createStateFromTerrain(t, 'repro', 'pointy', [
     { type, col: 3, row: 2, side: 'red' },
     { type: 'general', col: 1, row: 1, side: 'red' },
     { type: 'soldier', col: 3, row: 8, side: 'blue' },

@@ -10,11 +10,11 @@ import {
   eq,
   incomingDir,
   isHexDir,
+  key,
   line,
+  neighborInDir,
   neighbors,
   parseKey,
-  pathTo,
-  reachable,
   type Hex,
   type HexDir,
   type HexOrientation,
@@ -129,13 +129,13 @@ export type GameState = {
 };
 
 export type Action =
-  | { kind: 'move'; pieceId: string; to: Hex }
+  | { kind: 'move'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
   | { kind: 'move'; hex: Hex; cost: number }
-  /** Walk that spends 1 stamina (double range and/or climb). */
+  /** Walk that spends 1 stamina (climb, or the extra straight-line action). */
   | { kind: 'stamina'; hex: Hex; cost: number }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
@@ -332,6 +332,11 @@ export type MovePlan = {
 
 function activationMoveRange(state: GameState, piece: Piece): number {
   const stats = statsOf(piece.type);
+  // Stamina's extra action is a fresh straight line of `move`. Leftover
+  // steps from the previous action (stop after 1 of 2, etc.) do not carry.
+  if (state.staminaBonus && state.scoutPieceId === piece.id) {
+    return stats.move;
+  }
   let moveRange = stats.move;
   if (stats.actions > 1 && stats.moveBudget > 0) {
     const spent =
@@ -339,13 +344,6 @@ function activationMoveRange(state: GameState, piece: Piece): number {
     moveRange = Math.min(stats.move, Math.max(0, stats.moveBudget - spent));
   }
   return moveRange;
-}
-
-function effectiveMoveRange(state: GameState, piece: Piece): number {
-  const base = activationMoveRange(state, piece);
-  // Bonus action already costs the stamina point — don't also double range.
-  const doubled = canSpendStamina(piece) && !state.staminaBonus;
-  return doubled ? base * 2 : base;
 }
 
 /**
@@ -357,16 +355,13 @@ export function previewMove(
   state: GameState,
   piece: Piece,
   to: Hex,
+  along?: Hex[],
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
   const stats = statsOf(piece.type);
   const melee = Math.max(0, stats.meleeDamage);
   const charge = Math.max(0, stats.charge);
-  const path =
-    pathTo(from, to, {
-      ...movePathOpts(state, piece),
-      maxDist: Math.max(1, effectiveMoveRange(state, piece)),
-    }) ?? [];
+  const path = resolveMovePath(state, piece, to, along);
 
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
   const hits: MoveHit[] = [];
@@ -422,6 +417,147 @@ export function previewMove(
   }
 
   return { stop, hits, facing };
+}
+
+function pathsEq(a: Hex[], b: Hex[]): boolean {
+  return a.length === b.length && a.every((h, i) => eq(h, b[i]));
+}
+
+function isStepWalk(state: GameState, from: Hex, path: Hex[], dest: Hex): boolean {
+  if (!path.length || !eq(path[path.length - 1], dest)) return false;
+  let cur = from;
+  for (const h of path) {
+    if (dirBetween(cur, h, state.orientation) === null) return false;
+    cur = h;
+  }
+  return true;
+}
+
+/** True when `path` is a legal 1- or 2-action walk to `to` (the drawn option). */
+function isLegalMovePath(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  path: Hex[],
+): boolean {
+  const from = { col: piece.col, row: piece.row };
+  if (!isStepWalk(state, from, path, to)) return false;
+  const first = straightMoveStops(state, piece);
+  const one = first.get(key(to));
+  if (one && pathsEq(one.path, path)) return true;
+  if (!extraMoveAction(state, piece) || first.has(key(to))) return false;
+  const planned = allMoveStops(state, piece).get(key(to));
+  if (planned && pathsEq(planned.path, path)) return true;
+  const firstRange = activationMoveRange(state, piece);
+  const secondRange = statsOf(piece.type).move;
+  if (path.length > firstRange && path.length <= firstRange + secondRange) {
+    const opts = movePathOpts(state, piece, from);
+    let cur = from;
+    let dir: HexDir | null = null;
+    let ok = true;
+    for (let i = 0; i < path.length; i++) {
+      const h = path[i];
+      const step = dirBetween(cur, h, state.orientation);
+      if (step === null || (dir !== null && step !== dir)) {
+        ok = false;
+        break;
+      }
+      dir = step;
+      const last = i === path.length - 1;
+      if (last ? !opts.canStop(h) : !opts.canPass(h)) {
+        ok = false;
+        break;
+      }
+      cur = h;
+    }
+    if (ok) {
+      const via = path[firstRange - 1];
+      if (via && !pathClimbs(state, from, via, path.slice(0, firstRange))) return true;
+    }
+  }
+  for (let i = 1; i < path.length; i++) {
+    const via = path[i - 1];
+    const a = first.get(key(via));
+    if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
+    if (pieceAt(state, via) || pathClimbs(state, from, via, a.path)) continue;
+    const b = straightMoveStops(state, piece, via, secondRange).get(key(to));
+    if (b && pathsEq(b.path, path.slice(i))) return true;
+  }
+  return false;
+}
+
+/** Drawn path if still legal; otherwise the canonical option to `to`. */
+export function resolveMovePath(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  drawn?: Hex[],
+): Hex[] {
+  if (drawn?.length && isLegalMovePath(state, piece, to, drawn)) return drawn;
+  return pathForMove(state, piece, to);
+}
+
+/** Hexes walked start→to (excludes start). One or two straight-line actions. */
+export function pathForMove(state: GameState, piece: Piece, to: Hex): Hex[] {
+  return allMoveStops(state, piece).get(key(to))?.path ?? [];
+}
+
+export type MovePathPlan = { path: Hex[]; via: Hex | null };
+
+function planFromStop(stop: StraightStop | undefined): MovePathPlan {
+  if (!stop) return { path: [], via: null };
+  const via = stop.via && !eq(stop.via, stop.path[stop.path.length - 1]!) ? stop.via : null;
+  return { path: stop.path, via };
+}
+
+/**
+ * Prefer keeping the already-drawn path. Trim if `to` is on it; otherwise keep
+ * the first-action waypoint when the dest is still a fresh second-action ray.
+ */
+export function stickyMovePlan(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  prev: Hex[],
+): MovePathPlan {
+  const first = straightMoveStops(state, piece);
+  const fresh = planFromStop(allMoveStops(state, piece).get(key(to)));
+  if (!fresh.path.length) return { path: [], via: null };
+
+  const onPrev = prev.findIndex((h) => eq(h, to));
+  if (!fresh.via) {
+    if (onPrev >= 0) return { path: prev.slice(0, onPrev + 1), via: null };
+    return fresh;
+  }
+  if (onPrev >= 0) {
+    const path = prev.slice(0, onPrev + 1);
+    const via =
+      fresh.via && path.some((h) => eq(h, fresh.via!)) && !eq(fresh.via, to)
+        ? fresh.via
+        : null;
+    return { path, via };
+  }
+
+  const secondRange = statsOf(piece.type).move;
+  const start = { col: piece.col, row: piece.row };
+  for (let i = Math.min(prev.length, activationMoveRange(state, piece)); i >= 1; i--) {
+    const via = prev[i - 1];
+    const stop = first.get(key(via));
+    if (!stop || pieceAt(state, via) || pathClimbs(state, start, via, stop.path)) continue;
+    const tail = straightMoveStops(state, piece, via, secondRange).get(key(to));
+    if (!tail) continue;
+    return { path: [...prev.slice(0, i), ...tail.path], via };
+  }
+  return fresh;
+}
+
+export function stickyPathForMove(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  prev: Hex[],
+): Hex[] {
+  return stickyMovePlan(state, piece, to, prev).path;
 }
 
 export function pieceAt(state: GameState, h: Hex): Piece | undefined {
@@ -734,10 +870,27 @@ function afterAction(
   finishActivation(state, piece);
 }
 
+/** Occupancy as if `piece` already stands on `from` (start hex vacated). */
+function occupantAt(
+  state: GameState,
+  piece: Piece,
+  from: Hex,
+  h: Hex,
+): Piece | undefined {
+  if (eq(h, from)) return undefined;
+  const occ = pieceAt(state, h);
+  if (!occ || occ.id === piece.id) return undefined;
+  return occ;
+}
+
 /** Path rules for a piece (shared by highlights + charge resolution). */
-function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'> {
+function movePathOpts(
+  state: GameState,
+  piece: Piece,
+  from: Hex = { col: piece.col, row: piece.row },
+): Omit<PathOpts, 'maxDist'> {
   const stats = statsOf(piece.type);
-  const fromTerrain = terrainAt(state, { col: piece.col, row: piece.row });
+  const fromTerrain = terrainAt(state, from);
   const climbOk = fromTerrain === 'high' || canSpendStamina(piece);
   const highOk = (t: Terrain) => t !== 'high' || climbOk;
   return {
@@ -751,7 +904,7 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
       if (t === 'water' || isSolidTerrain(t)) return false;
       if (stats.noHigh && t === 'high') return false;
       if (!highOk(t)) return false;
-      const occ = pieceAt(state, h);
+      const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
       return occ.side !== piece.side && stats.meleeDamage > 0;
@@ -764,12 +917,160 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
       if (!highOk(t)) return false;
       if (t === 'water' && !stats.passWater) return false;
       if (stats.passUnits) return true;
-      const occ = pieceAt(state, h);
+      const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
       if (stats.charge > 0) return occ.side !== piece.side;
       return occ.side === piece.side;
     },
   };
+}
+
+function pathClimbs(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
+  if (terrainAt(state, from) === 'high') return false;
+  return (
+    terrainAt(state, dest) === 'high' || path.some((p) => terrainAt(state, p) === 'high')
+  );
+}
+
+function extraMoveAction(state: GameState, piece: Piece): boolean {
+  return canSpendStamina(piece) && !state.staminaBonus;
+}
+
+type StraightStop = { dist: number; path: Hex[]; via: Hex | null; firstDist: number };
+
+/** Legal stop-hexes along the six hex axes, with the line walked to each. */
+function straightMoveStops(
+  state: GameState,
+  piece: Piece,
+  from: Hex = { col: piece.col, row: piece.row },
+  range = activationMoveRange(state, piece),
+): Map<string, StraightStop> {
+  const opts = movePathOpts(state, piece, from);
+  const out = new Map<string, StraightStop>();
+  if (range <= 0) return out;
+  for (let d = 0; d < 6; d++) {
+    const path: Hex[] = [];
+    let cur = from;
+    for (let dist = 1; dist <= range; dist++) {
+      const next = neighborInDir(cur, d as HexDir, state.orientation);
+      if (!inBounds(state, next)) break;
+      const stop = opts.canStop(next);
+      const pass = opts.canPass(next);
+      if (!stop && !pass) break;
+      path.push(next);
+      if (stop) out.set(key(next), { dist, path: path.slice(), via: null, firstDist: dist });
+      if (!pass) break;
+      cur = next;
+    }
+  }
+  return out;
+}
+
+/**
+ * Same-direction stamina run: firstRange + extra `move` as one ray.
+ * Via need not be a stop — pass through units if you don't turn.
+ */
+function straightExtraStops(
+  state: GameState,
+  piece: Piece,
+  first: Map<string, StraightStop>,
+): Map<string, StraightStop> {
+  const start = { col: piece.col, row: piece.row };
+  const firstRange = activationMoveRange(state, piece);
+  const secondRange = statsOf(piece.type).move;
+  const max = firstRange + secondRange;
+  const opts = movePathOpts(state, piece, start);
+  const out = new Map<string, StraightStop>();
+  if (firstRange <= 0 || secondRange <= 0) return out;
+  for (let d = 0; d < 6; d++) {
+    const path: Hex[] = [];
+    let cur = start;
+    let via: Hex | null = null;
+    let firstClimb = false;
+    for (let dist = 1; dist <= max; dist++) {
+      const next = neighborInDir(cur, d as HexDir, state.orientation);
+      if (!inBounds(state, next)) break;
+      const stop = opts.canStop(next);
+      const pass = opts.canPass(next);
+      if (!stop && !pass) break;
+      path.push(next);
+      if (dist === firstRange) {
+        via = next;
+        firstClimb = pathClimbs(state, start, via, path.slice());
+      }
+      if (stop && dist > firstRange && via && !firstClimb && !first.has(key(next))) {
+        out.set(key(next), {
+          dist,
+          path: path.slice(),
+          via,
+          firstDist: firstRange,
+        });
+      }
+      if (!pass) break;
+      cur = next;
+    }
+  }
+  return out;
+}
+
+/**
+ * Second straight-line action after a non-climb stop. First-action dests win.
+ * Prefers a longer first leg so leftover steps of action 1 are not "spent" later.
+ * Turning cannot use an occupied hex as the waypoint.
+ */
+function twoActionStops(
+  state: GameState,
+  piece: Piece,
+  first: Map<string, StraightStop>,
+): Map<string, StraightStop> {
+  const start = { col: piece.col, row: piece.row };
+  const startKey = key(start);
+  const secondRange = statsOf(piece.type).move;
+  const out = new Map<string, StraightStop>();
+  if (secondRange <= 0) return out;
+  for (const [, a] of first) {
+    const via = a.path[a.path.length - 1];
+    if (!via) continue;
+    if (pieceAt(state, via)) continue;
+    if (pathClimbs(state, start, via, a.path)) continue;
+    const second = straightMoveStops(state, piece, via, secondRange);
+    for (const [dk, b] of second) {
+      if (dk === startKey || first.has(dk)) continue;
+      const dist = a.dist + b.dist;
+      const prev = out.get(dk);
+      if (prev && (a.dist < prev.firstDist || (a.dist === prev.firstDist && dist >= prev.dist))) {
+        continue;
+      }
+      out.set(dk, {
+        dist,
+        path: [...a.path, ...b.path],
+        via,
+        firstDist: a.dist,
+      });
+    }
+  }
+  return out;
+}
+
+function keepBetterStop(
+  out: Map<string, StraightStop>,
+  k: string,
+  stop: StraightStop,
+): void {
+  const prev = out.get(k);
+  if (prev && (stop.firstDist < prev.firstDist || (stop.firstDist === prev.firstDist && stop.dist >= prev.dist))) {
+    return;
+  }
+  out.set(k, stop);
+}
+
+function allMoveStops(state: GameState, piece: Piece): Map<string, StraightStop> {
+  const first = straightMoveStops(state, piece);
+  if (!extraMoveAction(state, piece)) return first;
+  const out = new Map(first);
+  for (const [k, stop] of straightExtraStops(state, piece, first)) keepBetterStop(out, k, stop);
+  for (const [k, stop] of twoActionStops(state, piece, first)) keepBetterStop(out, k, stop);
+  return out;
 }
 
 /** Move/shoot range for a piece (ignores whose turn it is). */
@@ -781,21 +1082,14 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   const from: Hex = { col: piece.col, row: piece.row };
   const out: Highlight[] = [];
 
-  const baseRange = activationMoveRange(state, piece);
-  const moveRange = effectiveMoveRange(state, piece);
   const fromTerrain = terrainAt(state, from);
-  const pathOpts = { ...movePathOpts(state, piece), maxDist: moveRange };
-  const reach = reachable(from, pathOpts);
+  const reach = allMoveStops(state, piece);
+  const stamAction = state.staminaBonus && state.scoutPieceId === piece.id;
 
-  for (const [k, dist] of reach) {
+  for (const [k, { dist, path, via }] of reach) {
     const h = parseKey(k);
-    const doubled = dist > baseRange;
-    const path = pathTo(from, h, pathOpts);
-    const climbs =
-      fromTerrain !== 'high' &&
-      (terrainAt(state, h) === 'high' ||
-        (path?.some((p) => terrainAt(state, p) === 'high') ?? false));
-    if (climbs || doubled) {
+    const climbs = pathClimbs(state, from, h, path);
+    if (climbs || stamAction || via) {
       out.push({ kind: 'stamina', hex: h, cost: dist });
     } else {
       out.push({ kind: 'move', hex: h, cost: dist });
@@ -931,7 +1225,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     );
     if (!hit || (hit.kind !== 'move' && hit.kind !== 'stamina')) return state;
 
-    const plan = previewMove(next, piece, action.to);
+    const plan = previewMove(next, piece, action.to, action.path);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
     for (const mh of plan.hits) {

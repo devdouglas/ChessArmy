@@ -18,9 +18,11 @@ import {
   isDepleted,
   isReloading,
   legalHighlights,
+  stickyMovePlan,
   pieceAt,
   previewMove,
   rangeHighlights,
+  resolveMovePath,
   armorColor,
   facingOf,
   hasSplash,
@@ -54,6 +56,7 @@ import {
 } from './engine';
 import {
   defaultFacing,
+  dirBetween,
   eq,
   hexCorners,
   hexGridExtent,
@@ -197,7 +200,10 @@ let selectedId: string | null = null;
 /** Hex where both move-onto and shoot are legal — wait for Move/Shoot pick. */
 let pendingHex: Hex | null = null;
 let highlights: Highlight[] = [];
-let hoverShoot: Hex | null = null;
+let hoverHex: Hex | null = null;
+let hoverPath: Hex[] = [];
+/** Path drawn when the dest was chosen — the unit walks this. */
+let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
 
@@ -276,7 +282,7 @@ let { hexSize: HEX_SIZE, pad: PAD, pieceIcon: PIECE_ICON } = computeLayout();
 const MOVE_MS = 300;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;
-const HIT_FLASH_MS = 280;
+const HIT_FLASH_MS = 110;
 
 function applyLayout(next = computeLayout(), rerender = true): boolean {
   const changed =
@@ -428,19 +434,28 @@ function wait(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms));
 }
 
-function flashDamaged(hits: readonly { id: string; fatal?: boolean }[]): Promise<void> {
+function flashDamaged(
+  hits: readonly { id: string; fatal?: boolean; dealt: number }[],
+): Promise<void> {
   if (!hits.length) return Promise.resolve();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let dying = false;
+  let maxN = 0;
   for (const hit of hits) {
+    const n = Math.max(0, Math.floor(hit.dealt));
+    if (n <= 0) continue;
     const el = document.querySelector(`g.piece-unit[data-id="${CSS.escape(hit.id)}"]`);
     if (!el) continue;
     el.classList.remove('hit', 'dying');
     void (el as SVGElement).getBoundingClientRect();
+    (el as SVGElement).style.setProperty('--hit-n', String(n));
     el.classList.add(hit.fatal ? 'dying' : 'hit');
     if (hit.fatal) dying = true;
+    if (n > maxN) maxN = n;
   }
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  return wait(reduce ? 140 : dying ? HIT_FLASH_MS + 160 : HIT_FLASH_MS);
+  if (maxN <= 0) return Promise.resolve();
+  const blink = reduce ? 140 : HIT_FLASH_MS * maxN;
+  return wait(dying && !reduce ? blink + 140 : blink);
 }
 
 function viewOrientation(): HexOrientation {
@@ -468,6 +483,63 @@ function shortestAngle(from: number, to: number): number {
   if (d > 180) d -= 360;
   if (d <= -180) d += 360;
   return from + d;
+}
+
+async function animateMoveAlong(
+  g: SVGGElement,
+  piece: Piece,
+  path: Hex[],
+  stop: Hex,
+  dest: Hex,
+): Promise<void> {
+  const from = { col: piece.col, row: piece.row };
+  const destPx = pixelOf(dest);
+  const stopPx = pixelOf(stop);
+  const facingEl = g.querySelector('.piece-facing');
+  g.classList.add('moving');
+
+  const bumpToward = async (fromPx: { x: number; y: number }, toPx: { x: number; y: number }) => {
+    const bump = {
+      x: fromPx.x + (toPx.x - fromPx.x) * 0.4,
+      y: fromPx.y + (toPx.y - fromPx.y) * 0.4,
+    };
+    g.style.transition = `transform ${MOVE_MS * 0.55}ms ease-out`;
+    g.setAttribute('transform', `translate(${bump.x}, ${bump.y})`);
+    await wait(MOVE_MS * 0.55);
+    g.style.transition = `transform ${MOVE_MS * 0.45}ms ease-out`;
+    g.setAttribute('transform', `translate(${fromPx.x}, ${fromPx.y})`);
+    await wait(MOVE_MS * 0.45);
+  };
+
+  if (eq(stop, from) || !path.length) {
+    await bumpToward(stopPx, destPx);
+    return;
+  }
+
+  let stopIdx = path.findIndex((h) => eq(h, stop));
+  if (stopIdx < 0) stopIdx = path.length - 1;
+  const walked = path.slice(0, stopIdx + 1);
+  const stepMs = Math.max(90, Math.round(MOVE_MS / walked.length));
+  const ori = viewOrientation();
+  let prev = from;
+  let deg = facingRotation(piece);
+
+  void g.getBoundingClientRect();
+  for (const h of walked) {
+    const step = dirBetween(prev, h, ori);
+    const px = pixelOf(h);
+    g.style.transition = `transform ${stepMs}ms linear`;
+    if (step !== null) {
+      const nextDeg = facingRotation({ ...piece, col: prev.col, row: prev.row, facing: step });
+      void tweenFacing(facingEl, deg, nextDeg, stepMs);
+      deg = nextDeg;
+    }
+    g.setAttribute('transform', `translate(${px.x}, ${px.y})`);
+    await wait(stepMs);
+    prev = h;
+  }
+
+  if (!eq(stop, dest)) await bumpToward(stopPx, destPx);
 }
 
 function tweenFacing(
@@ -812,7 +884,9 @@ function clearSelection() {
   selectedId = null;
   pendingHex = null;
   highlights = [];
-  hoverShoot = null;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
 }
 
 function canControl(): boolean {
@@ -868,7 +942,9 @@ function selectPiece(id: string | null) {
   if (animating) return;
   selectedId = id;
   pendingHex = null;
-  hoverShoot = null;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
   refreshHighlights();
   render();
 }
@@ -908,39 +984,20 @@ async function playAnimatedAction(action: Action): Promise<void> {
   }
 
   if (action.kind === 'move') {
-    const plan = previewMove(state, piece, action.to);
-    const stopPx = pixelOf(plan.stop);
-    const destPx = pixelOf(action.to);
+    const path = resolveMovePath(state, piece, action.to, action.path);
+    const plan = previewMove(state, piece, action.to, path);
     const g = document.querySelector<SVGGElement>(
       `g.piece-unit[data-id="${CSS.escape(piece.id)}"]`,
     );
-    const facingEl = g?.querySelector('.piece-facing') ?? null;
-    const fromDeg = facingRotation(piece);
-    const toDeg = facingRotation({ ...piece, facing: plan.facing });
-    const turn = tweenFacing(facingEl, fromDeg, toDeg, MOVE_MS);
-    if (g) {
-      g.classList.add('moving');
-      g.style.transition = `transform ${MOVE_MS}ms ease-out`;
-      const bounced = !eq(plan.stop, action.to);
-      const stay = eq(plan.stop, { col: piece.col, row: piece.row });
-      if (stay && bounced) {
-        const bump = {
-          x: stopPx.x + (destPx.x - stopPx.x) * 0.4,
-          y: stopPx.y + (destPx.y - stopPx.y) * 0.4,
-        };
-        g.setAttribute('transform', `translate(${bump.x}, ${bump.y})`);
-        await wait(MOVE_MS * 0.55);
-        g.setAttribute('transform', `translate(${stopPx.x}, ${stopPx.y})`);
-        await wait(MOVE_MS * 0.45);
-      } else {
-        g.setAttribute('transform', `translate(${stopPx.x}, ${stopPx.y})`);
-        await wait(MOVE_MS);
-      }
-    } else {
-      await wait(MOVE_MS);
-    }
-    await turn;
-    await flashDamaged(plan.hits);
+    if (g) await animateMoveAlong(g, piece, path, plan.stop, action.to);
+    else await wait(MOVE_MS);
+    await flashDamaged(
+      plan.hits.map((h) => {
+        const victim = getPiece(state, h.id);
+        const dealt = victim ? Math.max(0, hpLeft(victim) - h.remaining) : 0;
+        return { id: h.id, fatal: h.fatal, dealt };
+      }),
+    );
   } else {
     await animateShot(piece, action.at);
   }
@@ -1021,7 +1078,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
 
   const fromHex = { col: piece.col, row: piece.row };
   const blast = hasSplash(stats) ? splashBlast(state, at, fromHex) : [at];
-  const shotHits: { id: string; fatal: boolean }[] = [];
+  const shotHits: { id: string; fatal: boolean; dealt: number }[] = [];
   for (const h of blast) {
     const { x, y } = pixelOf(h);
     layer.appendChild(
@@ -1039,8 +1096,11 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     const dmgAmt = hasSplash(stats) ? stats.splashDamage : stats.shootDamage;
     if (dmgAmt <= 0) continue;
     const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
-    const fatal = hpLeft(t) <= netDamage(t, dmgAmt, 0, origin, state.orientation, true);
-    shotHits.push({ id: t.id, fatal });
+    const net = netDamage(t, dmgAmt, 0, origin, state.orientation, true);
+    const dealt = Math.min(hpLeft(t), net);
+    if (dealt <= 0) continue;
+    const fatal = hpLeft(t) <= net;
+    shotHits.push({ id: t.id, fatal, dealt });
   }
 
   // center boom ring
@@ -1058,6 +1118,17 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
   layer.remove();
 }
 
+function drawnPathTo(hex: Hex): Hex[] {
+  const piece = selectedId ? getPiece(state, selectedId) : null;
+  if (!piece) return [];
+  return stickyMovePlan(state, piece, hex, hoverPath).path;
+}
+
+function committedPathTo(hex: Hex): Hex[] {
+  if (commitPath.length && eq(commitPath[commitPath.length - 1], hex)) return commitPath;
+  return drawnPathTo(hex);
+}
+
 async function tryAct(hex: Hex, kind: ActionMode) {
   if (!canActWithSelected() || !selectedId) return;
 
@@ -1067,7 +1138,7 @@ async function tryAct(hex: Hex, kind: ActionMode) {
 
   const action: Action =
     kind === 'move'
-      ? { kind: 'move', pieceId: selectedId, to: hex }
+      ? { kind: 'move', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
       : { kind: 'shoot', pieceId: selectedId, at: hex };
 
   const actingId = selectedId;
@@ -1076,7 +1147,9 @@ async function tryAct(hex: Hex, kind: ActionMode) {
 
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
-    hoverShoot = null;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
     refreshHighlights();
     render();
   } else {
@@ -1177,13 +1250,27 @@ function renderBoard(): string {
   }
 
   const splashSet = new Set<string>();
-  if (!editing && hoverShoot) {
+  const pathSet = new Set<string>();
+  let pathVia: Hex | null = null;
+  let pathKind: 'move' | 'stamina' | null = null;
+  if (!editing && hoverHex) {
     const sel = selectedId ? getPiece(state, selectedId) : null;
-    if (sel && hasSplash(UNIT_STATS[sel.type])) {
+    const splashAim = highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hoverHex!));
+    if (sel && splashAim && hasSplash(UNIT_STATS[sel.type])) {
       const fromHex = { col: sel.col, row: sel.row };
-      for (const n of splashBlast(state, hoverShoot, fromHex)) {
+      for (const n of splashBlast(state, hoverHex, fromHex)) {
         splashSet.add(key(n));
       }
+    }
+    const destHl = highlights.find(
+      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hoverHex!),
+    );
+    if (sel && destHl) {
+      pathKind = destHl.kind === 'stamina' ? 'stamina' : 'move';
+      const plan = stickyMovePlan(state, sel, hoverHex, hoverPath);
+      hoverPath = plan.path;
+      pathVia = plan.via;
+      for (const h of hoverPath) pathSet.add(key(h));
     }
   }
 
@@ -1210,6 +1297,15 @@ function renderBoard(): string {
       const mv = moveMap.get(k);
       if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+
+      if (pathSet.has(k)) {
+        const end = hoverHex && eq(hoverHex, hex);
+        const via = !!(pathVia && eq(pathVia, hex) && !end);
+        hlOverlays += `<polygon class="hl-tint path${pathKind === 'stamina' ? ' stamina' : ''}${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
+        if (via) {
+          hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
+        }
+      }
 
       if (pendingHex && eq(pendingHex, hex)) {
         hlOverlays += `<polygon class="hl-tint pending" points="${pts}" />`;
@@ -1411,8 +1507,8 @@ function renderActionBar(): string {
     hint = 'Range preview';
   } else {
     hint = s.actions > 1
-      ? 'Green = move · gold = stamina (double / climb, ends the activation) · click enemy to shoot'
-      : 'Green = move · gold = stamina (double / climb) · click enemy to shoot';
+      ? 'Green = move · gold = climb (ends the activation) · click enemy to shoot'
+      : 'Green = move · gold = climb, or the extra straight-line action · click enemy to shoot';
   }
 
   const left = state.scoutActionsLeft ?? 0;
@@ -1459,7 +1555,7 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is stamina (double / climb), red is shoot. Dual hex: pick Move or Shoot.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb or the extra straight-line action, red is shoot. Dual hex: pick Move or Shoot.</p>';
   let moreStats = '';
 
   if (piece) {
@@ -1613,7 +1709,7 @@ function renderSidebar(): string {
           ${moreStats}
           <div class="legend">
             <span class="l-move">Move</span>
-            <span class="l-stamina">Stamina (double / climb)</span>
+            <span class="l-stamina">Stamina (climb / extra move)</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
             <span class="l-shoot-border">Red border = shoot range</span>
@@ -1624,7 +1720,7 @@ function renderSidebar(): string {
             <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
             <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
             <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
-            <div><dt>Stamina</dt><dd>climb / double move, or a second action after a normal move</dd></div>
+            <div><dt>Stamina</dt><dd>climb, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
@@ -1784,8 +1880,9 @@ function onHexClick(col: number, row: number) {
         render();
         return;
       }
+      commitPath = drawnPathTo(hex);
       pendingHex = hex;
-      hoverShoot = null;
+      hoverHex = null;
       render();
       return;
     }
@@ -1794,6 +1891,7 @@ function onHexClick(col: number, row: number) {
       return;
     }
     if (canMove) {
+      commitPath = drawnPathTo(hex);
       void tryAct(hex, 'move');
       return;
     }
@@ -1885,40 +1983,40 @@ function bindBoardOnly() {
     onHexClick(hex.col, hex.row);
   });
 
+  const paintHover = (next: Hex | null) => {
+    const changed =
+      (!!next && (!hoverHex || !eq(hoverHex, next))) || (!next && !!hoverHex);
+    if (!changed) return;
+    hoverHex = next;
+    const board = app.querySelector('svg.board');
+    if (board) {
+      board.outerHTML = renderBoard();
+      bindBoardOnly();
+      placeHexChoice();
+    }
+  };
+
+  svg.addEventListener('pointerleave', () => {
+    if (animating) return;
+    paintHover(null);
+  });
+
   svg.addEventListener('pointermove', (e) => {
     if (animating) return;
     const hex = hexFromPointer(svg, e.clientX, e.clientY);
     if (!hex) {
-      if (hoverShoot) {
-        hoverShoot = null;
-        const board = app.querySelector('svg.board');
-        if (board) {
-          board.outerHTML = renderBoard();
-          bindBoardOnly();
-          placeHexChoice();
-        }
-      }
+      paintHover(null);
       return;
     }
     const sel = selectedId ? getPiece(state, selectedId) : null;
-    const isValidSplashAim =
+    const moveHover = highlights.some(
+      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hex),
+    );
+    const splashHover =
       !!sel &&
       hasSplash(UNIT_STATS[sel.type]) &&
       highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
-
-    const nextHover = isValidSplashAim ? hex : null;
-    const changed =
-      (!!nextHover && (!hoverShoot || !eq(hoverShoot, nextHover))) ||
-      (!nextHover && !!hoverShoot);
-    if (changed) {
-      hoverShoot = nextHover;
-      const board = app.querySelector('svg.board');
-      if (board) {
-        board.outerHTML = renderBoard();
-        bindBoardOnly();
-        placeHexChoice();
-      }
-    }
+    paintHover(moveHover || splashHover ? hex : null);
   });
 }
 
@@ -2866,9 +2964,9 @@ function render() {
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
-          <dd><strong>Range</strong> hexes per action</dd>
+          <dd><strong>Range</strong> hexes in a straight line per action</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, double move, or take a second action after a normal (non-stamina) move</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
           <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
