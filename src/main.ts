@@ -192,6 +192,7 @@ let selectedPeriod: Period = getSelectedPeriod();
 let playlist: Playlist | null = null;
 let unitEditorCategory: UnitCategory = 'modern';
 const unitEditorOpen = new Set<UnitType>();
+let sidebarMoreOpen = false;
 let selectedId: string | null = null;
 /** Hex where both move-onto and shoot are legal — wait for Move/Shoot pick. */
 let pendingHex: Hex | null = null;
@@ -275,6 +276,7 @@ let { hexSize: HEX_SIZE, pad: PAD, pieceIcon: PIECE_ICON } = computeLayout();
 const MOVE_MS = 300;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;
+const HIT_FLASH_MS = 280;
 
 function applyLayout(next = computeLayout(), rerender = true): boolean {
   const changed =
@@ -424,6 +426,21 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 
 function wait(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms));
+}
+
+function flashDamaged(hits: readonly { id: string; fatal?: boolean }[]): Promise<void> {
+  if (!hits.length) return Promise.resolve();
+  let dying = false;
+  for (const hit of hits) {
+    const el = document.querySelector(`g.piece-unit[data-id="${CSS.escape(hit.id)}"]`);
+    if (!el) continue;
+    el.classList.remove('hit', 'dying');
+    void (el as SVGElement).getBoundingClientRect();
+    el.classList.add(hit.fatal ? 'dying' : 'hit');
+    if (hit.fatal) dying = true;
+  }
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return wait(reduce ? 140 : dying ? HIT_FLASH_MS + 160 : HIT_FLASH_MS);
 }
 
 function viewOrientation(): HexOrientation {
@@ -897,11 +914,6 @@ async function playAnimatedAction(action: Action): Promise<void> {
     const g = document.querySelector<SVGGElement>(
       `g.piece-unit[data-id="${CSS.escape(piece.id)}"]`,
     );
-    for (const hit of plan.hits) {
-      document
-        .querySelector(`g.piece-unit[data-id="${CSS.escape(hit.id)}"]`)
-        ?.classList.add(hit.fatal ? 'dying' : 'hit');
-    }
     const facingEl = g?.querySelector('.piece-facing') ?? null;
     const fromDeg = facingRotation(piece);
     const toDeg = facingRotation({ ...piece, facing: plan.facing });
@@ -928,6 +940,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
       await wait(MOVE_MS);
     }
     await turn;
+    await flashDamaged(plan.hits);
   } else {
     await animateShot(piece, action.at);
   }
@@ -1008,6 +1021,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
 
   const fromHex = { col: piece.col, row: piece.row };
   const blast = hasSplash(stats) ? splashBlast(state, at, fromHex) : [at];
+  const shotHits: { id: string; fatal: boolean }[] = [];
   for (const h of blast) {
     const { x, y } = pixelOf(h);
     layer.appendChild(
@@ -1023,11 +1037,10 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     // Splash hits everyone (incl. friendlies); bullets skip friendlies
     if (!hasSplash(stats) && t.side === piece.side) continue;
     const dmgAmt = hasSplash(stats) ? stats.splashDamage : stats.shootDamage;
+    if (dmgAmt <= 0) continue;
     const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
     const fatal = hpLeft(t) <= netDamage(t, dmgAmt, 0, origin, state.orientation, true);
-    document
-      .querySelector(`g.piece-unit[data-id="${CSS.escape(t.id)}"]`)
-      ?.classList.add(fatal ? 'dying' : 'hit');
+    shotHits.push({ id: t.id, fatal });
   }
 
   // center boom ring
@@ -1040,7 +1053,8 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     }),
   );
 
-  await wait(SHOT_IMPACT_MS);
+  if (shotHits.length) await flashDamaged(shotHits);
+  else await wait(SHOT_IMPACT_MS);
   layer.remove();
 }
 
@@ -1377,9 +1391,14 @@ function renderActionBar(): string {
     state.scoutPieceId !== piece.id &&
     piece.side === state.turn
   ) {
-    hint = 'Scout still has an action — finish it or skip';
+    hint = state.staminaBonus
+      ? 'A second action is available — finish it or skip'
+      : 'Scout still has an action — finish it or skip';
   } else if (hasActed(state, piece.id) && piece.side === state.turn) {
     hint = 'Already acted this turn';
+  } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
+    const n = staminaLeft(piece);
+    hint = `A second action costs 1 stamina. ${n} stamina left.`;
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
     hint = 'Second scout action — move, shoot, or skip';
   } else if (!canMove && !canShoot) {
@@ -1399,8 +1418,10 @@ function renderActionBar(): string {
   const left = state.scoutActionsLeft ?? 0;
   const scoutUi =
     state.scoutPieceId && canControl()
-      ? `<button type="button" id="skip-scout">Skip remaining action${
-          left > 0 ? ` (${left})` : ''
+      ? `<button type="button" id="skip-scout">${
+          state.staminaBonus
+            ? 'Skip second action'
+            : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
         }</button>`
       : '';
 
@@ -1439,6 +1460,7 @@ function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
     '<p class="empty-hint">Click a piece — green is move, gold is stamina (double / climb), red is shoot. Dual hex: pick Move or Shoot.</p>';
+  let moreStats = '';
 
   if (piece) {
     const s = UNIT_STATS[piece.type];
@@ -1467,7 +1489,26 @@ function renderSidebar(): string {
       stamNote = `regen ${s.staminaRegen}`;
     }
 
-    const rows = [
+    const vitals = [
+      ...(maxSt > 0
+        ? [statRow('Stamina', `${curSt}/${maxSt}`, stamNote, stamWarn)]
+        : []),
+      statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
+      ...(s.shootCooldown > 0
+        ? [
+            statRow(
+              'Reload',
+              isReloading(piece)
+                ? `${piece.shootCooldown} left`
+                : `${s.shootCooldown} turn${s.shootCooldown === 1 ? '' : 's'}`,
+              isReloading(piece) ? 'can still move' : 'after firing',
+              isReloading(piece),
+            ),
+          ]
+        : []),
+    ];
+
+    const moreRows = [
       statRow('Move', String(s.move), moveNote),
       statRow(
         'Shoot',
@@ -1497,11 +1538,9 @@ function renderSidebar(): string {
           : `${s.armor > 0 ? '+' : ''}${s.armor}`,
         s.hexArmor ? 'hex · front follows last move' : '',
       ),
-      statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
     ];
-    if (maxSt > 0) rows.push(statRow('Stamina', `${curSt}/${maxSt}`, stamNote, stamWarn));
     if (s.ammo > 0) {
-      rows.push(
+      moreRows.push(
         statRow(
           'Ammo',
           `${ammoLeft(piece) ?? 0}/${s.ammo}`,
@@ -1510,27 +1549,17 @@ function renderSidebar(): string {
         ),
       );
     }
-    if (s.shootCooldown > 0) {
-      rows.push(
-        statRow(
-          'Reload',
-          isReloading(piece) ? `${piece.shootCooldown} left` : `${s.shootCooldown} turn${s.shootCooldown === 1 ? '' : 's'}`,
-          isReloading(piece) ? 'can still move' : 'after firing',
-          isReloading(piece),
-        ),
-      );
-    }
 
-    const notes: string[] = [];
-    if (s.passWater && s.passUnits) notes.push('Pathing through water and pieces (not rocks)');
+    const abilityNotes = abilitiesOf(piece).map((id) => ABILITY_BLURB[id]);
+    const extraNotes: string[] = [];
+    if (s.passWater && s.passUnits) extraNotes.push('Pathing through water and pieces (not rocks)');
     else {
-      if (s.passWater) notes.push('Pathing through water');
-      if (s.passUnits) notes.push('Pathing through pieces');
+      if (s.passWater) extraNotes.push('Pathing through water');
+      if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
-    if (s.charge > 0) notes.push(`Charge through ${s.charge} dmg (armor applies; survivor blocks)`);
-    if (s.noHigh) notes.push('Cannot enter high ground');
-    if (hasSplash(s)) notes.push('Splash: full ring; wall hits 3 tiles back-arc');
-    for (const id of abilitiesOf(piece)) notes.push(ABILITY_BLURB[id]);
+    if (s.charge > 0) extraNotes.push(`Charge through ${s.charge} dmg (armor applies; survivors don't block)`);
+    if (s.noHigh) extraNotes.push('Cannot enter high ground');
+    if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
     const previewOnly = piece.side !== state.turn || !canControl();
 
@@ -1548,13 +1577,20 @@ function renderSidebar(): string {
             }</p>
           </div>
         </header>
-        <dl class="stat-grid">${rows.join('')}</dl>
+        <dl class="stat-grid">${vitals.join('')}</dl>
         ${
-          notes.length
-            ? `<ul class="ability-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>`
+          abilityNotes.length
+            ? `<ul class="ability-notes">${abilityNotes.map((n) => `<li>${n}</li>`).join('')}</ul>`
             : ''
         }
       </section>`;
+    moreStats = `
+        <dl class="stat-grid">${moreRows.join('')}</dl>
+        ${
+          extraNotes.length
+            ? `<ul class="ability-notes">${extraNotes.map((n) => `<li>${n}</li>`).join('')}</ul>`
+            : ''
+        }`;
   }
 
   const log = [...state.log]
@@ -1572,25 +1608,29 @@ function renderSidebar(): string {
       <div class="sidebar-rest">
         <h2>Abilities</h2>
         ${detail}
-        <div class="legend">
-          <span class="l-move">Move</span>
-          <span class="l-stamina">Stamina (double / climb)</span>
-          <span class="l-shoot">Shoot (target)</span>
-          <span class="l-shoot-range">Shoot range</span>
-          <span class="l-shoot-border">Red border = shoot range</span>
-        </div>
-        <dl class="rules">
-          <div><dt>Water</dt><dd>shoot over, cannot cross</dd></div>
-          <div><dt>LOS low</dt><dd>rock, wall, high block; straight blocked by units</dd></div>
-          <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
-          <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
-          <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
-          <div><dt>Stamina</dt><dd>climb low→high or double move, once / turn</dd></div>
-          <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
-          <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0</dd></div>
-          <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
-          <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
-        </dl>
+        <details class="sidebar-more" data-sidebar-more${sidebarMoreOpen ? ' open' : ''}>
+          <summary>More</summary>
+          ${moreStats}
+          <div class="legend">
+            <span class="l-move">Move</span>
+            <span class="l-stamina">Stamina (double / climb)</span>
+            <span class="l-shoot">Shoot (target)</span>
+            <span class="l-shoot-range">Shoot range</span>
+            <span class="l-shoot-border">Red border = shoot range</span>
+          </div>
+          <dl class="rules">
+            <div><dt>Water</dt><dd>shoot over, cannot cross</dd></div>
+            <div><dt>LOS low</dt><dd>rock, wall, high block; straight blocked by units</dd></div>
+            <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
+            <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
+            <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
+            <div><dt>Stamina</dt><dd>climb / double move, or a second action after a normal move</dd></div>
+            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
+            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
+            <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
+          </dl>
+        </details>
       </div>
     </div>`;
 }
@@ -2001,10 +2041,70 @@ function bindToolbarEvents() {
   });
 }
 
+function terrainSwatchSvg(kind: Terrain): string {
+  const o = editorOrientation;
+  const size = 10;
+  const pad = 4;
+  const spanX = (o === 'flat' ? 2 : Math.sqrt(3)) * size;
+  const spanY = (o === 'flat' ? Math.sqrt(3) : 2) * size;
+  const w = spanX + pad * 2;
+  const h = spanY + pad * 2;
+  const pts = hexCorners(0, 0, size, o);
+  const clipId = `swatch-clip-${kind}`;
+  let fill = 'var(--land)';
+  let stroke = 'var(--hex-stroke)';
+  let sw = 1.4;
+  let extra = '';
+  if (kind === 'water') {
+    fill = 'var(--water)';
+    stroke = 'var(--water-stroke)';
+    extra = `<g clip-path="url(#${clipId})">
+      <path d="M-10 -2.2 Q-4 -4.8 2 -2.2 T12 -2.2" fill="none" stroke="var(--water-hi)" stroke-width="1.2" opacity="0.8"/>
+      <path d="M-10 1.6 Q-3 -0.4 3 1.6 T12 1.6" fill="none" stroke="var(--water-lo)" stroke-width="1.1" opacity="0.75"/>
+      <path d="M-10 5.4 Q-2 3.4 4 5.4 T12 5.4" fill="none" stroke="var(--water-hi)" stroke-width="1" opacity="0.55"/>
+    </g>`;
+  } else if (kind === 'rock') {
+    fill = 'var(--rock)';
+    stroke = 'var(--rock-stroke)';
+    sw = 2.2;
+    extra = `<g clip-path="url(#${clipId})">
+      <path d="M-4.2 -3 L0.2 -5.2 L3.4 -1.2 L1.2 2.2 L-3.2 1.1 Z" fill="var(--rock-hi)" opacity="0.85"/>
+      <path d="M1.2 1.2 L6.2 0 L7.4 4.1 L3.2 6.2 Z" fill="var(--rock-lo)" opacity="0.9"/>
+      <path d="M-7 -2 L7 5 M-2 -7 L4 7" fill="none" stroke="var(--rock-ink)" stroke-width="0.6" opacity="0.55"/>
+    </g>`;
+  } else if (kind === 'wall') {
+    fill = 'var(--wall)';
+    stroke = 'var(--wall-stroke)';
+    sw = 2;
+    extra = `<g clip-path="url(#${clipId})">
+      <rect x="-10" y="-8" width="20" height="6" fill="var(--wall-hi)" opacity="0.5"/>
+      <rect x="-10" y="0.4" width="20" height="8" fill="var(--wall-lo)" opacity="0.35"/>
+      <path d="M-10 -2 H10 M-10 2.6 H10" stroke="var(--wall-ink)" stroke-width="1"/>
+      <path d="M0 -8 V-2 M-4 2.6 V9 M4 2.6 V9" stroke="var(--wall-ink)" stroke-width="1"/>
+    </g>`;
+  } else if (kind === 'high') {
+    fill = 'var(--high)';
+    stroke = 'var(--high-stroke)';
+    sw = 1.8;
+    extra = `<polygon points="${hexCorners(0, 1.3, size, o)}" fill="var(--high-shadow)"/>
+      <polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, size * 0.72, o)}" fill="none" stroke="rgba(240,220,160,0.55)" stroke-width="1.15"/>
+      <polygon points="${hexCorners(0, 0, size * 0.42, o)}" fill="rgba(255,236,180,0.22)" stroke="rgba(255,245,200,0.4)" stroke-width="0.8"/>`;
+  }
+  const body =
+    kind === 'high'
+      ? extra
+      : `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>${extra}`;
+  return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
+    <defs><clipPath id="${clipId}"><polygon points="${pts}"/></clipPath></defs>
+    ${body}
+  </svg>`;
+}
+
 function renderMapPanel(): string {
   const brushes = TERRAIN_BRUSHES.map(
     (b) =>
-      `<button type="button" class="brush ${b.id}${editorBrush === b.id ? ' active' : ''}" data-brush="${b.id}">${b.label}</button>`,
+      `<button type="button" class="brush ${b.id}${editorBrush === b.id ? ' active' : ''}" data-brush="${b.id}">${terrainSwatchSvg(b.id)}<span>${b.label}</span></button>`,
   ).join('');
   return `
     <section class="editor-panel editor-panel-map">
@@ -2016,10 +2116,21 @@ function renderMapPanel(): string {
     </section>`;
 }
 
-function renderEditorBar(): string {
-  const levels = listLevels();
-  const forms = listFormations();
-  const grid = currentGrid();
+function unitBrushIconSvg(type: UnitType): string {
+  const side = editorArmySide;
+  const fill = pieceColor(side);
+  const ink = iconInk(side);
+  const hexed = UNIT_STATS[type].hexArmor;
+  const body = hexed
+    ? `<polygon points="${hexCorners(0, 0, 8.6, editorOrientation)}" fill="${fill}"/>`
+    : `<circle cx="0" cy="0" r="8.2" fill="${fill}"/>`;
+  return `<svg class="unit-swatch" viewBox="-10 -10 20 20" width="22" height="22" aria-hidden="true">
+    ${body}
+    <g fill="${ink}" color="${ink}">${pieceIconSvg(type, 12)}</g>
+  </svg>`;
+}
+
+function renderArmySelectPanel(): string {
   const catUnits = UNIT_TYPES.filter(
     (t) => UNIT_STATS[t].category === editorUnitCategory,
   );
@@ -2030,10 +2141,31 @@ function renderEditorBar(): string {
   const unitBrushes = [
     ...catUnits.map(
       (t) =>
-        `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${escapeHtml(UNIT_STATS[t].name)}</button>`,
+        `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${unitBrushIconSvg(t)}<span>${escapeHtml(UNIT_STATS[t].name)}</span></button>`,
     ),
     `<button type="button" class="brush unit erase${editorBrush === 'erase-unit' ? ' active' : ''}" data-brush="erase-unit">Erase <svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg></button>`,
   ].join('');
+  return `
+    <section class="editor-panel editor-panel-army">
+      <h3>Army</h3>
+      <div class="editor-army">
+        <button type="button" class="editor-side red${editorArmySide === 'red' ? ' active' : ''}" data-army-side="red">Red</button>
+        <button type="button" class="editor-side blue${editorArmySide === 'blue' ? ' active' : ''}" data-army-side="blue">Blue</button>
+        <label class="editor-cat">Era
+          <select id="editor-unit-cat">${eraOpts}</select>
+        </label>
+      </div>
+      <div class="editor-army">
+        ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
+        ${unitBrushes}
+      </div>
+    </section>`;
+}
+
+function renderEditorBar(): string {
+  const levels = listLevels();
+  const forms = listFormations();
+  const grid = currentGrid();
 
   const levelList =
     levels.length === 0
@@ -2067,20 +2199,6 @@ function renderEditorBar(): string {
 
   return `
     <div class="editor-bar">
-      <section class="editor-panel editor-panel-army">
-        <h3>Army</h3>
-        <div class="editor-army">
-          <button type="button" class="editor-side red${editorArmySide === 'red' ? ' active' : ''}" data-army-side="red">Red</button>
-          <button type="button" class="editor-side blue${editorArmySide === 'blue' ? ' active' : ''}" data-army-side="blue">Blue</button>
-          <label class="editor-cat">Era
-            <select id="editor-unit-cat">${eraOpts}</select>
-          </label>
-        </div>
-        <div class="editor-army">
-          ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
-          ${unitBrushes}
-        </div>
-      </section>
       <section class="editor-panel editor-panel-armies">
         <h3>Armies</h3>
         <div class="editor-save editor-army-save">
@@ -2245,6 +2363,22 @@ function renderUnitEditor(): string {
       ).join('');
       const copied = isCustomUnitId(type);
       const open = unitEditorOpen.has(type);
+      const shootExtras =
+        s.shoot > 0
+          ? `${unitNumField(type, 'shootDamage', 'DMG')}
+          ${unitNumField(type, 'shootCooldown', 'Reload time')}
+          ${unitNumField(type, 'ammo', 'Ammo limit')}
+          <label class="unit-cat">Arc
+            <select data-unit-arc="${type}">
+              ${SHOOT_ARCS.map(
+                (a) =>
+                  `<option value="${a}"${s.shootArc === a ? ' selected' : ''}>${SHOOT_ARC_LABEL[a]}</option>`,
+              ).join('')}
+            </select>
+          </label>
+          ${unitNumField(type, 'shootMin', 'Min range')}
+          ${unitNumField(type, 'splashDamage', 'Splash DMG')}`
+          : '';
       return `<article class="unit-card">
       <details data-unit-fold="${type}"${open ? ' open' : ''}>
       <summary>
@@ -2271,9 +2405,15 @@ function renderUnitEditor(): string {
       </header>
       <div class="unit-fields">
         <div class="unit-group">
+          <span class="unit-group-label">Piece</span>
+          ${unitNumField(type, 'hp', 'HP')}
+          ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
+          ${unitNumField(type, 'value', 'Value/weight')}
+          ${unitNumField(type, 'actions', 'Actions')}
+        </div>
+        <div class="unit-group">
           <span class="unit-group-label">Move</span>
           ${unitNumField(type, 'move', 'Range')}
-          ${unitNumField(type, 'actions', 'Actions')}
           ${unitNumField(type, 'moveBudget', 'Move cap')}
           ${unitNumField(type, 'stamina', 'Stamina')}
           ${unitNumField(type, 'staminaRegen', 'Stam regen')}
@@ -2283,25 +2423,7 @@ function renderUnitEditor(): string {
         <div class="unit-group">
           <span class="unit-group-label">Shoot</span>
           ${unitNumField(type, 'shoot', 'Range')}
-          ${unitNumField(type, 'shootMin', 'Min rng')}
-          <label class="unit-cat">Arc
-            <select data-unit-arc="${type}">
-              ${SHOOT_ARCS.map(
-                (a) =>
-                  `<option value="${a}"${s.shootArc === a ? ' selected' : ''}>${SHOOT_ARC_LABEL[a]}</option>`,
-              ).join('')}
-            </select>
-          </label>
-          ${unitNumField(type, 'shootCooldown', 'Reload')}
-          ${unitNumField(type, 'ammo', 'Ammo')}
-          ${unitNumField(type, 'shootDamage', 'Shot dmg')}
-          ${unitNumField(type, 'splashDamage', 'Splash dmg')}
-        </div>
-        <div class="unit-group">
-          <span class="unit-group-label">Piece</span>
-          ${unitNumField(type, 'hp', 'HP')}
-          ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
-          ${unitNumField(type, 'value', 'Value')}
+          ${shootExtras}
         </div>
         <label class="chk hex-armor-toggle">
           <input type="checkbox" data-unit="${type}" data-field="hexArmor"${s.hexArmor ? ' checked' : ''} />
@@ -2352,9 +2474,13 @@ function bindUnitEditorEvents() {
     const type = el.dataset.unit as UnitType | undefined;
     const field = el.dataset.field as EditableStat | undefined;
     if (!type || !field) return;
+    const before = UNIT_STATS[type][field];
     if (el.type === 'checkbox') patchUnitStat(type, field, el.checked);
     else patchUnitStat(type, field, Number(el.value));
-    if (field === 'hexArmor') {
+    if (
+      field === 'hexArmor' ||
+      (field === 'shoot' && Boolean(before) !== Boolean(UNIT_STATS[type].shoot))
+    ) {
       render();
       return;
     }
@@ -2690,6 +2816,9 @@ function bindEvents() {
       void resolvePending(btn.dataset.actionMode as ActionMode);
     });
   });
+  app.querySelector<HTMLDetailsElement>('[data-sidebar-more]')?.addEventListener('toggle', (e) => {
+    sidebarMoreOpen = (e.currentTarget as HTMLDetailsElement).open;
+  });
   placeHexChoice();
   app.querySelector('#map-water')?.addEventListener('change', (e) => {
     mapOpts.waterCount = Number((e.target as HTMLInputElement).value);
@@ -2727,29 +2856,30 @@ function render() {
         <h2>Units</h2>
         <p class="muted">Live immediately. New match to respawn ammo and HP.</p>
         <dl class="help-list">
-          <dt>Move</dt>
-          <dd><strong>Range</strong> hexes per action</dd>
-          <dd><strong>Actions</strong> activations per turn</dd>
-          <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb low→high or double move range, once per turn</dd>
-          <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
-          <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivor blocks</dd>
-          <dt>Shoot</dt>
-          <dd><strong>Range / min</strong> fire distance</dd>
-          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (rock / wall / high) unchanged</dd>
-          <dd><strong>Reload</strong> own turns you can't shoot after firing</dd>
-          <dd><strong>Ammo</strong> shots this match (0 = unlimited)</dd>
-          <dd><strong>Shot dmg</strong> bullets</dd>
-          <dd><strong>Splash dmg</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1</dd>
-          <dd><strong>Value</strong> scoring / AI</dd>
+          <dd><strong>Value/weight</strong> scoring / AI</dd>
+          <dd><strong>Actions</strong> activations per turn</dd>
           <dd><strong>Category</strong> Modern / Ancient — filter above. Stock is Modern except Archer (Ancient)</dd>
           <dd><strong>Kit</strong> icon + specials (water, high). Does not reset numbers. Tower is glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
+          <dt>Move</dt>
+          <dd><strong>Range</strong> hexes per action</dd>
+          <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, double move, or take a second action after a normal (non-stamina) move</dd>
+          <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
+          <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
+          <dt>Shoot</dt>
+          <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest)</dd>
+          <dd><strong>DMG</strong> bullets</dd>
+          <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
+          <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
+          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (rock / wall / high) unchanged</dd>
+          <dd><strong>Min range</strong> closest hex you can fire</dd>
+          <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
         </dl>
       </aside>
     `;
@@ -2761,7 +2891,10 @@ function render() {
     app.innerHTML = `
       <div class="board-wrap editor-mode">
         ${renderToolbar()}
-        ${renderMapPanel()}
+        <div class="editor-top">
+          ${renderMapPanel()}
+          ${renderArmySelectPanel()}
+        </div>
         <div class="board-stage">
           ${renderBoard()}
         </div>

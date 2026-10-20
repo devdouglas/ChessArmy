@@ -116,6 +116,8 @@ export type GameState = {
   scoutPieceId: string | null;
   /** Path-cost spent on moves this scout activation (budget 3 → no 2+2). */
   scoutMoveSpent: number | null;
+  /** Locked piece's leftover action is a stamina buy (after a non-stamina move). */
+  staminaBonus: boolean;
   winner: Side | null;
   log: string[];
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
@@ -341,13 +343,15 @@ function activationMoveRange(state: GameState, piece: Piece): number {
 
 function effectiveMoveRange(state: GameState, piece: Piece): number {
   const base = activationMoveRange(state, piece);
-  return canSpendStamina(piece) ? base * 2 : base;
+  // Bonus action already costs the stamina point — don't also double range.
+  const doubled = canSpendStamina(piece) && !state.staminaBonus;
+  return doubled ? base * 2 : base;
 }
 
 /**
  * Where a move actually ends: occupying an enemy hex is melee.
- * A kill takes the hex; a survivor leaves the attacker on the hex before.
- * Charge (charge > 0) still walks through enemies that die; a survivor blocks.
+ * A kill takes the hex; a melee survivor leaves the attacker on the hex before.
+ * Charge (charge > 0) damages every mid-path enemy and always passes through.
  */
 export function previewMove(
   state: GameState,
@@ -407,6 +411,11 @@ export function previewMove(
       continue;
     }
     const died = strike(occ, prev, isDest ? melee : charge);
+    if (charging) {
+      if (died) stop = h;
+      prev = h;
+      continue;
+    }
     if (!died) break;
     stop = h;
     prev = h;
@@ -637,6 +646,7 @@ function clearScoutLock(state: GameState): void {
   state.scoutActionsLeft = null;
   state.scoutPieceId = null;
   state.scoutMoveSpent = null;
+  state.staminaBonus = false;
 }
 
 function endSideTurn(state: GameState): void {
@@ -681,8 +691,28 @@ function checkWin(state: GameState): void {
   else if (redOut && blueOut) state.winner = other(state.turn);
 }
 
-function afterAction(state: GameState, piece: Piece): void {
+function afterAction(
+  state: GameState,
+  piece: Piece,
+  kind: 'move' | 'shoot',
+): void {
   const stats = statsOf(piece.type);
+
+  if (state.staminaBonus && state.scoutPieceId === piece.id) {
+    if (!piece.staminaUsedThisTurn) spendStamina(piece);
+    finishActivation(state, piece);
+    return;
+  }
+
+  // Unused stamina after a normal move buys one extra action.
+  if (kind === 'move' && !piece.staminaUsedThisTurn && canSpendStamina(piece)) {
+    state.scoutPieceId = piece.id;
+    state.scoutActionsLeft = 1;
+    state.staminaBonus = true;
+    checkWin(state);
+    return;
+  }
+
   // Stamina spend burns leftover actions (scout second action, etc.).
   if (piece.staminaUsedThisTurn && stats.actions > 1) {
     finishActivation(state, piece);
@@ -723,7 +753,8 @@ function movePathOpts(state: GameState, piece: Piece): Omit<PathOpts, 'maxDist'>
       if (!highOk(t)) return false;
       const occ = pieceAt(state, h);
       if (!occ) return true;
-      return occ.side !== piece.side; // capture enemy
+      // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
+      return occ.side !== piece.side && stats.meleeDamage > 0;
     },
     canPass: (h: Hex) => {
       if (!inBounds(state, h)) return false;
@@ -874,7 +905,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (next.scoutPieceId) {
       const scout = getPiece(next, next.scoutPieceId);
       next.log.push(
-        `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips remaining action`,
+        `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips ${
+          next.staminaBonus ? 'second action' : 'remaining action'
+        }`,
       );
       if (scout) finishActivation(next, scout);
       else {
@@ -952,7 +985,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
-    afterAction(next, piece);
+    afterAction(next, piece, 'move');
     return next;
   }
 
@@ -1012,7 +1045,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     );
   }
 
-  afterAction(next, piece);
+  afterAction(next, piece, 'shoot');
   return next;
 }
 

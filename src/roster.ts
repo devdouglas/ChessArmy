@@ -193,9 +193,9 @@ export type UnitStats = UnitTraits & {
   ammo: number;
   /** Hitpoints. */
   hp: number;
-  /** Damage when bumping an occupied dest hex. */
+  /** Damage when bumping an occupied dest hex. 0 = melee is not a legal action. */
   meleeDamage: number;
-  /** Mid-path charge-through damage. 0 = cannot charge through units. */
+  /** Mid-path charge-through damage. 0 = cannot charge through units. Survivors don't block. */
   charge: number;
   /** Damage of a non-splash shot. */
   shootDamage: number;

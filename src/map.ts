@@ -382,6 +382,7 @@ function freshGame(
     scoutActionsLeft: null,
     scoutPieceId: null,
     scoutMoveSpent: null,
+    staminaBonus: false,
     winner: null,
     hadKing: { red: king('red'), blue: king('blue') },
     unitsPerTurn: 1,
