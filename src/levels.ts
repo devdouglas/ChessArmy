@@ -14,19 +14,20 @@ const STORAGE_KEY = 'chessarmy-levels-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
 const DEFAULT_KEY = 'chessarmy-default-level';
 
-export type LevelCategory = 'campaign' | 'tutorial' | 'free';
+export type LevelCategory = 'campaign' | 'tutorial' | 'historical';
 
-export const LEVEL_CATEGORIES: LevelCategory[] = ['campaign', 'tutorial', 'free'];
+export const LEVEL_CATEGORIES: LevelCategory[] = ['campaign', 'tutorial', 'historical'];
 
 export const LEVEL_CATEGORY_LABEL: Record<LevelCategory, string> = {
   campaign: 'Campaign',
   tutorial: 'Tutorial',
-  free: 'Free',
+  historical: 'Historical',
 };
 
 export function sanitizeCategory(raw: unknown): LevelCategory {
-  if (raw === 'campaign' || raw === 'tutorial' || raw === 'free') return raw;
-  return 'free';
+  if (raw === 'campaign' || raw === 'tutorial' || raw === 'historical') return raw;
+  if (raw === 'free') return 'historical';
+  return 'historical';
 }
 
 export type SavedLevel = {
@@ -40,10 +41,12 @@ export type SavedLevel = {
   terrain: Terrain[][];
   /** Stamped armies. Missing = spawn stock on Play. Empty = no pieces. */
   armies?: ArmyStamp[];
-  /** Missing on old saves → free. */
+  /** Missing on old saves → historical (was `free`). */
   category: LevelCategory;
   /** Missing on old saves → modern. */
   period: Period;
+  /** Playlist order within category + period. Missing on old saves → A–Z then compacted. */
+  sort: number;
   /** Pieces a side may activate per turn. Missing on old saves → 1. */
   unitsPerTurn: number;
   /** Briefing at match start. Empty = skip overlay. */
@@ -182,13 +185,67 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
   return out;
 }
 
+function sanitizeSort(raw: unknown): number | undefined {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function nameOrder(a: SavedLevel, b: SavedLevel): number {
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function playlistOrder(a: SavedLevel, b: SavedLevel): number {
+  if (a.sort !== b.sort) return a.sort - b.sort;
+  return nameOrder(a, b);
+}
+
+/** Fill missing `sort` per category+period. Old saves get A–Z. */
+function ensureSort(levels: SavedLevel[]): void {
+  const groups = new Map<string, SavedLevel[]>();
+  for (const l of levels) {
+    const k = `${l.category}\0${l.period}`;
+    const g = groups.get(k);
+    if (g) g.push(l);
+    else groups.set(k, [l]);
+  }
+  for (const g of groups.values()) {
+    const missing = g.filter((l) => !Number.isFinite(l.sort));
+    if (!missing.length) continue;
+    let max = -1;
+    for (const l of g) {
+      if (Number.isFinite(l.sort) && l.sort > max) max = l.sort;
+    }
+    missing.sort(nameOrder);
+    for (const l of missing) {
+      max += 1;
+      l.sort = max;
+    }
+  }
+}
+
+function nextSort(
+  levels: SavedLevel[],
+  category: LevelCategory,
+  period: Period,
+  exceptId?: string,
+): number {
+  let max = -1;
+  for (const l of levels) {
+    if (exceptId && l.id === exceptId) continue;
+    if (l.category !== category || l.period !== period) continue;
+    if (l.sort > max) max = l.sort;
+  }
+  return max + 1;
+}
+
 function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
-  return levels
+  const out = levels
     .filter((l) => l && l.id && l.name && Array.isArray(l.terrain))
     .map((l) => {
       const cols = l.cols || l.terrain[0]?.length || COLS;
       const rows = l.rows || l.terrain.length;
       const armies = sanitizeArmies(l.armies, cols, rows);
+      const sort = sanitizeSort(l.sort);
       return {
         ...l,
         orientation: l.orientation === 'flat' ? 'flat' : DEFAULT_ORIENTATION,
@@ -197,6 +254,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         terrain: cloneTerrain(l.terrain),
         category: sanitizeCategory(l.category),
         period: sanitizePeriod(l.period),
+        sort: sort ?? Number.NaN,
         unitsPerTurn: clampUnitsPerTurn(l.unitsPerTurn ?? 1),
         startText: sanitizeLevelText(l.startText),
         winText: sanitizeLevelText(l.winText),
@@ -211,8 +269,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         ),
         ...(armies !== undefined ? { armies } : {}),
       };
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    });
+  ensureSort(out);
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 function writeLevels(levels: SavedLevel[]): void {
@@ -229,7 +288,7 @@ export function getLevel(id: string): SavedLevel | null {
   return listLevels().find((l) => l.id === id) ?? null;
 }
 
-/** Category playlist order: name A–Z, numeric-aware. */
+/** Category playlist order: editor drag order (old saves A–Z). */
 export function levelsInCategory(
   category: LevelCategory,
   period?: Period,
@@ -237,12 +296,36 @@ export function levelsInCategory(
   return listLevels()
     .filter((l) => l.category === category)
     .filter((l) => !period || l.period === period)
-    .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-    );
+    .sort(playlistOrder);
 }
 
-/** 1-based index among same category + period, A–Z. */
+/** Persist a new order for one category + period. `ids` is top-to-bottom. */
+export function reorderLevels(
+  category: LevelCategory,
+  period: Period,
+  ids: string[],
+): boolean {
+  if (!ids.length) return false;
+  const levels = listLevels();
+  const group = levels.filter((l) => l.category === category && l.period === period);
+  if (group.length !== ids.length) return false;
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  if (group.some((l) => !rank.has(l.id))) return false;
+  let changed = false;
+  const now = Date.now();
+  for (const l of group) {
+    const next = rank.get(l.id)!;
+    if (l.sort === next) continue;
+    l.sort = next;
+    l.updatedAt = now;
+    changed = true;
+  }
+  if (!changed) return false;
+  writeLevels(levels);
+  return true;
+}
+
+/** 1-based index among same category + period. */
 export function levelOrdinal(level: SavedLevel): number {
   return (
     levelsInCategory(level.category, level.period).findIndex((l) => l.id === level.id) + 1
@@ -275,22 +358,27 @@ export function saveLevel(
   if (existingId) {
     const idx = levels.findIndex((l) => l.id === existingId);
     if (idx >= 0) {
+      const prev = levels[idx];
+      const nextCat = sanitizeCategory(category ?? prev.category);
+      const nextPeriod = sanitizePeriod(period ?? prev.period);
+      const moved = nextCat !== prev.category || nextPeriod !== prev.period;
       const updated: SavedLevel = {
-        ...levels[idx],
+        ...prev,
         name: trimmed,
         cols,
         rows,
         orientation,
         terrain: cloneTerrain(terrain),
         armies: stamped,
-        category: sanitizeCategory(category ?? levels[idx].category),
-        period: sanitizePeriod(period ?? levels[idx].period),
-        unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? levels[idx].unitsPerTurn ?? 1),
-        startText: sanitizeLevelText(texts?.startText ?? levels[idx].startText),
-        winText: sanitizeLevelText(texts?.winText ?? levels[idx].winText),
-        loseText: sanitizeLevelText(texts?.loseText ?? levels[idx].loseText),
-        star2: sanitizeStarRule(stars?.star2 ?? levels[idx].star2, DEFAULT_STAR_2),
-        star3: sanitizeStarRule(stars?.star3 ?? levels[idx].star3, DEFAULT_STAR_3),
+        category: nextCat,
+        period: nextPeriod,
+        sort: moved ? nextSort(levels, nextCat, nextPeriod, prev.id) : prev.sort,
+        unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? prev.unitsPerTurn ?? 1),
+        startText: sanitizeLevelText(texts?.startText ?? prev.startText),
+        winText: sanitizeLevelText(texts?.winText ?? prev.winText),
+        loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
+        star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
+        star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
         updatedAt: now,
       };
       levels[idx] = updated;
@@ -298,6 +386,8 @@ export function saveLevel(
       return updated;
     }
   }
+  const createdCat = sanitizeCategory(category);
+  const createdPeriod = sanitizePeriod(period);
   const created: SavedLevel = {
     id: uid(),
     name: trimmed,
@@ -306,8 +396,9 @@ export function saveLevel(
     orientation,
     terrain: cloneTerrain(terrain),
     armies: stamped,
-    category: sanitizeCategory(category),
-    period: sanitizePeriod(period),
+    category: createdCat,
+    period: createdPeriod,
+    sort: nextSort(levels, createdCat, createdPeriod),
     unitsPerTurn: clampUnitsPerTurn(unitsPerTurn),
     startText: sanitizeLevelText(texts?.startText),
     winText: sanitizeLevelText(texts?.winText),

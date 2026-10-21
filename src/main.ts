@@ -102,6 +102,7 @@ import {
   levelLabel,
   levelsInCategory,
   listLevels,
+  reorderLevels,
   saveLevel,
   sanitizeCategory,
   sanitizeLevelText,
@@ -239,7 +240,7 @@ let editorOrientation: HexOrientation = DEFAULT_ORIENTATION;
 let editorBrush: EditorBrush = 'land';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
-let editorCategory: LevelCategory = 'free';
+let editorCategory: LevelCategory = 'historical';
 let editorPeriod: Period = selectedPeriod;
 let editorUnitsPerTurn = 1;
 let editorStartText = '';
@@ -257,8 +258,8 @@ let editorArmiesOpen = false;
 let editorPainting = false;
 let editorDirty = false;
 let editorPointerAbort: AbortController | null = null;
-let levelsFilter: LevelCategory | 'all' = 'all';
-let levelsPeriodFilter: Period | 'all' = selectedPeriod;
+let levelsFilter: LevelCategory = 'campaign';
+let levelsPeriodFilter: Period = selectedPeriod;
 
 function currentGrid(): {
   cols: number;
@@ -884,7 +885,7 @@ function newEditorLevel() {
   editorOrientation = DEFAULT_ORIENTATION;
   editorLevelId = null;
   editorName = 'New level';
-  editorCategory = 'free';
+  editorCategory = 'historical';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = 1;
   editorStartText = '';
@@ -902,7 +903,7 @@ function enterEditorFromMatch() {
   editorOrientation = state.orientation;
   editorLevelId = null;
   editorName = 'New level';
-  editorCategory = 'free';
+  editorCategory = 'historical';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
   editorStartText = '';
@@ -2456,11 +2457,7 @@ function bindBoardOnly() {
 function levelSelectOptions(selectedId: string | null): string {
   const groups = LEVEL_CATEGORIES.map((cat) => ({
     cat,
-    levels: listLevels()
-      .filter((l) => l.category === cat)
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-      ),
+    levels: levelsInCategory(cat),
   })).filter((g) => g.levels.length);
   const opts = [`<option value="random"${!selectedId ? ' selected' : ''}>Random map</option>`];
   for (const g of groups) {
@@ -2549,9 +2546,9 @@ function renderStartScreen(): string {
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
           <button type="button" class="start-opt" data-start="campaign"${campaignN ? '' : ' disabled'}
-            title="${campaignN ? 'Play campaign maps in alphabetical order, vs AI' : 'Mark saved levels as Campaign in the Editor'}">
+            title="${campaignN ? 'Play campaign maps in editor order, vs AI' : 'Mark saved levels as Campaign in the Editor'}">
             <span class="start-opt-name">Campaign</span>
-            <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI · A–Z` : 'No campaign maps'}</span>
+            <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI` : 'No campaign maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="ai">
             <span class="start-opt-name">vs AI</span>
@@ -2562,9 +2559,9 @@ function renderStartScreen(): string {
             <span class="start-opt-meta">Two players, one device</span>
           </button>
           <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
-            title="${tutorialN ? 'Tutorial maps in alphabetical order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
+            title="${tutorialN ? 'Tutorial maps in editor order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
             <span class="start-opt-name">Tutorial</span>
-            <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI · A–Z` : 'No tutorial maps'}</span>
+            <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="editor">
             <span class="start-opt-name">Level editor</span>
@@ -2808,7 +2805,17 @@ function levelMetaLine(l: SavedLevel): string {
 
 function renderLevelRow(l: SavedLevel): string {
   const current = l.id === editorLevelId ? ' current' : '';
-  return `<li class="level-row${current}">
+  return `<li class="level-row${current}" data-level-id="${l.id}">
+    <button type="button" class="level-drag" title="Drag to reorder" aria-label="Reorder ${escapeHtml(levelLabel(l))}">
+      <svg viewBox="0 0 12 16" width="12" height="16" aria-hidden="true">
+        <circle cx="4" cy="3" r="1.15" fill="currentColor"/>
+        <circle cx="8" cy="3" r="1.15" fill="currentColor"/>
+        <circle cx="4" cy="8" r="1.15" fill="currentColor"/>
+        <circle cx="8" cy="8" r="1.15" fill="currentColor"/>
+        <circle cx="4" cy="13" r="1.15" fill="currentColor"/>
+        <circle cx="8" cy="13" r="1.15" fill="currentColor"/>
+      </svg>
+    </button>
     <button type="button" class="level-open" data-edit-level="${l.id}">
       ${renderLevelThumb(l)}
       <span class="level-copy">
@@ -2825,58 +2832,28 @@ function renderLevelRow(l: SavedLevel): string {
 
 function renderLevelsOverview(): string {
   const all = listLevels();
-  const filterOpts: { id: LevelCategory | 'all'; label: string }[] = [
-    { id: 'all', label: 'All' },
-    ...LEVEL_CATEGORIES.map((c) => ({ id: c, label: LEVEL_CATEGORY_LABEL[c] })),
-  ];
-  const filters = filterOpts
-    .map(
-      (f) =>
-        `<button type="button" class="levels-filter${levelsFilter === f.id ? ' active' : ''}" data-levels-filter="${f.id}">${f.label}</button>`,
-    )
-    .join('');
-  const periodOpts: { id: Period | 'all'; label: string }[] = [
-    { id: 'all', label: 'All' },
-    ...PERIODS.map((p) => ({ id: p, label: PERIOD_LABEL[p] })),
-  ];
-  const periodFilters = periodOpts
-    .map(
-      (f) =>
-        `<button type="button" class="levels-filter${levelsPeriodFilter === f.id ? ' active' : ''}" data-levels-period="${f.id}"${f.id === 'all' ? '' : ` data-period="${f.id}"`}>${f.label}</button>`,
-    )
-    .join('');
+  const filters = LEVEL_CATEGORIES.map(
+    (c) =>
+      `<button type="button" class="levels-filter${levelsFilter === c ? ' active' : ''}" data-levels-filter="${c}">${LEVEL_CATEGORY_LABEL[c]}</button>`,
+  ).join('');
+  const periodFilters = PERIODS.map(
+    (p) =>
+      `<button type="button" class="levels-filter${levelsPeriodFilter === p ? ' active' : ''}" data-levels-period="${p}" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
+  ).join('');
 
-  const period = levelsPeriodFilter === 'all' ? undefined : levelsPeriodFilter;
-  const cats: LevelCategory[] =
-    levelsFilter === 'all' ? LEVEL_CATEGORIES : [levelsFilter];
-  const groups = cats.map((cat) => ({
-    cat,
-    levels: levelsInCategory(cat, period),
-  }));
-  const shownN = groups.reduce((n, g) => n + g.levels.length, 0);
-
+  const levels = levelsInCategory(levelsFilter, levelsPeriodFilter);
   const emptyBits = [
-    levelsPeriodFilter === 'all' ? '' : PERIOD_LABEL[levelsPeriodFilter].toLowerCase(),
-    levelsFilter === 'all' ? '' : LEVEL_CATEGORY_LABEL[levelsFilter].toLowerCase(),
-  ].filter(Boolean);
+    PERIOD_LABEL[levelsPeriodFilter].toLowerCase(),
+    LEVEL_CATEGORY_LABEL[levelsFilter].toLowerCase(),
+  ];
 
   let body: string;
   if (all.length === 0) {
     body = `<p class="editor-empty">No saved levels. New level opens a blank map you paint and save.</p>`;
-  } else if (shownN === 0) {
+  } else if (levels.length === 0) {
     body = `<p class="editor-empty">No ${emptyBits.join(' ')} levels.</p>`;
-  } else if (levelsFilter === 'all') {
-    body = groups
-      .filter((g) => g.levels.length)
-      .map(
-        (g) => `<section class="levels-group">
-          <h3>${LEVEL_CATEGORY_LABEL[g.cat]}</h3>
-          <ul class="level-catalog">${g.levels.map(renderLevelRow).join('')}</ul>
-        </section>`,
-      )
-      .join('');
   } else {
-    body = `<ul class="level-catalog">${groups[0].levels.map(renderLevelRow).join('')}</ul>`;
+    body = `<ul class="level-catalog">${levels.map(renderLevelRow).join('')}</ul>`;
   }
 
   return `
@@ -3577,20 +3554,20 @@ function bindLevelsEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-levels-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const v = btn.dataset.levelsFilter;
-      levelsFilter =
-        v === 'campaign' || v === 'tutorial' || v === 'free' ? v : 'all';
-      render();
+      if (v === 'campaign' || v === 'tutorial' || v === 'historical') {
+        levelsFilter = v;
+        render();
+      }
     });
   });
   app.querySelectorAll<HTMLButtonElement>('[data-levels-period]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const v = btn.dataset.levelsPeriod;
-      levelsPeriodFilter =
-        v === 'ancient' || v === 'modern' || v === 'futuristic' ? v : 'all';
-      if (levelsPeriodFilter !== 'all') {
-        selectedPeriod = setSelectedPeriod(levelsPeriodFilter);
+      if (v === 'ancient' || v === 'modern' || v === 'futuristic') {
+        levelsPeriodFilter = v;
+        selectedPeriod = setSelectedPeriod(v);
+        render();
       }
-      render();
     });
   });
   app.querySelectorAll<HTMLButtonElement>('[data-edit-level]').forEach((btn) => {
@@ -3611,7 +3588,7 @@ function bindLevelsEvents() {
       if (editorLevelId === id) {
         editorLevelId = null;
         editorName = 'New level';
-        editorCategory = 'free';
+        editorCategory = 'historical';
         editorPeriod = selectedPeriod;
         editorStartText = '';
         editorWinText = '';
@@ -3622,6 +3599,59 @@ function bindLevelsEvents() {
       if (defaultLevelId === id) defaultLevelId = null;
       if (activeLevelId === id) activeLevelId = getActiveLevelId();
       void flushStore().then(() => render());
+    });
+  });
+  bindLevelReorder();
+}
+
+function bindLevelReorder() {
+  const catalog = app.querySelector<HTMLUListElement>('.level-catalog');
+  if (!catalog) return;
+  const cat = levelsFilter;
+  const period = levelsPeriodFilter;
+  catalog.querySelectorAll<HTMLElement>('.level-drag').forEach((handle) => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const row = handle.closest<HTMLLIElement>('.level-row');
+      if (!row) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      row.classList.add('dragging');
+      catalog.classList.add('reordering');
+      const onMove = (ev: PointerEvent) => {
+        const others = [...catalog.querySelectorAll<HTMLLIElement>('.level-row')].filter(
+          (n) => n !== row,
+        );
+        let placed = false;
+        for (const over of others) {
+          const mid = over.getBoundingClientRect().top + over.offsetHeight / 2;
+          if (ev.clientY < mid) {
+            catalog.insertBefore(row, over);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) catalog.appendChild(row);
+      };
+      const finish = () => {
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        row.classList.remove('dragging');
+        catalog.classList.remove('reordering');
+        const ids = [...catalog.querySelectorAll<HTMLElement>('.level-row')]
+          .map((li) => li.dataset.levelId)
+          .filter((id): id is string => !!id);
+        if (reorderLevels(cat, period, ids)) void flushStore().then(() => render());
+        else {
+          row.classList.remove('dragging');
+        }
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
     });
   });
 }
@@ -3764,7 +3794,7 @@ function render() {
       <aside class="sidebar">
         <h2>Level editor</h2>
         <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lv1), Plateau (lvl2), Mountain (lvl3), and concrete wall. Heights connect by ±1 — no land↔plateau jumps. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start (A–Z), <strong>Free</strong> is skirmish-only.</p>
+        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start follow the drag order in Levels, <strong>Historical</strong> is skirmish-only.</p>
       </aside>
     `;
     bindEvents();
@@ -3779,6 +3809,7 @@ function render() {
   const randomParams = pl
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
+        <button type="button" id="edit-this-level">Edit level</button>
         ${skipBtn}
         <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`
@@ -3795,7 +3826,7 @@ function render() {
       </div>`
     : `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
-        <button type="button" id="edit-this-level">Edit this level</button>
+        <button type="button" id="edit-this-level">Edit level</button>
         <span class="map-hint">Playing saved level</span>
       </div>`;
 

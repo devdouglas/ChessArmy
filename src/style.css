@@ -1539,7 +1539,7 @@ button.primary:focus-visible {
 
 .levels-filters {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.4rem;
   margin: 0 0 0.4rem;
 }
@@ -1596,6 +1596,46 @@ button.primary:focus-visible {
   display: flex;
   gap: 0.35rem;
   align-items: stretch;
+}
+
+.level-drag {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--touch);
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  cursor: grab;
+  touch-action: none;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.level-drag:hover,
+.level-drag:focus-visible {
+  color: var(--sel);
+  border-color: var(--sel);
+  outline: none;
+}
+
+.level-row.dragging {
+  opacity: 0.55;
+}
+
+.level-row.dragging .level-drag {
+  cursor: grabbing;
+}
+
+.level-catalog.reordering {
+  user-select: none;
+}
+
+.level-catalog.reordering .level-open,
+.level-catalog.reordering .level-play,
+.level-catalog.reordering .danger {
+  pointer-events: none;
 }
 
 .level-open {

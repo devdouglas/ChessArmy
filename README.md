@@ -62,9 +62,9 @@ Armor ring: **green** ≥2, **orange** 1, **red** 0, **purple** negative. Damage
 
 AI is aggressive: any legal shoot/melee first, otherwise close on your general (or nearest piece). It does not flee.
 
-Start screen: **Campaign** / **vs AI** / **Hotseat** / **Tutorial**. Campaign and Tutorial walk saved maps of that category A–Z vs AI. **Start** in the toolbar returns here.
+Start screen: **Campaign** / **vs AI** / **Hotseat** / **Tutorial**. Campaign and Tutorial walk saved maps of that category in the editor list order vs AI. **Start** in the toolbar returns here.
 
-Saved levels have a category: `campaign` | `tutorial` | `free` (old saves → free) and **max units / turn** (old saves → 1). Set both in the Editor Level panel.
+Saved levels have a category: `campaign` | `tutorial` | `historical` (old saves `free` → historical) and **max units / turn** (old saves → 1). Set both in the Editor Level panel.
 
 ## Editors
 

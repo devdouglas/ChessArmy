@@ -262,9 +262,12 @@ function sanitize_level(mixed $level): ?array {
     $updated = isset($level['updatedAt']) && is_numeric($level['updatedAt'])
         ? (int) $level['updatedAt']
         : time() * 1000;
-    $cat = $level['category'] ?? 'free';
-    if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'free') {
-        $cat = 'free';
+    $cat = $level['category'] ?? 'historical';
+    if ($cat === 'free') {
+        $cat = 'historical';
+    }
+    if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'historical') {
+        $cat = 'historical';
     }
     $period = $level['period'] ?? 'modern';
     if ($period !== 'ancient' && $period !== 'modern' && $period !== 'futuristic') {
