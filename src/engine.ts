@@ -4,6 +4,7 @@
  */
 
 import {
+  axisDir,
   defaultFacing,
   dirBetween,
   distance,
@@ -38,6 +39,8 @@ export {
 } from './abilities';
 
 export {
+  CLIMB_LEVEL_LABEL,
+  CLIMB_LEVELS,
   DEFAULT_UNIT_STATS,
   HEX_ARMOR_LABEL,
   HEX_ARMOR_SIDES,
@@ -55,10 +58,13 @@ export {
   isKnownUnit,
   isUnitRole,
   roleOf,
+  sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  stockMobility,
   statsOf,
   type AbilityId,
+  type ClimbLevel,
   type HexArmorSide,
   type ShootArc,
   type UnitCategory,
@@ -69,11 +75,23 @@ export {
 } from './roster';
 
 export type Side = 'red' | 'blue';
-export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high';
+export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
-/** Impassable solid terrain (rock permanent, wall rocket-breakable). */
+/** Impassable solid terrain (wall rocket-breakable). Mountain is climbable height 3. */
 export function isSolidTerrain(t: Terrain): boolean {
-  return t === 'rock' || t === 'wall';
+  return t === 'wall';
+}
+
+/** Walkable elevation. Land/water/wall = 0, hill = +1, plateau = +2, mountain = +3. */
+export function terrainHeight(t: Terrain): number {
+  if (t === 'rock') return 3;
+  if (t === 'plateau') return 2;
+  if (t === 'high') return 1;
+  return 0;
+}
+
+export function isElevatedTerrain(t: Terrain): boolean {
+  return terrainHeight(t) > 0;
 }
 
 export type Piece = {
@@ -126,6 +144,10 @@ export type GameState = {
   unitsPerTurn: number;
   /** Piece ids that already finished an activation this side-turn. */
   actedIds: string[];
+  /** Full rounds (Red+Blue). Starts at 1; ticks when Blue's side-turn ends. */
+  turnNumber: number;
+  /** Pieces removed per side this match. */
+  casualties: Record<Side, number>;
 };
 
 export type Action =
@@ -173,6 +195,25 @@ export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation):
   const side = armorSideHit(piece, from, orientation);
   if (side) return s[side];
   return s.armor;
+}
+
+/** Cube dirs a hex-armor piece cannot walk (faces at −2). Empty if hex armor is off. */
+function blockedWalkDirs(piece: Piece): Set<HexDir> {
+  const s = statsOf(piece.type);
+  const blocked = new Set<HexDir>();
+  if (!s.hexArmor) return blocked;
+  const facing = facingOf(piece);
+  for (let rel = 0; rel < 6; rel++) {
+    if (s[HEX_ARMOR_SIDES[rel]] > -2) continue;
+    blocked.add((((facing + rel) % 6) + 6) % 6 as HexDir);
+  }
+  return blocked;
+}
+
+/** True when `to` sits on a −2 hex-armor ray from `from`. */
+function isBlockedWalkDest(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
+  const dir = axisDir(from, to, o);
+  return dir !== null && blockedWalkDirs(piece).has(dir);
 }
 
 /** Damage after the target's armor. Negative armor boosts melee only; shots ignore it. Melee uses min 1. */
@@ -278,6 +319,8 @@ function applyDamage(
   victim.hp = remaining;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
+    const lost = state.casualties[victim.side] ?? 0;
+    state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
     return { fatal: true, remaining: 0 };
   }
   return { fatal: false, remaining };
@@ -330,12 +373,19 @@ export type MovePlan = {
   facing: HexDir;
 };
 
+/** Standing elevation added to a move action from `at` (hill +1, plateau +2, mountain +3). */
+function moveRangeAt(state: GameState, piece: Piece, at: Hex): number {
+  return statsOf(piece.type).move + hexHeight(state, at);
+}
+
 function activationMoveRange(state: GameState, piece: Piece): number {
   const stats = statsOf(piece.type);
+  const from = { col: piece.col, row: piece.row };
+  const elev = hexHeight(state, from);
   // Stamina's extra action is a fresh straight line of `move`. Leftover
   // steps from the previous action (stop after 1 of 2, etc.) do not carry.
   if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    return stats.move;
+    return stats.move + elev;
   }
   let moveRange = stats.move;
   if (stats.actions > 1 && stats.moveBudget > 0) {
@@ -343,7 +393,7 @@ function activationMoveRange(state: GameState, piece: Piece): number {
       state.scoutPieceId === piece.id ? (state.scoutMoveSpent ?? 0) : 0;
     moveRange = Math.min(stats.move, Math.max(0, stats.moveBudget - spent));
   }
-  return moveRange;
+  return moveRange + elev;
 }
 
 /**
@@ -441,6 +491,7 @@ function isLegalMovePath(
   path: Hex[],
 ): boolean {
   const from = { col: piece.col, row: piece.row };
+  if (isBlockedWalkDest(piece, from, to, state.orientation)) return false;
   if (!isStepWalk(state, from, path, to)) return false;
   const first = straightMoveStops(state, piece);
   const one = first.get(key(to));
@@ -449,7 +500,9 @@ function isLegalMovePath(
   const planned = allMoveStops(state, piece).get(key(to));
   if (planned && pathsEq(planned.path, path)) return true;
   const firstRange = activationMoveRange(state, piece);
-  const secondRange = statsOf(piece.type).move;
+  const blocked = blockedWalkDirs(piece);
+  const via0 = path[firstRange - 1];
+  const secondRange = via0 ? moveRangeAt(state, piece, via0) : statsOf(piece.type).move;
   if (path.length > firstRange && path.length <= firstRange + secondRange) {
     const opts = movePathOpts(state, piece, from);
     let cur = from;
@@ -458,11 +511,15 @@ function isLegalMovePath(
     for (let i = 0; i < path.length; i++) {
       const h = path[i];
       const step = dirBetween(cur, h, state.orientation);
-      if (step === null || (dir !== null && step !== dir)) {
+      if (step === null || blocked.has(step) || (dir !== null && step !== dir)) {
         ok = false;
         break;
       }
       dir = step;
+      if (!canWalkStep(state, piece, from, cur, h)) {
+        ok = false;
+        break;
+      }
       const last = i === path.length - 1;
       if (last ? !opts.canStop(h) : !opts.canPass(h)) {
         ok = false;
@@ -472,15 +529,15 @@ function isLegalMovePath(
     }
     if (ok) {
       const via = path[firstRange - 1];
-      if (via && !pathClimbs(state, from, via, path.slice(0, firstRange))) return true;
+      if (via && !pathSpendsStamina(state, from, via, path.slice(0, firstRange))) return true;
     }
   }
   for (let i = 1; i < path.length; i++) {
     const via = path[i - 1];
     const a = first.get(key(via));
     if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
-    if (pieceAt(state, via) || pathClimbs(state, from, via, a.path)) continue;
-    const b = straightMoveStops(state, piece, via, secondRange).get(key(to));
+    if (pieceAt(state, via) || pathSpendsStamina(state, from, via, a.path)) continue;
+    const b = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (b && pathsEq(b.path, path.slice(i))) return true;
   }
   return false;
@@ -538,13 +595,12 @@ export function stickyMovePlan(
     return { path, via };
   }
 
-  const secondRange = statsOf(piece.type).move;
   const start = { col: piece.col, row: piece.row };
   for (let i = Math.min(prev.length, activationMoveRange(state, piece)); i >= 1; i--) {
     const via = prev[i - 1];
     const stop = first.get(key(via));
-    if (!stop || pieceAt(state, via) || pathClimbs(state, start, via, stop.path)) continue;
-    const tail = straightMoveStops(state, piece, via, secondRange).get(key(to));
+    if (!stop || pieceAt(state, via) || pathSpendsStamina(state, start, via, stop.path)) continue;
+    const tail = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (!tail) continue;
     return { path: [...prev.slice(0, i), ...tail.path], via };
   }
@@ -572,6 +628,10 @@ export function terrainAt(state: GameState, h: Hex): Terrain {
   return state.terrain[h.row]?.[h.col] ?? 'rock';
 }
 
+function hexHeight(state: GameState, h: Hex): number {
+  return terrainHeight(terrainAt(state, h));
+}
+
 function inBounds(state: GameState, h: Hex): boolean {
   return h.col >= 0 && h.row >= 0 && h.col < state.cols && h.row < state.rows;
 }
@@ -584,19 +644,24 @@ function hexNeighbors(state: GameState, h: Hex): Hex[] {
   return neighbors(h, state.orientation);
 }
 
+/** Firing at elevation costs that much extra range (hill +1, plateau +2, mountain +3). */
+function highTargetTax(state: GameState, to: Hex): number {
+  return hexHeight(state, to);
+}
+
 function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boolean {
   const cells = line(from, to, state.orientation);
-  const fromHigh = terrainAt(state, from) === 'high';
-  // Rock/wall always block. High blocks through-LOS only when shooting from low.
-  // From high: shoot along/over the ridge (intermediate high ignored) and over pieces.
+  const fromH = hexHeight(state, from);
+  // Wall always blocks. Intermediate terrain higher than the shooter blocks.
+  // Same/lower elevation is clear (ridge / plateau). Pieces block only from height 0.
   // Arch: fire over units even from low. Terrain LOS unchanged.
-  // Destination may be high / occupied / wall — you can shoot *onto* it.
+  // Destination may be elevated / occupied / wall — you can shoot *onto* it.
   for (let i = 0; i < cells.length - 1; i++) {
     const h = cells[i];
     const t = terrainAt(state, h);
     if (isSolidTerrain(t)) return false;
-    if (!fromHigh && t === 'high') return false;
-    if (!fromHigh && !overUnits && pieceAt(state, h)) return false;
+    if (hexHeight(state, h) > fromH) return false;
+    if (fromH === 0 && !overUnits && pieceAt(state, h)) return false;
   }
   return true;
 }
@@ -650,7 +715,7 @@ function inSolidShadow(state: GameState, from: Hex, at: Hex, n: Hex): boolean {
 }
 
 /** True if aiming splash at `at` would damage at least one enemy. */
-function splashHitsEnemy(
+export function splashHitsEnemy(
   state: GameState,
   at: Hex,
   from: Hex,
@@ -698,6 +763,7 @@ function cloneState(state: GameState): GameState {
     })),
     log: [...state.log],
     actedIds: [...state.actedIds],
+    casualties: { red: state.casualties.red, blue: state.casualties.blue },
   };
 }
 
@@ -792,6 +858,7 @@ function endSideTurn(state: GameState): void {
   tickStamina(state, finished);
   state.actedIds = [];
   state.turn = other(state.turn);
+  if (finished === 'blue') state.turnNumber += 1;
 }
 
 /** Finish this piece's activation; end the side-turn if the unit quota is spent. */
@@ -890,9 +957,6 @@ function movePathOpts(
   from: Hex = { col: piece.col, row: piece.row },
 ): Omit<PathOpts, 'maxDist'> {
   const stats = statsOf(piece.type);
-  const fromTerrain = terrainAt(state, from);
-  const climbOk = fromTerrain === 'high' || canSpendStamina(piece);
-  const highOk = (t: Terrain) => t !== 'high' || climbOk;
   return {
     cols: state.cols,
     rows: state.rows,
@@ -900,10 +964,9 @@ function movePathOpts(
     canStop: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
-      // Nobody ends on water/rock/wall (water-walkers only *pass through*)
-      if (t === 'water' || isSolidTerrain(t)) return false;
-      if (stats.noHigh && t === 'high') return false;
-      if (!highOk(t)) return false;
+      if (isSolidTerrain(t)) return false;
+      if (t === 'water' && !stats.passWater) return false;
+      if (terrainHeight(t) > stats.climbLevel) return false;
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
@@ -913,9 +976,8 @@ function movePathOpts(
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isSolidTerrain(t)) return false;
-      if (stats.noHigh && t === 'high') return false;
-      if (!highOk(t)) return false;
       if (t === 'water' && !stats.passWater) return false;
+      if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
@@ -925,11 +987,47 @@ function movePathOpts(
   };
 }
 
+/** Height only changes by 1 per step. Climbing / entering water from dry land needs stamina. */
+function canWalkStep(
+  state: GameState,
+  piece: Piece,
+  origin: Hex,
+  fromHex: Hex,
+  toHex: Hex,
+): boolean {
+  const stats = statsOf(piece.type);
+  const t = terrainAt(state, toHex);
+  if (isSolidTerrain(t)) return false;
+  if (t === 'water' && !stats.passWater) return false;
+  const fh = hexHeight(state, fromHex);
+  const th = hexHeight(state, toHex);
+  if (th > stats.climbLevel) return false;
+  if (Math.abs(th - fh) > 1) return false;
+  if (th > hexHeight(state, origin) && !canSpendStamina(piece)) return false;
+  if (
+    t === 'water' &&
+    terrainAt(state, origin) !== 'water' &&
+    !canSpendStamina(piece)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function pathClimbs(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
-  if (terrainAt(state, from) === 'high') return false;
-  return (
-    terrainAt(state, dest) === 'high' || path.some((p) => terrainAt(state, p) === 'high')
-  );
+  const startH = hexHeight(state, from);
+  if (hexHeight(state, dest) > startH) return true;
+  return path.some((p) => hexHeight(state, p) > startH);
+}
+
+function pathEntersWater(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
+  if (terrainAt(state, from) === 'water') return false;
+  if (terrainAt(state, dest) === 'water') return true;
+  return path.some((p) => terrainAt(state, p) === 'water');
+}
+
+function pathSpendsStamina(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
+  return pathClimbs(state, from, dest, path) || pathEntersWater(state, from, dest, path);
 }
 
 function extraMoveAction(state: GameState, piece: Piece): boolean {
@@ -948,12 +1046,15 @@ function straightMoveStops(
   const opts = movePathOpts(state, piece, from);
   const out = new Map<string, StraightStop>();
   if (range <= 0) return out;
+  const blocked = blockedWalkDirs(piece);
   for (let d = 0; d < 6; d++) {
+    if (blocked.has(d as HexDir)) continue;
     const path: Hex[] = [];
     let cur = from;
     for (let dist = 1; dist <= range; dist++) {
       const next = neighborInDir(cur, d as HexDir, state.orientation);
       if (!inBounds(state, next)) break;
+      if (!canWalkStep(state, piece, from, cur, next)) break;
       const stop = opts.canStop(next);
       const pass = opts.canPass(next);
       if (!stop && !pass) break;
@@ -977,12 +1078,14 @@ function straightExtraStops(
 ): Map<string, StraightStop> {
   const start = { col: piece.col, row: piece.row };
   const firstRange = activationMoveRange(state, piece);
-  const secondRange = statsOf(piece.type).move;
-  const max = firstRange + secondRange;
+  const extraMove = statsOf(piece.type).move;
+  const max = firstRange + extraMove + 2;
   const opts = movePathOpts(state, piece, start);
   const out = new Map<string, StraightStop>();
-  if (firstRange <= 0 || secondRange <= 0) return out;
+  if (firstRange <= 0 || extraMove <= 0) return out;
+  const blocked = blockedWalkDirs(piece);
   for (let d = 0; d < 6; d++) {
+    if (blocked.has(d as HexDir)) continue;
     const path: Hex[] = [];
     let cur = start;
     let via: Hex | null = null;
@@ -990,21 +1093,24 @@ function straightExtraStops(
     for (let dist = 1; dist <= max; dist++) {
       const next = neighborInDir(cur, d as HexDir, state.orientation);
       if (!inBounds(state, next)) break;
+      if (!canWalkStep(state, piece, start, cur, next)) break;
       const stop = opts.canStop(next);
       const pass = opts.canPass(next);
       if (!stop && !pass) break;
       path.push(next);
       if (dist === firstRange) {
         via = next;
-        firstClimb = pathClimbs(state, start, via, path.slice());
+        firstClimb = pathSpendsStamina(state, start, via, path.slice());
       }
       if (stop && dist > firstRange && via && !firstClimb && !first.has(key(next))) {
-        out.set(key(next), {
-          dist,
-          path: path.slice(),
-          via,
-          firstDist: firstRange,
-        });
+        if (dist <= firstRange + moveRangeAt(state, piece, via)) {
+          out.set(key(next), {
+            dist,
+            path: path.slice(),
+            via,
+            firstDist: firstRange,
+          });
+        }
       }
       if (!pass) break;
       cur = next;
@@ -1025,15 +1131,14 @@ function twoActionStops(
 ): Map<string, StraightStop> {
   const start = { col: piece.col, row: piece.row };
   const startKey = key(start);
-  const secondRange = statsOf(piece.type).move;
   const out = new Map<string, StraightStop>();
-  if (secondRange <= 0) return out;
+  if (statsOf(piece.type).move <= 0) return out;
   for (const [, a] of first) {
     const via = a.path[a.path.length - 1];
     if (!via) continue;
     if (pieceAt(state, via)) continue;
-    if (pathClimbs(state, start, via, a.path)) continue;
-    const second = straightMoveStops(state, piece, via, secondRange);
+    if (pathSpendsStamina(state, start, via, a.path)) continue;
+    const second = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via));
     for (const [dk, b] of second) {
       if (dk === startKey || first.has(dk)) continue;
       const dist = a.dist + b.dist;
@@ -1070,6 +1175,10 @@ function allMoveStops(state: GameState, piece: Piece): Map<string, StraightStop>
   const out = new Map(first);
   for (const [k, stop] of straightExtraStops(state, piece, first)) keepBetterStop(out, k, stop);
   for (const [k, stop] of twoActionStops(state, piece, first)) keepBetterStop(out, k, stop);
+  const start = { col: piece.col, row: piece.row };
+  for (const k of [...out.keys()]) {
+    if (isBlockedWalkDest(piece, start, parseKey(k), state.orientation)) out.delete(k);
+  }
   return out;
 }
 
@@ -1088,7 +1197,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
 
   for (const [k, { dist, path, via }] of reach) {
     const h = parseKey(k);
-    const climbs = pathClimbs(state, from, h, path);
+    const climbs = pathSpendsStamina(state, from, h, path);
     if (climbs || stamAction || via) {
       out.push({ kind: 'stamina', hex: h, cost: dist });
     } else {
@@ -1101,7 +1210,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     return out; // move highlights only while reloading / empty
   }
 
-  const shootRange = stats.shoot + (fromTerrain === 'high' ? 1 : 0);
+  const shootRange = stats.shoot + terrainHeight(fromTerrain);
   const shootMin = stats.shootMin;
   const splash = hasSplash(stats);
 
@@ -1110,7 +1219,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       const h = { col, row };
       if (eq(h, from)) continue;
       const d = hexDist(state, from, h);
-      if (d > shootRange || d < shootMin) continue;
+      if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);
       if (terrain === 'rock') continue; // can't shoot into rock
       // Walls: only rockets can impact (to demolish); bullets treat like blocked aim

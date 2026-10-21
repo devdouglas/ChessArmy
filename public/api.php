@@ -190,6 +190,42 @@ function sanitize_formation(mixed $form): ?array {
     ];
 }
 
+function sanitize_star_rule(mixed $raw, array $fallback): array {
+    $src = is_array($raw) ? $raw : $fallback;
+    $metricRaw = $src['metric'] ?? null;
+    if ($metricRaw === 'casualties' || $metricRaw === 'turns') {
+        $metric = $metricRaw;
+    } else {
+        $metric = ($fallback['metric'] ?? 'turns') === 'casualties' ? 'casualties' : 'turns';
+    }
+    $op = $src['op'] ?? '';
+    if ($op !== 'lte' && $op !== 'eq' && $op !== 'lt') {
+        $op = ($fallback['op'] ?? 'lt');
+        if ($op !== 'lte' && $op !== 'eq' && $op !== 'lt') {
+            $op = 'lt';
+        }
+    }
+    $value = isset($src['value']) && is_numeric($src['value']) ? (int) $src['value'] : (int) ($fallback['value'] ?? 0);
+    if ($value < 0) {
+        $value = 0;
+    }
+    if ($value > 99) {
+        $value = 99;
+    }
+    return ['metric' => $metric, 'op' => $op, 'value' => $value];
+}
+
+function sanitize_level_text(mixed $raw): string {
+    if (!is_string($raw)) {
+        return '';
+    }
+    $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', str_replace("\r\n", "\n", $raw));
+    if (!is_string($text)) {
+        return '';
+    }
+    return substr(trim($text), 0, 280);
+}
+
 function sanitize_level(mixed $level): ?array {
     if (!is_array($level)) {
         return null;
@@ -206,7 +242,7 @@ function sanitize_level(mixed $level): ?array {
         return null;
     }
     $grid = [];
-    $allowed = ['land' => true, 'water' => true, 'rock' => true, 'wall' => true, 'high' => true];
+    $allowed = ['land' => true, 'water' => true, 'rock' => true, 'wall' => true, 'high' => true, 'plateau' => true];
     for ($r = 0; $r < $rows; $r++) {
         $row = [];
         for ($c = 0; $c < $cols; $c++) {
@@ -245,6 +281,11 @@ function sanitize_level(mixed $level): ?array {
         'category' => $cat,
         'period' => $period,
         'unitsPerTurn' => $unitsPerTurn,
+        'startText' => sanitize_level_text($level['startText'] ?? ''),
+        'winText' => sanitize_level_text($level['winText'] ?? ''),
+        'loseText' => sanitize_level_text($level['loseText'] ?? ''),
+        'star2' => sanitize_star_rule($level['star2'] ?? null, ['metric' => 'turns', 'op' => 'lt', 'value' => 6]),
+        'star3' => sanitize_star_rule($level['star3'] ?? null, ['metric' => 'casualties', 'op' => 'eq', 'value' => 0]),
         'updatedAt' => $updated,
     ];
     if (array_key_exists('armies', $level)) {

@@ -12,6 +12,7 @@ import {
   STOCK_UNIT_TYPES,
   UNIT_STATS,
   UNIT_TYPES,
+  sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
   statsOf,
@@ -55,6 +56,7 @@ const INT_FIELDS = [
   'armorFlankLeft',
   'armorFlankRight',
   'armorRear',
+  'climbLevel',
 ] as const satisfies readonly EditableStat[];
 
 const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> = {
@@ -80,6 +82,7 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   armorFlankLeft: { min: -2, max: 2 },
   armorFlankRight: { min: -2, max: 2 },
   armorRear: { min: -2, max: 2 },
+  climbLevel: { min: 0, max: 3 },
 };
 
 function clampInt(n: unknown, min: number, max: number, fallback: number): number {
@@ -98,6 +101,29 @@ function bool(raw: unknown, fallback: boolean): boolean {
   return typeof raw === 'boolean' ? raw : fallback;
 }
 
+type LegacyStats = Partial<UnitStats> & { noHigh?: boolean };
+
+/** Old kit flags: noHigh blocked hills; passWater was swim-through. Missing climbLevel migrates. */
+function waterClimbFrom(
+  role: UnitRole,
+  s: LegacyStats,
+  d: UnitStats,
+): { passWater: boolean; climbLevel: number } {
+  if (s.climbLevel !== undefined && s.climbLevel !== null) {
+    return {
+      passWater: bool(s.passWater, d.passWater),
+      climbLevel: sanitizeClimbLevel(s.climbLevel, d.climbLevel),
+    };
+  }
+  const noHigh =
+    typeof s.noHigh === 'boolean'
+      ? s.noHigh
+      : role === 'elephant' || role === 'catapult' || role === 'tank';
+  const swam = s.passWater === true || role === 'scout';
+  if (!noHigh || swam) return { passWater: true, climbLevel: 2 };
+  return { passWater: false, climbLevel: 0 };
+}
+
 export function sanitizeUnitStats(
   type: UnitType,
   raw: Partial<UnitStats> | undefined,
@@ -105,7 +131,8 @@ export function sanitizeUnitStats(
   const dRole = roleFrom(type, raw);
   const d = DEFAULT_UNIT_STATS[dRole];
   const traits = KIT_TRAITS[dRole];
-  const s = raw ?? {};
+  const s = (raw ?? {}) as LegacyStats;
+  const mobility = waterClimbFrom(dRole, s, d);
   const name =
     typeof s.name === 'string' && s.name.trim()
       ? s.name.trim().slice(0, 32)
@@ -125,9 +152,9 @@ export function sanitizeUnitStats(
     chess,
     category: sanitizeUnitCategory(s.category ?? d.category),
     role: dRole,
-    passWater: bool(s.passWater, traits.passWater),
+    passWater: mobility.passWater,
+    climbLevel: mobility.climbLevel,
     passUnits: bool(s.passUnits, traits.passUnits),
-    noHigh: bool(s.noHigh, traits.noHigh),
     infantry: bool(s.infantry, traits.infantry),
     king: abilities.includes('general'),
     abilities,
@@ -296,6 +323,7 @@ export function unitStatsAreStock(): boolean {
       a.role === b.role &&
       INT_FIELDS.every((k) => a[k] === b[k]) &&
       TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
+      a.passWater === b.passWater &&
       a.shootArc === b.shootArc &&
       a.hexArmor === b.hexArmor &&
       abilitiesEqual(a.abilities, b.abilities)

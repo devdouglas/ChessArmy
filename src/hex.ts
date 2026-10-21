@@ -68,6 +68,22 @@ export function defaultFacing(side: 'red' | 'blue'): HexDir {
   return side === 'red' ? 2 : 5;
 }
 
+/** Cube dir of the hex-axis from `from` to `to`, or null if they are not aligned. */
+export function axisDir(from: Hex, to: Hex, o: HexOrientation): HexDir | null {
+  const a = offsetToCube(from, o);
+  const b = offsetToCube(to, o);
+  const dq = b.q - a.q;
+  const dr = b.r - a.r;
+  const ds = b.s - a.s;
+  const n = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
+  if (n === 0) return null;
+  for (let i = 0; i < 6; i++) {
+    const d = CUBE_DIRS[i];
+    if (d.q * n === dq && d.r * n === dr && d.s * n === ds) return i as HexDir;
+  }
+  return null;
+}
+
 /** Adjacent step `from` → `to`, or null if not a cube neighbor. */
 export function dirBetween(from: Hex, to: Hex, o: HexOrientation): HexDir | null {
   const a = offsetToCube(from, o);

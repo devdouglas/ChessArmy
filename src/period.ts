@@ -23,10 +23,19 @@ export function getSelectedPeriod(): Period {
   }
 }
 
-export function setSelectedPeriod(period: Period): void {
-  localStorage.setItem(STORAGE_KEY, sanitizePeriod(period));
+export function setSelectedPeriod(period: unknown): Period {
+  const next = sanitizePeriod(period);
+  try {
+    localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    /* ignore quota / private mode */
+  }
+  applyPeriodTheme(next);
+  return next;
 }
 
 export function applyPeriodTheme(period: Period): void {
   document.documentElement.dataset.period = sanitizePeriod(period);
 }
+
+applyPeriodTheme(getSelectedPeriod());

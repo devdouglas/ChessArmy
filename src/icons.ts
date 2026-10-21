@@ -49,6 +49,66 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M5.6 -2.6 L9.2 0 L5.6 2.6 Z"/>
     <path d="M-7.0 -2.3 L-4.4 0 L-7.0 2.3 Z"/>
   `,
+  // Scutum + galea
+  cohort: `
+    <path fill-rule="evenodd" d="M-8.6 -6.8
+      Q-9.6 0 -8.6 6.8
+      L-1.8 7.5
+      Q-2.8 0 -1.8 -7.4
+      Z
+      M-5.2 0 m-1.5 0 a1.5 1.5 0 1 0 3 0 a1.5 1.5 0 1 0 -3 0"/>
+    <circle cx="-5.2" cy="0" r="0.65"/>
+    <path d="M2.4 -8.8 L3.8 -9.4 L4.2 -4.6 H2.2 Z"/>
+    <path d="M0.8 -4.8
+      Q3.2 -7.4 5.6 -4.8
+      L5.8 -1.6
+      L5.2 7.2 H1.2 L0.8 -1.6 Z"/>
+  `,
+  // Helmet behind aspis, crest above the rim
+  hoplite: `
+    <ellipse cx="-0.2" cy="-5.15" rx="2.85" ry="2.2"/>
+    <path d="M-0.85 -6.8 Q0.35 -10.3 1.7 -6.8 L1.15 -5.2 H-0.3 Z"/>
+    <path fill-rule="evenodd" d="M-0.4 2.05 m-6.35 0 a6.35 6.35 0 1 0 12.7 0 a6.35 6.35 0 1 0 -12.7 0
+      M-0.4 2.05 m-4.2 0 a4.2 4.2 0 1 0 8.4 0 a4.2 4.2 0 1 0 -8.4 0"/>
+    <circle cx="-0.4" cy="2.05" r="1.5"/>
+    <rect x="5.15" y="-7.6" width="1.4" height="15.6" rx="0.4"/>
+    <path d="M4.8 -7.4 L5.85 -9.6 L6.9 -7.4 Z"/>
+  `,
+  // War elephant — ear, trunk, tusk
+  elephant: `
+    <ellipse cx="-1.4" cy="2.2" rx="5.8" ry="4.2"/>
+    <rect x="-5.4" y="4.4" width="2.3" height="4.0" rx="0.65"/>
+    <rect x="0.0" y="4.4" width="2.3" height="4.0" rx="0.65"/>
+    <path d="M1.4 -0.2
+      C-1.2 -6.6 -7.2 -4.6 -5.6 1.2
+      C-3.4 2.0 0.2 1.6 1.4 -0.2 Z"/>
+    <circle cx="4.6" cy="-1.0" r="3.15"/>
+    <path d="M7.0 0.3
+      C9.4 2.6 8.8 7.0 5.8 8.6
+      C7.2 5.4 7.4 2.8 6.4 0.8 Z"/>
+    <path d="M6.0 0.2 L9.2 3.2 L6.6 1.2 Z"/>
+    <path d="M-3.2 -2.0 H1.4 V-4.4 H-0.4 L-1.0 -6.0 L-1.6 -4.4 H-3.2 Z"/>
+  `,
+  // Horned helm + greataxe
+  barbarian: `
+    <path d="M-2.6 -4.4 L-7.2 -8.6 L-4.2 -3.6 Z"/>
+    <path d="M2.6 -4.4 L7.2 -8.6 L4.2 -3.6 Z"/>
+    <ellipse cx="0" cy="-3.2" rx="3.5" ry="2.7"/>
+    <path d="M-2.2 -2.0 Q0 3.6 2.2 -2.0 L1.3 0.6 H-1.3 Z"/>
+    <rect x="-0.5" y="1.0" width="1.0" height="7.0" rx="0.35"/>
+    <path d="M0.4 1.5 L7.6 -1.4 L8.2 1.8 L6.2 5.2 L0.4 4.2 Z"/>
+    <path d="M-2.7 6.4 H2.7 L2.1 8.8 H-2.1 Z"/>
+  `,
+  // Onager — A-frame + cocked arm + stone
+  catapult: `
+    <rect x="-7.4" y="4.6" width="13.6" height="2.4" rx="0.4"/>
+    <circle cx="-4.8" cy="7.1" r="1.55"/>
+    <circle cx="4.0" cy="7.1" r="1.55"/>
+    <path d="M-5.2 4.8 L0.2 -3.4 L1.6 -3.4 L5.6 4.8 H3.6 L0.9 -0.8 L-3.2 4.8 Z"/>
+    <path d="M-7.0 0.6 L4.4 -7.6 L5.6 -6.2 L-5.8 2.0 Z"/>
+    <path d="M3.6 -8.8 L7.4 -7.6 L6.6 -4.8 L3.0 -6.0 Z"/>
+    <circle cx="5.8" cy="-7.0" r="1.55"/>
+  `,
   // Rifle + large crosshair scope
   sniper: `
     <circle cx="-4.5" cy="-3.2" r="1.6"/>
@@ -118,17 +178,34 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
-/** Empty-stamina mark — top-right of the piece, above ammo. */
-export function staminaEmptyBadgeSvg(cx: number, cy: number, r = 7): string {
-  const sw = Math.max(1.1, r * 0.2);
+/** Lightning bolt, viewBox roughly -5..5 × -7..7. */
+const STAMINA_BOLT =
+  'M1.5 -5.6 L-2.7 0.15 H0.55 L-2.3 5.6 L2.9 -0.15 H-0.45 Z';
+
+/** Empty stamina — bolt pip, top-left, with a red prohibition ring + slash. */
+export function staminaEmptyMarkSvg(cx: number, cy: number, r = 7): string {
+  const ring = Math.max(1.35, r * 0.24);
+  const slash = Math.max(1.55, r * 0.28);
+  const inset = r * 0.64;
+  const s = (r * 0.78) / 5.6;
   return `
-    <g class="stamina-badge empty" transform="translate(${cx}, ${cy})">
-      <circle cx="0" cy="0" r="${r}" fill="#2a2414" stroke="#c9a227" stroke-width="1.3"/>
-      <path d="M ${r * 0.18} ${-r * 0.55} L ${-r * 0.28} ${r * 0.05} H ${r * 0.08} L ${-r * 0.22} ${r * 0.55} L ${r * 0.32} ${-r * 0.02} H ${-r * 0.04} Z"
-            fill="#e6c04a"/>
-      <path d="M ${-r * 0.45} ${r * 0.42} L ${r * 0.45} ${-r * 0.42}"
-            fill="none" stroke="#1a1508" stroke-width="${sw}" stroke-linecap="round"/>
+    <g class="stamina-empty-mark" transform="translate(${cx}, ${cy})">
+      <circle cx="0" cy="0" r="${r.toFixed(2)}" fill="#1a1f1c" stroke="#e04030" stroke-width="${ring.toFixed(2)}"/>
+      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#e8b840"/>
+      <path d="M ${(-inset).toFixed(2)} ${inset.toFixed(2)} L ${inset.toFixed(2)} ${(-inset).toFixed(2)}"
+        fill="none" stroke="#e04030" stroke-width="${slash.toFixed(2)}" stroke-linecap="round"/>
     </g>`;
+}
+
+/** Remaining/max stamina as gold / grey lightning pips. */
+export function staminaPipsHtml(left: number, max: number): string {
+  if (max <= 0) return '';
+  const on = Math.max(0, Math.min(max, Math.floor(left)));
+  const bolts = Array.from({ length: max }, (_, i) => {
+    const cls = i < on ? 'on' : 'off';
+    return `<svg class="stam-pip ${cls}" viewBox="-5 -7 10 14" width="12" height="16" aria-hidden="true"><path d="${STAMINA_BOLT}"/></svg>`;
+  }).join('');
+  return `<span class="stam-pips" aria-label="Stamina ${on} of ${max}">${bolts}</span>`;
 }
 
 /** Played-this-turn check — right side of the piece. */
@@ -171,12 +248,33 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
   return '';
 }
 
+const STAR_PATH =
+  'M0 -6.5 L1.5 -2 H6 L2.2 0.6 L3.6 5 L0 2.2 L-3.6 5 L-2.2 0.6 L-6 -2 H-1.5 Z';
+
+/** Level-star mark. `on` gold fill, `pending` gold stroke, `off` muted. */
+export function starGlyphSvg(
+  kind: 'on' | 'pending' | 'off',
+  size = 18,
+): string {
+  const fill = kind === 'on' ? '#f0d060' : 'none';
+  const stroke = kind === 'off' ? '#4a5248' : '#e0c070';
+  const sw = kind === 'on' ? 0.7 : 1.1;
+  return `<svg class="star-glyph ${kind}" viewBox="-8 -8 16 16" width="${size}" height="${size}" aria-hidden="true">
+    <path d="${STAR_PATH}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 export const ICON_LABEL: Record<UnitRole, string> = {
   soldier: 'infantry helmet',
   scout: 'horse',
   bazooka: 'rocket',
   sniper: 'scoped rifle',
   archer: 'bow',
+  cohort: 'scutum',
+  hoplite: 'aspis',
+  elephant: 'war elephant',
+  barbarian: 'axe',
+  catapult: 'onager',
   tank: 'tracked hull',
   general: 'command star',
   tower: 'keep',

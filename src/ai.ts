@@ -8,10 +8,13 @@ import {
   applyAction,
   getPiece,
   hasAbility,
+  hasSplash,
   hpLeft,
   pieceAt,
   previewMove,
+  splashHitsEnemy,
   terrainAt,
+  terrainHeight,
   UNIT_STATS,
   type Action,
   type GameState,
@@ -54,8 +57,20 @@ function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
   return best;
 }
 
+function shootHitsEnemy(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind !== 'shoot') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  if (hasSplash(UNIT_STATS[piece.type])) {
+    return splashHitsEnemy(state, action.at, from, me);
+  }
+  const t = pieceAt(state, action.at);
+  return !!(t && t.side !== me);
+}
+
 function isAttackAction(state: GameState, action: Action, me: Side): boolean {
-  if (action.kind === 'shoot') return true;
+  if (action.kind === 'shoot') return shootHitsEnemy(state, action, me);
   if (action.kind === 'move') {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
@@ -107,6 +122,11 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
   const from: Hex = { col: piece.col, row: piece.row };
   let score = scoreKillDelta(state, applyAction(state, action), me);
 
+  // Wall-only rockets are legal, not attacks — don't spend the shot on concrete.
+  if (action.kind === 'shoot' && !shootHitsEnemy(state, action, me)) {
+    score -= 600;
+  }
+
   if (isAttackAction(state, action, me)) {
     score += 4_000;
     if (action.kind === 'shoot') {
@@ -128,10 +148,10 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
     else if (closer < 0) score -= 900;
   }
 
-  const fromHigh = terrainAt(state, from) === 'high';
-  const toHigh = terrainAt(state, stop) === 'high';
-  if (toHigh && !fromHigh) score += 40;
-  if (fromHigh && !toHigh) score -= 20;
+  const fromH = terrainHeight(terrainAt(state, from));
+  const toH = terrainHeight(terrainAt(state, stop));
+  if (toH > fromH) score += 40 * (toH - fromH);
+  if (toH < fromH) score -= 20 * (fromH - toH);
 
   score += UNIT_STATS[piece.type].value * 0.05;
   score += Math.random() * 0.3;

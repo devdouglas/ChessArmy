@@ -1,5 +1,5 @@
 import { hasGeneral, statsOf, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
-import { defaultFacing, type HexOrientation } from './hex';
+import { defaultFacing, neighbors, type HexOrientation } from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
@@ -17,6 +17,7 @@ export type MapOptions = {
   rockCount: number;
   wallCount: number;
   highCount: number;
+  plateauCount: number;
 };
 
 export const DEFAULT_MAP: MapOptions = {
@@ -24,6 +25,7 @@ export const DEFAULT_MAP: MapOptions = {
   rockCount: 6,
   wallCount: 4,
   highCount: 6,
+  plateauCount: 3,
 };
 
 /** Back rank files 1→8 */
@@ -93,7 +95,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-type TerrainKey = 'water' | 'rock' | 'wall' | 'high';
+type TerrainKey = 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
 /** Cap counts so they fit the playable belt. */
 export function clampMapOptions(opts: MapOptions): MapOptions {
@@ -102,20 +104,23 @@ export function clampMapOptions(opts: MapOptions): MapOptions {
   let rock = Math.max(0, Math.floor(opts.rockCount));
   let wall = Math.max(0, Math.floor(opts.wallCount));
   let high = Math.max(0, Math.floor(opts.highCount));
-  const total = water + rock + wall + high;
+  let plateau = Math.max(0, Math.floor(opts.plateauCount));
+  const total = water + rock + wall + high + plateau;
   if (total > max && total > 0) {
     const scale = max / total;
     water = Math.floor(water * scale);
     rock = Math.floor(rock * scale);
     wall = Math.floor(wall * scale);
     high = Math.floor(high * scale);
-    let left = max - water - rock - wall - high;
+    plateau = Math.floor(plateau * scale);
+    let left = max - water - rock - wall - high - plateau;
     const prefs = (
       [
         { k: 'water' as const, v: opts.waterCount },
         { k: 'rock' as const, v: opts.rockCount },
         { k: 'wall' as const, v: opts.wallCount },
         { k: 'high' as const, v: opts.highCount },
+        { k: 'plateau' as const, v: opts.plateauCount },
       ] satisfies { k: TerrainKey; v: number }[]
     ).sort((a, b) => b.v - a.v);
     let pi = 0;
@@ -124,12 +129,19 @@ export function clampMapOptions(opts: MapOptions): MapOptions {
       if (k === 'water') water++;
       else if (k === 'rock') rock++;
       else if (k === 'wall') wall++;
-      else high++;
+      else if (k === 'high') high++;
+      else plateau++;
       left--;
       pi++;
     }
   }
-  return { waterCount: water, rockCount: rock, wallCount: wall, highCount: high };
+  return {
+    waterCount: water,
+    rockCount: rock,
+    wallCount: wall,
+    highCount: high,
+    plateauCount: plateau,
+  };
 }
 
 export function maxTerrainCells(): number {
@@ -137,7 +149,7 @@ export function maxTerrainCells(): number {
 }
 
 function paintTerrain(t: Terrain[][], opts: MapOptions): void {
-  const { waterCount, rockCount, wallCount, highCount } = clampMapOptions(opts);
+  const { waterCount, rockCount, wallCount, highCount, plateauCount } = clampMapOptions(opts);
   const picks = shuffle(eligibleCells());
   let i = 0;
   for (let w = 0; w < waterCount && i < picks.length; w++, i++) {
@@ -155,6 +167,27 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): void {
   for (let h = 0; h < highCount && i < picks.length; h++, i++) {
     const { col, row } = picks[i];
     t[row][col] = 'high';
+  }
+  // Plateau is +2 — only paint land touching high so random maps stay walkable.
+  const besideHigh: { col: number; row: number }[] = [];
+  const seen = new Set<string>();
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (t[row][col] !== 'high') continue;
+      for (const n of neighbors({ col, row }, DEFAULT_ORIENTATION)) {
+        if (n.col < 0 || n.row < 0 || n.col >= COLS || n.row >= ROWS) continue;
+        if (CLEAR_ROWS.has(n.row) || t[n.row][n.col] !== 'land') continue;
+        const k = `${n.col},${n.row}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        besideHigh.push(n);
+      }
+    }
+  }
+  const plateauPicks = shuffle(besideHigh);
+  for (let p = 0; p < plateauCount && p < plateauPicks.length; p++) {
+    const { col, row } = plateauPicks[p];
+    t[row][col] = 'plateau';
   }
 }
 
@@ -387,6 +420,8 @@ function freshGame(
     hadKing: { red: king('red'), blue: king('blue') },
     unitsPerTurn: 1,
     actedIds: [],
+    turnNumber: 1,
+    casualties: { red: 0, blue: 0 },
     log: [log],
   };
 }
@@ -400,7 +435,7 @@ export function createInitialState(
   paintTerrain(terrain, clamped);
   return freshGame(
     terrain,
-    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.wallCount} wall, ${clamped.highCount} high (rows 3–7).`,
+    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.wallCount} wall, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
     DEFAULT_ORIENTATION,
     armies,
   );

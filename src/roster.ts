@@ -12,6 +12,11 @@ export type UnitRole =
   | 'bazooka'
   | 'sniper'
   | 'archer'
+  | 'cohort'
+  | 'hoplite'
+  | 'elephant'
+  | 'barbarian'
+  | 'catapult'
   | 'tank'
   | 'general'
   | 'tower';
@@ -25,6 +30,11 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'bazooka',
   'sniper',
   'archer',
+  'cohort',
+  'hoplite',
+  'elephant',
+  'barbarian',
+  'catapult',
   'tank',
   'general',
   'tower',
@@ -60,6 +70,11 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   bazooka: 'Bazooka',
   sniper: 'Sniper',
   archer: 'Archer',
+  cohort: 'Cohort',
+  hoplite: 'Hoplite',
+  elephant: 'Elephant',
+  barbarian: 'Barbarian',
+  catapult: 'Catapult',
   tank: 'Tank',
   general: 'General',
   tower: 'Tower',
@@ -85,85 +100,60 @@ export function sanitizeShootArc(raw: unknown): ShootArc {
   return raw === 'arch' ? 'arch' : 'straight';
 }
 
-/** Movement / win specials. Copied with the unit; kit dropdown overwrites these. */
+/** Kit-only specials. Copied with the unit; kit dropdown overwrites these. */
 export type UnitTraits = {
-  /** Pass through water hexes (cannot stop on them). */
-  passWater: boolean;
   /** Pass through any pieces; stop rules still apply. */
   passUnits: boolean;
-  /** Cannot enter high even with stamina. */
-  noHigh: boolean;
   infantry: boolean;
   /** Killing this wins — only if the side started the match with a king. Wipeout always wins. */
   king: boolean;
 };
 
 export const TRAIT_FIELDS = [
-  'passWater',
   'passUnits',
-  'noHigh',
   'infantry',
   'king',
 ] as const satisfies readonly (keyof UnitTraits)[];
 
 export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
-  soldier: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: true,
-    king: false,
-  },
-  scout: {
-    passWater: true,
-    passUnits: true,
-    noHigh: false,
-    infantry: false,
-    king: false,
-  },
-  bazooka: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: false,
-    king: false,
-  },
-  sniper: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: false,
-    king: false,
-  },
-  archer: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: true,
-    king: false,
-  },
-  tank: {
-    passWater: false,
-    passUnits: false,
-    noHigh: true,
-    infantry: false,
-    king: false,
-  },
-  general: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: false,
-    king: true,
-  },
-  tower: {
-    passWater: false,
-    passUnits: false,
-    noHigh: false,
-    infantry: false,
-    king: false,
-  },
+  soldier: { passUnits: false, infantry: true, king: false },
+  scout: { passUnits: true, infantry: false, king: false },
+  bazooka: { passUnits: false, infantry: false, king: false },
+  sniper: { passUnits: false, infantry: false, king: false },
+  archer: { passUnits: false, infantry: true, king: false },
+  cohort: { passUnits: false, infantry: true, king: false },
+  hoplite: { passUnits: false, infantry: true, king: false },
+  elephant: { passUnits: false, infantry: false, king: false },
+  barbarian: { passUnits: false, infantry: true, king: false },
+  catapult: { passUnits: false, infantry: false, king: false },
+  tank: { passUnits: false, infantry: false, king: false },
+  general: { passUnits: false, infantry: false, king: true },
+  tower: { passUnits: false, infantry: false, king: false },
 };
+
+/** Legacy noHigh kits — cannot climb. Everyone else could climb and/or swim. */
+const HEAVY_KITS: ReadonlySet<UnitRole> = new Set(['elephant', 'catapult', 'tank']);
+
+export function stockMobility(role: UnitRole): { passWater: boolean; climbLevel: number } {
+  if (HEAVY_KITS.has(role)) return { passWater: false, climbLevel: 0 };
+  return { passWater: true, climbLevel: 2 };
+}
+
+export const CLIMB_LEVELS = [0, 1, 2, 3] as const;
+export type ClimbLevel = (typeof CLIMB_LEVELS)[number];
+
+export const CLIMB_LEVEL_LABEL: Record<ClimbLevel, string> = {
+  0: '0',
+  1: 'Hill (lv1)',
+  2: 'Plateau (lvl2)',
+  3: 'Mountain (lvl3)',
+};
+
+export function sanitizeClimbLevel(raw: unknown, fallback = 0): ClimbLevel {
+  const v = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(v)) return fallback as ClimbLevel;
+  return Math.max(0, Math.min(3, Math.floor(v))) as ClimbLevel;
+}
 
 export type UnitStats = UnitTraits & {
   name: string;
@@ -172,8 +162,12 @@ export type UnitStats = UnitTraits & {
   category: UnitCategory;
   /** Kit + glyph. Copies keep the source kit unless changed. */
   role: UnitRole;
+  /** Stop on / enter water. Entering water from dry land spends stamina. */
+  passWater: boolean;
+  /** Max occupiable height: 0 land, 1 hill, 2 plateau, 3 mountain. */
+  climbLevel: number;
   move: number;
-  /** Max shoot distance (high ground may add +1). */
+  /** Max shoot distance (shooter elevation adds; firing at elevation costs that much). */
   shoot: number;
   /** Min shoot distance (1 = can fire adjacent). */
   shootMin: number;
@@ -282,6 +276,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.soldier,
+    ...stockMobility('soldier'),
     abilities: [],
   },
   scout: {
@@ -308,6 +303,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.scout,
+    ...stockMobility('scout'),
     abilities: [],
   },
   bazooka: {
@@ -334,6 +330,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.bazooka,
+    ...stockMobility('bazooka'),
     abilities: [],
   },
   sniper: {
@@ -360,6 +357,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.sniper,
+    ...stockMobility('sniper'),
     abilities: [],
   },
   archer: {
@@ -386,6 +384,144 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.archer,
+    ...stockMobility('archer'),
+    abilities: [],
+  },
+  cohort: {
+    name: 'Cohort',
+    chess: 'Scutum',
+    category: 'ancient',
+    role: 'cohort',
+    move: 1,
+    shoot: 1,
+    shootMin: 1,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 2,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    hexArmor: true,
+    ...KIT_TRAITS.cohort,
+    ...stockMobility('cohort'),
+    abilities: [],
+  },
+  hoplite: {
+    name: 'Hoplite',
+    chess: 'Spear',
+    category: 'ancient',
+    role: 'hoplite',
+    move: 1,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 0,
+    value: 2,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    hexArmor: true,
+    ...KIT_TRAITS.hoplite,
+    ...stockMobility('hoplite'),
+    abilities: [],
+  },
+  elephant: {
+    name: 'Elephant',
+    chess: 'Beast',
+    category: 'ancient',
+    role: 'elephant',
+    move: 2,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 0,
+    value: 8,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 2,
+    ammo: 0,
+    hp: 3,
+    meleeDamage: 2,
+    charge: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 1,
+    ...hexArmorDefaults(1),
+    ...KIT_TRAITS.elephant,
+    ...stockMobility('elephant'),
+    abilities: [],
+  },
+  barbarian: {
+    name: 'Barbarian',
+    chess: 'Axe',
+    category: 'ancient',
+    role: 'barbarian',
+    move: 2,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 0,
+    value: 3,
+    moveBudget: 0,
+    stamina: 2,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 2,
+    charge: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...KIT_TRAITS.barbarian,
+    ...stockMobility('barbarian'),
+    abilities: [],
+  },
+  catapult: {
+    name: 'Catapult',
+    chess: 'Siege',
+    category: 'ancient',
+    role: 'catapult',
+    move: 1,
+    shoot: 5,
+    shootMin: 2,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 2,
+    value: 6,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 2,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 0,
+    charge: 0,
+    shootDamage: 2,
+    splashDamage: 1,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...KIT_TRAITS.catapult,
+    ...stockMobility('catapult'),
     abilities: [],
   },
   tank: {
@@ -412,6 +548,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 2,
     ...hexArmorDefaults(2),
     ...KIT_TRAITS.tank,
+    ...stockMobility('tank'),
     abilities: [],
   },
   general: {
@@ -438,6 +575,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 1,
     ...hexArmorDefaults(1),
     ...KIT_TRAITS.general,
+    ...stockMobility('general'),
     abilities: ['general'],
   },
   tower: {
@@ -464,6 +602,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     armor: 0,
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.tower,
+    ...stockMobility('tower'),
     abilities: [],
   },
 };

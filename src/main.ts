@@ -32,6 +32,8 @@ import {
   splashBlast,
   staminaLeft,
   staminaMax,
+  terrainHeight,
+  isElevatedTerrain,
   STOCK_UNIT_TYPES,
   UNIT_CATEGORIES,
   UNIT_CATEGORY_LABEL,
@@ -41,8 +43,11 @@ import {
   isAbilityId,
   isCustomUnitId,
   isUnitRole,
+  CLIMB_LEVEL_LABEL,
+  CLIMB_LEVELS,
   SHOOT_ARCS,
   SHOOT_ARC_LABEL,
+  sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
   type Action,
@@ -97,10 +102,20 @@ import {
   listLevels,
   saveLevel,
   sanitizeCategory,
+  sanitizeLevelText,
+  sanitizeStarRule,
   setActiveLevelId,
   setDefaultLevelId,
+  starRuleLabel,
+  starRuleMet,
+  starRulePossible,
+  DEFAULT_STAR_2,
+  DEFAULT_STAR_3,
+  LEVEL_TEXT_MAX,
+  STAR_VALUE_MAX,
   type LevelCategory,
   type SavedLevel,
+  type StarRule,
 } from './levels';
 import {
   PERIODS,
@@ -134,7 +149,9 @@ import {
   abilityBadgeSvg,
   pieceIconSvg,
   reloadBadgeSvg,
-  staminaEmptyBadgeSvg,
+  staminaEmptyMarkSvg,
+  staminaPipsHtml,
+  starGlyphSvg,
 } from './icons';
 import {
   CLAMP,
@@ -157,22 +174,25 @@ import {
   serverStatusLabel,
   syncFromServer,
 } from './sync';
+import { hasWonLevel, recordLevelWin } from './progress';
+import pkg from '../package.json';
 
-const APP_VERSION = __APP_VERSION__;
+const APP_VERSION = pkg.version;
 document.title = `Chess Army — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
-type Screen = 'start' | 'play' | 'editor' | 'units';
+type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
 type Playlist = { kind: 'campaign' | 'tutorial'; ids: string[]; index: number };
 type EditorBrush = Terrain | UnitType | 'erase-unit';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
   { id: 'water', label: 'Water' },
-  { id: 'rock', label: 'Rock' },
+  { id: 'high', label: 'Hill (lv1)' },
+  { id: 'plateau', label: 'Plateau (lvl2)' },
+  { id: 'rock', label: 'Mountain (lvl3)' },
   { id: 'wall', label: 'Wall' },
-  { id: 'high', label: 'High' },
 ];
 
 function isTerrainBrush(b: EditorBrush): b is Terrain {
@@ -191,9 +211,11 @@ let state: GameState = bootState();
 let mode: Mode = 'ai';
 const humanSide: Side = 'red';
 let screen: Screen = 'start';
+let briefingOpen = false;
 let selectedPeriod: Period = getSelectedPeriod();
 let playlist: Playlist | null = null;
-let unitEditorCategory: UnitCategory = 'modern';
+let unitEditorCategory: UnitCategory =
+  selectedPeriod === 'ancient' ? 'ancient' : 'modern';
 const unitEditorOpen = new Set<UnitType>();
 let sidebarMoreOpen = false;
 let selectedId: string | null = null;
@@ -216,14 +238,23 @@ let editorName = 'New level';
 let editorCategory: LevelCategory = 'free';
 let editorPeriod: Period = selectedPeriod;
 let editorUnitsPerTurn = 1;
+let editorStartText = '';
+let editorWinText = '';
+let editorLoseText = '';
+let editorStar2: StarRule = { ...DEFAULT_STAR_2 };
+let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
 let editorArmySide: Side = 'red';
-let editorUnitCategory: UnitCategory = 'modern';
+let editorUnitCategory: UnitCategory =
+  selectedPeriod === 'ancient' ? 'ancient' : 'modern';
 let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
+let editorArmiesOpen = false;
 let editorPainting = false;
 let editorDirty = false;
 let editorPointerAbort: AbortController | null = null;
+let levelsFilter: LevelCategory | 'all' = 'all';
+let levelsPeriodFilter: Period | 'all' = selectedPeriod;
 
 function currentGrid(): {
   cols: number;
@@ -311,10 +342,6 @@ function clipStamps(pieces: ArmyStamp[], cols: number, rows: number): ArmyStamp[
   return out;
 }
 
-function stampsFromPieces(pieces: Piece[]): ArmyStamp[] {
-  return pieces.map((p) => ({ type: p.type, col: p.col, row: p.row, side: p.side }));
-}
-
 function seedArmies(cols: number, rows: number): ArmyStamp[] {
   return defaultArmyStamps(cols, rows) ?? bothStockStamps(cols, rows);
 }
@@ -357,6 +384,7 @@ function startMatch(reshuffleRandom = true) {
   clearSelection();
   aiThinking = false;
   animating = false;
+  briefingOpen = false;
   if (activeLevelId) {
     const lvl = getLevel(activeLevelId);
     if (lvl) {
@@ -369,6 +397,7 @@ function startMatch(reshuffleRandom = true) {
         ),
         lvl,
       );
+      briefingOpen = !!sanitizeLevelText(lvl.startText);
       applyLayout(computeLayout(), false);
       render();
       void maybeAi();
@@ -633,11 +662,13 @@ function readMapInputs(): MapOptions {
   const rockEl = app.querySelector<HTMLInputElement>('#map-rock');
   const wallEl = app.querySelector<HTMLInputElement>('#map-wall');
   const highEl = app.querySelector<HTMLInputElement>('#map-high');
+  const plateauEl = app.querySelector<HTMLInputElement>('#map-plateau');
   return {
     waterCount: waterEl ? Number(waterEl.value) : mapOpts.waterCount,
     rockCount: rockEl ? Number(rockEl.value) : mapOpts.rockCount,
     wallCount: wallEl ? Number(wallEl.value) : mapOpts.wallCount,
     highCount: highEl ? Number(highEl.value) : mapOpts.highCount,
+    plateauCount: plateauEl ? Number(plateauEl.value) : mapOpts.plateauCount,
   };
 }
 
@@ -647,6 +678,7 @@ function reset(reshuffle = true) {
 
 function showStart() {
   editorPainting = false;
+  briefingOpen = false;
   screen = 'start';
   playlist = null;
   aiThinking = false;
@@ -707,6 +739,22 @@ function advancePlaylist() {
   startMatch(false);
 }
 
+function maybeRecordLevelWin(): void {
+  if (screen !== 'play' || mode !== 'ai') return;
+  if (state.winner !== humanSide || !activeLevelId) return;
+  const lvl = getLevel(activeLevelId);
+  if (!lvl || lvl.category !== 'tutorial') return;
+  recordLevelWin(activeLevelId);
+}
+
+function canSkipTutorialLevel(): boolean {
+  return (
+    playlist?.kind === 'tutorial' &&
+    !!activeLevelId &&
+    hasWonLevel(activeLevelId)
+  );
+}
+
 function loadEditorLevel(lvl: SavedLevel): void {
   editorTerrain = cloneTerrain(lvl.terrain);
   editorOrientation = lvl.orientation;
@@ -715,6 +763,11 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorCategory = lvl.category;
   editorPeriod = lvl.period;
   editorUnitsPerTurn = clampUnitsPerTurn(lvl.unitsPerTurn);
+  editorStartText = sanitizeLevelText(lvl.startText);
+  editorWinText = sanitizeLevelText(lvl.winText);
+  editorLoseText = sanitizeLevelText(lvl.loseText);
+  editorStar2 = sanitizeStarRule(lvl.star2, DEFAULT_STAR_2);
+  editorStar3 = sanitizeStarRule(lvl.star3, DEFAULT_STAR_3);
   const cols = lvl.cols || editorTerrain[0]?.length || COLS;
   const rows = lvl.rows || editorTerrain.length || ROWS;
   editorPieces = Array.isArray(lvl.armies)
@@ -722,48 +775,24 @@ function loadEditorLevel(lvl: SavedLevel): void {
     : seedArmies(cols, rows);
 }
 
-function enterEditor(fromLevelId?: string | null) {
-  const lvl = fromLevelId ? getLevel(fromLevelId) : null;
-  if (lvl) {
-    loadEditorLevel(lvl);
-  } else if (activeLevelId) {
-    const active = getLevel(activeLevelId);
-    if (active) {
-      loadEditorLevel(active);
-    } else {
-      editorTerrain = cloneTerrain(state.terrain);
-      editorOrientation = state.orientation;
-      editorLevelId = null;
-      editorName = 'New level';
-      editorCategory = 'free';
-      editorPeriod = selectedPeriod;
-      editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
-      editorPieces = clipStamps(
-        stampsFromPieces(state.pieces),
-        editorTerrain[0]?.length ?? COLS,
-        editorTerrain.length || ROWS,
-      );
-    }
-  } else {
-    editorTerrain = cloneTerrain(state.terrain);
-    editorOrientation = state.orientation;
-    editorLevelId = null;
-    editorName = 'New level';
-    editorCategory = 'free';
-    editorPeriod = selectedPeriod;
-    editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
-    editorPieces = clipStamps(
-      stampsFromPieces(state.pieces),
-      editorTerrain[0]?.length ?? COLS,
-      editorTerrain.length || ROWS,
-    );
-  }
+function confirmLeaveEditor(): boolean {
+  if (screen !== 'editor' || !editorDirty) return true;
+  return confirm('Leave without saving this level?');
+}
+
+function unitCategoryForPeriod(period: Period): UnitCategory {
+  return period === 'ancient' ? 'ancient' : 'modern';
+}
+
+function beginEditorSession(): void {
+  editorUnitCategory = unitCategoryForPeriod(editorPeriod);
   editorBrush = 'water';
   editorArmySide = 'red';
   editorFormationId = STOCK_FORMATION_ID;
   editorFormationName = 'New army';
   editorPainting = false;
-  editorDirty = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
   screen = 'editor';
   clearSelection();
   aiThinking = false;
@@ -772,9 +801,76 @@ function enterEditor(fromLevelId?: string | null) {
   render();
 }
 
-function enterUnits() {
+function enterLevels(syncPeriod = false) {
+  if (syncPeriod) levelsPeriodFilter = selectedPeriod;
   editorPainting = false;
   editorPointerAbort?.abort();
+  briefingOpen = false;
+  screen = 'levels';
+  clearSelection();
+  aiThinking = false;
+  animating = false;
+  render();
+}
+
+function enterEditor(fromLevelId?: string | null) {
+  const lvl = fromLevelId ? getLevel(fromLevelId) : null;
+  if (!lvl) return;
+  loadEditorLevel(lvl);
+  editorDirty = false;
+  beginEditorSession();
+}
+
+function newEditorLevel() {
+  editorTerrain = emptyTerrain(COLS, ROWS);
+  editorOrientation = DEFAULT_ORIENTATION;
+  editorLevelId = null;
+  editorName = 'New level';
+  editorCategory = 'free';
+  editorPeriod = selectedPeriod;
+  editorUnitsPerTurn = 1;
+  editorStartText = '';
+  editorWinText = '';
+  editorLoseText = '';
+  editorStar2 = { ...DEFAULT_STAR_2 };
+  editorStar3 = { ...DEFAULT_STAR_3 };
+  editorPieces = [];
+  editorDirty = false;
+  beginEditorSession();
+}
+
+function enterEditorFromMatch() {
+  editorTerrain = cloneTerrain(state.terrain);
+  editorOrientation = state.orientation;
+  editorLevelId = null;
+  editorName = 'New level';
+  editorCategory = 'free';
+  editorPeriod = selectedPeriod;
+  editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
+  editorStartText = '';
+  editorWinText = '';
+  editorLoseText = '';
+  editorStar2 = { ...DEFAULT_STAR_2 };
+  editorStar3 = { ...DEFAULT_STAR_3 };
+  editorPieces = clipStamps(
+    state.pieces.map((p) => ({
+      type: p.type,
+      col: p.col,
+      row: p.row,
+      side: p.side,
+    })),
+    editorTerrain[0]?.length ?? COLS,
+    editorTerrain.length || ROWS,
+  );
+  editorDirty = true;
+  beginEditorSession();
+}
+
+function enterUnits() {
+  unitEditorCategory = unitCategoryForPeriod(selectedPeriod);
+  editorPainting = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
   screen = 'units';
   clearSelection();
   aiThinking = false;
@@ -796,8 +892,8 @@ function refreshEditorBoard() {
 
 function markEditorDirty() {
   editorDirty = true;
-  const dirtyHint = app.querySelector('#editor-lib-label');
-  if (dirtyHint) dirtyHint.textContent = 'Saved levels · unsaved changes';
+  const dirtyHint = app.querySelector<HTMLElement>('#editor-dirty');
+  if (dirtyHint) dirtyHint.hidden = false;
 }
 
 function paintEditorUnit(col: number, row: number) {
@@ -836,7 +932,7 @@ function paintEditorHex(col: number, row: number) {
   markEditorDirty();
 
   // High rims / units need a board refresh; otherwise update the hex class in place (keeps drag)
-  if (prev === 'high' || editorBrush === 'high') {
+  if (isElevatedTerrain(prev) || editorBrush === 'high' || editorBrush === 'plateau') {
     refreshEditorBoard();
   } else {
     const poly = app.querySelector<SVGPolygonElement>(
@@ -849,7 +945,7 @@ function paintEditorHex(col: number, row: number) {
   }
 }
 
-function doSaveLevel(asNew: boolean, asDefault = false): void {
+function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false): void {
   const nameEl = app.querySelector<HTMLInputElement>('#editor-name');
   if (nameEl) editorName = nameEl.value;
   const catEl = app.querySelector<HTMLSelectElement>('#editor-category');
@@ -858,6 +954,14 @@ function doSaveLevel(asNew: boolean, asDefault = false): void {
   if (periodEl) editorPeriod = sanitizePeriod(periodEl.value);
   const uptEl = app.querySelector<HTMLInputElement>('#editor-units-per-turn');
   if (uptEl) editorUnitsPerTurn = clampUnitsPerTurn(uptEl.value);
+  const startEl = app.querySelector<HTMLTextAreaElement>('#editor-start-text');
+  if (startEl) editorStartText = startEl.value;
+  const winEl = app.querySelector<HTMLTextAreaElement>('#editor-win-text');
+  if (winEl) editorWinText = winEl.value;
+  const loseEl = app.querySelector<HTMLTextAreaElement>('#editor-lose-text');
+  if (loseEl) editorLoseText = loseEl.value;
+  editorStar2 = readEditorStar(2);
+  editorStar3 = readEditorStar(3);
   const saved = saveLevel(
     editorName,
     editorTerrain,
@@ -867,7 +971,18 @@ function doSaveLevel(asNew: boolean, asDefault = false): void {
     editorCategory,
     editorUnitsPerTurn,
     editorPeriod,
+    {
+      startText: editorStartText,
+      winText: editorWinText,
+      loseText: editorLoseText,
+    },
+    { star2: editorStar2, star3: editorStar3 },
   );
+  editorStartText = saved.startText;
+  editorWinText = saved.winText;
+  editorLoseText = saved.loseText;
+  editorStar2 = saved.star2;
+  editorStar3 = saved.star3;
   editorLevelId = saved.id;
   editorName = saved.name;
   editorDirty = false;
@@ -876,6 +991,15 @@ function doSaveLevel(asNew: boolean, asDefault = false): void {
   if (asDefault) {
     defaultLevelId = saved.id;
     setDefaultLevelId(saved.id);
+  }
+  if (thenPlay) {
+    editorPainting = false;
+    editorPointerAbort?.abort();
+    playlist = null;
+    mode = 'ai';
+    screen = 'play';
+    startMatch(false);
+    return;
   }
   render();
 }
@@ -889,8 +1013,108 @@ function clearSelection() {
   commitPath = [];
 }
 
+function activeSavedLevel(): SavedLevel | null {
+  return activeLevelId ? getLevel(activeLevelId) : null;
+}
+
+function levelCopy(kind: 'start' | 'win' | 'lose'): string {
+  const lvl = activeSavedLevel();
+  if (!lvl) return '';
+  if (kind === 'start') return sanitizeLevelText(lvl.startText);
+  if (kind === 'win') return sanitizeLevelText(lvl.winText);
+  return sanitizeLevelText(lvl.loseText);
+}
+
+function levelStars(): { star2: StarRule; star3: StarRule } {
+  const lvl = activeSavedLevel();
+  return {
+    star2: sanitizeStarRule(lvl?.star2, DEFAULT_STAR_2),
+    star3: sanitizeStarRule(lvl?.star3, DEFAULT_STAR_3),
+  };
+}
+
+function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' | 'pending' | 'off'] {
+  const { star2, star3 } = levelStars();
+  const turns = state.turnNumber;
+  const cas = state.casualties[humanSide];
+  const won = state.winner === humanSide;
+  const lost = !!state.winner && !won;
+  const live = (
+    met: boolean,
+    possible: boolean,
+  ): 'on' | 'pending' | 'off' => {
+    if (won) return met ? 'on' : 'off';
+    if (lost) return 'off';
+    return possible ? 'pending' : 'off';
+  };
+  return [
+    live(won, true),
+    live(starRuleMet(star2, turns, cas), starRulePossible(star2, turns, cas)),
+    live(starRuleMet(star3, turns, cas), starRulePossible(star3, turns, cas)),
+  ];
+}
+
+function starGoalsHtml(): string {
+  const { star2, star3 } = levelStars();
+  const kinds = starKinds();
+  const labels = ['Win', starRuleLabel(star2), starRuleLabel(star3)];
+  return `<ul class="star-goals" aria-label="Star goals">${labels
+    .map(
+      (label, i) =>
+        `<li class="star-goal ${kinds[i]}" title="${escapeHtml(label)}">${starGlyphSvg(kinds[i], 16)}<span>${escapeHtml(label)}</span></li>`,
+    )
+    .join('')}</ul>`;
+}
+
+function endStarsHtml(): string {
+  const { star2, star3 } = levelStars();
+  const kinds = starKinds();
+  const labels = ['Win', starRuleLabel(star2), starRuleLabel(star3)];
+  return `<ul class="end-stars" aria-label="Stars earned">${labels
+    .map(
+      (label, i) =>
+        `<li class="end-star ${kinds[i]}" title="${escapeHtml(label)}">${starGlyphSvg(kinds[i], 32)}</li>`,
+    )
+    .join('')}</ul>`;
+}
+
+function readEditorStar(n: 2 | 3): StarRule {
+  const fallback = n === 2 ? DEFAULT_STAR_2 : DEFAULT_STAR_3;
+  const metric = app.querySelector<HTMLSelectElement>(
+    `[data-star="${n}"][data-star-field="metric"]`,
+  )?.value;
+  const op = app.querySelector<HTMLSelectElement>(
+    `[data-star="${n}"][data-star-field="op"]`,
+  )?.value;
+  const value = app.querySelector<HTMLInputElement>(
+    `[data-star="${n}"][data-star-field="value"]`,
+  )?.value;
+  return sanitizeStarRule({ metric, op, value }, fallback);
+}
+
+function starRuleEditorRow(n: 2 | 3, rule: StarRule): string {
+  return `<div class="star-rule-row">
+    <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
+    <span class="star-rule-n">${n}</span>
+    <select data-star="${n}" data-star-field="metric">
+      <option value="turns"${rule.metric === 'turns' ? ' selected' : ''}>Turns</option>
+      <option value="casualties"${rule.metric === 'casualties' ? ' selected' : ''}>Casualties</option>
+    </select>
+    <select data-star="${n}" data-star-field="op">
+      <option value="lt"${rule.op === 'lt' ? ' selected' : ''}>&lt;</option>
+      <option value="lte"${rule.op === 'lte' ? ' selected' : ''}>≤</option>
+      <option value="eq"${rule.op === 'eq' ? ' selected' : ''}>=</option>
+    </select>
+    <input type="number" min="0" max="${STAR_VALUE_MAX}" value="${rule.value}" data-star="${n}" data-star-field="value" />
+  </div>`;
+}
+
+function briefingBlocks(): boolean {
+  return briefingOpen && !state.winner && !!levelCopy('start');
+}
+
 function canControl(): boolean {
-  if (state.winner || aiThinking || animating) return false;
+  if (briefingBlocks() || state.winner || aiThinking || animating) return false;
   if (mode === 'ai') return state.turn === humanSide;
   return true;
 }
@@ -1159,16 +1383,21 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   }
 }
 
-async function skipScout() {
+async function skipScout(nextId?: string) {
   if (!state.scoutPieceId || !canControl()) return;
   await playAnimatedAction({ kind: 'skip' });
-  clearSelection();
-  render();
+  const next = nextId ? getPiece(state, nextId) : null;
+  if (next && canControl()) {
+    selectPiece(next.id);
+  } else {
+    clearSelection();
+    render();
+  }
   await maybeAi();
 }
 
 async function maybeAi() {
-  if (mode !== 'ai' || state.winner) return;
+  if (briefingBlocks() || mode !== 'ai' || state.winner) return;
   if (state.turn === humanSide) return;
   aiThinking = true;
   updateChrome();
@@ -1292,6 +1521,10 @@ function renderBoard(): string {
       if (terrain === 'high') {
         hexes += `<polygon class="hex-high-rim" points="${hexCorners(x, y, HEX_SIZE * 0.72, ori)}" />`;
         hexes += `<polygon class="hex-high-top" points="${hexCorners(x, y, HEX_SIZE * 0.42, ori)}" />`;
+      } else if (terrain === 'plateau') {
+        hexes += `<polygon class="hex-plateau-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
+        hexes += `<polygon class="hex-plateau-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
+        hexes += `<polygon class="hex-plateau-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
       }
 
       const mv = moveMap.get(k);
@@ -1339,15 +1572,11 @@ function renderBoard(): string {
     const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
     const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
-    const staminaIcon = emptyStamina
-      ? staminaEmptyBadgeSvg(pr * 0.65, -pr * 0.7, badgeR)
-      : '';
+    const stamCx = -pr * 0.65;
+    const stamCy = -pr * 0.7;
+    const staminaMark = emptyStamina ? staminaEmptyMarkSvg(stamCx, stamCy, badgeR) : '';
     const reloadIcon = isReloading(p)
-      ? reloadBadgeSvg(
-          emptyStamina ? -pr * 0.15 : pr * 0.65,
-          -pr * 0.7,
-          badgeR,
-        )
+      ? reloadBadgeSvg(pr * 0.65, -pr * 0.7, badgeR)
       : '';
     const shots = ammoLeft(p);
     const ammoIcon =
@@ -1368,8 +1597,8 @@ function renderBoard(): string {
       maxHp > 1
         ? hpBadgeSvg(
             hpLeft(p),
-            -pr * 0.65,
-            -pr * 0.7,
+            emptyStamina ? stamCx + badgeR * 1.7 : stamCx,
+            stamCy,
             badgeR,
           )
         : '';
@@ -1392,8 +1621,8 @@ function renderBoard(): string {
             ${pieceIconSvg(p.type, hexed ? Math.round(PIECE_ICON * 1.2) : PIECE_ICON)}
           </g>
         </g>
+        ${staminaMark}
         ${reloadIcon}
-        ${staminaIcon}
         ${hpIcon}
         ${ammoIcon}
         ${actedIcon}
@@ -1437,6 +1666,15 @@ function renderBoard(): string {
         <ellipse cx="10" cy="10" rx="2.2" ry="1.8" fill="var(--high-hi)" opacity="0.35"/>
         <path d="M1 15 Q6 12 10 14 T19 13" fill="none" stroke="var(--high-lo)" stroke-width="0.8" opacity="0.4"/>
         <path d="M2 6 Q8 3 14 5" fill="none" stroke="var(--high-hi)" stroke-width="0.7" opacity="0.35"/>
+      </pattern>
+      <pattern id="plateau-tex" patternUnits="userSpaceOnUse" width="20" height="20">
+        <rect width="20" height="20" fill="var(--plateau)"/>
+        <rect width="20" height="20" fill="var(--plateau-hi)" opacity="0.38"/>
+        <ellipse cx="10" cy="10" rx="9" ry="7.2" fill="none" stroke="var(--plateau-lo)" stroke-width="1.1" opacity="0.6"/>
+        <ellipse cx="10" cy="10" rx="6.2" ry="5" fill="none" stroke="var(--plateau-hi)" stroke-width="1" opacity="0.55"/>
+        <ellipse cx="10" cy="10" rx="3.4" ry="2.6" fill="none" stroke="var(--plateau-lo)" stroke-width="0.9" opacity="0.5"/>
+        <ellipse cx="10" cy="10" rx="1.5" ry="1.1" fill="var(--plateau-hi)" opacity="0.4"/>
+        <path d="M1 16 Q7 12 11 15 T19 14" fill="none" stroke="var(--plateau-lo)" stroke-width="0.8" opacity="0.45"/>
       </pattern>
     </defs>`;
 
@@ -1533,11 +1771,8 @@ function renderActionBar(): string {
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
-        <span>${s.name}${previewOnly ? ' · preview' : ''}${
-          staminaMax(piece) > 0
-            ? ` · ${staminaLeft(piece)}/${staminaMax(piece)} stam`
-            : ''
-        }</span>
+        <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
+        ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
       </div>
       ${scoutUi}
       ${endBtn}
@@ -1560,8 +1795,8 @@ function renderSidebar(): string {
 
   if (piece) {
     const s = UNIT_STATS[piece.type];
-    const onHigh = state.terrain[piece.row][piece.col] === 'high';
-    const shootVal = onHigh ? s.shoot + 1 : s.shoot;
+    const elev = terrainHeight(state.terrain[piece.row][piece.col]);
+    const shootVal = s.shoot + elev;
     const shootRange =
       s.shootMin > 1 ? `${s.shootMin}–${shootVal}` : String(shootVal);
     const moveNote = [
@@ -1587,7 +1822,7 @@ function renderSidebar(): string {
 
     const vitals = [
       ...(maxSt > 0
-        ? [statRow('Stamina', `${curSt}/${maxSt}`, stamNote, stamWarn)]
+        ? [statRow('Stamina', staminaPipsHtml(curSt, maxSt), stamNote, stamWarn)]
         : []),
       statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
       ...(s.shootCooldown > 0
@@ -1605,11 +1840,21 @@ function renderSidebar(): string {
     ];
 
     const moreRows = [
-      statRow('Move', String(s.move), moveNote),
+      statRow(
+        'Move',
+        String(s.move + elev),
+        [moveNote, elev === 2 ? '+2 from plateau' : elev === 1 ? '+1 from high' : '']
+          .filter(Boolean)
+          .join(' · '),
+      ),
       statRow(
         'Shoot',
         shootRange,
-        [s.shootArc === 'arch' ? 'arch over units' : 'straight', onHigh ? '+1 from high' : '']
+        [
+          s.shootArc === 'arch' ? 'arch over units' : 'straight',
+          elev === 2 ? '+2 from plateau' : elev === 1 ? '+1 from high' : '',
+          'high dest +1 · plateau dest +2',
+        ]
           .filter(Boolean)
           .join(' · '),
       ),
@@ -1632,7 +1877,7 @@ function renderSidebar(): string {
               return `${tag}${n > 0 ? '+' : ''}${n}`;
             }).join(' ')
           : `${s.armor > 0 ? '+' : ''}${s.armor}`,
-        s.hexArmor ? 'hex · front follows last move' : '',
+        s.hexArmor ? 'hex · front follows last move · −2 face blocks walk' : '',
       ),
     ];
     if (s.ammo > 0) {
@@ -1648,13 +1893,13 @@ function renderSidebar(): string {
 
     const abilityNotes = abilitiesOf(piece).map((id) => ABILITY_BLURB[id]);
     const extraNotes: string[] = [];
-    if (s.passWater && s.passUnits) extraNotes.push('Pathing through water and pieces (not rocks)');
+    if (s.passWater && s.passUnits) extraNotes.push('Move onto water; pathing through pieces');
     else {
-      if (s.passWater) extraNotes.push('Pathing through water');
+      if (s.passWater) extraNotes.push('Move onto water (stamina to enter from land)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (s.charge > 0) extraNotes.push(`Charge through ${s.charge} dmg (armor applies; survivors don't block)`);
-    if (s.noHigh) extraNotes.push('Cannot enter high ground');
+    extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
     if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
     const previewOnly = piece.side !== state.turn || !canControl();
@@ -1709,20 +1954,21 @@ function renderSidebar(): string {
           ${moreStats}
           <div class="legend">
             <span class="l-move">Move</span>
-            <span class="l-stamina">Stamina (climb / extra move)</span>
+            <span class="l-stamina">Stamina (climb / water / extra move)</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
             <span class="l-shoot-border">Red border = shoot range</span>
           </div>
           <dl class="rules">
-            <div><dt>Water</dt><dd>shoot over, cannot cross</dd></div>
-            <div><dt>LOS low</dt><dd>rock, wall, high block; straight blocked by units</dd></div>
+            <div><dt>Water</dt><dd>shoot over. Move to water units can stop on it; entering from land costs stamina</dd></div>
+            <div><dt>LOS low</dt><dd>wall always blocks; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
-            <div><dt>LOS high</dt><dd>+1 shoot; over pieces &amp; along ridge</dd></div>
-            <div><dt>Walls</dt><dd>block like rock; rockets demolish</dd></div>
-            <div><dt>Stamina</dt><dd>climb, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
+            <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
+            <div><dt>Heights</dt><dd>Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only (no land↔plateau). Climbing / entering water costs stamina. Climb level is the max height a unit can occupy</dd></div>
+            <div><dt>Walls</dt><dd>solid; rockets demolish</dd></div>
+            <div><dt>Stamina</dt><dd>climb, enter water, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
-            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0</dd></div>
+            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
           </dl>
@@ -1731,15 +1977,20 @@ function renderSidebar(): string {
     </div>`;
 }
 
+function matchStatsHtml(): string {
+  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas"><span class="red">Red −${state.casualties.red}</span><span class="blue">Blue −${state.casualties.blue}</span></span>`;
+}
+
 function turnLabel(): string {
+  const stats = matchStatsHtml();
   if (state.winner) {
     const loser = state.winner === 'red' ? 'blue' : 'red';
     const how = defeatKind(state, loser) === 'wipeout' ? 'army destroyed' : 'general down';
-    return `<span class="${state.winner}">${state.winner.toUpperCase()} wins</span> — ${how}`;
+    return `<span class="${state.winner}">${state.winner.toUpperCase()} wins</span> — ${how} · ${stats}`;
   }
   if (aiThinking || animating) {
     if (mode === 'ai' && state.turn !== humanSide) {
-      return `<span class="blue">Blue (AI)</span> moving…`;
+      return `${stats} · <span class="blue">Blue (AI)</span> moving…`;
     }
   }
   const quota =
@@ -1748,10 +1999,10 @@ function turnLabel(): string {
       : '';
   if (mode === 'ai') {
     return state.turn === humanSide
-      ? `<span class="red">Your turn (Red)</span>${quota}`
-      : `<span class="blue">Blue (AI)</span>${quota}`;
+      ? `${stats} · <span class="red">Your turn (Red)</span>${quota}`
+      : `${stats} · <span class="blue">Blue (AI)</span>${quota}`;
   }
-  return `<span class="${state.turn}">${state.turn.toUpperCase()} to move</span>${quota}`;
+  return `${stats} · <span class="${state.turn}">${state.turn.toUpperCase()} to move</span>${quota}`;
 }
 
 function renderEndOverlay(): string {
@@ -1785,15 +2036,18 @@ function renderEndOverlay(): string {
     ? `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing army.`
     : `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing general.`;
 
-  const sub = youWon && lastInList
-    ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
-    : youWon && inList
-      ? `${winHow} ${playlist!.index + 1} / ${playlist!.ids.length}`
-      : youWon
-        ? winHow
-        : youLost
-          ? loseHow
-          : hotseatHow;
+  const custom = state.winner === humanSide ? levelCopy('win') : levelCopy('lose');
+  const stock =
+    youWon && lastInList
+      ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
+      : youWon && inList
+        ? `${winHow} ${playlist!.index + 1} / ${playlist!.ids.length}`
+        : youWon
+          ? winHow
+          : youLost
+            ? loseHow
+            : hotseatHow;
+  const sub = custom || stock;
 
   const winnerSide = state.winner;
   const nextBtn =
@@ -1813,7 +2067,9 @@ function renderEndOverlay(): string {
           <g fill="${iconInk(winnerSide)}" color="${iconInk(winnerSide)}">${pieceIconSvg('general', 16)}</g>
         </svg>
         <h2 class="end-title">${title}</h2>
-        <p class="end-sub">${sub}</p>
+        ${endStarsHtml()}
+        <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? escapeHtml(custom) : sub}</p>
+        <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
           ${nextBtn}
           <button type="button" id="end-rematch">Rematch</button>
@@ -1823,9 +2079,27 @@ function renderEndOverlay(): string {
     </div>`;
 }
 
+function renderStartOverlay(): string {
+  if (!briefingBlocks()) return '';
+  const text = levelCopy('start');
+  const title = activeSavedLevel()?.name ?? 'Level';
+  return `
+    <div class="end-overlay briefing" role="dialog" aria-label="${escapeHtml(title)}">
+      <div class="end-card briefing">
+        <h2 class="end-title">${escapeHtml(title)}</h2>
+        <p class="end-sub level-copy">${escapeHtml(text)}</p>
+        <div class="end-actions">
+          <button type="button" id="briefing-go">Begin</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function updateChrome() {
   const banner = app.querySelector('.turn-banner');
   if (banner) banner.innerHTML = turnLabel();
+  const goals = app.querySelector('.star-goals');
+  if (goals) goals.outerHTML = starGoalsHtml();
 }
 
 function choicePending(): boolean {
@@ -1867,7 +2141,7 @@ function placeHexChoice() {
 }
 
 function onHexClick(col: number, row: number) {
-  if (animating || aiThinking) return;
+  if (briefingBlocks() || animating || aiThinking) return;
   const hex = { col, row };
   const occ = state.pieces.find((p) => p.col === col && p.row === row);
 
@@ -1898,6 +2172,16 @@ function onHexClick(col: number, row: number) {
   }
 
   if (occ) {
+    const skipStaminaForOther =
+      canControl() &&
+      state.staminaBonus &&
+      !!state.scoutPieceId &&
+      occ.id !== state.scoutPieceId &&
+      occ.side === state.turn;
+    if (skipStaminaForOther) {
+      void skipScout(occ.id);
+      return;
+    }
     selectPiece(occ.id);
     return;
   }
@@ -2058,7 +2342,7 @@ function renderToolbar(): string {
   return `<div class="toolbar">
     <h1>CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h1>
     <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Start</button>
-    <button type="button" id="open-editor" class="${screen === 'editor' ? 'active' : ''}">Editor</button>
+    <button type="button" id="open-editor" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Editor</button>
     <button type="button" id="open-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
     ${syncStatusHtml()}
   </div>`;
@@ -2107,13 +2391,12 @@ function renderStartScreen(): string {
 function bindToolbarEvents() {
   app.querySelector('#go-start')?.addEventListener('click', () => {
     if (screen === 'start') return;
+    if (!confirmLeaveEditor()) return;
     showStart();
   });
   app.querySelectorAll<HTMLButtonElement>('.period-pick').forEach((btn) => {
     btn.addEventListener('click', () => {
-      selectedPeriod = sanitizePeriod(btn.dataset.period);
-      setSelectedPeriod(selectedPeriod);
-      applyPeriodTheme(selectedPeriod);
+      selectedPeriod = setSelectedPeriod(btn.dataset.period);
       render();
     });
   });
@@ -2125,15 +2408,22 @@ function bindToolbarEvents() {
       else if (kind === 'hotseat') startSkirmish('hotseat');
     });
   });
-  app.querySelectorAll('#open-editor').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (screen === 'editor') return;
-      enterEditor(activeLevelId);
-    });
+  app.querySelector('#open-editor')?.addEventListener('click', () => {
+    if (screen === 'levels') return;
+    if (!confirmLeaveEditor()) return;
+    enterLevels(true);
+  });
+  app.querySelector('#edit-this-level')?.addEventListener('click', () => {
+    if (!activeLevelId) return;
+    enterEditor(activeLevelId);
+  });
+  app.querySelector('#edit-current-map')?.addEventListener('click', () => {
+    enterEditorFromMatch();
   });
   app.querySelectorAll('#open-units').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (screen === 'units') return;
+      if (!confirmLeaveEditor()) return;
       enterUnits();
     });
   });
@@ -2188,9 +2478,18 @@ function terrainSwatchSvg(kind: Terrain): string {
       <polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>
       <polygon points="${hexCorners(0, 0, size * 0.72, o)}" fill="none" stroke="rgba(240,220,160,0.55)" stroke-width="1.15"/>
       <polygon points="${hexCorners(0, 0, size * 0.42, o)}" fill="rgba(255,236,180,0.22)" stroke="rgba(255,245,200,0.4)" stroke-width="0.8"/>`;
+  } else if (kind === 'plateau') {
+    fill = 'var(--plateau)';
+    stroke = 'var(--plateau-stroke)';
+    sw = 2;
+    extra = `<polygon points="${hexCorners(0, 2.2, size, o)}" fill="var(--plateau-shadow)"/>
+      <polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, size * 0.82, o)}" fill="none" stroke="rgba(220,214,204,0.55)" stroke-width="1.15"/>
+      <polygon points="${hexCorners(0, 0, size * 0.58, o)}" fill="none" stroke="rgba(236,230,220,0.4)" stroke-width="0.9"/>
+      <polygon points="${hexCorners(0, 0, size * 0.32, o)}" fill="rgba(255,250,240,0.2)" stroke="rgba(255,252,245,0.38)" stroke-width="0.75"/>`;
   }
   const body =
-    kind === 'high'
+    kind === 'high' || kind === 'plateau'
       ? extra
       : `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>${extra}`;
   return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
@@ -2260,22 +2559,143 @@ function renderArmySelectPanel(): string {
     </section>`;
 }
 
+function renderLevelThumb(lvl: SavedLevel): string {
+  const ori = lvl.orientation;
+  const cols = lvl.cols;
+  const rows = lvl.rows;
+  const extent1 = hexGridExtent(cols, rows, 1, ori);
+  const size = Math.max(
+    3,
+    Math.min(9, Math.floor(Math.min(156 / (extent1.w + 0.5), 96 / (extent1.h + 0.5)))),
+  );
+  const pad = size * 1.05;
+  const extent = hexGridExtent(cols, rows, size, ori);
+  const w = pad * 2 + extent.w;
+  const h = pad * 2 + extent.h;
+  let hexes = '';
+  for (let row = 0; row < rows; row++) {
+    const line = lvl.terrain[row];
+    if (!line) continue;
+    for (let col = 0; col < cols; col++) {
+      const terrain = line[col] ?? 'land';
+      const { x, y } = hexToPixel({ col, row }, size, ori);
+      const cx = x + pad;
+      const cy = y + pad;
+      let cls = `hex ${terrain}`;
+      if (terrain === 'land' && (col + row) % 2) cls += ' alt';
+      hexes += `<polygon class="${cls}" points="${hexCorners(cx, cy, size, ori)}" />`;
+      if (terrain === 'high') {
+        hexes += `<polygon class="hex-high-rim" points="${hexCorners(cx, cy, size * 0.72, ori)}" />`;
+        hexes += `<polygon class="hex-high-top" points="${hexCorners(cx, cy, size * 0.42, ori)}" />`;
+      } else if (terrain === 'plateau') {
+        hexes += `<polygon class="hex-plateau-rim" points="${hexCorners(cx, cy, size * 0.82, ori)}" />`;
+        hexes += `<polygon class="hex-plateau-mid" points="${hexCorners(cx, cy, size * 0.58, ori)}" />`;
+        hexes += `<polygon class="hex-plateau-top" points="${hexCorners(cx, cy, size * 0.32, ori)}" />`;
+      }
+    }
+  }
+  let dots = '';
+  for (const p of lvl.armies ?? []) {
+    const { x, y } = hexToPixel({ col: p.col, row: p.row }, size, ori);
+    dots += `<circle class="thumb-piece ${p.side}" cx="${x + pad}" cy="${y + pad}" r="${(size * 0.34).toFixed(1)}" />`;
+  }
+  return `<svg class="level-thumb" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${hexes}${dots}</svg>`;
+}
+
+function levelMetaLine(l: SavedLevel): string {
+  const armyN = Array.isArray(l.armies) ? l.armies.length : null;
+  const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
+  return `${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''} · ${army}${l.id === defaultLevelId ? ' · default' : ''}`;
+}
+
+function renderLevelRow(l: SavedLevel): string {
+  const current = l.id === editorLevelId ? ' current' : '';
+  return `<li class="level-row${current}">
+    <button type="button" class="level-open" data-edit-level="${l.id}">
+      ${renderLevelThumb(l)}
+      <span class="level-copy">
+        <span class="level-name">${escapeHtml(l.name)}</span>
+        <span class="lvl-meta">${levelMetaLine(l)}</span>
+      </span>
+    </button>
+    <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
+  </li>`;
+}
+
+function renderLevelsOverview(): string {
+  const all = listLevels();
+  const filterOpts: { id: LevelCategory | 'all'; label: string }[] = [
+    { id: 'all', label: 'All' },
+    ...LEVEL_CATEGORIES.map((c) => ({ id: c, label: LEVEL_CATEGORY_LABEL[c] })),
+  ];
+  const filters = filterOpts
+    .map(
+      (f) =>
+        `<button type="button" class="levels-filter${levelsFilter === f.id ? ' active' : ''}" data-levels-filter="${f.id}">${f.label}</button>`,
+    )
+    .join('');
+  const periodOpts: { id: Period | 'all'; label: string }[] = [
+    { id: 'all', label: 'All' },
+    ...PERIODS.map((p) => ({ id: p, label: PERIOD_LABEL[p] })),
+  ];
+  const periodFilters = periodOpts
+    .map(
+      (f) =>
+        `<button type="button" class="levels-filter${levelsPeriodFilter === f.id ? ' active' : ''}" data-levels-period="${f.id}"${f.id === 'all' ? '' : ` data-period="${f.id}"`}>${f.label}</button>`,
+    )
+    .join('');
+
+  const period = levelsPeriodFilter === 'all' ? undefined : levelsPeriodFilter;
+  const cats: LevelCategory[] =
+    levelsFilter === 'all' ? LEVEL_CATEGORIES : [levelsFilter];
+  const groups = cats.map((cat) => ({
+    cat,
+    levels: levelsInCategory(cat, period),
+  }));
+  const shownN = groups.reduce((n, g) => n + g.levels.length, 0);
+
+  const emptyBits = [
+    levelsPeriodFilter === 'all' ? '' : PERIOD_LABEL[levelsPeriodFilter].toLowerCase(),
+    levelsFilter === 'all' ? '' : LEVEL_CATEGORY_LABEL[levelsFilter].toLowerCase(),
+  ].filter(Boolean);
+
+  let body: string;
+  if (all.length === 0) {
+    body = `<p class="editor-empty">No saved levels. New level opens a blank map you paint and save.</p>`;
+  } else if (shownN === 0) {
+    body = `<p class="editor-empty">No ${emptyBits.join(' ')} levels.</p>`;
+  } else if (levelsFilter === 'all') {
+    body = groups
+      .filter((g) => g.levels.length)
+      .map(
+        (g) => `<section class="levels-group">
+          <h3>${LEVEL_CATEGORY_LABEL[g.cat]}</h3>
+          <ul class="level-catalog">${g.levels.map(renderLevelRow).join('')}</ul>
+        </section>`,
+      )
+      .join('');
+  } else {
+    body = `<ul class="level-catalog">${groups[0].levels.map(renderLevelRow).join('')}</ul>`;
+  }
+
+  return `
+    <div class="board-wrap start-wrap levels-wrap">
+      ${renderToolbar()}
+      <div class="levels-overview">
+        <div class="levels-head">
+          <h2>Levels</h2>
+          <button type="button" id="level-new">New level</button>
+        </div>
+        <div class="levels-filters">${filters}</div>
+        <div class="levels-filters levels-filters-period">${periodFilters}</div>
+        ${body}
+      </div>
+    </div>`;
+}
+
 function renderEditorBar(): string {
-  const levels = listLevels();
   const forms = listFormations();
   const grid = currentGrid();
-
-  const levelList =
-    levels.length === 0
-      ? `<p class="editor-empty">No saved levels yet</p>`
-      : `<ul class="editor-levels">${levels
-          .map(
-            (l) => `<li class="${l.id === editorLevelId ? 'active' : ''}">
-              <button type="button" data-load-level="${l.id}">${escapeHtml(l.name)} <span class="lvl-meta">${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.id === defaultLevelId ? ' · default' : ''}</span></button>
-              <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
-            </li>`,
-          )
-          .join('')}</ul>`;
 
   const stockDefault = !defaultFormationId;
   const formList = `<ul class="editor-levels editor-formations">
@@ -2294,25 +2714,42 @@ function renderEditorBar(): string {
 
   const namedForm = editorFormationId && editorFormationId !== STOCK_FORMATION_ID;
   const isDefaultForm = namedForm && editorFormationId === defaultFormationId;
+  const armyHint = namedForm ? editorFormationName : 'Standard';
+  const armyOnto = editorArmySide === 'red' ? 'Red' : 'Blue';
 
   return `
     <div class="editor-bar">
       <section class="editor-panel editor-panel-armies">
-        <h3>Armies</h3>
-        <div class="editor-save editor-army-save">
-          <input type="text" id="army-name" value="${escapeHtml(editorFormationName)}" placeholder="Army name" maxlength="48" />
-          <button type="button" id="army-save">${namedForm ? 'Save' : 'Save new'}</button>
-          <button type="button" id="army-save-as" class="ghost">Save as new</button>
-          <button type="button" id="army-save-default" class="${isDefaultForm ? 'active' : ''}">${isDefaultForm ? 'Default army' : 'Save as default'}</button>
-          <button type="button" id="army-clear" class="ghost">Clear</button>
-        </div>
-        <div class="editor-library editor-army-library">
-          <span class="editor-label">Load onto ${editorArmySide === 'red' ? 'Red' : 'Blue'}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
-          ${formList}
-        </div>
+        <details data-editor-armies${editorArmiesOpen ? ' open' : ''}>
+          <summary>
+            <h3>Armies</h3>
+            <span class="lvl-meta">${escapeHtml(armyHint)} · onto ${armyOnto}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
+          </summary>
+          <div class="editor-fold-body">
+            <div class="editor-save editor-army-save">
+              <input type="text" id="army-name" value="${escapeHtml(editorFormationName)}" placeholder="Army name" maxlength="48" />
+              <button type="button" id="army-save">${namedForm ? 'Save' : 'Save new'}</button>
+              <button type="button" id="army-save-as" class="ghost">Save as new</button>
+              <button type="button" id="army-save-default" class="${isDefaultForm ? 'active' : ''}">${isDefaultForm ? 'Default army' : 'Save as default'}</button>
+              <button type="button" id="army-clear" class="ghost">Clear</button>
+            </div>
+            <div class="editor-library editor-army-library">
+              <span class="editor-label">Load onto ${armyOnto}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
+              ${formList}
+            </div>
+          </div>
+        </details>
       </section>
       <section class="editor-panel editor-panel-level">
-        <h3>Level</h3>
+        <div class="editor-panel-head">
+          <h3>Level <span id="editor-dirty" class="editor-unsaved"${editorDirty ? '' : ' hidden'}>unsaved</span></h3>
+          <div class="editor-panel-head-actions">
+            <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
+            <button type="button" id="editor-save-as" class="ghost">Save as new</button>
+            <button type="button" id="editor-play">Play</button>
+            <button type="button" id="editor-back" class="ghost">Levels</button>
+          </div>
+        </div>
         <div class="level-settings">
           <input type="text" id="editor-name" value="${escapeHtml(editorName)}" placeholder="Level name" maxlength="48" />
           <div class="level-settings-row">
@@ -2336,21 +2773,31 @@ function renderEditorBar(): string {
           <label class="editor-cat level-settings-upt">Max units / turn
             <input type="number" id="editor-units-per-turn" min="${MIN_UNITS_PER_TURN}" max="${MAX_UNITS_PER_TURN}" value="${editorUnitsPerTurn}" />
           </label>
+          <label class="editor-cat level-copy-field">Start text
+            <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
+          </label>
+          <label class="editor-cat level-copy-field">Winning text
+            <textarea id="editor-win-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown when you win">${escapeHtml(editorWinText)}</textarea>
+          </label>
+          <label class="editor-cat level-copy-field">Losing text
+            <textarea id="editor-lose-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown when you lose">${escapeHtml(editorLoseText)}</textarea>
+          </label>
+          <div class="star-rules">
+            <span class="editor-label">Stars</span>
+            <div class="star-rule-row locked">
+              <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
+              <span class="star-rule-n">1</span>
+              <span class="star-rule-fixed">Win</span>
+            </div>
+            ${starRuleEditorRow(2, editorStar2)}
+            ${starRuleEditorRow(3, editorStar3)}
+          </div>
           <div class="editor-grid">
             <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
             <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
             <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
             <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
           </div>
-          <div class="editor-save level-settings-actions">
-            <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
-            <button type="button" id="editor-save-as" class="ghost">Save as new</button>
-            <button type="button" id="editor-save-default" class="${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'active' : ''}">${editorLevelId && editorLevelId === defaultLevelId && !editorDirty ? 'Default map' : 'Save as default'}</button>
-          </div>
-        </div>
-        <div class="editor-library">
-          <span class="editor-label" id="editor-lib-label">Saved${editorDirty ? ' · unsaved changes' : ''}</span>
-          ${levelList}
         </div>
       </section>
     </div>`;
@@ -2517,6 +2964,18 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'staminaRegen', 'Stam regen')}
           ${unitNumField(type, 'meleeDamage', 'Melee dmg')}
           ${unitNumField(type, 'charge', 'Charge')}
+          <label class="chk">
+            <input type="checkbox" data-unit="${type}" data-field="passWater"${s.passWater ? ' checked' : ''} />
+            Move to water
+          </label>
+          <label class="unit-cat climb-level">Climb level
+            <select data-unit-climb="${type}">
+              ${CLIMB_LEVELS.map(
+                (lv) =>
+                  `<option value="${lv}"${s.climbLevel === lv ? ' selected' : ''}>${CLIMB_LEVEL_LABEL[lv]}</option>`,
+              ).join('')}
+            </select>
+          </label>
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Shoot</span>
@@ -2652,6 +3111,19 @@ function bindUnitEditorEvents() {
       render();
     });
   });
+  app.querySelectorAll<HTMLSelectElement>('[data-unit-climb]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitClimb as UnitType | undefined;
+      if (!type) return;
+      patchUnitStat(type, 'climbLevel', sanitizeClimbLevel(el.value));
+      const status = app.querySelector('#units-status');
+      if (status) {
+        status.textContent = unitStatsAreStock()
+          ? 'Stock stats'
+          : 'Custom stats · saved in this browser';
+      }
+    });
+  });
   app.querySelectorAll<HTMLSelectElement>('[data-unit-arc]').forEach((el) => {
     el.addEventListener('change', () => {
       const type = el.dataset.unitArc as UnitType | undefined;
@@ -2711,11 +3183,11 @@ function bindEditorEvents() {
     }
     render();
   });
+  app.querySelector('#editor-play')?.addEventListener('click', () =>
+    doSaveLevel(false, false, true),
+  );
   app.querySelector('#editor-save')?.addEventListener('click', () => doSaveLevel(false));
   app.querySelector('#editor-save-as')?.addEventListener('click', () => doSaveLevel(true));
-  app.querySelector('#editor-save-default')?.addEventListener('click', () =>
-    doSaveLevel(false, true),
-  );
   app.querySelector('#editor-clear')?.addEventListener('click', () => {
     const { cols, rows } = currentGrid();
     editorTerrain = emptyTerrain(cols, rows);
@@ -2746,8 +3218,8 @@ function bindEditorEvents() {
   });
   app.querySelector('#editor-period')?.addEventListener('change', (e) => {
     editorPeriod = sanitizePeriod((e.target as HTMLSelectElement).value);
+    selectedPeriod = setSelectedPeriod(editorPeriod);
     editorDirty = true;
-    applyPeriodTheme(editorPeriod);
     render();
   });
   app.querySelector('#editor-units-per-turn')?.addEventListener('change', (e) => {
@@ -2755,6 +3227,33 @@ function bindEditorEvents() {
     editorUnitsPerTurn = clampUnitsPerTurn(el.value);
     el.value = String(editorUnitsPerTurn);
     editorDirty = true;
+  });
+  const bindLevelText = (sel: string, set: (v: string) => void) => {
+    app.querySelector<HTMLTextAreaElement>(sel)?.addEventListener('change', (e) => {
+      set((e.target as HTMLTextAreaElement).value);
+      markEditorDirty();
+    });
+  };
+  bindLevelText('#editor-start-text', (v) => {
+    editorStartText = v;
+  });
+  bindLevelText('#editor-win-text', (v) => {
+    editorWinText = v;
+  });
+  bindLevelText('#editor-lose-text', (v) => {
+    editorLoseText = v;
+  });
+  app.querySelectorAll<HTMLElement>('[data-star][data-star-field]').forEach((el) => {
+    el.addEventListener('change', () => {
+      editorStar2 = readEditorStar(2);
+      editorStar3 = readEditorStar(3);
+      const valEl = el instanceof HTMLInputElement && el.dataset.starField === 'value' ? el : null;
+      if (valEl) valEl.value = String((el.dataset.star === '3' ? editorStar3 : editorStar2).value);
+      markEditorDirty();
+    });
+  });
+  app.querySelector<HTMLDetailsElement>('[data-editor-armies]')?.addEventListener('toggle', (e) => {
+    editorArmiesOpen = (e.currentTarget as HTMLDetailsElement).open;
   });
   app.querySelector('#army-name')?.addEventListener('change', (e) => {
     editorFormationName = (e.target as HTMLInputElement).value;
@@ -2835,19 +3334,40 @@ function bindEditorEvents() {
       render();
     });
   });
-  app.querySelectorAll<HTMLButtonElement>('[data-load-level]').forEach((btn) => {
+  app.querySelector('#editor-back')?.addEventListener('click', () => {
+    if (!confirmLeaveEditor()) return;
+    enterLevels();
+  });
+  bindEditorBoard();
+}
+
+function bindLevelsEvents() {
+  app.querySelector('#level-new')?.addEventListener('click', () => newEditorLevel());
+  app.querySelectorAll<HTMLButtonElement>('[data-levels-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const id = btn.dataset.loadLevel!;
-      const lvl = getLevel(id);
-      if (!lvl) return;
-      loadEditorLevel(lvl);
-      editorDirty = false;
-      applyLayout(computeLayout(), false);
+      const v = btn.dataset.levelsFilter;
+      levelsFilter =
+        v === 'campaign' || v === 'tutorial' || v === 'free' ? v : 'all';
       render();
     });
   });
-  app.querySelectorAll<HTMLButtonElement>('[data-del-level]').forEach((btn) => {
+  app.querySelectorAll<HTMLButtonElement>('[data-levels-period]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const v = btn.dataset.levelsPeriod;
+      levelsPeriodFilter =
+        v === 'ancient' || v === 'modern' || v === 'futuristic' ? v : 'all';
+      if (levelsPeriodFilter !== 'all') {
+        selectedPeriod = setSelectedPeriod(levelsPeriodFilter);
+      }
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-edit-level]').forEach((btn) => {
+    btn.addEventListener('click', () => enterEditor(btn.dataset.editLevel));
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-del-level]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const id = btn.dataset.delLevel!;
       if (!confirm('Delete this level?')) return;
       deleteLevel(id);
@@ -2856,17 +3376,26 @@ function bindEditorEvents() {
         editorName = 'New level';
         editorCategory = 'free';
         editorPeriod = selectedPeriod;
+        editorStartText = '';
+        editorWinText = '';
+        editorLoseText = '';
+        editorStar2 = { ...DEFAULT_STAR_2 };
+        editorStar3 = { ...DEFAULT_STAR_3 };
       }
       if (defaultLevelId === id) defaultLevelId = null;
+      if (activeLevelId === id) activeLevelId = getActiveLevelId();
       render();
     });
   });
-  bindEditorBoard();
 }
 
 function bindEvents() {
   bindToolbarEvents();
   if (screen === 'start') return;
+  if (screen === 'levels') {
+    bindLevelsEvents();
+    return;
+  }
   if (screen === 'editor') {
     bindEditorEvents();
     return;
@@ -2880,9 +3409,15 @@ function bindEvents() {
     if (activeLevelId) startMatch(false);
     else reset(true);
   });
+  app.querySelector('#skip-level')?.addEventListener('click', () => advancePlaylist());
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
   app.querySelector('#end-next')?.addEventListener('click', () => advancePlaylist());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
+  app.querySelector('#briefing-go')?.addEventListener('click', () => {
+    briefingOpen = false;
+    render();
+    void maybeAi();
+  });
   app.querySelector('#level-select')?.addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
     if (v === 'random') {
@@ -2930,16 +3465,26 @@ function bindEvents() {
   app.querySelector('#map-high')?.addEventListener('change', (e) => {
     mapOpts.highCount = Number((e.target as HTMLInputElement).value);
   });
+  app.querySelector('#map-plateau')?.addEventListener('change', (e) => {
+    mapOpts.plateauCount = Number((e.target as HTMLInputElement).value);
+  });
   bindBoardOnly();
 }
 
 function render() {
+  maybeRecordLevelWin();
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
-  app.classList.toggle('start-screen', screen === 'start');
+  app.classList.toggle('start-screen', screen === 'start' || screen === 'levels');
 
   if (screen === 'start') {
     app.innerHTML = renderStartScreen();
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'levels') {
+    app.innerHTML = renderLevelsOverview();
     bindEvents();
     return;
   }
@@ -2956,26 +3501,28 @@ function render() {
         <dl class="help-list">
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked (those hexes are not legal move dests)</dd>
           <dd><strong>Value/weight</strong> scoring / AI</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
-          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock is Modern except Archer (Ancient)</dd>
-          <dd><strong>Kit</strong> icon + specials (water, high). Does not reset numbers. Tower is glyph only</dd>
+          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock Ancient: Archer, Cohort, Hoplite, Elephant, Barbarian, Catapult</dd>
+          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower is glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
-          <dd><strong>Range</strong> hexes in a straight line per action</dd>
+          <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, enter water from land, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
+          <dd><strong>Move to water</strong> stop on water hexes. Entering from land spends stamina like a climb</dd>
+          <dd><strong>Climb level</strong> max height: 0 land, Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
           <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
           <dt>Shoot</dt>
-          <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest)</dd>
+          <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
           <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
           <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
-          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (rock / wall / high) unchanged</dd>
+          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (wall / higher ground) unchanged</dd>
           <dd><strong>Min range</strong> closest hex you can fire</dd>
           <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
         </dl>
@@ -3000,8 +3547,8 @@ function render() {
       </div>
       <aside class="sidebar">
         <h2>Editor</h2>
-        <p class="muted">Set width × height (tiles) and hex orientation, then paint land, water, rock, concrete wall, and high ground. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Point up = pointy-top hexes. Flat up = flat-top. Topology (neighbors / LOS) follows the orientation. Saving a level stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on the Start screen (A–Z), <strong>Free</strong> is skirmish-only.</p>
+        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lv1), Plateau (lvl2), Mountain (lvl3), and concrete wall. Heights connect by ±1 — no land↔plateau jumps. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
+        <p class="muted">Levels returns to the library. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start (A–Z), <strong>Free</strong> is skirmish-only.</p>
       </aside>
     `;
     bindEvents();
@@ -3010,23 +3557,29 @@ function render() {
 
   const pl = playlist;
   const plLvl = playlistLevel();
+  const skipBtn = canSkipTutorialLevel()
+    ? `<button type="button" id="skip-level">Skip</button>`
+    : '';
   const randomParams = pl
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
+        ${skipBtn}
         <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${pl.index + 1} / ${pl.ids.length}${plLvl ? ` · ${escapeHtml(plLvl.name)}` : ''}</span>
       </div>`
     : !activeLevelId
     ? `<div class="map-params">
         <label>Water <input type="number" id="map-water" min="0" max="${maxT}" value="${mapOpts.waterCount}" /></label>
-        <label>Rocks <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
+        <label>Hill <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
+        <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
+        <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Walls <input type="number" id="map-wall" min="0" max="${maxT}" value="${mapOpts.wallCount}" /></label>
-        <label>High <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
         <button type="button" id="new-map">New map</button>
-        <span class="map-hint">mid belt · climb costs stamina · high→high free · high +1 shoot</span>
+        <button type="button" id="edit-current-map">Edit this map</button>
+        <span class="map-hint">mid belt · climb / water costs stamina · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
-        <button type="button" id="open-editor">Edit this level</button>
+        <button type="button" id="edit-this-level">Edit this level</button>
         <span class="map-hint">Playing saved level</span>
       </div>`;
 
@@ -3045,10 +3598,11 @@ function render() {
       ${levelRow}
       ${randomParams}
       <div class="turn-banner">${turnLabel()}</div>
+      ${starGoalsHtml()}
       <div class="board-stage">
         ${renderBoard()}
         ${renderHexChoice()}
-        ${state.winner ? renderEndOverlay() : ''}
+        ${state.winner ? renderEndOverlay() : renderStartOverlay()}
       </div>
       ${renderActionBar()}
     </div>
