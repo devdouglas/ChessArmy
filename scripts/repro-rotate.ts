@@ -35,8 +35,14 @@ assert(UNIT_STATS.cohort.hexArmor, 'cohort has a hex shield');
 assert(!UNIT_STATS.soldier.hexArmor, 'soldier has no hex shield');
 assert(facingOf(cohort) === 2, 'red default facing is 2');
 assert(
-  !allLegalActions(start).some((a) => (a as { kind: string }).kind === 'rotate'),
-  'rotate must not be an AI legal action',
+  allLegalActions(start).some(
+    (a) => a.kind === 'rotate' && a.pieceId === cohort.id && a.dir === 0,
+  ),
+  'hex-armor rotate is an AI legal action',
+);
+assert(
+  !allLegalActions(start).some((a) => a.kind === 'rotate' && a.pieceId === soldier.id),
+  'no hex shield → no rotate action',
 );
 
 assert(rotatePiece(start, soldier.id, 0) === start, 'no hex shield → no rotate');

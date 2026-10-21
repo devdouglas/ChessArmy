@@ -56,6 +56,12 @@ const INT_FIELDS = [
   'armorFlankLeft',
   'armorFlankRight',
   'armorRear',
+  'damageFront',
+  'damageFrontLeft',
+  'damageFrontRight',
+  'damageFlankLeft',
+  'damageFlankRight',
+  'damageRear',
   'climbLevel',
 ] as const satisfies readonly EditableStat[];
 
@@ -82,6 +88,12 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   armorFlankLeft: { min: -2, max: 2 },
   armorFlankRight: { min: -2, max: 2 },
   armorRear: { min: -2, max: 2 },
+  damageFront: { min: 0, max: 2 },
+  damageFrontLeft: { min: 0, max: 2 },
+  damageFrontRight: { min: 0, max: 2 },
+  damageFlankLeft: { min: 0, max: 2 },
+  damageFlankRight: { min: 0, max: 2 },
+  damageRear: { min: 0, max: 2 },
   climbLevel: { min: 0, max: 3 },
 };
 
@@ -232,6 +244,33 @@ export function sanitizeUnitStats(
       armor,
     ),
     armorRear: clampInt(s.armorRear, CLAMP.armorRear.min, CLAMP.armorRear.max, armor),
+    hexDamage: bool(s.hexDamage, d.hexDamage),
+    damageFront: clampInt(s.damageFront, CLAMP.damageFront.min, CLAMP.damageFront.max, d.damageFront),
+    damageFrontLeft: clampInt(
+      s.damageFrontLeft,
+      CLAMP.damageFrontLeft.min,
+      CLAMP.damageFrontLeft.max,
+      d.damageFrontLeft,
+    ),
+    damageFrontRight: clampInt(
+      s.damageFrontRight,
+      CLAMP.damageFrontRight.min,
+      CLAMP.damageFrontRight.max,
+      d.damageFrontRight,
+    ),
+    damageFlankLeft: clampInt(
+      s.damageFlankLeft,
+      CLAMP.damageFlankLeft.min,
+      CLAMP.damageFlankLeft.max,
+      d.damageFlankLeft,
+    ),
+    damageFlankRight: clampInt(
+      s.damageFlankRight,
+      CLAMP.damageFlankRight.min,
+      CLAMP.damageFlankRight.max,
+      d.damageFlankRight,
+    ),
+    damageRear: clampInt(s.damageRear, CLAMP.damageRear.min, CLAMP.damageRear.max, d.damageRear),
   };
   const legacySplash = (s as { splash?: unknown }).splash;
   if (legacySplash === false) next.splashDamage = 0;
@@ -326,6 +365,7 @@ export function unitStatsAreStock(): boolean {
       a.passWater === b.passWater &&
       a.shootArc === b.shootArc &&
       a.hexArmor === b.hexArmor &&
+      a.hexDamage === b.hexDamage &&
       abilitiesEqual(a.abilities, b.abilities)
     );
   });
@@ -393,7 +433,18 @@ export function patchUnitStat(type: UnitType, field: EditableStat, value: number
           armorFlankRight: prev.armor,
           armorRear: prev.armor,
         }
-      : { ...prev, [field]: value };
+      : field === 'hexDamage' && value === true
+        ? {
+            ...prev,
+            hexDamage: true,
+            damageFront: 0,
+            damageFrontLeft: 0,
+            damageFrontRight: 0,
+            damageFlankLeft: 0,
+            damageFlankRight: 0,
+            damageRear: 0,
+          }
+        : { ...prev, [field]: value };
   const next = sanitizeUnitStats(type, seed);
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();

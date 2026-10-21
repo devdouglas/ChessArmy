@@ -1267,8 +1267,10 @@ button.primary:focus-visible {
   align-items: start;
 }
 
+.unit-fields .hex-toggles,
 .unit-fields .hex-armor-toggle,
 .unit-fields .hex-armor,
+.unit-fields .hex-sides-cols,
 .unit-fields .ability-panel {
   grid-column: 1 / -1;
 }
@@ -1341,10 +1343,26 @@ button.primary:focus-visible {
   height: 1.05rem;
 }
 
-.hex-armor-toggle {
+.hex-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 1rem;
   margin-top: 0.15rem;
   padding-top: 0.45rem;
   border-top: 1px solid var(--line, #3a453c);
+}
+
+.hex-armor-toggle {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.hex-sides-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.85rem 1.25rem;
+  align-items: start;
 }
 
 .hex-armor {
@@ -1387,6 +1405,34 @@ button.primary:focus-visible {
 
 .hex-armor-cell input[type='number'] {
   width: 100%;
+}
+
+.hex-dmg-layer {
+  pointer-events: none;
+}
+
+.hex-dmg-pikes {
+  opacity: 0.92;
+}
+
+.hex-dmg-pikes.red {
+  color: var(--red);
+}
+
+.hex-dmg-pikes.blue {
+  color: var(--blue);
+}
+
+.hex-dmg-pikes.yellow {
+  color: var(--yellow);
+}
+
+.hex-dmg-pikes.purple {
+  color: var(--purple);
+}
+
+.hex-dmg-pikes.amt-2 {
+  opacity: 1;
 }
 
 .facing-notch {
@@ -3390,6 +3436,11 @@ svg.board.rotate-aim {
 
 @media (max-width: 640px) {
   .unit-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .hex-toggles,
+  .hex-sides-cols {
     grid-template-columns: 1fr;
   }
 

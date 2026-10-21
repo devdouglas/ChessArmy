@@ -218,6 +218,14 @@ export type UnitStats = UnitTraits & {
   armorFlankLeft: number;
   armorFlankRight: number;
   armorRear: number;
+  /** When true, outgoing hits can use per-face damage (0–2). Combat not wired yet. */
+  hexDamage: boolean;
+  damageFront: number;
+  damageFrontLeft: number;
+  damageFrontRight: number;
+  damageFlankLeft: number;
+  damageFlankRight: number;
+  damageRear: number;
   /** Granted in the unit editor; pieces may override at runtime. */
   abilities: AbilityId[];
 };
@@ -264,6 +272,48 @@ function hexArmorDefaults(n: number): Pick<
   };
 }
 
+export const HEX_DAMAGE_SIDES = [
+  'damageFront',
+  'damageFrontLeft',
+  'damageFlankLeft',
+  'damageRear',
+  'damageFlankRight',
+  'damageFrontRight',
+] as const;
+
+export type HexDamageSide = (typeof HEX_DAMAGE_SIDES)[number];
+
+export const HEX_DAMAGE_LABEL: Record<HexDamageSide, string> = {
+  damageFront: 'Front',
+  damageFrontLeft: 'Front left',
+  damageFrontRight: 'Front right',
+  damageFlankLeft: 'Flank left',
+  damageFlankRight: 'Flank right',
+  damageRear: 'Rear',
+};
+
+function hexDamageDefaults(n = 0): Pick<
+  UnitStats,
+  | 'hexDamage'
+  | 'damageFront'
+  | 'damageFrontLeft'
+  | 'damageFrontRight'
+  | 'damageFlankLeft'
+  | 'damageFlankRight'
+  | 'damageRear'
+> {
+  const v = Math.max(0, Math.min(2, n));
+  return {
+    hexDamage: false,
+    damageFront: v,
+    damageFrontLeft: v,
+    damageFrontRight: v,
+    damageFlankLeft: v,
+    damageFlankRight: v,
+    damageRear: v,
+  };
+}
+
 export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
   soldier: {
     name: 'Soldier',
@@ -288,6 +338,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.soldier,
     ...stockMobility('soldier'),
     abilities: [],
@@ -315,6 +366,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.scout,
     ...stockMobility('scout'),
     abilities: [],
@@ -342,6 +394,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 1,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.bazooka,
     ...stockMobility('bazooka'),
     abilities: [],
@@ -369,6 +422,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.sniper,
     ...stockMobility('sniper'),
     abilities: [],
@@ -396,6 +450,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.archer,
     ...stockMobility('archer'),
     abilities: [],
@@ -423,6 +478,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     hexArmor: true,
     ...KIT_TRAITS.cohort,
     ...stockMobility('cohort'),
@@ -451,6 +507,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     hexArmor: true,
     ...KIT_TRAITS.hoplite,
     ...stockMobility('hoplite'),
@@ -479,6 +536,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 1,
     ...hexArmorDefaults(1),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.elephant,
     ...stockMobility('elephant'),
     abilities: [],
@@ -506,6 +564,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.barbarian,
     ...stockMobility('barbarian'),
     abilities: [],
@@ -533,6 +592,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 1,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.catapult,
     ...stockMobility('catapult'),
     abilities: [],
@@ -560,6 +620,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 1,
     armor: 2,
     ...hexArmorDefaults(2),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.tank,
     ...stockMobility('tank'),
     abilities: [],
@@ -587,6 +648,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 1,
     ...hexArmorDefaults(1),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.general,
     ...stockMobility('general'),
     abilities: ['general'],
@@ -614,6 +676,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.tower,
     ...stockMobility('tower'),
     abilities: [],
@@ -641,6 +704,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.dummy,
     ...stockMobility('dummy'),
     abilities: [],
@@ -668,6 +732,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     splashDamage: 0,
     armor: 0,
     ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
     ...KIT_TRAITS.peasant,
     ...stockMobility('peasant'),
     abilities: [],

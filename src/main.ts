@@ -88,6 +88,7 @@ import {
   isWalkableTerrain,
   liftWallTerrain,
   sanitizeTokens,
+  hexDamageMarks,
 } from './engine';
 import {
   defaultFacing,
@@ -185,6 +186,7 @@ import {
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
+  facingPikeSvg,
   staminaEmptyMarkSvg,
   staminaPipsHtml,
   starGlyphSvg,
@@ -615,13 +617,21 @@ function shootMarkSvg(x: number, y: number, target: boolean): string {
 }
 
 /** Degrees to rotate a piece so local -Y (icon "up") matches current facing. */
-function facingRotation(piece: Piece): number {
+function cubeDirRotation(from: Hex, dir: HexDir): number {
   const o = viewOrientation();
-  const from = { col: piece.col, row: piece.row };
-  const n = neighborInDir(from, facingOf(piece), o);
+  const n = neighborInDir(from, dir, o);
   const a = hexToPixel(from, HEX_SIZE, o);
   const b = hexToPixel(n, HEX_SIZE, o);
   return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90;
+}
+
+function facingRotation(piece: Piece): number {
+  return cubeDirRotation({ col: piece.col, row: piece.row }, facingOf(piece));
+}
+
+function aimedPiece(p: Piece): Piece {
+  if (!rotateMode || p.id !== selectedId || rotatePreviewDir == null) return p;
+  return { ...p, facing: rotatePreviewDir };
 }
 
 function svgPoint(
@@ -1435,7 +1445,7 @@ async function resolvePending(kind: ActionMode) {
 async function playAnimatedAction(action: Action): Promise<void> {
   animating = true;
 
-  if (action.kind === 'skip') {
+  if (action.kind === 'skip' || action.kind === 'rest' || action.kind === 'rotate') {
     state = applyAction(state, action);
     await playPendingFx();
     animating = false;
@@ -1918,6 +1928,33 @@ function renderBoard(): string {
         facing: defaultFacing(p.side),
       }))
     : state.pieces;
+  const dmgBoard: GameState = editing
+    ? {
+        ...state,
+        cols: editorTerrain[0]?.length ?? state.cols,
+        rows: editorTerrain.length,
+        orientation: editorOrientation,
+        terrain: editorTerrain,
+        tokens: editorTokens,
+        pieces: drawPieces,
+      }
+    : { ...state, pieces: state.pieces.map(aimedPiece) };
+  let hexDmgSvg = '';
+  for (const m of hexDamageMarks(dmgBoard)) {
+    const back = ((m.dir + 3) % 6) as HexDir;
+    const from = neighborInDir(m, back, ori);
+    const a = pixelOf(from);
+    const b = pixelOf(m);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const span = Math.hypot(dx, dy) || 1;
+    const rim = HEX_SIZE * 0.74;
+    const x = a.x + (dx / span) * rim;
+    const y = a.y + (dy / span) * rim;
+    const rot = cubeDirRotation(from, m.dir);
+    const size = HEX_SIZE * (m.amount >= 2 ? 1.04 : 0.88);
+    hexDmgSvg += `<g class="hex-dmg-pikes ${m.side} amt-${m.amount}" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${rot.toFixed(1)})">${facingPikeSvg(size, m.amount)}</g>`;
+  }
   for (const p of drawPieces) {
     const { x, y } = pixelOf({ col: p.col, row: p.row });
     const sel = !editing && p.id === selectedId ? ' selected' : '';
@@ -1955,11 +1992,8 @@ function renderBoard(): string {
             badgeR,
           )
         : '';
-    const rot = facingRotation(
-      rotateMode && p.id === selectedId && rotatePreviewDir != null
-        ? { ...p, facing: rotatePreviewDir }
-        : p,
-    );
+    const shown = aimedPiece(p);
+    const rot = facingRotation(shown);
     const notch = pr + 1.2;
     const selRing = hexed
       ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
@@ -1967,7 +2001,7 @@ function renderBoard(): string {
     piecesSvg += `
       <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
         ${sel ? selRing : ''}
-        ${pieceBodySvg(p, pr)}
+        ${pieceBodySvg(shown, pr)}
         <g class="piece-facing" transform="rotate(${rot.toFixed(1)})">
           ${
             hexed
@@ -2049,6 +2083,7 @@ function renderBoard(): string {
     <g class="token-layer">${tokensSvg}</g>
     <g class="hl-tint-layer">${hlOverlays}</g>
     <g class="piece-layer">${piecesSvg}</g>
+    <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
   </svg>`;
 }
@@ -2771,12 +2806,11 @@ function bindBoardOnly() {
       const dir = facingTowardScreen({ col: p.col, row: p.row }, pt);
       if (rotatePreviewDir === dir) return;
       rotatePreviewDir = dir;
-      const el = svg.querySelector(`[data-id="${p.id}"] .piece-facing`);
-      if (el) {
-        el.setAttribute(
-          'transform',
-          `rotate(${facingRotation({ ...p, facing: dir }).toFixed(1)})`,
-        );
+      const board = app.querySelector('svg.board');
+      if (board) {
+        board.outerHTML = renderBoard();
+        bindBoardOnly();
+        placeHexChoice();
       }
       return;
     }
@@ -3402,7 +3436,9 @@ function unitNumField(
   const max = spec?.max ?? 99;
   const val = UNIT_STATS[type][field] as number;
   const armorish = field === 'armor' || String(field).startsWith('armor');
-  const tint = armorish ? ` style="border-color:${armorColor(val)}"` : '';
+  const damageish = String(field).startsWith('damage');
+  const tint =
+    armorish || damageish ? ` style="border-color:${armorColor(val)}"` : '';
   return `<label>${label} <input type="number" min="${min}" max="${max}" value="${val}" data-unit="${type}" data-field="${field}"${tint} /></label>`;
 }
 
@@ -3430,7 +3466,14 @@ function abilityPanel(type: UnitType, abilities: AbilityId[]): string {
   </div>`;
 }
 
-function hexArmorEditor(type: UnitType): string {
+function hexFacePaint(field: string, n: number): { fill: string; stroke: string } {
+  if (field.startsWith('damage') && n <= 0) {
+    return { fill: 'none', stroke: '#8a9688' };
+  }
+  return { fill: armorColor(n), stroke: '#1a1f1c' };
+}
+
+function hexSidesEditor(type: UnitType, kind: 'armor' | 'damage'): string {
   const s = UNIT_STATS[type];
   // Flat-top hex, clockwise from east. Faces: N / NE / SE / S / SW / NW.
   const v = [
@@ -3441,33 +3484,61 @@ function hexArmorEditor(type: UnitType): string {
     [-5, -8.66],
     [5, -8.66],
   ] as const;
-  const faces: { field: EditableStat; a: number; b: number }[] = [
-    { field: 'armorFront', a: 4, b: 5 },
-    { field: 'armorFrontRight', a: 5, b: 0 },
-    { field: 'armorFlankRight', a: 0, b: 1 },
-    { field: 'armorRear', a: 1, b: 2 },
-    { field: 'armorFlankLeft', a: 2, b: 3 },
-    { field: 'armorFrontLeft', a: 3, b: 4 },
-  ];
+  const faces: { field: EditableStat; a: number; b: number }[] =
+    kind === 'armor'
+      ? [
+          { field: 'armorFront', a: 4, b: 5 },
+          { field: 'armorFrontRight', a: 5, b: 0 },
+          { field: 'armorFlankRight', a: 0, b: 1 },
+          { field: 'armorRear', a: 1, b: 2 },
+          { field: 'armorFlankLeft', a: 2, b: 3 },
+          { field: 'armorFrontLeft', a: 3, b: 4 },
+        ]
+      : [
+          { field: 'damageFront', a: 4, b: 5 },
+          { field: 'damageFrontRight', a: 5, b: 0 },
+          { field: 'damageFlankRight', a: 0, b: 1 },
+          { field: 'damageRear', a: 1, b: 2 },
+          { field: 'damageFlankLeft', a: 2, b: 3 },
+          { field: 'damageFrontLeft', a: 3, b: 4 },
+        ];
+  const cells =
+    kind === 'armor'
+      ? {
+          fl: unitNumField(type, 'armorFrontLeft', 'Front left'),
+          front: unitNumField(type, 'armorFront', 'Front'),
+          fr: unitNumField(type, 'armorFrontRight', 'Front right'),
+          left: unitNumField(type, 'armorFlankLeft', 'Flank left'),
+          right: unitNumField(type, 'armorFlankRight', 'Flank right'),
+          rear: unitNumField(type, 'armorRear', 'Rear'),
+        }
+      : {
+          fl: unitNumField(type, 'damageFrontLeft', 'Front left'),
+          front: unitNumField(type, 'damageFront', 'Front'),
+          fr: unitNumField(type, 'damageFrontRight', 'Front right'),
+          left: unitNumField(type, 'damageFlankLeft', 'Flank left'),
+          right: unitNumField(type, 'damageFlankRight', 'Flank right'),
+          rear: unitNumField(type, 'damageRear', 'Rear'),
+        };
   const wedges = faces
     .map(({ field, a, b }) => {
-      const fill = armorColor(s[field] as number);
-      return `<polygon data-unit="${type}" data-hex-face="${field}" points="0,0 ${v[a][0]},${v[a][1]} ${v[b][0]},${v[b][1]}" fill="${fill}" stroke="#1a1f1c" stroke-width="0.6"/>`;
+      const paint = hexFacePaint(field, s[field] as number);
+      return `<polygon data-unit="${type}" data-hex-face="${field}" points="0,0 ${v[a][0]},${v[a][1]} ${v[b][0]},${v[b][1]}" fill="${paint.fill}" stroke="${paint.stroke}" stroke-width="0.7"/>`;
     })
     .join('');
   return `<div class="hex-armor">
-    <span class="unit-group-label">Hex sides</span>
+    <span class="unit-group-label">${kind === 'armor' ? 'Hex armor' : 'Hex damage'}</span>
     <div class="hex-armor-grid">
-      <div class="hex-armor-cell fl">${unitNumField(type, 'armorFrontLeft', 'Front left')}</div>
-      <div class="hex-armor-cell front">${unitNumField(type, 'armorFront', 'Front')}</div>
-      <div class="hex-armor-cell fr">${unitNumField(type, 'armorFrontRight', 'Front right')}</div>
-      <div class="hex-armor-cell left">${unitNumField(type, 'armorFlankLeft', 'Flank left')}</div>
+      <div class="hex-armor-cell fl">${cells.fl}</div>
+      <div class="hex-armor-cell front">${cells.front}</div>
+      <div class="hex-armor-cell fr">${cells.fr}</div>
+      <div class="hex-armor-cell left">${cells.left}</div>
       <svg class="hex-armor-glyph" viewBox="-12 -12 24 24" aria-hidden="true">
         ${wedges}
         <polygon points="0,-9.4 2.1,-5.2 -2.1,-5.2" fill="#efe4d0"/>
       </svg>
-      <div class="hex-armor-cell right">${unitNumField(type, 'armorFlankRight', 'Flank right')}</div>
-      <div class="hex-armor-cell rear">${unitNumField(type, 'armorRear', 'Rear')}</div>
+      <div class="hex-armor-cell right">${cells.right}</div>
+      <div class="hex-armor-cell rear">${cells.rear}</div>
     </div>
   </div>`;
 }
@@ -3563,11 +3634,24 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'shoot', 'Range')}
           ${shootExtras}
         </div>
-        <label class="chk hex-armor-toggle">
-          <input type="checkbox" data-unit="${type}" data-field="hexArmor"${s.hexArmor ? ' checked' : ''} />
-          Hex armor
-        </label>
-        ${s.hexArmor ? hexArmorEditor(type) : ''}
+        <div class="hex-toggles">
+          <label class="chk hex-armor-toggle">
+            <input type="checkbox" data-unit="${type}" data-field="hexArmor"${s.hexArmor ? ' checked' : ''} />
+            Hex armor
+          </label>
+          <label class="chk hex-armor-toggle">
+            <input type="checkbox" data-unit="${type}" data-field="hexDamage"${s.hexDamage ? ' checked' : ''} />
+            Hex damage
+          </label>
+        </div>
+        ${
+          s.hexArmor || s.hexDamage
+            ? `<div class="hex-sides-cols">
+          ${s.hexArmor ? hexSidesEditor(type, 'armor') : ''}
+          ${s.hexDamage ? hexSidesEditor(type, 'damage') : ''}
+        </div>`
+            : ''
+        }
         ${abilityPanel(type, s.abilities)}
       </div>
       <div class="unit-card-actions">
@@ -3611,6 +3695,7 @@ function renderUnitEditor(): string {
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets)</dd>
+          <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter, and again at the start of their next turn if they stay. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
           <dd><strong>Category</strong> Modern / Ancient — filter above. Stock Ancient: Archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy</dd>
@@ -3649,6 +3734,7 @@ function bindUnitEditorEvents() {
     else patchUnitStat(type, field, Number(el.value));
     if (
       field === 'hexArmor' ||
+      field === 'hexDamage' ||
       (field === 'shoot' && Boolean(before) !== Boolean(UNIT_STATS[type].shoot))
     ) {
       render();
@@ -3661,14 +3747,16 @@ function bindUnitEditorEvents() {
       if (inp.type === 'checkbox') inp.checked = Boolean(v);
       else {
         if (Number(inp.value) !== v) inp.value = String(v);
-        if (f === 'armor' || String(f).startsWith('armor')) {
+        if (f === 'armor' || String(f).startsWith('armor') || String(f).startsWith('damage')) {
           inp.style.borderColor = armorColor(Number(v));
         }
       }
     });
     app.querySelectorAll<SVGPolygonElement>(`polygon[data-hex-face][data-unit="${type}"]`).forEach((poly) => {
       const f = poly.dataset.hexFace as EditableStat;
-      poly.setAttribute('fill', armorColor(Number(UNIT_STATS[type][f])));
+      const paint = hexFacePaint(f, Number(UNIT_STATS[type][f]));
+      poly.setAttribute('fill', paint.fill);
+      poly.setAttribute('stroke', paint.stroke);
     });
     app.querySelector(`circle[data-armor-ring="${type}"]`)?.setAttribute(
       'stroke',

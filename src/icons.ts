@@ -234,6 +234,38 @@ export function tokenGlyphSvg(
   return '';
 }
 
+/**
+ * Facing-pike cluster. Origin at the butts, tips along local -Y.
+ * Color via `currentColor` (set by `.hex-dmg-pikes.{side}`).
+ */
+export function facingPikeSvg(size = 16, amount = 1): string {
+  const s = size / 16;
+  const extra =
+    amount >= 2
+      ? `<path d="M-2.2 0.5 L-2.7 -7.1"/>
+      <path d="M2.2 0.5 L2.7 -7.1"/>`
+      : '';
+  const tips =
+    amount >= 2
+      ? `<path d="M-2.7 -7.1 L-3.35 -9.2 L-1.95 -8.0 Z"/>
+      <path d="M2.7 -7.1 L1.95 -8.0 L3.35 -9.2 Z"/>`
+      : '';
+  return `<g class="facing-pikes" transform="scale(${s})">
+    <g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+      <path d="M-4.4 0.4 L-5.4 -6.6"/>
+      <path d="M0 0.6 L0 -7.6"/>
+      <path d="M4.4 0.4 L5.4 -6.6"/>
+      ${extra}
+    </g>
+    <g fill="#f4f4f0" stroke="#d8d8d4" stroke-width="0.35" stroke-linejoin="round">
+      <path d="M-5.4 -6.6 L-6.3 -8.8 L-4.4 -7.4 Z"/>
+      <path d="M0 -7.6 L-0.8 -10.0 L0.8 -10.0 Z"/>
+      <path d="M5.4 -6.6 L4.4 -7.4 L6.3 -8.8 Z"/>
+      ${tips}
+    </g>
+  </g>`;
+}
+
 /** Small reload badge — place at piece top-right (cx, cy relative to piece center). */
 export function reloadBadgeSvg(cx: number, cy: number, r = 7): string {
   const sw = Math.max(1.2, r * 0.22);

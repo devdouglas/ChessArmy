@@ -459,7 +459,7 @@ function freshGame(
     log: [log],
   };
   seedFlagOwners(state);
-  beginSideTurn(state);
+  beginSideTurn(state, false, true);
   return state;
 }
 

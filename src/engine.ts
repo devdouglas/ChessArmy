@@ -24,6 +24,7 @@ import {
 import {
   HEX_ARMOR_LABEL,
   HEX_ARMOR_SIDES,
+  HEX_DAMAGE_SIDES,
   statsOf,
   type HexArmorSide,
   type UnitStats,
@@ -44,6 +45,8 @@ export {
   DEFAULT_UNIT_STATS,
   HEX_ARMOR_LABEL,
   HEX_ARMOR_SIDES,
+  HEX_DAMAGE_LABEL,
+  HEX_DAMAGE_SIDES,
   KIT_TRAITS,
   SHOOT_ARCS,
   SHOOT_ARC_LABEL,
@@ -66,6 +69,7 @@ export {
   type AbilityId,
   type ClimbLevel,
   type HexArmorSide,
+  type HexDamageSide,
   type ShootArc,
   type UnitCategory,
   type UnitRole,
@@ -282,6 +286,8 @@ export type Piece = {
   staminaRegenWait?: number;
   /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
   facing?: HexDir;
+  /** Took ranged damage since last finished activation. Hoplite AI advances. */
+  rangedHit?: boolean;
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
 };
@@ -331,6 +337,8 @@ export type GameState = {
 export type Action =
   | { kind: 'move'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'shoot'; pieceId: string; at: Hex }
+  | { kind: 'rotate'; pieceId: string; dir: HexDir }
+  | { kind: 'rest'; pieceId: string }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
@@ -394,7 +402,130 @@ function isBlockedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): 
   return dir !== null && blockedWalkDirs(piece).has(dir);
 }
 
-/** Damage after the target's armor. Negative armor boosts melee only; shots ignore it. Melee uses min 1. */
+function hexDamageFaceAmount(piece: Piece, dir: HexDir): number {
+  const s = statsOf(piece.type);
+  if (!s.hexDamage) return 0;
+  const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
+  return Math.max(0, s[HEX_DAMAGE_SIDES[rel]] ?? 0);
+}
+
+/** Hostile hex-damage covering `hex` (sum of faces). Adjacent only. `from` is the nearest source for armor. */
+export function hexDamageOn(
+  state: GameState,
+  hex: Hex,
+  victimSide: Side,
+): { amount: number; from: Hex } | null {
+  if (isWall(state, hex)) return null;
+  let amount = 0;
+  let from: Hex | null = null;
+  for (const p of state.pieces) {
+    if (!isHostile(state, p.side, victimSide)) continue;
+    const origin = { col: p.col, row: p.row };
+    const dir = dirBetween(origin, hex, state.orientation);
+    if (dir === null) continue;
+    const n = hexDamageFaceAmount(p, dir);
+    if (n <= 0) continue;
+    amount += n;
+    if (!from) from = origin;
+  }
+  if (amount <= 0 || !from) return null;
+  return { amount, from };
+}
+
+export type HexDamageMark = {
+  col: number;
+  row: number;
+  dir: HexDir;
+  amount: number;
+  side: Side;
+};
+
+function hexDamageFaces(
+  state: GameState,
+  piece: Piece,
+): { hex: Hex; dir: HexDir; amount: number }[] {
+  const s = statsOf(piece.type);
+  if (!s.hexDamage) return [];
+  const origin = { col: piece.col, row: piece.row };
+  const facing = facingOf(piece);
+  const out: { hex: Hex; dir: HexDir; amount: number }[] = [];
+  for (let rel = 0; rel < 6; rel++) {
+    const amount = s[HEX_DAMAGE_SIDES[rel]] ?? 0;
+    if (amount <= 0) continue;
+    const dir = (((facing + rel) % 6) + 6) % 6 as HexDir;
+    const h = neighborInDir(origin, dir, state.orientation);
+    if (!inBounds(state, h) || isWall(state, h)) continue;
+    out.push({ hex: h, dir, amount });
+  }
+  return out;
+}
+
+function hexDamageCoveredKeys(state: GameState, piece: Piece): Set<string> {
+  return new Set(hexDamageFaces(state, piece).map((f) => key(f.hex)));
+}
+
+/** Enemies newly covered if `piece` stood as `after`. */
+export function hexDamagePushHits(
+  state: GameState,
+  piece: Piece,
+  after: Pick<Piece, 'col' | 'row'> & { facing?: HexDir },
+): Piece[] {
+  const prev = hexDamageCoveredKeys(state, piece);
+  const moved: Piece = { ...piece, col: after.col, row: after.row, facing: after.facing };
+  const hits: Piece[] = [];
+  for (const f of hexDamageFaces(state, moved)) {
+    if (prev.has(key(f.hex))) continue;
+    const v = pieceAt(state, f.hex);
+    if (!v || v.id === piece.id) continue;
+    if (!isHostile(state, piece.side, v.side)) continue;
+    hits.push(v);
+  }
+  return hits;
+}
+
+function applyHexDamagePush(state: GameState, attacker: Piece, prevCovered: Set<string>): void {
+  if (!statsOf(attacker.type).hexDamage) return;
+  const from: Hex = { col: attacker.col, row: attacker.row };
+  for (const f of hexDamageFaces(state, attacker)) {
+    if (prevCovered.has(key(f.hex))) continue;
+    const victim = pieceAt(state, f.hex);
+    if (!victim || victim.id === attacker.id) continue;
+    if (!isHostile(state, attacker.side, victim.side)) continue;
+    const before = hpLeft(victim);
+    const dmg = applyDamage(state, victim, f.amount, 1, from, true, false);
+    const dealt = before - dmg.remaining;
+    if (dealt <= 0) continue;
+    state.fxHits = [...(state.fxHits ?? []), { id: victim.id, fatal: dmg.fatal, dealt }];
+    state.log.push(
+      dmg.fatal
+        ? `${unitLog(victim)} dies on facing pikes`
+        : `${unitLog(victim)} is caught by facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
+    );
+  }
+}
+
+/** Adjacent hexes painted by a hex-damage face. */
+export function hexDamageMarks(state: GameState): HexDamageMark[] {
+  const best = new Map<string, HexDamageMark>();
+  for (const p of state.pieces) {
+    for (const f of hexDamageFaces(state, p)) {
+      const k = key(f.hex);
+      const prev = best.get(k);
+      if (!prev || f.amount > prev.amount) {
+        best.set(k, {
+          col: f.hex.col,
+          row: f.hex.row,
+          dir: f.dir,
+          amount: f.amount,
+          side: p.side,
+        });
+      }
+    }
+  }
+  return [...best.values()];
+}
+
+/** Damage after the target's armor. Negative armor boosts melee only; shots and facing pikes ignore it. */
 export function netDamage(
   piece: Piece,
   amount: number,
@@ -499,12 +630,14 @@ function applyDamage(
   min = 0,
   from?: Hex,
   ranged = false,
+  markShot = ranged,
 ): { fatal: boolean; remaining: number } {
   const remaining = Math.max(
     0,
     hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
   );
   victim.hp = remaining;
+  if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
     const lost = state.casualties[victim.side] ?? 0;
@@ -547,6 +680,23 @@ function claimFlag(state: GameState, piece: Piece, tok: TileToken): void {
   );
 }
 
+function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex, why: 'enter' | 'upkeep'): boolean {
+  const hit = hexDamageOn(state, hex, piece.side);
+  if (!hit) return false;
+  const before = hpLeft(piece);
+  const dmg = applyDamage(state, piece, hit.amount, 1, hit.from, true, false);
+  const dealt = before - dmg.remaining;
+  if (dealt <= 0) return false;
+  state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+  const verb = why === 'upkeep' ? 'endures facing pikes' : 'steps into facing pikes';
+  state.log.push(
+    dmg.fatal
+      ? `${unitLog(piece)} dies on facing pikes`
+      : `${unitLog(piece)} ${verb} — ${dealt} HP (${dmg.remaining} HP)`,
+  );
+  return dmg.fatal;
+}
+
 function applyWalkTokens(
   state: GameState,
   piece: Piece,
@@ -556,20 +706,28 @@ function applyWalkTokens(
 ): void {
   for (const h of walkedHexes(from, path, stop)) {
     const tok = tokenAt(state.tokens, h);
-    if (!tok) continue;
-    if (tok.type === 'flag') claimFlag(state, piece, tok);
-    if (tok.type !== 'pikes') continue;
-    const before = hpLeft(piece);
-    const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
-    const dealt = before - dmg.remaining;
-    if (dealt <= 0) continue;
-    state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
-    state.log.push(
-      dmg.fatal
-        ? `${unitLog(piece)} dies on pikes`
-        : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
-    );
-    if (dmg.fatal) return;
+    if (tok?.type === 'flag') claimFlag(state, piece, tok);
+    if (tok?.type === 'pikes') {
+      const before = hpLeft(piece);
+      const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
+      const dealt = before - dmg.remaining;
+      if (dealt > 0) {
+        state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+        state.log.push(
+          dmg.fatal
+            ? `${unitLog(piece)} dies on pikes`
+            : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+        );
+        if (dmg.fatal) return;
+      }
+    }
+    if (strikeFacingPikes(state, piece, h, 'enter')) return;
+  }
+}
+
+function applyHexDamageUpkeep(state: GameState, side: Side): void {
+  for (const p of [...state.pieces.filter((x) => x.side === side)]) {
+    if (strikeFacingPikes(state, p, { col: p.col, row: p.row }, 'upkeep')) continue;
   }
 }
 
@@ -1226,7 +1384,7 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
 }
 
 /** Match start / after the turn flag flips onto `state.turn`. */
-export function beginSideTurn(state: GameState, newRound = false): void {
+export function beginSideTurn(state: GameState, newRound = false, kickoff = false): void {
   if (newRound) state.turnNumber += 1;
   const queued = state.pendingStaminaFx?.[state.turn] ?? [];
   if (queued.length) {
@@ -1243,6 +1401,7 @@ export function beginSideTurn(state: GameState, newRound = false): void {
     };
   }
   applyWaterUpkeep(state, state.turn);
+  if (!kickoff) applyHexDamageUpkeep(state, state.turn);
   if (state.fxStamina?.length) {
     const live = new Set(state.pieces.map((p) => p.id));
     state.fxStamina = state.fxStamina.filter((x) => live.has(x.id));
@@ -1278,6 +1437,7 @@ function endSideTurn(state: GameState): void {
 
 /** Finish this piece's activation; end the side-turn if the unit quota is spent. */
 function finishActivation(state: GameState, piece: Piece): void {
+  piece.rangedHit = undefined;
   clearScoutLock(state);
   if (!state.actedIds.includes(piece.id)) state.actedIds.push(piece.id);
   const cap = clampUnitsPerTurn(state.unitsPerTurn);
@@ -1721,8 +1881,10 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   if (!statsOf(piece.type).hexArmor) return state;
   if (hasActed(next, piece.id)) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
+  const prevCovered = hexDamageCoveredKeys(next, piece);
   piece.facing = dir;
   next.log.push(`${unitLog(piece)} turns`);
+  applyHexDamagePush(next, piece, prevCovered);
   afterAction(next, piece, 'rotate');
   return resolveNoMoves(next);
 }
@@ -1784,6 +1946,9 @@ export function applyAction(state: GameState, action: Action): GameState {
 }
 
 function applyActionInner(state: GameState, action: Action): GameState {
+  if (action.kind === 'rotate') return rotatePiece(state, action.pieceId, action.dir);
+  if (action.kind === 'rest') return restPiece(state, action.pieceId);
+
   const next = cloneState(state);
   next.fxHits = [];
   next.fxStamina = [];
@@ -1860,6 +2025,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     const fromHex = { col: piece.col, row: piece.row };
+    const prevCovered = hexDamageCoveredKeys(next, piece);
     const walkPath = resolveMovePath(next, piece, action.to, action.path);
     const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
     const taken = next.pieces.some(
@@ -1871,6 +2037,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
     }
     piece.facing = plan.facing;
+    if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);
     if (hit.kind === 'stamina') spendStamina(piece);
     markMoved(piece);
     if (statsOf(piece.type).moveBudget > 0) {
@@ -1965,6 +2132,13 @@ export function allLegalActions(state: GameState): Action[] {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });
       }
       // shoot-range is display-only
+    }
+    if (statsOf(p.type).hexArmor) {
+      const cur = facingOf(p);
+      for (let d = 0; d < 6; d++) {
+        if (d === cur) continue;
+        actions.push({ kind: 'rotate', pieceId: p.id, dir: d as HexDir });
+      }
     }
   }
   if (state.scoutPieceId && state.scoutActionsLeft) {
