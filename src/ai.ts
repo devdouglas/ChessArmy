@@ -1,6 +1,12 @@
 /**
  * Aggressive AI: if anyone can shoot or melee, they do.
  * Otherwise close on the enemy general (else nearest enemy). No fleeing.
+ * Pikes: don't walk onto them unless that move attacks the enemy general.
+ * Own general: never attacks the army except the enemy general, or a unit
+ * already in melee with him (adjacent, meleeDamage > 0).
+ * Activate the general last — other pieces act first unless only the king can.
+ * Flags: never capture. Guard owned flags like the king (close on them);
+ * enemy / free flags mean nothing.
  */
 
 import {
@@ -11,18 +17,22 @@ import {
   hasSplash,
   hpLeft,
   isHostile,
+  pathForMove,
   pieceAt,
   previewMove,
   sameTeam,
+  splashBlast,
   splashHitsEnemy,
   terrainAt,
   terrainHeight,
+  tokenAt,
   UNIT_STATS,
   type Action,
   type GameState,
+  type Piece,
   type Side,
 } from './engine';
-import { distance, type Hex } from './hex';
+import { distance, eq, type Hex } from './hex';
 
 function dist(state: GameState, a: Hex, b: Hex): number {
   return distance(a, b, state.orientation);
@@ -43,6 +53,21 @@ function enemyGeneral(state: GameState, me: Side, from: Hex) {
 }
 
 function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
+  const ours = (state.tokens ?? []).filter(
+    (t) => t.type === 'flag' && t.owner && sameTeam(state, t.owner, me),
+  );
+  if (ours.length) {
+    let best = ours[0];
+    let bestD = Infinity;
+    for (const f of ours) {
+      const d = dist(state, from, { col: f.col, row: f.row });
+      if (d < bestD) {
+        bestD = d;
+        best = f;
+      }
+    }
+    return { col: best.col, row: best.row };
+  }
   const gen = enemyGeneral(state, me, from);
   if (gen) return { col: gen.col, row: gen.row };
   let best: Hex | null = null;
@@ -85,6 +110,116 @@ function isAttackAction(state: GameState, action: Action, me: Side): boolean {
     }
     const v = pieceAt(state, plan.stop);
     return !!(v && isHostile(state, v.side, me));
+  }
+  return false;
+}
+
+function isEnemyGeneral(state: GameState, piece: Piece | undefined, me: Side): boolean {
+  return !!piece && isHostile(state, piece.side, me) && hasAbility(piece, 'general');
+}
+
+/** Shoot or walk that actually hits an enemy general this action. */
+function attacksEnemyGeneral(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind === 'skip') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  if (action.kind === 'shoot') {
+    if (!shootHitsEnemy(state, action, me)) return false;
+    const from: Hex = { col: piece.col, row: piece.row };
+    if (hasSplash(UNIT_STATS[piece.type])) {
+      return splashBlast(state, action.at, from).some((h) =>
+        isEnemyGeneral(state, pieceAt(state, h), me),
+      );
+    }
+    return isEnemyGeneral(state, pieceAt(state, action.at), me);
+  }
+  if (action.kind !== 'move') return false;
+  const plan = previewMove(state, piece, action.to);
+  if (plan.hits.some((h) => isEnemyGeneral(state, getPiece(state, h.id), me))) return true;
+  return isEnemyGeneral(state, pieceAt(state, plan.stop), me);
+}
+
+/** True when this walk enters at least one pike hex (origin does not count). */
+function moveStepsOnPikes(state: GameState, piece: Piece, to: Hex): boolean {
+  const from: Hex = { col: piece.col, row: piece.row };
+  const plan = previewMove(state, piece, to);
+  if (eq(from, plan.stop)) return false;
+  for (const h of pathForMove(state, piece, to)) {
+    if (tokenAt(state.tokens, h)?.type === 'pikes') return true;
+    if (eq(h, plan.stop)) break;
+  }
+  return false;
+}
+
+function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
+  if (action.kind === 'skip') return [];
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return [];
+  const out: Piece[] = [];
+  const add = (p: Piece | undefined) => {
+    if (p && isHostile(state, p.side, me) && !out.some((x) => x.id === p.id)) out.push(p);
+  };
+  if (action.kind === 'shoot') {
+    const from: Hex = { col: piece.col, row: piece.row };
+    if (hasSplash(UNIT_STATS[piece.type])) {
+      for (const h of splashBlast(state, action.at, from)) add(pieceAt(state, h));
+    } else {
+      add(pieceAt(state, action.at));
+    }
+    return out;
+  }
+  if (action.kind !== 'move') return out;
+  const plan = previewMove(state, piece, action.to);
+  for (const h of plan.hits) add(getPiece(state, h.id));
+  add(pieceAt(state, plan.stop));
+  return out;
+}
+
+/** Adjacent enemy with melee damage — they can walk onto `target` next. */
+function meleeThreatens(state: GameState, attacker: Piece, target: Piece): boolean {
+  if (attacker.id === target.id) return false;
+  if (!isHostile(state, attacker.side, target.side)) return false;
+  if (UNIT_STATS[attacker.type].meleeDamage <= 0) return false;
+  return (
+    dist(
+      state,
+      { col: attacker.col, row: attacker.row },
+      { col: target.col, row: target.row },
+    ) === 1
+  );
+}
+
+/**
+ * Generals don't dump shots/melee into the army. King-hunt and fighting back
+ * against a current melee threat are the only exceptions.
+ */
+function generalAttackOk(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind === 'skip') return true;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece || !hasAbility(piece, 'general')) return true;
+  if (!isAttackAction(state, action, me)) return true;
+  if (attacksEnemyGeneral(state, action, me)) return true;
+  return victimsOf(state, action, me).some((v) => meleeThreatens(state, v, piece));
+}
+
+function isPikeWalk(state: GameState, action: Action): boolean {
+  if (action.kind !== 'move') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  return moveStepsOnPikes(state, piece, action.to);
+}
+
+function moveCapturesFlag(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind !== 'move') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  const plan = previewMove(state, piece, action.to);
+  if (eq(from, plan.stop)) return false;
+  for (const h of pathForMove(state, piece, action.to)) {
+    const tok = tokenAt(state.tokens, h);
+    if (tok?.type === 'flag' && (!tok.owner || isHostile(state, tok.owner, me))) return true;
+    if (eq(h, plan.stop)) break;
   }
   return false;
 }
@@ -160,6 +295,19 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
   return score;
 }
 
+function isOwnGeneralAction(state: GameState, action: Action): boolean {
+  if (action.kind === 'skip') return false;
+  const piece = getPiece(state, action.pieceId);
+  return !!piece && hasAbility(piece, 'general');
+}
+
+/** Drop own-general actions while any other piece can still act. Scout lock is sacred. */
+function othersFirst(state: GameState, pool: Action[]): Action[] {
+  if (state.scoutPieceId || !pool.length) return pool;
+  const rest = pool.filter((a) => !isOwnGeneralAction(state, a));
+  return rest.length ? rest : pool;
+}
+
 function pickBest(actions: Action[], state: GameState, me: Side): Action {
   let best = actions[0];
   let bestScore = -Infinity;
@@ -175,12 +323,25 @@ function pickBest(actions: Action[], state: GameState, me: Side): Action {
 
 export function pickAiAction(state: GameState): Action | null {
   const me = state.turn;
-  const actions = allLegalActions(state);
+  const actions = allLegalActions(state).filter((a) => {
+    if (!generalAttackOk(state, a, me)) return false;
+    if (moveCapturesFlag(state, a, me) && !attacksEnemyGeneral(state, a, me)) return false;
+    return true;
+  });
   if (!actions.length) return null;
 
-  const attacks = actions.filter((a) => isAttackAction(state, a, me));
+  const generalHits = othersFirst(
+    state,
+    actions.filter((a) => attacksEnemyGeneral(state, a, me)),
+  );
+  if (generalHits.length) return pickBest(generalHits, state, me);
+
+  const pool = othersFirst(state, actions);
+  const safe = pool.filter((a) => !isPikeWalk(state, a));
+  const attacks = safe.filter((a) => isAttackAction(state, a, me));
   if (attacks.length) return pickBest(attacks, state, me);
-  return pickBest(actions, state, me);
+  if (safe.length) return pickBest(safe, state, me);
+  return pickBest(pool, state, me);
 }
 
 /** Play AI until it's the human's turn again (handles scout double-action). */

@@ -11,10 +11,11 @@
   --water: #2a4a5c;
   --water-hi: #3d6a82;
   --water-lo: #1e3a4a;
-  --rock: #5c574f;
-  --rock-hi: #6a655c;
-  --rock-lo: #4a463f;
-  --rock-ink: #3a3630;
+  --rock: #524e49;
+  --rock-hi: #6a655e;
+  --rock-lo: #3a3733;
+  --rock-ink: #221f1c;
+  --rock-shadow: #141210;
   --wall: #6e7278;
   --wall-hi: #7a7e84;
   --wall-lo: #63676d;
@@ -31,7 +32,7 @@
   --water-stroke: #1a3344;
   --high-stroke: #4a3820;
   --plateau-stroke: #2e2c28;
-  --rock-stroke: #0e0d0b;
+  --rock-stroke: #1c1a18;
   --wall-stroke: #2a2e34;
   --red: #c44;
   --blue: #4a7ec8;
@@ -80,10 +81,11 @@ html[data-period='ancient'] {
   --water: #3a5560;
   --water-hi: #6a8a90;
   --water-lo: #243840;
-  --rock: #6a5e52;
-  --rock-hi: #7a6e62;
-  --rock-lo: #524840;
-  --rock-ink: #3a3228;
+  --rock: #5a5044;
+  --rock-hi: #726858;
+  --rock-lo: #40382e;
+  --rock-ink: #241c14;
+  --rock-shadow: #18140e;
   --wall: #8a7a64;
   --wall-hi: #9a8a74;
   --wall-lo: #6e6254;
@@ -100,7 +102,7 @@ html[data-period='ancient'] {
   --water-stroke: #243840;
   --high-stroke: #5a4020;
   --plateau-stroke: #3a3228;
-  --rock-stroke: #1a1410;
+  --rock-stroke: #221c16;
   --wall-stroke: #3a3228;
   --red: #c45a38;
   --blue: #3d6a78;
@@ -135,10 +137,11 @@ html[data-period='futuristic'] {
   --water: #082838;
   --water-hi: #20b8e0;
   --water-lo: #041820;
-  --rock: #3a4458;
-  --rock-hi: #4a5870;
-  --rock-lo: #2a3448;
-  --rock-ink: #10141c;
+  --rock: #2a2040;
+  --rock-hi: #3e3258;
+  --rock-lo: #1a1430;
+  --rock-ink: #100c1c;
+  --rock-shadow: #080610;
   --wall: #4a5568;
   --wall-hi: #5a6a80;
   --wall-lo: #343e50;
@@ -155,7 +158,7 @@ html[data-period='futuristic'] {
   --water-stroke: #041820;
   --high-stroke: #183848;
   --plateau-stroke: #201838;
-  --rock-stroke: #080a10;
+  --rock-stroke: #120e1c;
   --wall-stroke: #121820;
   --red: #e04070;
   --blue: #20b8e0;
@@ -726,6 +729,13 @@ button.primary:focus-visible {
   align-items: stretch;
 }
 
+.editor-top-paint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
 .editor-bar {
   grid-template-columns: 1fr;
   max-width: var(--page-max);
@@ -871,6 +881,7 @@ button.primary:focus-visible {
 }
 
 .editor-panel-map,
+.editor-panel-tokens,
 .editor-panel-army {
   min-height: 0;
 }
@@ -1501,6 +1512,43 @@ button.primary:focus-visible {
   border-color: #a09890;
   color: #d8d0c8;
 }
+.editor-brushes .brush.pikes.active {
+  border-color: #c4a060;
+  color: #e8d090;
+}
+.editor-brushes .brush.flag.active {
+  border-color: #c9a227;
+  color: #f0d060;
+}
+.editor-brushes .brush.token.erase.active {
+  border-color: #c07070;
+  color: #e8a0a0;
+}
+
+.token-layer,
+.tile-token {
+  pointer-events: none;
+}
+
+.token-flag .flag-cloth {
+  fill: #e8dcc4;
+  stroke: #3a3228;
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+}
+
+.token-flag.red .flag-cloth {
+  fill: var(--piece-red);
+}
+.token-flag.blue .flag-cloth {
+  fill: var(--piece-blue);
+}
+.token-flag.yellow .flag-cloth {
+  fill: var(--piece-yellow);
+}
+.token-flag.purple .flag-cloth {
+  fill: var(--piece-purple);
+}
 
 .editor-save button,
 .editor-levels button {
@@ -1662,6 +1710,13 @@ button.primary:focus-visible {
   display: flex;
   gap: 0.35rem;
   align-items: stretch;
+  cursor: grab;
+}
+
+.level-row .level-open,
+.level-row .level-thumb {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .level-drag {
@@ -1688,6 +1743,7 @@ button.primary:focus-visible {
 
 .level-row.dragging {
   opacity: 0.55;
+  cursor: grabbing;
 }
 
 .level-row.dragging .level-drag {
@@ -1706,15 +1762,17 @@ button.primary:focus-visible {
 
 .level-open {
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 0.85rem;
+  column-gap: 0.85rem;
+  row-gap: 0.28rem;
   min-width: 0;
   text-align: left;
   background: var(--panel);
   color: var(--ink);
   border: 1px solid #3a453c;
-  padding: 0.4rem 0.7rem 0.4rem 0.4rem;
+  padding: 0.45rem 0.7rem 0.4rem 0.4rem;
   cursor: pointer;
   font: inherit;
   min-height: var(--touch);
@@ -1732,6 +1790,16 @@ button.primary:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.18rem;
+  min-width: 0;
+}
+
+.level-open .level-name {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0 0.15rem;
+}
+
+.level-open .lvl-meta {
   min-width: 0;
 }
 
@@ -1790,12 +1858,15 @@ button.primary:focus-visible {
 
 .level-thumb .hex-high-rim,
 .level-thumb .hex-plateau-rim,
-.level-thumb .hex-plateau-mid {
+.level-thumb .hex-plateau-mid,
+.level-thumb .hex-rock-rim,
+.level-thumb .hex-rock-mid {
   stroke-width: 0.7;
 }
 
 .level-thumb .hex-high-top,
-.level-thumb .hex-plateau-top {
+.level-thumb .hex-plateau-top,
+.level-thumb .hex-rock-top {
   stroke-width: 0.45;
 }
 
@@ -1952,6 +2023,11 @@ button.primary:focus-visible {
 
 .match-cas span + span {
   margin-left: 0.55rem;
+}
+
+.match-flags {
+  margin-left: 0.55rem;
+  color: var(--sel);
 }
 
 .board-stage {
@@ -2348,9 +2424,29 @@ svg.board .hex {
 .hex.rock {
   fill: url(#rock-tex);
   stroke: var(--rock-stroke);
-  stroke-width: 3.6;
+  stroke-width: 3.4;
   stroke-linejoin: miter;
+  filter: drop-shadow(0 6px 0 var(--rock-shadow));
 }
+.hex-rock-rim {
+  fill: none;
+  stroke: rgba(180, 174, 166, 0.45);
+  stroke-width: 1.7;
+  pointer-events: none;
+}
+.hex-rock-mid {
+  fill: none;
+  stroke: rgba(160, 156, 148, 0.35);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+.hex-rock-top {
+  fill: rgba(40, 38, 36, 0.22);
+  stroke: rgba(200, 196, 188, 0.32);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 .hex.wall {
   fill: url(#wall-tex);
   stroke: var(--wall-stroke);
@@ -2359,7 +2455,7 @@ svg.board .hex {
 }
 
 .hl-tint-layer,
-.shoot-outline-layer {
+.shoot-mark-layer {
   pointer-events: none;
 }
 
@@ -2433,17 +2529,36 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   pointer-events: none;
 }
 
-.shoot-outline {
-  fill: none;
-  stroke: rgba(220, 70, 70, 0.75);
-  stroke-width: 2.4;
-  stroke-linejoin: miter;
-  pointer-events: none;
+.shoot-mark {
+  filter: drop-shadow(0 0 1.1px rgba(12, 10, 8, 0.55));
 }
 
-.shoot-outline.target {
-  stroke: #ff3b3b;
-  stroke-width: 3;
+.shoot-mark .crosshair-ring {
+  fill: none;
+  stroke: rgba(210, 28, 28, 0.6);
+  stroke-width: 1.25;
+}
+
+.shoot-mark .crosshair-ticks {
+  fill: none;
+  stroke: rgba(210, 28, 28, 0.6);
+  stroke-width: 1.35;
+  stroke-linecap: square;
+}
+
+.shoot-mark .crosshair-pip {
+  fill: #e01010;
+  stroke: none;
+}
+
+.shoot-mark.target .crosshair-ring {
+  stroke: #dc1212;
+  stroke-width: 1.45;
+}
+
+.shoot-mark.target .crosshair-ticks {
+  stroke: #e01010;
+  stroke-width: 1.55;
 }
 
 .piece-unit {
@@ -2808,6 +2923,36 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   outline: none;
 }
 
+.action-bar #rotate-unit {
+  background: #243038;
+  color: #b8c8d4;
+  border: 1px solid #4a6578;
+  padding: 0.28rem 0.55rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.action-bar #rotate-unit:hover,
+.action-bar #rotate-unit:focus-visible {
+  background: #2c3c48;
+  color: #d8e8f0;
+  outline: none;
+}
+
+.action-bar #rotate-unit.active {
+  background: #3a3420;
+  border-color: var(--sel);
+  color: var(--sel);
+}
+
+svg.board.rotate-aim {
+  cursor: crosshair;
+}
+
 .action-bar #skip-scout {
   background: #d4a017;
   color: #1a1508;
@@ -3154,15 +3299,22 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 .legend .l-stamina::before {
   background: #dcaa32;
 }
-.legend .l-shoot::before {
-  background: #dc4646;
+.legend .l-shoot::before,
+.legend .l-shoot-range::before {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #dc1212;
+  border-radius: 50%;
+  background:
+    linear-gradient(#e01010, #e01010) center / 6px 1.3px no-repeat,
+    linear-gradient(#e01010, #e01010) center / 1.3px 6px no-repeat;
+  box-sizing: border-box;
 }
 .legend .l-shoot-range::before {
-  background: rgba(220, 70, 70, 0.45);
-}
-.legend .l-shoot-border::before {
-  background: transparent;
-  box-shadow: inset 0 0 0 2px #ff3b3b;
+  border-color: rgba(210, 28, 28, 0.6);
+  background:
+    linear-gradient(rgba(210, 28, 28, 0.6), rgba(210, 28, 28, 0.6)) center / 6px 1.3px no-repeat,
+    linear-gradient(rgba(210, 28, 28, 0.6), rgba(210, 28, 28, 0.6)) center / 1.3px 6px no-repeat;
 }
 
 .log-block {
@@ -3366,6 +3518,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 
   .action-bar #skip-scout,
   .action-bar #rest-unit,
+  .action-bar #rotate-unit,
   .play-end-turn {
     min-height: var(--touch);
   }

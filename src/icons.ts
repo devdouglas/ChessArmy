@@ -1,4 +1,12 @@
-import { roleOf, type AbilityId, type UnitRole, type UnitType } from './engine';
+import {
+  roleOf,
+  type AbilityId,
+  type Side,
+  type TokenType,
+  type UnitRole,
+  type UnitType,
+} from './engine';
+import { hexCorners, type HexOrientation } from './hex';
 
 /** Compact silhouettes centered at 0,0 — viewBox roughly -10..10. */
 const ICONS: Record<UnitRole, string> = {
@@ -175,6 +183,55 @@ const ICONS: Record<UnitRole, string> = {
 export function pieceIconSvg(type: UnitType, size = 16): string {
   const s = size / 20;
   return `<g class="piece-icon" transform="scale(${s})">${ICONS[roleOf(type)]}</g>`;
+}
+
+/**
+ * Overlay stamp centered at 0,0.
+ * Pikes: `size` scales the -8..8 glyph (16 → native).
+ * Wall: `size` is the hex radius in px (matches the tile).
+ */
+export function tokenGlyphSvg(
+  type: TokenType,
+  size = 16,
+  o: HexOrientation = 'pointy',
+  owner?: Side | null,
+): string {
+  const s = size / 16;
+  if (type === 'pikes') {
+    return `<g class="token-pikes" transform="scale(${s})">
+      <ellipse cx="0" cy="5.4" rx="6.4" ry="1.9" fill="#2a1c10" opacity="0.38"/>
+      <g fill="none" stroke="#6a4a28" stroke-width="1.35" stroke-linecap="round">
+        <path d="M-4.5 6.1 L-5.6 -3.8"/>
+        <path d="M0 6.6 L0 -5.2"/>
+        <path d="M4.5 6.1 L5.6 -3.8"/>
+      </g>
+      <g fill="#c8c4b8" stroke="#6a6860" stroke-width="0.35" stroke-linejoin="round">
+        <path d="M-5.6 -3.8 L-6.5 -6.2 L-4.5 -4.7 Z"/>
+        <path d="M0 -5.2 L-0.75 -7.8 L0.75 -7.8 Z"/>
+        <path d="M5.6 -3.8 L4.5 -4.7 L6.5 -6.2 Z"/>
+      </g>
+    </g>`;
+  }
+  if (type === 'wall') {
+    const r = size;
+    const sw = Math.max(1.2, r * 0.09);
+    const ink = Math.max(0.7, r * 0.045);
+    return `<g class="token-wall">
+      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.45" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, r * 0.48, o)}" fill="var(--wall-lo)" opacity="0.55" stroke="var(--wall-ink)" stroke-width="${(ink * 0.9).toFixed(2)}" stroke-linejoin="miter"/>
+    </g>`;
+  }
+  if (type === 'flag') {
+    const side = owner ? ` ${owner}` : '';
+    return `<g class="token-flag${side}" transform="scale(${s})">
+      <ellipse cx="0.2" cy="6.4" rx="3.4" ry="1.15" fill="#1a1410" opacity="0.35"/>
+      <path d="M-0.35 6.5 V-7.1" fill="none" stroke="#3a3228" stroke-width="1.35" stroke-linecap="round"/>
+      <rect x="-0.85" y="-7.35" width="1.05" height="1.35" rx="0.25" fill="#c8b070"/>
+      <path class="flag-cloth" d="M0.35 -6.85 L7.4 -4.15 L0.35 -1.15 Z"/>
+    </g>`;
+  }
+  return '';
 }
 
 /** Small reload badge — place at piece top-right (cx, cy relative to piece center). */

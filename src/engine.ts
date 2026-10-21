@@ -138,9 +138,110 @@ export function emptyHadKing(): Record<Side, boolean> {
 
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
-/** Impassable solid terrain (wall rocket-breakable). Mountain is climbable height 3. */
+export const TOKEN_TYPES = ['pikes', 'wall', 'flag'] as const;
+export type TokenType = (typeof TOKEN_TYPES)[number];
+export type TileToken = { type: TokenType; col: number; row: number; owner?: Side };
+
+export const TOKEN_LABEL: Record<TokenType, string> = {
+  pikes: 'Pikes',
+  wall: 'Wall',
+  flag: 'Flag',
+};
+export const PIKE_DAMAGE = 1;
+
+export function isTokenType(v: unknown): v is TokenType {
+  return (TOKEN_TYPES as readonly string[]).includes(v as string);
+}
+
+export function tokenAt(tokens: TileToken[], h: Hex): TileToken | undefined {
+  return tokens.find((t) => t.col === h.col && t.row === h.row);
+}
+
+export function mapFlags(state: { tokens?: TileToken[] }): TileToken[] {
+  return (state.tokens ?? []).filter((t) => t.type === 'flag');
+}
+
+export function flagsHeldBy(state: GameState, side: Side): number {
+  return mapFlags(state).filter((t) => t.owner && sameTeam(state, t.owner, side)).length;
+}
+
+export function teamHoldsAllFlags(state: GameState, side: Side): boolean {
+  const flags = mapFlags(state);
+  return flags.length > 0 && flags.every((t) => !!t.owner && sameTeam(state, t.owner, side));
+}
+
+export function winByFlags(state: GameState): boolean {
+  return !!state.winner && teamHoldsAllFlags(state, state.winner);
+}
+
+/** Units already standing on a flag claim it (match start). */
+export function seedFlagOwners(state: GameState): void {
+  for (const p of state.pieces) {
+    const tok = tokenAt(state.tokens, { col: p.col, row: p.row });
+    if (tok?.type === 'flag') tok.owner = p.side;
+  }
+}
+
+/** One token per hex. Out of bounds / unknown types dropped. */
+export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileToken[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: TileToken[] = [];
+  const cap = Math.max(0, cols * rows);
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const t = item as Partial<TileToken>;
+    if (!isTokenType(t.type)) continue;
+    const col = Math.floor(Number(t.col));
+    const row = Math.floor(Number(t.row));
+    if (!Number.isFinite(col) || !Number.isFinite(row)) continue;
+    if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
+    const k = `${col},${row}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const tok: TileToken = { type: t.type, col, row };
+    if (t.type === 'flag' && isSide(t.owner)) tok.owner = t.owner;
+    out.push(tok);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/** Old wall terrain cells become land + a wall token. One token per hex. */
+export function liftWallTerrain(
+  terrain: Terrain[][],
+  tokens: TileToken[] = [],
+): { terrain: Terrain[][]; tokens: TileToken[] } {
+  const t = terrain.map((r) => [...r]);
+  const byHex = new Map(tokens.map((tok) => [`${tok.col},${tok.row}`, tok] as const));
+  for (let row = 0; row < t.length; row++) {
+    const line = t[row];
+    if (!line) continue;
+    for (let col = 0; col < line.length; col++) {
+      if (line[col] !== 'wall') continue;
+      line[col] = 'land';
+      byHex.set(`${col},${row}`, { type: 'wall', col, row });
+    }
+  }
+  return { terrain: t, tokens: [...byHex.values()] };
+}
+
+/** Impassable solid terrain leftover from old saves. Mountain is climbable height 3. */
 export function isSolidTerrain(t: Terrain): boolean {
   return t === 'wall';
+}
+
+/** Wall token (or leftover wall terrain) — blocks walk / LOS; rockets demolish. */
+export function isWall(
+  state: { tokens: TileToken[]; terrain: Terrain[][] },
+  h: Hex,
+): boolean {
+  if (tokenAt(state.tokens, h)?.type === 'wall') return true;
+  return state.terrain[h.row]?.[h.col] === 'wall';
+}
+
+export function isWalkableTerrain(t: Terrain): boolean {
+  return t !== 'wall';
 }
 
 /** Walkable elevation. Land/water/wall = 0, hill = +1, plateau = +2, mountain = +3. */
@@ -193,6 +294,8 @@ export type GameState = {
   rows: number;
   orientation: HexOrientation;
   terrain: Terrain[][]; // [row][col]
+  /** Overlay stamps. One per hex. Missing on old states → []. */
+  tokens: TileToken[];
   pieces: Piece[];
   turn: Side;
   /** Scout mid-turn: remaining actions for selected piece id */
@@ -417,6 +520,57 @@ function escLog(s: string): string {
 
 function unitLog(piece: Piece): string {
   return `<span class="log-side ${piece.side}">${escLog(statsOf(piece.type).name)}</span>`;
+}
+
+/** Hexes actually entered: origin exclusive through stop inclusive. */
+function walkedHexes(from: Hex, path: Hex[], stop: Hex): Hex[] {
+  if (eq(from, stop)) return [];
+  const out: Hex[] = [];
+  for (const h of path) {
+    out.push(h);
+    if (eq(h, stop)) return out;
+  }
+  return out;
+}
+
+function claimFlag(state: GameState, piece: Piece, tok: TileToken): void {
+  if (tok.type !== 'flag') return;
+  if (tok.owner && sameTeam(state, tok.owner, piece.side)) return;
+  const prev = tok.owner;
+  tok.owner = piece.side;
+  const many = mapFlags(state).length > 1;
+  const noun = many ? 'a flag' : 'the flag';
+  state.log.push(
+    prev
+      ? `${unitLog(piece)} recaptures ${noun}`
+      : `${unitLog(piece)} captures ${noun}`,
+  );
+}
+
+function applyWalkTokens(
+  state: GameState,
+  piece: Piece,
+  from: Hex,
+  path: Hex[],
+  stop: Hex,
+): void {
+  for (const h of walkedHexes(from, path, stop)) {
+    const tok = tokenAt(state.tokens, h);
+    if (!tok) continue;
+    if (tok.type === 'flag') claimFlag(state, piece, tok);
+    if (tok.type !== 'pikes') continue;
+    const before = hpLeft(piece);
+    const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
+    const dealt = before - dmg.remaining;
+    if (dealt <= 0) continue;
+    state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+    state.log.push(
+      dmg.fatal
+        ? `${unitLog(piece)} dies on pikes`
+        : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+    );
+    if (dmg.fatal) return;
+  }
 }
 
 function sideLog(side: Side, label: string): string {
@@ -752,8 +906,7 @@ function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boo
   // Destination may be elevated / occupied / wall — you can shoot *onto* it.
   for (let i = 0; i < cells.length - 1; i++) {
     const h = cells[i];
-    const t = terrainAt(state, h);
-    if (isSolidTerrain(t)) return false;
+    if (isWall(state, h)) return false;
     if (hexHeight(state, h) > fromH) return false;
     if (fromH === 0 && !overUnits && pieceAt(state, h)) return false;
   }
@@ -767,7 +920,7 @@ function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boo
  */
 export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
   const out: Hex[] = [at];
-  const impactSolid = isSolidTerrain(terrainAt(state, at));
+  const impactSolid = isWall(state, at);
   const atDist = hexDist(state, from, at);
 
   // Concrete/rock hit: only 3 splash tiles — impact + 2 closest toward shooter
@@ -783,7 +936,7 @@ export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
     if (!inBounds(state, n)) continue;
 
     // Open impact: can clip an adjacent wall/rock, but not hexes in its shadow
-    if (isSolidTerrain(terrainAt(state, n))) {
+    if (isWall(state, n)) {
       out.push(n);
       continue;
     }
@@ -796,7 +949,7 @@ export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
 /** True if `n` sits in the shadow behind solid cover adjacent to impact `at`. */
 function inSolidShadow(state: GameState, from: Hex, at: Hex, n: Hex): boolean {
   for (const s of hexNeighbors(state, at)) {
-    if (!inBounds(state, s) || !isSolidTerrain(terrainAt(state, s))) continue;
+    if (!inBounds(state, s) || !isWall(state, s)) continue;
     if (eq(s, n)) return false;
     // n is behind solid s (from the shot) if farther from shooter than s and touches s
     if (hexDist(state, s, n) === 1 && hexDist(state, from, n) > hexDist(state, from, s)) {
@@ -831,7 +984,7 @@ function splashHasTarget(
 ): boolean {
   if (splashHitsEnemy(state, at, from, shooterSide)) return true;
   // Walls: must aim at the wall itself (not the tile in front) so the rocket impacts on it
-  return terrainAt(state, at) === 'wall';
+  return isWall(state, at);
 }
 
 export const MIN_UNITS_PER_TURN = 1;
@@ -851,6 +1004,7 @@ function cloneState(state: GameState): GameState {
   return {
     ...state,
     terrain: state.terrain.map((r) => [...r]),
+    tokens: (state.tokens ?? []).map((t) => ({ ...t })),
     pieces: state.pieces.map((p) => ({
       ...p,
       abilities: p.abilities ? [...p.abilities] : undefined,
@@ -1158,13 +1312,18 @@ function checkWin(state: GameState): void {
     return;
   }
   const liveTeams = new Set(live.map((s) => coalition(state, s)));
-  if (liveTeams.size === 1) state.winner = live[0];
+  if (liveTeams.size === 1) {
+    state.winner = live[0];
+    return;
+  }
+  const holder = parts.find((s) => teamHoldsAllFlags(state, s));
+  if (holder) state.winner = holder;
 }
 
 function afterAction(
   state: GameState,
   piece: Piece,
-  kind: 'move' | 'shoot',
+  kind: 'move' | 'shoot' | 'rotate',
   enteredWater = false,
 ): void {
   markActed(piece);
@@ -1240,7 +1399,7 @@ function movePathOpts(
     canStop: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
-      if (isSolidTerrain(t)) return false;
+      if (isWall(state, h)) return false;
       if (t === 'water' && !stats.passWater) return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       const occ = occupantAt(state, piece, from, h);
@@ -1251,7 +1410,7 @@ function movePathOpts(
     canPass: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
-      if (isSolidTerrain(t)) return false;
+      if (isWall(state, h)) return false;
       if (t === 'water') return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
@@ -1273,7 +1432,7 @@ function canWalkStep(
 ): boolean {
   const stats = statsOf(piece.type);
   const t = terrainAt(state, toHex);
-  if (isSolidTerrain(t)) return false;
+  if (isWall(state, toHex)) return false;
   if (t === 'water' && !stats.passWater) return false;
   const fh = hexHeight(state, fromHex);
   const th = hexHeight(state, toHex);
@@ -1501,11 +1660,11 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       const d = hexDist(state, from, h);
       if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);
-      if (terrain === 'rock') continue; // can't shoot into rock
+      if (terrain === 'rock' && !isWall(state, h)) continue; // can't shoot into rock
       // Walls: only rockets can impact (to demolish); bullets treat like blocked aim
-      if (terrain === 'wall' && !splash) continue;
-      // Splash (bazooka/tank) can't impact on water
-      if (splash && terrain === 'water') continue;
+      if (isWall(state, h) && !splash) continue;
+      // Splash (bazooka/tank) can't impact on water — except a wall sitting on it
+      if (splash && terrain === 'water' && !isWall(state, h)) continue;
       if (!losClear(state, from, h, stats.shootArc === 'arch')) continue;
 
       const target = pieceAt(state, h);
@@ -1545,6 +1704,27 @@ export function legalHighlights(state: GameState, pieceId: string): Highlight[] 
     return [];
   }
   return rangeHighlights(state, pieceId);
+}
+
+/**
+ * Spend one action to face `dir`. Legal whenever the piece can still act
+ * (including a leftover scout / stamina-bonus action). Not idle — no regen.
+ */
+export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): GameState {
+  if (state.winner) return state;
+  if (!isHexDir(dir)) return state;
+  const next = cloneState(state);
+  next.fxHits = [];
+  next.fxStamina = [];
+  const piece = getPiece(next, pieceId);
+  if (!piece || piece.side !== next.turn) return state;
+  if (!statsOf(piece.type).hexArmor) return state;
+  if (hasActed(next, piece.id)) return state;
+  if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
+  piece.facing = dir;
+  next.log.push(`${unitLog(piece)} turns`);
+  afterAction(next, piece, 'rotate');
+  return resolveNoMoves(next);
 }
 
 /**
@@ -1680,6 +1860,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     const fromHex = { col: piece.col, row: piece.row };
+    const walkPath = resolveMovePath(next, piece, action.to, action.path);
     const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
@@ -1687,6 +1868,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (!taken) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
+      applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
     }
     piece.facing = plan.facing;
     if (hit.kind === 'stamina') spendStamina(piece);
@@ -1727,9 +1909,12 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
         dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin, true));
       }
-      // Concrete walls crumble under rockets
-      if (terrainAt(next, h) === 'wall') {
-        next.terrain[h.row][h.col] = 'land';
+      // Concrete walls crumble under rockets; the tile underneath stays
+      if (isWall(next, h)) {
+        if (terrainAt(next, h) === 'wall') next.terrain[h.row][h.col] = 'land';
+        next.tokens = next.tokens.filter(
+          (tok) => !(tok.type === 'wall' && tok.col === h.col && tok.row === h.row),
+        );
         wallsDown++;
       }
     }

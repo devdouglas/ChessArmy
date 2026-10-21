@@ -3,9 +3,12 @@ import {
   isKnownUnit,
   isSide,
   sanitizeArmyControls,
+  sanitizeTokens,
+  liftWallTerrain,
   type ArmyControl,
   type Side,
   type Terrain,
+  type TileToken,
   type UnitType,
 } from './engine';
 import type { HexOrientation } from './hex';
@@ -17,11 +20,12 @@ import {
   type ArmyStamp,
 } from './map';
 import { notifyPersist } from './persist-hook';
-import { sanitizePeriod, type Period } from './period';
+import { getSelectedPeriod, sanitizePeriod, type Period } from './period';
 
 const STORAGE_KEY = 'chessarmy-levels-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
 const DEFAULT_KEY = 'chessarmy-default-level';
+const FILTER_KEY = 'chessarmy-levels-filter';
 
 export type LevelCategory = 'campaign' | 'tutorial' | 'historical' | 'skirmish';
 
@@ -62,6 +66,8 @@ export type SavedLevel = {
   armies?: ArmyStamp[];
   /** Per-color controller. Missing → red player, everyone else ai enemy. */
   armyControls?: Record<Side, ArmyControl>;
+  /** Overlay stamps (pikes, walls, flags, …). Missing on old saves → none. */
+  tokens?: TileToken[];
   /** Missing on old saves → historical (was `free`). */
   category: LevelCategory;
   /** Missing on old saves → modern. */
@@ -270,12 +276,20 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
       const armyControls = sanitizeArmyControls(
         (l as SavedLevel & { armyControls?: unknown }).armyControls,
       );
+      const lifted = liftWallTerrain(
+        cloneTerrain(l.terrain),
+        sanitizeTokens(
+          (l as SavedLevel & { tokens?: unknown }).tokens,
+          cols,
+          rows,
+        ),
+      );
       return {
         ...l,
         orientation: l.orientation === 'flat' ? 'flat' : DEFAULT_ORIENTATION,
         cols,
         rows,
-        terrain: cloneTerrain(l.terrain),
+        terrain: lifted.terrain,
         category: sanitizeCategory(l.category),
         period: sanitizePeriod(l.period),
         sort: sort ?? Number.NaN,
@@ -292,6 +306,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
           DEFAULT_STAR_3,
         ),
         armyControls,
+        tokens: lifted.tokens,
         ...(armies !== undefined ? { armies } : {}),
       };
     });
@@ -358,8 +373,8 @@ export function levelOrdinal(level: SavedLevel): number {
 }
 
 export function levelLabel(level: SavedLevel): string {
-  const n = levelOrdinal(level);
-  return n > 0 ? `lvl.${n}` : 'lvl.?';
+  const name = level.name.trim();
+  return name || 'Untitled';
 }
 
 export function saveLevel(
@@ -374,6 +389,7 @@ export function saveLevel(
   texts?: { startText?: string; winText?: string; loseText?: string },
   stars?: { star2?: StarRule; star3?: StarRule },
   armyControls?: Partial<Record<Side, ArmyControl>>,
+  tokens?: TileToken[],
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -381,37 +397,40 @@ export function saveLevel(
   const cols = terrain[0]?.length ?? COLS;
   const rows = terrain.length;
   const stamped = sanitizeArmies(armies ?? [], cols, rows) ?? [];
-  if (existingId) {
-    const idx = levels.findIndex((l) => l.id === existingId);
-    if (idx >= 0) {
-      const prev = levels[idx];
-      const nextCat = sanitizeCategory(category ?? prev.category);
-      const nextPeriod = sanitizePeriod(period ?? prev.period);
-      const moved = nextCat !== prev.category || nextPeriod !== prev.period;
-      const updated: SavedLevel = {
-        ...prev,
-        name: trimmed,
-        cols,
-        rows,
-        orientation,
-        terrain: cloneTerrain(terrain),
-        armies: stamped,
-        category: nextCat,
-        period: nextPeriod,
-        sort: moved ? nextSort(levels, nextCat, nextPeriod, prev.id) : prev.sort,
-        unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? prev.unitsPerTurn ?? 1),
-        startText: sanitizeLevelText(texts?.startText ?? prev.startText),
-        winText: sanitizeLevelText(texts?.winText ?? prev.winText),
-        loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
-        star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
-        star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
-        armyControls: sanitizeArmyControls(armyControls ?? prev.armyControls),
-        updatedAt: now,
-      };
-      levels[idx] = updated;
-      writeLevels(levels);
-      return updated;
-    }
+  const prevIdx = existingId ? levels.findIndex((l) => l.id === existingId) : -1;
+  const prev = prevIdx >= 0 ? levels[prevIdx] : undefined;
+  const lifted = liftWallTerrain(
+    cloneTerrain(terrain),
+    sanitizeTokens(tokens ?? prev?.tokens, cols, rows),
+  );
+  if (prev && prevIdx >= 0) {
+    const nextCat = sanitizeCategory(category ?? prev.category);
+    const nextPeriod = sanitizePeriod(period ?? prev.period);
+    const moved = nextCat !== prev.category || nextPeriod !== prev.period;
+    const updated: SavedLevel = {
+      ...prev,
+      name: trimmed,
+      cols,
+      rows,
+      orientation,
+      terrain: lifted.terrain,
+      armies: stamped,
+      category: nextCat,
+      period: nextPeriod,
+      sort: moved ? nextSort(levels, nextCat, nextPeriod, prev.id) : prev.sort,
+      unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? prev.unitsPerTurn ?? 1),
+      startText: sanitizeLevelText(texts?.startText ?? prev.startText),
+      winText: sanitizeLevelText(texts?.winText ?? prev.winText),
+      loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
+      star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
+      star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
+      armyControls: sanitizeArmyControls(armyControls ?? prev.armyControls),
+      tokens: lifted.tokens,
+      updatedAt: now,
+    };
+    levels[prevIdx] = updated;
+    writeLevels(levels);
+    return updated;
   }
   const createdCat = sanitizeCategory(category);
   const createdPeriod = sanitizePeriod(period);
@@ -421,7 +440,7 @@ export function saveLevel(
     cols,
     rows,
     orientation,
-    terrain: cloneTerrain(terrain),
+    terrain: lifted.terrain,
     armies: stamped,
     category: createdCat,
     period: createdPeriod,
@@ -433,6 +452,7 @@ export function saveLevel(
     star2: sanitizeStarRule(stars?.star2, DEFAULT_STAR_2),
     star3: sanitizeStarRule(stars?.star3, DEFAULT_STAR_3),
     armyControls: sanitizeArmyControls(armyControls),
+    tokens: lifted.tokens,
     updatedAt: now,
   };
   levels.unshift(created);
@@ -475,6 +495,38 @@ export function setDefaultLevelId(id: string | null): void {
   if (!id) localStorage.removeItem(DEFAULT_KEY);
   else localStorage.setItem(DEFAULT_KEY, id);
   notifyPersist();
+}
+
+export function getLevelsOverviewFilter(): {
+  category: LevelCategory;
+  period: Period;
+} {
+  const fallback = { category: 'campaign' as LevelCategory, period: getSelectedPeriod() };
+  try {
+    const raw = localStorage.getItem(FILTER_KEY);
+    if (!raw) return fallback;
+    const v = JSON.parse(raw) as { category?: unknown; period?: unknown };
+    return {
+      category: isLevelCategory(v?.category) ? v.category : fallback.category,
+      period: sanitizePeriod(v?.period),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function setLevelsOverviewFilter(category: LevelCategory, period: Period): void {
+  try {
+    localStorage.setItem(
+      FILTER_KEY,
+      JSON.stringify({
+        category: isLevelCategory(category) ? category : 'campaign',
+        period: sanitizePeriod(period),
+      }),
+    );
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
 
 export function terrainFromLevel(level: SavedLevel): Terrain[][] {

@@ -157,6 +157,48 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
     return $out;
 }
 
+function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $ok = ['pikes' => true, 'wall' => true, 'flag' => true];
+    $out = [];
+    $seen = [];
+    $cap = max(0, $cols * $rows);
+    foreach (array_slice($raw, 0, $cap) as $token) {
+        if (!is_array($token)) {
+            continue;
+        }
+        $type = $token['type'] ?? '';
+        if (!isset($ok[$type])) {
+            continue;
+        }
+        $col = isset($token['col']) && is_numeric($token['col']) ? (int) $token['col'] : -1;
+        $row = isset($token['row']) && is_numeric($token['row']) ? (int) $token['row'] : -1;
+        if ($col < 0 || $col >= $cols || $row < 0 || $row >= $rows) {
+            continue;
+        }
+        $k = $col . ',' . $row;
+        if (isset($seen[$k])) {
+            continue;
+        }
+        $seen[$k] = true;
+        $rowOut = [
+            'type' => $type,
+            'col' => $col,
+            'row' => $row,
+        ];
+        if ($type === 'flag') {
+            $owner = $token['owner'] ?? '';
+            if ($owner === 'red' || $owner === 'blue' || $owner === 'yellow' || $owner === 'purple') {
+                $rowOut['owner'] = $owner;
+            }
+        }
+        $out[] = $rowOut;
+    }
+    return $out;
+}
+
 function sanitize_army_controls(mixed $raw): array {
     $defaults = [
         'red' => 'player',
@@ -314,8 +356,29 @@ function sanitize_level(mixed $level): ?array {
         'star2' => sanitize_star_rule($level['star2'] ?? null, ['metric' => 'turns', 'op' => 'lt', 'value' => 6]),
         'star3' => sanitize_star_rule($level['star3'] ?? null, ['metric' => 'casualties', 'op' => 'eq', 'value' => 0]),
         'armyControls' => sanitize_army_controls($level['armyControls'] ?? null),
+        'tokens' => sanitize_tokens($level['tokens'] ?? null, $cols, $rows),
+        'sort' => isset($level['sort']) && is_numeric($level['sort']) ? (int) $level['sort'] : 0,
         'updatedAt' => $updated,
     ];
+    $kept = [];
+    $tokenAt = [];
+    foreach ($out['tokens'] as $tok) {
+        $tokenAt[$tok['col'] . ',' . $tok['row']] = $tok;
+    }
+    for ($r = 0; $r < $rows; $r++) {
+        for ($c = 0; $c < $cols; $c++) {
+            if ($grid[$r][$c] !== 'wall') {
+                continue;
+            }
+            $grid[$r][$c] = 'land';
+            $tokenAt[$c . ',' . $r] = ['type' => 'wall', 'col' => $c, 'row' => $r];
+        }
+    }
+    foreach ($tokenAt as $tok) {
+        $kept[] = $tok;
+    }
+    $out['tokens'] = $kept;
+    $out['terrain'] = $grid;
     if (array_key_exists('armies', $level)) {
         $out['armies'] = sanitize_armies($level['armies'], $cols, $rows);
     }

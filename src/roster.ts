@@ -157,9 +157,9 @@ export type ClimbLevel = (typeof CLIMB_LEVELS)[number];
 
 export const CLIMB_LEVEL_LABEL: Record<ClimbLevel, string> = {
   0: '0',
-  1: 'Hill (lv1)',
-  2: 'Plateau (lvl2)',
-  3: 'Mountain (lvl3)',
+  1: 'Hill (lvl.1)',
+  2: 'Plateau (lvl.2)',
+  3: 'Mountain (lvl.3)',
 };
 
 export function sanitizeClimbLevel(raw: unknown, fallback = 0): ClimbLevel {

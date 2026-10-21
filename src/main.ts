@@ -7,11 +7,15 @@ import {
   applyAction,
   clampUnitsPerTurn,
   defeatKind,
+  flagsHeldBy,
+  mapFlags,
+  winByFlags,
   hasActed,
   MAX_UNITS_PER_TURN,
   MIN_UNITS_PER_TURN,
   passTurn,
   restPiece,
+  rotatePiece,
   getPiece,
   ammoLeft,
   hpLeft,
@@ -21,6 +25,7 @@ import {
   legalHighlights,
   stickyMovePlan,
   pieceAt,
+  isWall,
   previewMove,
   rangeHighlights,
   resolveMovePath,
@@ -55,6 +60,8 @@ import {
   ARMY_CONTROL_LABEL,
   SIDES,
   SIDE_LABEL,
+  TOKEN_LABEL,
+  TOKEN_TYPES,
   defaultArmyControls,
   hotseatArmyControls,
   isAiControlled,
@@ -73,8 +80,14 @@ import {
   type Piece,
   type Side,
   type Terrain,
+  type TileToken,
+  type TokenType,
   type UnitCategory,
   type UnitType,
+  isTokenType,
+  isWalkableTerrain,
+  liftWallTerrain,
+  sanitizeTokens,
 } from './engine';
 import {
   defaultFacing,
@@ -113,6 +126,8 @@ import {
   getActiveLevelId,
   getDefaultLevelId,
   getLevel,
+  getLevelsOverviewFilter,
+  setLevelsOverviewFilter,
   LEVEL_CATEGORIES,
   LEVEL_CATEGORY_LABEL,
   levelLabel,
@@ -169,6 +184,7 @@ import {
   abilityBadgeSvg,
   pieceIconSvg,
   reloadBadgeSvg,
+  tokenGlyphSvg,
   staminaEmptyMarkSvg,
   staminaPipsHtml,
   starGlyphSvg,
@@ -207,15 +223,14 @@ type ActionMode = 'move' | 'shoot';
 type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
-type EditorBrush = Terrain | UnitType | 'erase-unit';
+type EditorBrush = Terrain | UnitType | TokenType | 'erase-unit' | 'erase-token';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
   { id: 'water', label: 'Water' },
-  { id: 'high', label: 'Hill (lv1)' },
-  { id: 'plateau', label: 'Plateau (lvl2)' },
-  { id: 'rock', label: 'Mountain (lvl3)' },
-  { id: 'wall', label: 'Wall' },
+  { id: 'high', label: 'Hill (lvl.1)' },
+  { id: 'plateau', label: 'Plateau (lvl.2)' },
+  { id: 'rock', label: 'Mountain (lvl.3)' },
 ];
 
 function isTerrainBrush(b: EditorBrush): b is Terrain {
@@ -224,6 +239,10 @@ function isTerrainBrush(b: EditorBrush): b is Terrain {
 
 function isUnitBrush(b: EditorBrush): b is UnitType {
   return UNIT_TYPES.includes(b);
+}
+
+function isTokenBrush(b: EditorBrush): b is TokenType {
+  return isTokenType(b);
 }
 
 let mapOpts: MapOptions = { ...DEFAULT_MAP };
@@ -250,6 +269,9 @@ let hoverPath: Hex[] = [];
 let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
+/** Selected piece is aiming a facing change; click commits it as an action. */
+let rotateMode = false;
+let rotatePreviewDir: HexDir | null = null;
 
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
@@ -266,6 +288,7 @@ let editorLoseText = '';
 let editorStar2: StarRule = { ...DEFAULT_STAR_2 };
 let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
+let editorTokens: TileToken[] = [];
 let editorArmySide: Side = 'red';
 let editorControls: Record<Side, ArmyControl> = defaultArmyControls();
 let editorUnitCategory: UnitCategory =
@@ -276,8 +299,9 @@ let editorArmiesOpen = false;
 let editorPainting = false;
 let editorDirty = false;
 let editorPointerAbort: AbortController | null = null;
-let levelsFilter: LevelCategory = 'campaign';
-let levelsPeriodFilter: Period = selectedPeriod;
+const savedLevelsFilter = getLevelsOverviewFilter();
+let levelsFilter: LevelCategory = savedLevelsFilter.category;
+let levelsPeriodFilter: Period = savedLevelsFilter.period;
 
 function currentGrid(): {
   cols: number;
@@ -401,6 +425,7 @@ function bootState(): GameState {
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
           matchControls(lvl),
+          lvl.tokens,
         ),
         lvl,
       );
@@ -424,6 +449,7 @@ function startMatch(reshuffleRandom = true) {
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
           matchControls(lvl),
+          lvl.tokens,
         ),
         lvl,
       );
@@ -451,6 +477,7 @@ function startMatch(reshuffleRandom = true) {
         state.orientation,
         defaultArmyStamps(state.cols, state.rows),
         matchControls(),
+        state.tokens,
       ),
     );
   }
@@ -476,8 +503,10 @@ function applyEditorGrid(cols: number, rows: number): void {
     render();
     return;
   }
-  editorTerrain = next;
+  const lifted = liftWallTerrain(next, editorTokens);
+  editorTerrain = lifted.terrain;
   editorPieces = clipStamps(editorPieces, next[0]?.length ?? cols, next.length);
+  editorTokens = sanitizeTokens(lifted.tokens, next[0]?.length ?? cols, next.length);
   editorDirty = true;
   applyLayout(computeLayout(), false);
   render();
@@ -570,6 +599,21 @@ function pixelOf(h: Hex): { x: number; y: number } {
   return { x: x + PAD, y: y + PAD };
 }
 
+function shootMarkSvg(x: number, y: number, target: boolean): string {
+  const r = HEX_SIZE * 0.18;
+  const tick = HEX_SIZE * 0.28;
+  const gap = HEX_SIZE * 0.065;
+  const cls = target ? 'shoot-mark target' : 'shoot-mark';
+  const pip = target
+    ? `<circle class="crosshair-pip" r="${(HEX_SIZE * 0.032).toFixed(2)}" />`
+    : '';
+  return `<g class="${cls}" transform="translate(${x.toFixed(2)} ${y.toFixed(2)})">
+    <circle class="crosshair-ring" r="${r.toFixed(2)}" />
+    <path class="crosshair-ticks" d="M 0 ${(-tick).toFixed(2)} V ${(-gap).toFixed(2)} M 0 ${gap.toFixed(2)} V ${tick.toFixed(2)} M ${(-tick).toFixed(2)} 0 H ${(-gap).toFixed(2)} M ${gap.toFixed(2)} 0 H ${tick.toFixed(2)}" />
+    ${pip}
+  </g>`;
+}
+
 /** Degrees to rotate a piece so local -Y (icon "up") matches current facing. */
 function facingRotation(piece: Piece): number {
   const o = viewOrientation();
@@ -578,6 +622,41 @@ function facingRotation(piece: Piece): number {
   const a = hexToPixel(from, HEX_SIZE, o);
   const b = hexToPixel(n, HEX_SIZE, o);
   return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90;
+}
+
+function svgPoint(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  return { x: pt.x, y: pt.y };
+}
+
+/** Nearest of the 6 cube facings from `from` toward a board-space point. */
+function facingTowardScreen(from: Hex, pt: { x: number; y: number }): HexDir {
+  const origin = pixelOf(from);
+  const dx = pt.x - origin.x;
+  const dy = pt.y - origin.y;
+  if (!dx && !dy) {
+    const p = selectedId ? getPiece(state, selectedId) : null;
+    return p ? facingOf(p) : 0;
+  }
+  const o = viewOrientation();
+  let best: HexDir = 0;
+  let bestScore = -Infinity;
+  for (let d = 0; d < 6; d++) {
+    const n = neighborInDir(from, d as HexDir, o);
+    const p = pixelOf(n);
+    const score = dx * (p.x - origin.x) + dy * (p.y - origin.y);
+    if (score > bestScore) {
+      bestScore = score;
+      best = d as HexDir;
+    }
+  }
+  return best;
 }
 
 /** `to` as an equivalent angle within ±180° of `from` (short arc). */
@@ -833,7 +912,13 @@ function canSkipTutorialLevel(): boolean {
 }
 
 function loadEditorLevel(lvl: SavedLevel): void {
-  editorTerrain = cloneTerrain(lvl.terrain);
+  const cols = lvl.cols || lvl.terrain[0]?.length || COLS;
+  const rows = lvl.rows || lvl.terrain.length || ROWS;
+  const lifted = liftWallTerrain(
+    cloneTerrain(lvl.terrain),
+    sanitizeTokens(lvl.tokens, cols, rows),
+  );
+  editorTerrain = lifted.terrain;
   editorOrientation = lvl.orientation;
   editorLevelId = lvl.id;
   editorName = lvl.name;
@@ -845,11 +930,10 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorLoseText = sanitizeLevelText(lvl.loseText);
   editorStar2 = sanitizeStarRule(lvl.star2, DEFAULT_STAR_2);
   editorStar3 = sanitizeStarRule(lvl.star3, DEFAULT_STAR_3);
-  const cols = lvl.cols || editorTerrain[0]?.length || COLS;
-  const rows = lvl.rows || editorTerrain.length || ROWS;
   editorPieces = Array.isArray(lvl.armies)
     ? clipStamps(lvl.armies, cols, rows)
     : seedArmies(cols, rows);
+  editorTokens = lifted.tokens;
   editorControls = sanitizeArmyControls(lvl.armyControls);
 }
 
@@ -881,6 +965,7 @@ function beginEditorSession(): void {
 
 function enterLevels(syncPeriod = false) {
   if (syncPeriod) levelsPeriodFilter = selectedPeriod;
+  setLevelsOverviewFilter(levelsFilter, levelsPeriodFilter);
   editorPainting = false;
   editorPointerAbort?.abort();
   briefingOpen = false;
@@ -926,6 +1011,7 @@ function newEditorLevel() {
   editorStar2 = { ...DEFAULT_STAR_2 };
   editorStar3 = { ...DEFAULT_STAR_3 };
   editorPieces = [];
+  editorTokens = [];
   editorControls = defaultArmyControls();
   editorDirty = false;
   beginEditorSession();
@@ -955,6 +1041,11 @@ function enterEditorFromMatch() {
     editorTerrain.length || ROWS,
   );
   editorControls = sanitizeArmyControls(state.controls);
+  editorTokens = sanitizeTokens(
+    state.tokens,
+    editorTerrain[0]?.length ?? COLS,
+    editorTerrain.length || ROWS,
+  );
   editorDirty = true;
   beginEditorSession();
 }
@@ -1011,11 +1102,32 @@ function paintEditorUnit(col: number, row: number) {
   refreshEditorBoard();
 }
 
+function paintEditorToken(col: number, row: number) {
+  if (!isWalkableTerrain(editorTerrain[row][col])) return;
+  const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
+  if (editorBrush === 'erase-token') {
+    if (idx < 0) return;
+    editorTokens.splice(idx, 1);
+  } else if (isTokenBrush(editorBrush)) {
+    if (idx >= 0 && editorTokens[idx].type === editorBrush) return;
+    if (idx >= 0) editorTokens.splice(idx, 1);
+    editorTokens.push({ type: editorBrush, col, row });
+  } else {
+    return;
+  }
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
 function paintEditorHex(col: number, row: number) {
   if (row < 0 || row >= editorTerrain.length) return;
   if (col < 0 || col >= editorTerrain[0].length) return;
   if (editorBrush === 'erase-unit' || isUnitBrush(editorBrush)) {
     paintEditorUnit(col, row);
+    return;
+  }
+  if (editorBrush === 'erase-token' || isTokenBrush(editorBrush)) {
+    paintEditorToken(col, row);
     return;
   }
   if (!isTerrainBrush(editorBrush)) return;
@@ -1024,8 +1136,11 @@ function paintEditorHex(col: number, row: number) {
   editorTerrain[row][col] = editorBrush;
   markEditorDirty();
 
-  // High rims / units need a board refresh; otherwise update the hex class in place (keeps drag)
-  if (isElevatedTerrain(prev) || editorBrush === 'high' || editorBrush === 'plateau') {
+  // High rims / units / tokens need a board refresh; otherwise update the hex class in place (keeps drag)
+  if (
+    isElevatedTerrain(prev) ||
+    isElevatedTerrain(editorBrush)
+  ) {
     refreshEditorBoard();
   } else {
     const poly = app.querySelector<SVGPolygonElement>(
@@ -1071,6 +1186,7 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
     },
     { star2: editorStar2, star3: editorStar3 },
     editorControls,
+    editorTokens,
   );
   editorStartText = saved.startText;
   editorWinText = saved.winText;
@@ -1079,6 +1195,8 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
   editorStar3 = saved.star3;
   editorLevelId = saved.id;
   editorName = saved.name;
+  editorTerrain = cloneTerrain(saved.terrain);
+  editorTokens = saved.tokens ?? [];
   activeLevelId = saved.id;
   setActiveLevelId(saved.id);
   if (asDefault) {
@@ -1106,6 +1224,8 @@ function clearSelection() {
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
+  rotateMode = false;
+  rotatePreviewDir = null;
 }
 
 function activeSavedLevel(): SavedLevel | null {
@@ -1149,10 +1269,34 @@ function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' 
   ];
 }
 
+function flagOwnerForDraw(t: TileToken): Side | undefined {
+  if (t.type !== 'flag') return t.owner;
+  if (screen === 'editor') {
+    const u = editorPieces.find((p) => p.col === t.col && p.row === t.row);
+    if (u) return u.side;
+  }
+  return t.owner;
+}
+
+function flagGoalLabel(): string {
+  const flags = mapFlags(screen === 'editor' ? { tokens: editorTokens } : state);
+  if (!flags.length) return 'Win';
+  const side =
+    screen === 'play'
+      ? (participatingSides(state).find((s) => isPlayerControlled(state, s)) ?? state.turn)
+      : editorArmySide;
+  const held = screen === 'play' ? flagsHeldBy(state, side) : flags.filter((t) => {
+    const u = editorPieces.find((p) => p.col === t.col && p.row === t.row);
+    return u?.side === side;
+  }).length;
+  if (flags.length === 1) return held ? 'Flag held' : 'Capture the flag';
+  return `Capture all flags (${held}/${flags.length})`;
+}
+
 function starGoalsHtml(): string {
   const { star2, star3 } = levelStars();
   const kinds = starKinds();
-  const labels = ['Win', starRuleLabel(star2), starRuleLabel(star3)];
+  const labels = [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
   return `<ul class="star-goals" aria-label="Star goals">${labels
     .map(
       (label, i) =>
@@ -1164,7 +1308,7 @@ function starGoalsHtml(): string {
 function endStarsHtml(): string {
   const { star2, star3 } = levelStars();
   const kinds = starKinds();
-  const labels = ['Win', starRuleLabel(star2), starRuleLabel(star3)];
+  const labels = [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
   return `<ul class="end-stars" aria-label="Stars earned">${labels
     .map(
       (label, i) =>
@@ -1263,6 +1407,8 @@ function selectPiece(id: string | null) {
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
+  rotateMode = false;
+  rotatePreviewDir = null;
   refreshHighlights();
   render();
 }
@@ -1510,6 +1656,8 @@ async function tryAct(hex: Hex, kind: ActionMode) {
 
 async function restSelected() {
   if (!selectedId || !canRest(selectedId) || animating) return;
+  rotateMode = false;
+  rotatePreviewDir = null;
   animating = true;
   state = restPiece(state, selectedId);
   await playPendingFx();
@@ -1517,6 +1665,56 @@ async function restSelected() {
   clearSelection();
   render();
   await maybeAi();
+}
+
+function canRotate(pieceId: string): boolean {
+  if (!canControl()) return false;
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn) return false;
+  if (!UNIT_STATS[piece.type].hexArmor) return false;
+  if (hasActed(state, pieceId)) return false;
+  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  return true;
+}
+
+function toggleRotate() {
+  if (!selectedId || !canRotate(selectedId) || animating) return;
+  rotateMode = !rotateMode;
+  pendingHex = null;
+  hoverHex = null;
+  hoverPath = [];
+  const p = getPiece(state, selectedId);
+  rotatePreviewDir = rotateMode && p ? facingOf(p) : null;
+  render();
+}
+
+async function commitRotate(dir: HexDir) {
+  if (!selectedId || !canRotate(selectedId) || animating) return;
+  const actingId = selectedId;
+  const piece = getPiece(state, actingId);
+  if (!piece) return;
+  animating = true;
+  const g = app.querySelector(`[data-id="${actingId}"] .piece-facing`);
+  if (g) {
+    await tweenFacing(g, facingRotation(piece), facingRotation({ ...piece, facing: dir }), 140);
+  }
+  state = rotatePiece(state, actingId, dir);
+  rotateMode = false;
+  rotatePreviewDir = null;
+  await playPendingFx();
+  animating = false;
+  if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
+    selectedId = actingId;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+    render();
+  } else {
+    clearSelection();
+    render();
+    await maybeAi();
+  }
 }
 
 async function skipScout(nextId?: string) {
@@ -1605,16 +1803,16 @@ function renderBoard(): string {
   const h = PAD * 2 + extent.h;
   const editing = screen === 'editor';
 
-  // Full ranges while selected: move tint + shoot outline together
-  const allHl = !editing && selectedId ? highlights : [];
+  // Full ranges while selected: move tint + shoot marks together
+  const allHl = !editing && selectedId && !rotateMode ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina'>();
-  const shootBorder = new Set<string>();
-  const shootTargetBorder = new Set<string>();
+  const shootRange = new Set<string>();
+  const shootTarget = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
     if (hl.kind === 'move' || hl.kind === 'stamina') moveMap.set(k, hl.kind);
-    else if (hl.kind === 'shoot') shootTargetBorder.add(k);
-    else if (hl.kind === 'shoot-range') shootBorder.add(k);
+    else if (hl.kind === 'shoot') shootTarget.add(k);
+    else if (hl.kind === 'shoot-range') shootRange.add(k);
   }
 
   const splashSet = new Set<string>();
@@ -1644,7 +1842,7 @@ function renderBoard(): string {
 
   let hexes = '';
   let hlOverlays = '';
-  let shootOutlines = '';
+  let shootMarks = '';
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const hex = { col, row };
@@ -1664,8 +1862,11 @@ function renderBoard(): string {
         hexes += `<polygon class="hex-plateau-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
         hexes += `<polygon class="hex-plateau-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
         hexes += `<polygon class="hex-plateau-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
+      } else if (terrain === 'rock') {
+        hexes += `<polygon class="hex-rock-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
+        hexes += `<polygon class="hex-rock-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
+        hexes += `<polygon class="hex-rock-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
       }
-
       const mv = moveMap.get(k);
       if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
@@ -1685,12 +1886,25 @@ function renderBoard(): string {
 
       if (splashSet.has(k)) hlOverlays += `<polygon class="hl-tint splash" points="${pts}" />`;
 
-      if (shootTargetBorder.has(k)) {
-        shootOutlines += `<polygon class="shoot-outline target" points="${pts}" />`;
-      } else if (shootBorder.has(k)) {
-        shootOutlines += `<polygon class="shoot-outline" points="${pts}" />`;
+      if (shootTarget.has(k) || shootRange.has(k)) {
+        const under = !!pieceAt(state, hex) || isWall(state, hex);
+        shootMarks += shootMarkSvg(x, y, shootTarget.has(k) && under);
       }
     }
+  }
+
+  let tokensSvg = '';
+  const drawTokens = editing ? editorTokens : state.tokens;
+  for (const t of drawTokens) {
+    const { x, y } = pixelOf({ col: t.col, row: t.row });
+    const owner = flagOwnerForDraw(t);
+    const mark =
+      t.type === 'wall'
+        ? tokenGlyphSvg('wall', HEX_SIZE * 0.8, ori)
+        : t.type === 'flag'
+          ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
+          : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
+    tokensSvg += `<g class="tile-token ${t.type}" transform="translate(${x}, ${y})">${mark}</g>`;
   }
 
   let piecesSvg = '';
@@ -1741,7 +1955,11 @@ function renderBoard(): string {
             badgeR,
           )
         : '';
-    const rot = facingRotation(p);
+    const rot = facingRotation(
+      rotateMode && p.id === selectedId && rotatePreviewDir != null
+        ? { ...p, facing: rotatePreviewDir }
+        : p,
+    );
     const notch = pr + 1.2;
     const selRing = hexed
       ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
@@ -1781,16 +1999,14 @@ function renderBoard(): string {
         <path d="M15 17 L15.6 12 M16.5 17 L15.6 12" fill="none" stroke="var(--land-blade)" stroke-width="0.85" stroke-linecap="round" opacity="0.34"/>
         <path d="M6 10 L6.4 6.4" fill="none" stroke="var(--land-blade)" stroke-width="0.75" stroke-linecap="round" opacity="0.26"/>
       </pattern>
-      <pattern id="rock-tex" patternUnits="userSpaceOnUse" width="14" height="14">
-        <rect width="14" height="14" fill="var(--rock)"/>
-        <path d="M0 3 L4 1 L8 4 L6 8 L2 7 Z" fill="var(--rock-hi)" opacity="0.85"/>
-        <path d="M7 8 L12 6 L14 10 L10 13 L7 11 Z" fill="var(--rock-lo)" opacity="0.9"/>
-        <path d="M1 10 L5 9 L6 13 L2 14 Z" fill="var(--rock-hi)" opacity="0.7"/>
-        <path d="M0 0 L14 14 M14 0 L0 14 M4 0 L14 10 M0 6 L8 14"
-          stroke="var(--rock-ink)" stroke-width="0.7" opacity="0.55" fill="none"/>
-        <circle cx="3" cy="5" r="0.7" fill="var(--rock-ink)" opacity="0.5"/>
-        <circle cx="10" cy="3" r="0.5" fill="var(--rock-hi)" opacity="0.45"/>
-        <circle cx="9" cy="11" r="0.6" fill="var(--rock-ink)" opacity="0.4"/>
+      <pattern id="rock-tex" patternUnits="userSpaceOnUse" width="20" height="20">
+        <rect width="20" height="20" fill="var(--rock)"/>
+        <rect width="20" height="20" fill="var(--rock-hi)" opacity="0.28"/>
+        <ellipse cx="10" cy="10" rx="9" ry="7.2" fill="none" stroke="var(--rock-lo)" stroke-width="1.1" opacity="0.7"/>
+        <ellipse cx="10" cy="10" rx="6.2" ry="5" fill="none" stroke="var(--rock-hi)" stroke-width="1" opacity="0.5"/>
+        <ellipse cx="10" cy="10" rx="3.4" ry="2.6" fill="none" stroke="var(--rock-lo)" stroke-width="0.9" opacity="0.55"/>
+        <ellipse cx="10" cy="10" rx="1.5" ry="1.1" fill="var(--rock-hi)" opacity="0.35"/>
+        <path d="M1 16 Q7 12 11 15 T19 14" fill="none" stroke="var(--rock-lo)" stroke-width="0.8" opacity="0.5"/>
       </pattern>
       <pattern id="wall-tex" patternUnits="userSpaceOnUse" width="12" height="12">
         <rect width="12" height="12" fill="var(--wall)"/>
@@ -1827,12 +2043,13 @@ function renderBoard(): string {
       </pattern>
     </defs>`;
 
-  return `<svg class="board" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+  return `<svg class="board${rotateMode ? ' rotate-aim' : ''}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
     ${defs}
     <g class="hex-layer">${hexes}</g>
+    <g class="token-layer">${tokensSvg}</g>
     <g class="hl-tint-layer">${hlOverlays}</g>
-    <g class="shoot-outline-layer">${shootOutlines}</g>
     <g class="piece-layer">${piecesSvg}</g>
+    <g class="shoot-mark-layer">${shootMarks}</g>
   </svg>`;
 }
 
@@ -1889,8 +2106,12 @@ function renderActionBar(): string {
   } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
     const n = staminaLeft(piece);
     hint = `A second action costs 1 stamina. ${n} stamina left.`;
+  } else if (rotateMode) {
+    hint = 'Rotate — front follows the mouse, click to face that way (uses an action)';
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
-    hint = 'Second scout action — move, shoot, or skip';
+    hint = UNIT_STATS[piece.type].hexArmor
+      ? 'Second scout action — move, shoot, skip, or rotate'
+      : 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (!canMove && !canShoot) {
@@ -1926,9 +2147,13 @@ function renderActionBar(): string {
     canRest(piece.id)
       ? `<button type="button" id="rest-unit">Rest</button>`
       : '';
+  const rotateUi =
+    canRotate(piece.id)
+      ? `<button type="button" id="rotate-unit"${rotateMode ? ' class="active"' : ''}>Rotate</button>`
+      : '';
 
   return `
-    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}">
+    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}${rotateUi ? ' has-rotate' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
@@ -1937,6 +2162,7 @@ function renderActionBar(): string {
         <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${restUi}
+        ${rotateUi}
       </div>
       ${scoutUi}
       ${extra}
@@ -2140,20 +2366,20 @@ function renderSidebar(): string {
             <span class="l-stamina">Stamina (climb / extra move)</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
-            <span class="l-shoot-border">Red border = shoot range</span>
           </div>
           <dl class="rules">
             <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
-            <div><dt>Heights</dt><dd>Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
-            <div><dt>Walls</dt><dd>solid; rockets demolish</dd></div>
+            <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
+            <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
+            <div><dt>Tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates)</dd></div>
-            <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Rotate (spends an action; front follows the mouse, click to lock)</dd></div>
+            <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
         </details>
       </div>
@@ -2171,7 +2397,11 @@ function matchStatsHtml(): string {
         `<span class="${s}">${SIDE_LABEL[s]} −${state.casualties[s] ?? 0}</span>`,
     )
     .join('');
-  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas">${cas}</span>`;
+  const flags = mapFlags(state);
+  const flagBit = flags.length
+    ? `<span class="match-flags">${flagGoalLabel()}</span>`
+    : '';
+  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas">${cas}</span>${flagBit}`;
 }
 
 function sideTurnPhrase(side: Side): string {
@@ -2197,7 +2427,13 @@ function turnLabel(): string {
   const stats = matchStatsHtml();
   if (state.winner) {
     const loser = opposingLoser(state.winner);
-    const how = defeatKind(state, loser) === 'wipeout' ? 'army destroyed' : 'general down';
+    const how = winByFlags(state)
+      ? mapFlags(state).length > 1
+        ? 'all flags captured'
+        : 'flag captured'
+      : defeatKind(state, loser) === 'wipeout'
+        ? 'army destroyed'
+        : 'general down';
     return `<span class="${state.winner}">${SIDE_LABEL[state.winner].toUpperCase()} wins</span> — ${how} · ${stats}`;
   }
   if ((aiThinking || animating) && isAiControlled(state, state.turn)) {
@@ -2231,12 +2467,30 @@ function renderEndOverlay(): string {
           : `${SIDE_LABEL[state.winner].toUpperCase()} WINS`;
 
   const loser = opposingLoser(state.winner);
-  const wiped = defeatKind(state, loser) === 'wipeout';
-  const winHow = wiped ? 'Enemy army destroyed.' : 'Enemy general eliminated.';
-  const loseHow = wiped ? 'Your army was destroyed.' : 'Your general has fallen.';
-  const hotseatHow = wiped
-    ? `${SIDE_LABEL[state.winner]} destroyed the opposing army.`
-    : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
+  const flags = winByFlags(state);
+  const wiped = !flags && defeatKind(state, loser) === 'wipeout';
+  const manyFlags = mapFlags(state).length > 1;
+  const winHow = flags
+    ? manyFlags
+      ? 'All flags captured.'
+      : 'Flag captured.'
+    : wiped
+      ? 'Enemy army destroyed.'
+      : 'Enemy general eliminated.';
+  const loseHow = flags
+    ? manyFlags
+      ? 'The enemy captured every flag.'
+      : 'The enemy captured the flag.'
+    : wiped
+      ? 'Your army was destroyed.'
+      : 'Your general has fallen.';
+  const hotseatHow = flags
+    ? manyFlags
+      ? `${SIDE_LABEL[state.winner]} captured every flag.`
+      : `${SIDE_LABEL[state.winner]} captured the flag.`
+    : wiped
+      ? `${SIDE_LABEL[state.winner]} destroyed the opposing army.`
+      : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
 
   const custom = youWon ? levelCopy('win') : youLost ? levelCopy('lose') : '';
   const stock =
@@ -2398,41 +2652,52 @@ function onHexClick(col: number, row: number) {
   render();
 }
 
+let editorPaintKey: string | null = null;
+
 function bindEditorBoard() {
-  const svg = app.querySelector('svg.board');
+  const svg = app.querySelector<SVGSVGElement>('svg.board');
   if (!svg) return;
 
   editorPointerAbort?.abort();
   editorPointerAbort = new AbortController();
   const { signal } = editorPointerAbort;
 
-  window.addEventListener('pointerup', () => {
-    editorPainting = false;
-  }, { signal });
-  window.addEventListener('pointercancel', () => {
-    editorPainting = false;
-  }, { signal });
+  const paintAt = (e: PointerEvent) => {
+    const board = app.querySelector<SVGSVGElement>('svg.board');
+    if (!board) return;
+    const hex = hexFromPointer(board, e.clientX, e.clientY);
+    if (!hex) return;
+    const k = `${hex.col},${hex.row}`;
+    if (k === editorPaintKey) return;
+    editorPaintKey = k;
+    paintEditorHex(hex.col, hex.row);
+  };
 
-  svg.querySelectorAll<SVGPolygonElement>('polygon.hex').forEach((poly) => {
-    const col = Number(poly.dataset.col);
-    const row = Number(poly.dataset.row);
-    poly.addEventListener(
-      'pointerdown',
-      (e) => {
-        e.preventDefault();
-        editorPainting = true;
-        paintEditorHex(col, row);
-      },
-      { signal },
-    );
-    poly.addEventListener(
-      'pointerenter',
-      () => {
-        if (editorPainting) paintEditorHex(col, row);
-      },
-      { signal },
-    );
-  });
+  const stopPaint = () => {
+    editorPainting = false;
+    editorPaintKey = null;
+  };
+
+  svg.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      editorPainting = true;
+      editorPaintKey = null;
+      paintAt(e);
+    },
+    { signal },
+  );
+  window.addEventListener(
+    'pointermove',
+    (e) => {
+      if (editorPainting) paintAt(e);
+    },
+    { signal },
+  );
+  window.addEventListener('pointerup', stopPaint, { signal });
+  window.addEventListener('pointercancel', stopPaint, { signal });
 }
 
 function hexFromPointer(
@@ -2465,6 +2730,15 @@ function bindBoardOnly() {
   if (!svg) return;
 
   svg.addEventListener('click', (e) => {
+    if (rotateMode) {
+      if (selectedId && canRotate(selectedId)) {
+        const pt = svgPoint(svg, e.clientX, e.clientY);
+        const p = getPiece(state, selectedId);
+        if (!pt || !p) return;
+        void commitRotate(facingTowardScreen({ col: p.col, row: p.row }, pt));
+      }
+      return;
+    }
     const hex = hexFromPointer(svg, e.clientX, e.clientY);
     if (!hex) return;
     onHexClick(hex.col, hex.row);
@@ -2484,12 +2758,28 @@ function bindBoardOnly() {
   };
 
   svg.addEventListener('pointerleave', () => {
-    if (animating) return;
+    if (animating || rotateMode) return;
     paintHover(null);
   });
 
   svg.addEventListener('pointermove', (e) => {
     if (animating) return;
+    if (rotateMode && selectedId) {
+      const p = getPiece(state, selectedId);
+      const pt = svgPoint(svg, e.clientX, e.clientY);
+      if (!p || !pt) return;
+      const dir = facingTowardScreen({ col: p.col, row: p.row }, pt);
+      if (rotatePreviewDir === dir) return;
+      rotatePreviewDir = dir;
+      const el = svg.querySelector(`[data-id="${p.id}"] .piece-facing`);
+      if (el) {
+        el.setAttribute(
+          'transform',
+          `rotate(${facingRotation({ ...p, facing: dir }).toFixed(1)})`,
+        );
+      }
+      return;
+    }
     const hex = hexFromPointer(svg, e.clientX, e.clientY);
     if (!hex) {
       paintHover(null);
@@ -2577,7 +2867,6 @@ function renderToolbar(): string {
   return `<div class="toolbar">
     <h1><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h1>
     <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Play game</button>
-    <button type="button" id="open-editor" class="${inEditorSection() ? 'active' : ''}">Level editor</button>
     ${editorNav}
   </div>`;
 }
@@ -2657,11 +2946,6 @@ function bindToolbarEvents() {
       else if (kind === 'editor') enterLevels(true);
     });
   });
-  app.querySelector('#open-editor')?.addEventListener('click', () => {
-    if (inEditorSection()) return;
-    if (!confirmLeaveEditor()) return;
-    enterLevels(true);
-  });
   app.querySelector('#editor-nav-levels')?.addEventListener('click', () => {
     if (screen === 'levels') return;
     if (!confirmLeaveEditor()) return;
@@ -2714,11 +2998,11 @@ function terrainSwatchSvg(kind: Terrain): string {
     fill = 'var(--rock)';
     stroke = 'var(--rock-stroke)';
     sw = 2.2;
-    extra = `<g clip-path="url(#${clipId})">
-      <path d="M-4.2 -3 L0.2 -5.2 L3.4 -1.2 L1.2 2.2 L-3.2 1.1 Z" fill="var(--rock-hi)" opacity="0.85"/>
-      <path d="M1.2 1.2 L6.2 0 L7.4 4.1 L3.2 6.2 Z" fill="var(--rock-lo)" opacity="0.9"/>
-      <path d="M-7 -2 L7 5 M-2 -7 L4 7" fill="none" stroke="var(--rock-ink)" stroke-width="0.6" opacity="0.55"/>
-    </g>`;
+    extra = `<polygon points="${hexCorners(0, 2.6, size, o)}" fill="var(--rock-shadow)"/>
+      <polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, size * 0.82, o)}" fill="none" stroke="rgba(180,174,166,0.5)" stroke-width="1.15"/>
+      <polygon points="${hexCorners(0, 0, size * 0.58, o)}" fill="none" stroke="rgba(160,156,148,0.4)" stroke-width="0.9"/>
+      <polygon points="${hexCorners(0, 0, size * 0.32, o)}" fill="rgba(40,38,36,0.28)" stroke="rgba(200,196,188,0.34)" stroke-width="0.75"/>`;
   } else if (kind === 'wall') {
     fill = 'var(--wall)';
     stroke = 'var(--wall-stroke)';
@@ -2748,12 +3032,33 @@ function terrainSwatchSvg(kind: Terrain): string {
       <polygon points="${hexCorners(0, 0, size * 0.32, o)}" fill="rgba(255,250,240,0.2)" stroke="rgba(255,252,245,0.38)" stroke-width="0.75"/>`;
   }
   const body =
-    kind === 'high' || kind === 'plateau'
+    kind === 'high' || kind === 'plateau' || kind === 'rock'
       ? extra
       : `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter"/>${extra}`;
   return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
     <defs><clipPath id="${clipId}"><polygon points="${pts}"/></clipPath></defs>
     ${body}
+  </svg>`;
+}
+
+function tokenSwatchSvg(type: TokenType): string {
+  const o = editorOrientation;
+  const size = 10;
+  const pad = 4;
+  const spanX = (o === 'flat' ? 2 : Math.sqrt(3)) * size;
+  const spanY = (o === 'flat' ? Math.sqrt(3) : 2) * size;
+  const w = spanX + pad * 2;
+  const h = spanY + pad * 2;
+  const pts = hexCorners(0, 0, size, o);
+  return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
+    <polygon points="${pts}" fill="var(--land)" stroke="var(--hex-stroke)" stroke-width="1.4" stroke-linejoin="miter"/>
+    ${
+      type === 'wall'
+        ? tokenGlyphSvg('wall', size * 0.8, o)
+        : type === 'flag'
+          ? tokenGlyphSvg('flag', 13, o)
+          : tokenGlyphSvg(type, 13)
+    }
   </svg>`;
 }
 
@@ -2764,10 +3069,25 @@ function renderMapPanel(): string {
   ).join('');
   return `
     <section class="editor-panel editor-panel-map">
-      <h3>Map</h3>
+      <h3>Tiles</h3>
       <div class="editor-brushes">
         ${brushes}
         <button type="button" id="editor-clear" class="ghost">Clear board</button>
+      </div>
+    </section>`;
+}
+
+function renderTokenPanel(): string {
+  const tokens = TOKEN_TYPES.map(
+    (t) =>
+      `<button type="button" class="brush token ${t}${editorBrush === t ? ' active' : ''}" data-brush="${t}">${tokenSwatchSvg(t)}<span>${TOKEN_LABEL[t]}</span></button>`,
+  ).join('');
+  return `
+    <section class="editor-panel editor-panel-tokens">
+      <h3>Tokens</h3>
+      <div class="editor-brushes">
+        ${tokens}
+        <button type="button" class="brush token erase${editorBrush === 'erase-token' ? ' active' : ''}" data-brush="erase-token">Erase token</button>
       </div>
     </section>`;
 }
@@ -2856,8 +3176,22 @@ function renderLevelThumb(lvl: SavedLevel): string {
         hexes += `<polygon class="hex-plateau-rim" points="${hexCorners(cx, cy, size * 0.82, ori)}" />`;
         hexes += `<polygon class="hex-plateau-mid" points="${hexCorners(cx, cy, size * 0.58, ori)}" />`;
         hexes += `<polygon class="hex-plateau-top" points="${hexCorners(cx, cy, size * 0.32, ori)}" />`;
+      } else if (terrain === 'rock') {
+        hexes += `<polygon class="hex-rock-rim" points="${hexCorners(cx, cy, size * 0.82, ori)}" />`;
+        hexes += `<polygon class="hex-rock-mid" points="${hexCorners(cx, cy, size * 0.58, ori)}" />`;
+        hexes += `<polygon class="hex-rock-top" points="${hexCorners(cx, cy, size * 0.32, ori)}" />`;
       }
     }
+  }
+  for (const t of lvl.tokens ?? []) {
+    const { x, y } = hexToPixel({ col: t.col, row: t.row }, size, ori);
+    hexes += `<g transform="translate(${x + pad}, ${y + pad})">${
+      t.type === 'wall'
+        ? tokenGlyphSvg('wall', size * 0.8, ori)
+        : t.type === 'flag'
+          ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
+          : tokenGlyphSvg(t.type, size * 1.2)
+    }</g>`;
   }
   let dots = '';
   for (const p of lvl.armies ?? []) {
@@ -2887,11 +3221,9 @@ function renderLevelRow(l: SavedLevel): string {
       </svg>
     </button>
     <button type="button" class="level-open" data-edit-level="${l.id}">
+      <span class="level-name">${escapeHtml(levelLabel(l))}</span>
       ${renderLevelThumb(l)}
-      <span class="level-copy">
-        <span class="level-name">${escapeHtml(levelLabel(l))}</span>
-        <span class="lvl-meta">${levelMetaLine(l)}</span>
-      </span>
+      <span class="lvl-meta">${levelMetaLine(l)}</span>
     </button>
     <button type="button" class="level-play" data-play-level="${l.id}" title="Play ${escapeHtml(levelLabel(l))}">
       <svg viewBox="0 0 12 12" width="14" height="14" aria-hidden="true"><path d="M2.2 1.1v9.8L11 6Z" fill="currentColor"/></svg>
@@ -3290,7 +3622,7 @@ function renderUnitEditor(): string {
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
           <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
-          <dd><strong>Climb level</strong> max height: 0 land, Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only</dd>
+          <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
           <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
@@ -3472,6 +3804,7 @@ function bindEditorEvents() {
   app.querySelector('#editor-clear')?.addEventListener('click', () => {
     const { cols, rows } = currentGrid();
     editorTerrain = emptyTerrain(cols, rows);
+    editorTokens = [];
     editorDirty = true;
     render();
   });
@@ -3492,6 +3825,8 @@ function bindEditorEvents() {
   });
   app.querySelector('#editor-name')?.addEventListener('change', (e) => {
     editorName = (e.target as HTMLInputElement).value;
+    const heading = app.querySelector('.sidebar h2');
+    if (heading) heading.textContent = editorName.trim() || 'New level';
   });
   app.querySelector('#editor-category')?.addEventListener('change', (e) => {
     editorCategory = sanitizeCategory((e.target as HTMLSelectElement).value);
@@ -3643,6 +3978,7 @@ function bindLevelsEvents() {
       const v = btn.dataset.levelsFilter;
       if (isLevelCategory(v)) {
         levelsFilter = v;
+        setLevelsOverviewFilter(levelsFilter, levelsPeriodFilter);
         render();
       }
     });
@@ -3653,6 +3989,7 @@ function bindLevelsEvents() {
       if (v === 'ancient' || v === 'modern' || v === 'futuristic') {
         levelsPeriodFilter = v;
         selectedPeriod = setSelectedPeriod(v);
+        setLevelsOverviewFilter(levelsFilter, levelsPeriodFilter);
         render();
       }
     });
@@ -3696,24 +4033,31 @@ function bindLevelReorder() {
   if (!catalog) return;
   const cat = levelsFilter;
   const period = levelsPeriodFilter;
-  catalog.querySelectorAll<HTMLElement>('.level-drag').forEach((handle) => {
-    handle.addEventListener('pointerdown', (e) => {
+  catalog.querySelectorAll<HTMLLIElement>('.level-row').forEach((row) => {
+    row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      const row = handle.closest<HTMLLIElement>('.level-row');
-      if (!row) return;
-      e.preventDefault();
-      e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
-      row.classList.add('dragging');
-      catalog.classList.add('reordering');
-      const onMove = (ev: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('.level-play, .danger, [data-play-level], [data-del-level]')) return;
+      const fromHandle = !!t?.closest('.level-drag');
+      if (fromHandle) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const startY = e.clientY;
+      let active = fromHandle;
+      if (active) {
+        row.classList.add('dragging');
+        catalog.classList.add('reordering');
+      }
+
+      const place = (clientY: number) => {
         const others = [...catalog.querySelectorAll<HTMLLIElement>('.level-row')].filter(
           (n) => n !== row,
         );
         let placed = false;
         for (const over of others) {
-          const mid = over.getBoundingClientRect().top + over.offsetHeight / 2;
-          if (ev.clientY < mid) {
+          const box = over.getBoundingClientRect();
+          if (clientY < box.top + box.height / 2) {
             catalog.insertBefore(row, over);
             placed = true;
             break;
@@ -3721,24 +4065,45 @@ function bindLevelReorder() {
         }
         if (!placed) catalog.appendChild(row);
       };
+
+      const onMove = (ev: PointerEvent) => {
+        if (!active) {
+          if (Math.abs(ev.clientY - startY) < 8) return;
+          active = true;
+          row.classList.add('dragging');
+          catalog.classList.add('reordering');
+        }
+        ev.preventDefault();
+        place(ev.clientY);
+      };
+
       const finish = () => {
-        handle.releasePointerCapture(e.pointerId);
-        handle.removeEventListener('pointermove', onMove);
-        handle.removeEventListener('pointerup', finish);
-        handle.removeEventListener('pointercancel', finish);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', finish);
+        window.removeEventListener('pointercancel', finish);
+        const wasActive = active;
         row.classList.remove('dragging');
         catalog.classList.remove('reordering');
+        if (!wasActive) return;
+        if (!fromHandle) {
+          row.addEventListener(
+            'click',
+            (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            },
+            { capture: true, once: true },
+          );
+        }
         const ids = [...catalog.querySelectorAll<HTMLElement>('.level-row')]
           .map((li) => li.dataset.levelId)
           .filter((id): id is string => !!id);
-        if (reorderLevels(cat, period, ids)) void flushStore().then(() => render());
-        else {
-          row.classList.remove('dragging');
-        }
+        if (reorderLevels(cat, period, ids)) void flushStore();
       };
-      handle.addEventListener('pointermove', onMove);
-      handle.addEventListener('pointerup', finish);
-      handle.addEventListener('pointercancel', finish);
+
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
     });
   });
 }
@@ -3789,6 +4154,9 @@ function bindEvents() {
   });
   app.querySelector('#rest-unit')?.addEventListener('click', () => {
     void restSelected();
+  });
+  app.querySelector('#rotate-unit')?.addEventListener('click', () => {
+    toggleRotate();
   });
   app.querySelector('#end-turn')?.addEventListener('click', () => {
     void (async () => {
@@ -3870,7 +4238,10 @@ function render() {
       <div class="board-wrap editor-mode">
         ${renderToolbar()}
         <div class="editor-top">
-          ${renderMapPanel()}
+          <div class="editor-top-paint">
+            ${renderMapPanel()}
+            ${renderTokenPanel()}
+          </div>
           ${renderArmySelectPanel()}
         </div>
         <div class="board-stage">
@@ -3879,8 +4250,8 @@ function render() {
         ${renderEditorBar()}
       </div>
       <aside class="sidebar">
-        <h2>Level editor</h2>
-        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lv1), Plateau (lvl2), Mountain (lvl3), and concrete wall. Heights connect by ±1 — no land↔plateau jumps. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
+        <h2>${escapeHtml(editorName.trim() || 'New level')}</h2>
+        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
         <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> / <strong>Historical</strong> playlists on Start follow the drag order in Levels, <strong>Skirmish</strong> is vs AI / Hotseat.</p>
       </aside>
     `;

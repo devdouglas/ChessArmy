@@ -7,12 +7,16 @@ import {
   openingSide,
   sanitizeArmyControls,
   SIDES,
+  liftWallTerrain,
+  sanitizeTokens,
+  seedFlagOwners,
   statsOf,
   type ArmyControl,
   type GameState,
   type Piece,
   type Side,
   type Terrain,
+  type TileToken,
   type UnitType,
 } from './engine';
 import { defaultFacing, neighbors, type HexOrientation } from './hex';
@@ -111,30 +115,28 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-type TerrainKey = 'water' | 'rock' | 'wall' | 'high' | 'plateau';
+type TerrainKey = 'water' | 'rock' | 'high' | 'plateau';
 
-/** Cap counts so they fit the playable belt. */
+/** Cap counts so they fit the playable belt. Walls overlay walkable tiles. */
 export function clampMapOptions(opts: MapOptions): MapOptions {
   const max = eligibleCells().length;
   let water = Math.max(0, Math.floor(opts.waterCount));
   let rock = Math.max(0, Math.floor(opts.rockCount));
-  let wall = Math.max(0, Math.floor(opts.wallCount));
+  let wall = Math.max(0, Math.min(max, Math.floor(opts.wallCount)));
   let high = Math.max(0, Math.floor(opts.highCount));
   let plateau = Math.max(0, Math.floor(opts.plateauCount));
-  const total = water + rock + wall + high + plateau;
+  const total = water + rock + high + plateau;
   if (total > max && total > 0) {
     const scale = max / total;
     water = Math.floor(water * scale);
     rock = Math.floor(rock * scale);
-    wall = Math.floor(wall * scale);
     high = Math.floor(high * scale);
     plateau = Math.floor(plateau * scale);
-    let left = max - water - rock - wall - high - plateau;
+    let left = max - water - rock - high - plateau;
     const prefs = (
       [
         { k: 'water' as const, v: opts.waterCount },
         { k: 'rock' as const, v: opts.rockCount },
-        { k: 'wall' as const, v: opts.wallCount },
         { k: 'high' as const, v: opts.highCount },
         { k: 'plateau' as const, v: opts.plateauCount },
       ] satisfies { k: TerrainKey; v: number }[]
@@ -144,7 +146,6 @@ export function clampMapOptions(opts: MapOptions): MapOptions {
       const k = prefs[pi % prefs.length].k;
       if (k === 'water') water++;
       else if (k === 'rock') rock++;
-      else if (k === 'wall') wall++;
       else if (k === 'high') high++;
       else plateau++;
       left--;
@@ -164,7 +165,7 @@ export function maxTerrainCells(): number {
   return eligibleCells().length;
 }
 
-function paintTerrain(t: Terrain[][], opts: MapOptions): void {
+function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
   const { waterCount, rockCount, wallCount, highCount, plateauCount } = clampMapOptions(opts);
   const picks = shuffle(eligibleCells());
   let i = 0;
@@ -175,10 +176,6 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): void {
   for (let r = 0; r < rockCount && i < picks.length; r++, i++) {
     const { col, row } = picks[i];
     t[row][col] = 'rock';
-  }
-  for (let w = 0; w < wallCount && i < picks.length; w++, i++) {
-    const { col, row } = picks[i];
-    t[row][col] = 'wall';
   }
   for (let h = 0; h < highCount && i < picks.length; h++, i++) {
     const { col, row } = picks[i];
@@ -205,6 +202,13 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): void {
     const { col, row } = plateauPicks[p];
     t[row][col] = 'plateau';
   }
+  const walls: TileToken[] = [];
+  const wallPicks = shuffle(eligibleCells());
+  for (let w = 0; w < wallCount && w < wallPicks.length; w++) {
+    const { col, row } = wallPicks[w];
+    walls.push({ type: 'wall', col, row });
+  }
+  return walls;
 }
 
 let idSeq = 0;
@@ -392,15 +396,17 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
 }
 
 /** Concrete bunkers on each army's pawn row in front of tank + general. */
-function placeSetupWalls(terrain: Terrain[][], cols: number, rows: number): void {
+function setupWallTokens(cols: number, rows: number): TileToken[] {
+  const out: TileToken[] = [];
   for (const side of ['red', 'blue'] as Side[]) {
     const pawnRow = side === 'red' ? rows - 2 : 1;
     for (const col of wallPawnCols(side, cols)) {
       if (pawnRow >= 0 && pawnRow < rows && col >= 0 && col < cols) {
-        terrain[pawnRow][col] = 'wall';
+        out.push({ type: 'wall', col, row: pawnRow });
       }
     }
   }
+  return out;
 }
 
 function freshGame(
@@ -409,13 +415,17 @@ function freshGame(
   orientation: HexOrientation = DEFAULT_ORIENTATION,
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
+  tokens?: TileToken[] | null,
 ): GameState {
   idSeq = 0;
-  const t = cloneTerrain(terrain);
+  const custom = armies && armies.length > 0;
+  const lifted = liftWallTerrain(cloneTerrain(terrain), tokens ?? []);
+  const t = lifted.terrain;
   const rows = t.length;
   const cols = t[0]?.length ?? COLS;
-  const custom = armies && armies.length > 0;
-  if (!custom) placeSetupWalls(t, cols, rows);
+  const merged = custom
+    ? lifted.tokens
+    : [...lifted.tokens, ...setupWallTokens(cols, rows)];
   const inBounds = (p: ArmyStamp) =>
     p.col >= 0 && p.col < cols && p.row >= 0 && p.row < rows;
   const pieces = custom
@@ -431,6 +441,7 @@ function freshGame(
     rows,
     orientation,
     terrain: t,
+    tokens: sanitizeTokens(merged, cols, rows),
     pieces,
     turn: start,
     scoutActionsLeft: null,
@@ -447,6 +458,7 @@ function freshGame(
     casualties,
     log: [log],
   };
+  seedFlagOwners(state);
   beginSideTurn(state);
   return state;
 }
@@ -458,13 +470,14 @@ export function createInitialState(
 ): GameState {
   const clamped = clampMapOptions(opts);
   const terrain = emptyTerrain();
-  paintTerrain(terrain, clamped);
+  const walls = paintTerrain(terrain, clamped);
   return freshGame(
     terrain,
     `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.wallCount} wall, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
     DEFAULT_ORIENTATION,
     armies,
     controls,
+    walls,
   );
 }
 
@@ -475,6 +488,7 @@ export function createStateFromTerrain(
   orientation: HexOrientation = DEFAULT_ORIENTATION,
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
+  tokens?: TileToken[] | null,
 ): GameState {
   return freshGame(
     terrain,
@@ -484,5 +498,6 @@ export function createStateFromTerrain(
     orientation,
     armies,
     controls,
+    tokens,
   );
 }
