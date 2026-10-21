@@ -74,7 +74,68 @@ export {
   type UnitType,
 } from './roster';
 
-export type Side = 'red' | 'blue';
+export const SIDES = ['red', 'blue', 'yellow', 'purple'] as const;
+export type Side = (typeof SIDES)[number];
+
+export const SIDE_LABEL: Record<Side, string> = {
+  red: 'Red',
+  blue: 'Blue',
+  yellow: 'Yellow',
+  purple: 'Purple',
+};
+
+export function isSide(v: unknown): v is Side {
+  return v === 'red' || v === 'blue' || v === 'yellow' || v === 'purple';
+}
+
+export type ArmyControl = 'player' | 'ai-enemy' | 'ai-ally';
+export const ARMY_CONTROLS: ArmyControl[] = ['player', 'ai-enemy', 'ai-ally'];
+export const ARMY_CONTROL_LABEL: Record<ArmyControl, string> = {
+  player: 'player',
+  'ai-enemy': 'ai enemy',
+  'ai-ally': 'ai ally',
+};
+
+export function isArmyControl(v: unknown): v is ArmyControl {
+  return v === 'player' || v === 'ai-enemy' || v === 'ai-ally';
+}
+
+export function defaultArmyControls(): Record<Side, ArmyControl> {
+  return {
+    red: 'player',
+    blue: 'ai-enemy',
+    yellow: 'ai-enemy',
+    purple: 'ai-enemy',
+  };
+}
+
+export function hotseatArmyControls(): Record<Side, ArmyControl> {
+  return {
+    red: 'player',
+    blue: 'player',
+    yellow: 'player',
+    purple: 'player',
+  };
+}
+
+export function sanitizeArmyControls(raw: unknown): Record<Side, ArmyControl> {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const fallback = defaultArmyControls();
+  const out = { ...fallback };
+  for (const s of SIDES) {
+    if (isArmyControl(src[s])) out[s] = src[s];
+  }
+  return out;
+}
+
+export function emptySideCounts(): Record<Side, number> {
+  return { red: 0, blue: 0, yellow: 0, purple: 0 };
+}
+
+export function emptyHadKing(): Record<Side, boolean> {
+  return { red: false, blue: false, yellow: false, purple: false };
+}
+
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
 /** Impassable solid terrain (wall rocket-breakable). Mountain is climbable height 3. */
@@ -143,6 +204,8 @@ export type GameState = {
   staminaBonus: boolean;
   winner: Side | null;
   log: string[];
+  /** Who drives each color. */
+  controls: Record<Side, ArmyControl>;
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
   hadKing: Record<Side, boolean>;
   /** How many pieces this side may activate before the turn ends. Default 1. */
@@ -476,7 +539,7 @@ export function previewMove(
       prev = h;
       continue;
     }
-    if (occ.side === piece.side) {
+    if (sameTeam(state, occ.side, piece.side)) {
       prev = h;
       continue;
     }
@@ -754,7 +817,7 @@ export function splashHitsEnemy(
 ): boolean {
   for (const h of splashBlast(state, at, from)) {
     const t = pieceAt(state, h);
-    if (t && t.side !== shooterSide) return true;
+    if (t && isHostile(state, t.side, shooterSide)) return true;
   }
   return false;
 }
@@ -794,13 +857,21 @@ function cloneState(state: GameState): GameState {
     })),
     log: [...state.log],
     actedIds: [...state.actedIds],
-    casualties: { red: state.casualties.red, blue: state.casualties.blue },
+    controls: { ...state.controls },
+    casualties: { ...emptySideCounts(), ...state.casualties },
+    hadKing: { ...emptyHadKing(), ...state.hadKing },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
     fxStamina: state.fxStamina?.map((h) => ({ ...h })),
     pendingStaminaFx: state.pendingStaminaFx
       ? {
           red: state.pendingStaminaFx.red ? [...state.pendingStaminaFx.red] : undefined,
           blue: state.pendingStaminaFx.blue ? [...state.pendingStaminaFx.blue] : undefined,
+          yellow: state.pendingStaminaFx.yellow
+            ? [...state.pendingStaminaFx.yellow]
+            : undefined,
+          purple: state.pendingStaminaFx.purple
+            ? [...state.pendingStaminaFx.purple]
+            : undefined,
         }
       : undefined,
   };
@@ -833,12 +904,82 @@ export function hasGeneral(pieces: Piece[], side: Side): boolean {
 
 /** If a piece just became a general, command-kill is now in play for that side. */
 export function noteGenerals(state: GameState): void {
-  if (hasGeneral(state.pieces, 'red')) state.hadKing.red = true;
-  if (hasGeneral(state.pieces, 'blue')) state.hadKing.blue = true;
+  for (const s of SIDES) {
+    if (hasGeneral(state.pieces, s)) state.hadKing[s] = true;
+  }
 }
 
-function other(side: Side): Side {
-  return side === 'red' ? 'blue' : 'red';
+export function controlOf(state: GameState, side: Side): ArmyControl {
+  return state.controls?.[side] ?? defaultArmyControls()[side];
+}
+
+export function isPlayerControlled(state: GameState, side: Side): boolean {
+  return controlOf(state, side) === 'player';
+}
+
+export function isAiControlled(state: GameState, side: Side): boolean {
+  const c = controlOf(state, side);
+  return c === 'ai-enemy' || c === 'ai-ally';
+}
+
+export function participatingSides(state: GameState): Side[] {
+  return SIDES.filter(
+    (s) =>
+      state.pieces.some((p) => p.side === s) ||
+      !!state.hadKing[s] ||
+      (state.casualties[s] ?? 0) > 0,
+  );
+}
+
+function coalition(state: GameState, side: Side): string {
+  const vsEnemy = participatingSides(state).some(
+    (s) => controlOf(state, s) === 'ai-enemy',
+  );
+  if (vsEnemy) {
+    return controlOf(state, side) === 'ai-enemy' ? 'enemy' : 'player';
+  }
+  return `solo-${side}`;
+}
+
+export function sameTeam(state: GameState, a: Side, b: Side): boolean {
+  return a === b || coalition(state, a) === coalition(state, b);
+}
+
+export function isHostile(state: GameState, a: Side, b: Side): boolean {
+  return !sameTeam(state, a, b);
+}
+
+export function playerSides(state: GameState): Side[] {
+  return participatingSides(state).filter((s) => isPlayerControlled(state, s));
+}
+
+export function playerCasualties(state: GameState): number {
+  return playerSides(state).reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
+}
+
+export function matchHasEnemies(state: GameState): boolean {
+  return participatingSides(state).some((s) => controlOf(state, s) === 'ai-enemy');
+}
+
+export function playerTeamWon(state: GameState): boolean {
+  if (!state.winner) return false;
+  const humans = playerSides(state);
+  if (!humans.length) return false;
+  return humans.some((s) => sameTeam(state, s, state.winner!));
+}
+
+export function openingSide(pieces: { side: Side }[]): Side {
+  return SIDES.find((s) => pieces.some((p) => p.side === s)) ?? 'red';
+}
+
+function nextLivingSide(state: GameState, from: Side): Side {
+  const i0 = SIDES.indexOf(from);
+  const parts = participatingSides(state);
+  for (let k = 1; k <= SIDES.length; k++) {
+    const s = SIDES[(i0 + k) % SIDES.length];
+    if (parts.includes(s) && !sideDefeated(state, s)) return s;
+  }
+  return from;
 }
 
 /**
@@ -962,8 +1103,22 @@ function endSideTurn(state: GameState): void {
   tickShootCooldowns(state, finished);
   tickStamina(state, finished);
   state.actedIds = [];
-  state.turn = other(state.turn);
-  const newRound = state.turn === (state.startingSide ?? 'red');
+  const next = nextLivingSide(state, finished);
+  const start = state.startingSide ?? 'red';
+  const n = SIDES.length;
+  const fi = SIDES.indexOf(finished);
+  let newRound = next === start;
+  if (!newRound) {
+    for (let i = 1; i <= n; i++) {
+      const s = SIDES[(fi + i) % n];
+      if (s === start) {
+        newRound = true;
+        break;
+      }
+      if (s === next) break;
+    }
+  }
+  state.turn = next;
   beginSideTurn(state, newRound);
 }
 
@@ -993,11 +1148,17 @@ export function defeatKind(state: GameState, loser: Side): 'wipeout' | 'king' {
 }
 
 function checkWin(state: GameState): void {
-  const redOut = sideDefeated(state, 'red');
-  const blueOut = sideDefeated(state, 'blue');
-  if (redOut && !blueOut) state.winner = 'blue';
-  else if (blueOut && !redOut) state.winner = 'red';
-  else if (redOut && blueOut) state.winner = other(state.turn);
+  const parts = participatingSides(state);
+  if (parts.length < 2) return;
+  const teams = new Set(parts.map((s) => coalition(state, s)));
+  if (teams.size < 2) return;
+  const live = parts.filter((s) => !sideDefeated(state, s));
+  if (live.length === 0) {
+    state.winner = state.turn;
+    return;
+  }
+  const liveTeams = new Set(live.map((s) => coalition(state, s)));
+  if (liveTeams.size === 1) state.winner = live[0];
 }
 
 function afterAction(
@@ -1085,7 +1246,7 @@ function movePathOpts(
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
-      return occ.side !== piece.side && stats.meleeDamage > 0;
+      return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
     },
     canPass: (h: Hex) => {
       if (!inBounds(state, h)) return false;
@@ -1096,8 +1257,8 @@ function movePathOpts(
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
-      if (stats.charge > 0) return occ.side !== piece.side;
-      return occ.side === piece.side;
+      if (stats.charge > 0) return isHostile(state, occ.side, piece.side);
+      return sameTeam(state, occ.side, piece.side);
     },
   };
 }
@@ -1349,7 +1510,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
 
       const target = pieceAt(state, h);
       // Never highlight friendly-occupied tiles as shoot range
-      if (target && target.side === piece.side) continue;
+      if (target && sameTeam(state, target.side, piece.side)) continue;
 
       if (splash) {
         // Actionable if blast hits an enemy or a concrete wall
@@ -1358,7 +1519,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
         } else {
           out.push({ kind: 'shoot-range', hex: h });
         }
-      } else if (target && target.side !== piece.side) {
+      } else if (target && isHostile(state, target.side, piece.side)) {
         out.push({ kind: 'shoot', hex: h });
       } else {
         // Visible range only — no thin-air shots for bullets
@@ -1423,7 +1584,7 @@ export function passTurn(state: GameState, keepFx = false): GameState {
 export function resolveNoMoves(state: GameState): GameState {
   let s = state;
   let guard = 0;
-  while (!s.winner && guard < 4) {
+  while (!s.winner && guard < 12) {
     if (s.scoutPieceId && !getPiece(s, s.scoutPieceId)) {
       s = passTurn(s, true);
       guard += 1;
@@ -1582,7 +1743,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     );
   } else {
     const t = pieceAt(next, action.at);
-    if (!t || t.side === piece.side) return state;
+    if (!t || sameTeam(next, t.side, piece.side)) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
     const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex, true);
     next.log.push(

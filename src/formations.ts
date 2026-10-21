@@ -1,4 +1,4 @@
-import { isKnownUnit, type UnitType } from './engine';
+import { isKnownUnit, type Side, type UnitType } from './engine';
 import {
   COLS,
   ROWS,
@@ -150,7 +150,7 @@ export function setDefaultFormationId(id: string | null): void {
 
 export function captureFormation(
   pieces: ArmyStamp[],
-  side: 'red' | 'blue',
+  side: Side,
   cols: number,
   rows: number,
 ): { slots: ArmySlot[]; cols: number } {
@@ -159,7 +159,7 @@ export function captureFormation(
 
 export function stampFormation(
   form: Pick<SavedFormation, 'slots' | 'cols'>,
-  side: 'red' | 'blue',
+  side: Side,
   cols: number,
   rows: number,
 ): ArmyStamp[] {

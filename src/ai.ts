@@ -10,8 +10,10 @@ import {
   hasAbility,
   hasSplash,
   hpLeft,
+  isHostile,
   pieceAt,
   previewMove,
+  sameTeam,
   splashHitsEnemy,
   terrainAt,
   terrainHeight,
@@ -30,7 +32,7 @@ function enemyGeneral(state: GameState, me: Side, from: Hex) {
   let best: (typeof state.pieces)[number] | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (p.side === me || !hasAbility(p, 'general')) continue;
+    if (!isHostile(state, p.side, me) || !hasAbility(p, 'general')) continue;
     const d = dist(state, from, { col: p.col, row: p.row });
     if (d < bestD) {
       bestD = d;
@@ -46,7 +48,7 @@ function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
   let best: Hex | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (p.side === me) continue;
+    if (!isHostile(state, p.side, me)) continue;
     const h = { col: p.col, row: p.row };
     const d = dist(state, from, h);
     if (d < bestD) {
@@ -66,7 +68,7 @@ function shootHitsEnemy(state: GameState, action: Action, me: Side): boolean {
     return splashHitsEnemy(state, action.at, from, me);
   }
   const t = pieceAt(state, action.at);
-  return !!(t && t.side !== me);
+  return !!(t && isHostile(state, t.side, me));
 }
 
 function isAttackAction(state: GameState, action: Action, me: Side): boolean {
@@ -77,12 +79,12 @@ function isAttackAction(state: GameState, action: Action, me: Side): boolean {
     const plan = previewMove(state, piece, action.to);
     if (plan.hits.some((h) => {
       const v = getPiece(state, h.id);
-      return !!v && v.side !== me;
+      return !!v && isHostile(state, v.side, me);
     })) {
       return true;
     }
     const v = pieceAt(state, plan.stop);
-    return !!(v && v.side !== me);
+    return !!(v && isHostile(state, v.side, me));
   }
   return false;
 }
@@ -92,7 +94,7 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
   const removed = state.pieces.filter((p) => !after.pieces.some((q) => q.id === p.id));
   for (const k of removed) {
     const v = UNIT_STATS[k.type].value * 24;
-    if (k.side !== me) {
+    if (isHostile(state, k.side, me)) {
       score += v;
       if (hasAbility(k, 'general')) score += 10_000;
     } else {
@@ -106,10 +108,10 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
     const dmg = hpLeft(p) - hpLeft(q);
     if (dmg <= 0) continue;
     const v = UNIT_STATS[p.type].value * 10 * dmg;
-    score += p.side !== me ? v : -v * 0.5;
+    score += isHostile(state, p.side, me) ? v : -v * 0.5;
   }
-  if (after.winner === me) score += 50_000;
-  if (after.winner && after.winner !== me) score -= 50_000;
+  if (after.winner && sameTeam(after, after.winner, me)) score += 50_000;
+  if (after.winner && !sameTeam(after, after.winner, me)) score -= 50_000;
   return score;
 }
 
@@ -131,7 +133,7 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
     score += 4_000;
     if (action.kind === 'shoot') {
       const t = pieceAt(state, action.at);
-      if (t && t.side !== me) score += UNIT_STATS[t.type].value * 22;
+      if (t && isHostile(state, t.side, me)) score += UNIT_STATS[t.type].value * 22;
     }
     score += Math.random() * 0.3;
     return score;

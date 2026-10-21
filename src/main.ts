@@ -51,7 +51,23 @@ import {
   sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  ARMY_CONTROLS,
+  ARMY_CONTROL_LABEL,
+  SIDES,
+  SIDE_LABEL,
+  defaultArmyControls,
+  hotseatArmyControls,
+  isAiControlled,
+  isPlayerControlled,
+  isSide,
+  matchHasEnemies,
+  participatingSides,
+  playerCasualties,
+  playerTeamWon,
+  sameTeam,
+  sanitizeArmyControls,
   type Action,
+  type ArmyControl,
   type GameState,
   type Highlight,
   type Piece,
@@ -104,6 +120,7 @@ import {
   listLevels,
   reorderLevels,
   saveLevel,
+  isLevelCategory,
   sanitizeCategory,
   sanitizeLevelText,
   sanitizeStarRule,
@@ -188,7 +205,8 @@ document.title = `${APP_NAME} — v${APP_VERSION}`;
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
 type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
-type Playlist = { kind: 'campaign' | 'tutorial'; ids: string[]; index: number };
+type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
+type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
 type EditorBrush = Terrain | UnitType | 'erase-unit';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
@@ -214,7 +232,6 @@ let defaultFormationId: string | null = getDefaultFormationId();
 let activeLevelId: string | null = defaultLevelId ?? getActiveLevelId();
 let state: GameState = bootState();
 let mode: Mode = 'ai';
-const humanSide: Side = 'red';
 let screen: Screen = 'start';
 let briefingOpen = false;
 let selectedPeriod: Period = getSelectedPeriod();
@@ -240,7 +257,7 @@ let editorOrientation: HexOrientation = DEFAULT_ORIENTATION;
 let editorBrush: EditorBrush = 'land';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
-let editorCategory: LevelCategory = 'historical';
+let editorCategory: LevelCategory = 'skirmish';
 let editorPeriod: Period = selectedPeriod;
 let editorUnitsPerTurn = 1;
 let editorStartText = '';
@@ -250,6 +267,7 @@ let editorStar2: StarRule = { ...DEFAULT_STAR_2 };
 let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
 let editorArmySide: Side = 'red';
+let editorControls: Record<Side, ArmyControl> = defaultArmyControls();
 let editorUnitCategory: UnitCategory =
   selectedPeriod === 'ancient' ? 'ancient' : 'modern';
 let editorFormationId: string | null = STOCK_FORMATION_ID;
@@ -360,6 +378,11 @@ function playArmies(
   return defaultArmyStamps(cols, rows);
 }
 
+function matchControls(lvl?: SavedLevel | null): Record<Side, ArmyControl> {
+  if (lvl) return sanitizeArmyControls(lvl.armyControls);
+  return mode === 'hotseat' ? hotseatArmyControls() : defaultArmyControls();
+}
+
 function bootState(): GameState {
   if (defaultLevelId && !getLevel(defaultLevelId)) {
     if (activeLevelId === defaultLevelId) activeLevelId = null;
@@ -377,12 +400,13 @@ function bootState(): GameState {
           levelLabel(lvl),
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
+          matchControls(lvl),
         ),
         lvl,
       );
     }
   }
-  return createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS));
+  return createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS), matchControls());
 }
 
 function startMatch(reshuffleRandom = true) {
@@ -399,6 +423,7 @@ function startMatch(reshuffleRandom = true) {
           levelLabel(lvl),
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
+          matchControls(lvl),
         ),
         lvl,
       );
@@ -414,7 +439,9 @@ function startMatch(reshuffleRandom = true) {
   }
   if (reshuffleRandom) {
     mapOpts = readMapInputs();
-    state = withLevelRules(createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS)));
+    state = withLevelRules(
+      createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS), matchControls()),
+    );
   } else {
     // Keep current terrain layout; respawn armies
     state = withLevelRules(
@@ -423,6 +450,7 @@ function startMatch(reshuffleRandom = true) {
         undefined,
         state.orientation,
         defaultArmyStamps(state.cols, state.rows),
+        matchControls(),
       ),
     );
   }
@@ -733,26 +761,30 @@ function showStart() {
   render();
 }
 
+function skirmishMaps(): SavedLevel[] {
+  return levelsInCategory('skirmish', selectedPeriod);
+}
+
+function pickSkirmishLevelId(): string | null {
+  const maps = skirmishMaps();
+  if (!maps.length) return null;
+  if (activeLevelId && maps.some((l) => l.id === activeLevelId)) return activeLevelId;
+  if (defaultLevelId && maps.some((l) => l.id === defaultLevelId)) return defaultLevelId;
+  return maps[0].id;
+}
+
 function startSkirmish(nextMode: Mode) {
+  const id = pickSkirmishLevelId();
+  if (!id) return;
   mode = nextMode;
   playlist = null;
   screen = 'play';
-  if (activeLevelId && getLevel(activeLevelId)) {
-    startMatch(false);
-    return;
-  }
-  if (defaultLevelId && getLevel(defaultLevelId)) {
-    activeLevelId = defaultLevelId;
-    setActiveLevelId(activeLevelId);
-    startMatch(false);
-    return;
-  }
-  activeLevelId = null;
-  setActiveLevelId(null);
-  startMatch(true);
+  activeLevelId = id;
+  setActiveLevelId(id);
+  startMatch(false);
 }
 
-function startPlaylist(kind: 'campaign' | 'tutorial') {
+function startPlaylist(kind: PlaylistKind) {
   const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
   playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
@@ -786,8 +818,7 @@ function advancePlaylist() {
 }
 
 function maybeRecordLevelWin(): void {
-  if (screen !== 'play' || mode !== 'ai') return;
-  if (state.winner !== humanSide || !activeLevelId) return;
+  if (screen !== 'play' || !playerTeamWon(state) || !activeLevelId) return;
   const lvl = getLevel(activeLevelId);
   if (!lvl || lvl.category !== 'tutorial') return;
   recordLevelWin(activeLevelId);
@@ -819,6 +850,7 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorPieces = Array.isArray(lvl.armies)
     ? clipStamps(lvl.armies, cols, rows)
     : seedArmies(cols, rows);
+  editorControls = sanitizeArmyControls(lvl.armyControls);
 }
 
 function confirmLeaveEditor(): boolean {
@@ -885,7 +917,7 @@ function newEditorLevel() {
   editorOrientation = DEFAULT_ORIENTATION;
   editorLevelId = null;
   editorName = 'New level';
-  editorCategory = 'historical';
+  editorCategory = 'skirmish';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = 1;
   editorStartText = '';
@@ -894,6 +926,7 @@ function newEditorLevel() {
   editorStar2 = { ...DEFAULT_STAR_2 };
   editorStar3 = { ...DEFAULT_STAR_3 };
   editorPieces = [];
+  editorControls = defaultArmyControls();
   editorDirty = false;
   beginEditorSession();
 }
@@ -903,7 +936,7 @@ function enterEditorFromMatch() {
   editorOrientation = state.orientation;
   editorLevelId = null;
   editorName = 'New level';
-  editorCategory = 'historical';
+  editorCategory = 'skirmish';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
   editorStartText = '';
@@ -921,6 +954,7 @@ function enterEditorFromMatch() {
     editorTerrain[0]?.length ?? COLS,
     editorTerrain.length || ROWS,
   );
+  editorControls = sanitizeArmyControls(state.controls);
   editorDirty = true;
   beginEditorSession();
 }
@@ -1036,6 +1070,7 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
       loseText: editorLoseText,
     },
     { star2: editorStar2, star3: editorStar3 },
+    editorControls,
   );
   editorStartText = saved.startText;
   editorWinText = saved.winText;
@@ -1096,8 +1131,8 @@ function levelStars(): { star2: StarRule; star3: StarRule } {
 function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' | 'pending' | 'off'] {
   const { star2, star3 } = levelStars();
   const turns = state.turnNumber;
-  const cas = state.casualties[humanSide];
-  const won = state.winner === humanSide;
+  const cas = playerCasualties(state);
+  const won = playerTeamWon(state);
   const lost = !!state.winner && !won;
   const live = (
     met: boolean,
@@ -1175,8 +1210,7 @@ function briefingBlocks(): boolean {
 
 function canControl(): boolean {
   if (briefingBlocks() || state.winner || aiThinking || animating) return false;
-  if (mode === 'ai') return state.turn === humanSide;
-  return true;
+  return isPlayerControlled(state, state.turn);
 }
 
 /** Real options on one hex: move-onto and/or fire (not empty shoot-range). */
@@ -1499,13 +1533,13 @@ async function skipScout(nextId?: string) {
 }
 
 async function maybeAi() {
-  if (briefingBlocks() || mode !== 'ai' || state.winner) return;
-  if (state.turn === humanSide) return;
+  if (briefingBlocks() || state.winner) return;
+  if (isPlayerControlled(state, state.turn)) return;
   aiThinking = true;
   updateChrome();
 
   let guard = 0;
-  while (state.turn !== humanSide && !state.winner && guard < 64) {
+  while (isAiControlled(state, state.turn) && !state.winner && guard < 64) {
     const action = pickAiAction(state);
     if (!action) {
       state = passTurn(state);
@@ -1531,7 +1565,7 @@ async function maybeAi() {
     render();
     guard += 1;
   }
-  if (state.turn !== humanSide && !state.winner) {
+  if (isAiControlled(state, state.turn) && !state.winner) {
     state = passTurn(state);
     await playPendingFx();
   }
@@ -1541,11 +1575,11 @@ async function maybeAi() {
 }
 
 function pieceColor(side: Side): string {
-  return side === 'red' ? 'var(--piece-red)' : 'var(--piece-blue)';
+  return `var(--piece-${side})`;
 }
 
 function iconInk(side: Side): string {
-  return side === 'red' ? 'var(--piece-red-ink)' : 'var(--piece-blue-ink)';
+  return `var(--piece-${side}-ink)`;
 }
 
 function activePeriod(): Period {
@@ -2127,46 +2161,65 @@ function renderSidebar(): string {
 }
 
 function matchStatsHtml(): string {
-  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas"><span class="red">Red −${state.casualties.red}</span><span class="blue">Blue −${state.casualties.blue}</span></span>`;
+  const sides = participatingSides(state);
+  const shown = sides.length ? sides : SIDES.filter((s) =>
+    state.pieces.some((p) => p.side === s),
+  );
+  const cas = shown
+    .map(
+      (s) =>
+        `<span class="${s}">${SIDE_LABEL[s]} −${state.casualties[s] ?? 0}</span>`,
+    )
+    .join('');
+  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas">${cas}</span>`;
+}
+
+function sideTurnPhrase(side: Side): string {
+  const name = SIDE_LABEL[side];
+  const c = state.controls[side];
+  if (c === 'player') {
+    const humans = participatingSides(state).filter((s) =>
+      isPlayerControlled(state, s),
+    );
+    if (humans.length <= 1) return `Your turn (${name})`;
+    return `${name} to move`;
+  }
+  if (c === 'ai-ally') return `${name} (AI ally)`;
+  return `${name} (AI)`;
+}
+
+function opposingLoser(winner: Side): Side {
+  const foes = participatingSides(state).filter((s) => !sameTeam(state, s, winner));
+  return foes[0] ?? SIDES.find((s) => s !== winner) ?? 'blue';
 }
 
 function turnLabel(): string {
   const stats = matchStatsHtml();
   if (state.winner) {
-    const loser = state.winner === 'red' ? 'blue' : 'red';
+    const loser = opposingLoser(state.winner);
     const how = defeatKind(state, loser) === 'wipeout' ? 'army destroyed' : 'general down';
-    return `<span class="${state.winner}">${state.winner.toUpperCase()} wins</span> — ${how} · ${stats}`;
+    return `<span class="${state.winner}">${SIDE_LABEL[state.winner].toUpperCase()} wins</span> — ${how} · ${stats}`;
   }
-  if (aiThinking || animating) {
-    if (mode === 'ai' && state.turn !== humanSide) {
-      return `${stats} · <span class="blue">Blue (AI)</span> moving…`;
-    }
+  if ((aiThinking || animating) && isAiControlled(state, state.turn)) {
+    return `${stats} · <span class="${state.turn}">${sideTurnPhrase(state.turn)}</span> moving…`;
   }
   const quota =
     state.unitsPerTurn > 1
       ? ` · ${state.actedIds.length}/${state.unitsPerTurn} units`
       : '';
-  if (mode === 'ai') {
-    return state.turn === humanSide
-      ? `${stats} · <span class="red">Your turn (Red)</span>${quota}`
-      : `${stats} · <span class="blue">Blue (AI)</span>${quota}`;
-  }
-  return `${stats} · <span class="${state.turn}">${state.turn.toUpperCase()} to move</span>${quota}`;
+  return `${stats} · <span class="${state.turn}">${sideTurnPhrase(state.turn)}</span>${quota}`;
 }
 
 function renderEndOverlay(): string {
   if (!state.winner) return '';
 
-  const youWon = mode === 'ai' && state.winner === humanSide;
-  const youLost = mode === 'ai' && state.winner !== humanSide;
+  const vsEnemy = matchHasEnemies(state);
+  const youWon = vsEnemy && playerTeamWon(state);
+  const youLost = vsEnemy && !!state.winner && !playerTeamWon(state);
   const tone = youLost ? 'defeat' : 'victory';
   const inList = !!playlist;
   const lastInList = inList && !playlistHasNext();
-  const listName = playlist
-    ? playlist.kind === 'campaign'
-      ? 'Campaign'
-      : 'Tutorial'
-    : '';
+  const listName = playlist ? LEVEL_CATEGORY_LABEL[playlist.kind] : '';
 
   const title =
     youWon && lastInList
@@ -2175,17 +2228,17 @@ function renderEndOverlay(): string {
         ? 'VICTORY'
         : youLost
           ? 'DEFEAT'
-          : `${state.winner.toUpperCase()} WINS`;
+          : `${SIDE_LABEL[state.winner].toUpperCase()} WINS`;
 
-  const loser = state.winner === 'red' ? 'blue' : 'red';
+  const loser = opposingLoser(state.winner);
   const wiped = defeatKind(state, loser) === 'wipeout';
   const winHow = wiped ? 'Enemy army destroyed.' : 'Enemy general eliminated.';
   const loseHow = wiped ? 'Your army was destroyed.' : 'Your general has fallen.';
   const hotseatHow = wiped
-    ? `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing army.`
-    : `${state.winner === 'red' ? 'Red' : 'Blue'} destroyed the opposing general.`;
+    ? `${SIDE_LABEL[state.winner]} destroyed the opposing army.`
+    : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
 
-  const custom = state.winner === humanSide ? levelCopy('win') : levelCopy('lose');
+  const custom = youWon ? levelCopy('win') : youLost ? levelCopy('lose') : '';
   const stock =
     youWon && lastInList
       ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
@@ -2532,6 +2585,8 @@ function renderToolbar(): string {
 function renderStartScreen(): string {
   const campaignN = levelsInCategory('campaign', selectedPeriod).length;
   const tutorialN = levelsInCategory('tutorial', selectedPeriod).length;
+  const historicalN = levelsInCategory('historical', selectedPeriod).length;
+  const skirmishN = skirmishMaps().length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
   const periodPicks = PERIODS.map(
     (p) =>
@@ -2550,18 +2605,25 @@ function renderStartScreen(): string {
             <span class="start-opt-name">Campaign</span>
             <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI` : 'No campaign maps'}</span>
           </button>
-          <button type="button" class="start-opt" data-start="ai">
-            <span class="start-opt-name">vs AI</span>
-            <span class="start-opt-meta">Skirmish · pick any map</span>
-          </button>
-          <button type="button" class="start-opt" data-start="hotseat">
-            <span class="start-opt-name">Hotseat</span>
-            <span class="start-opt-meta">Two players, one device</span>
-          </button>
           <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
             title="${tutorialN ? 'Tutorial maps in editor order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
             <span class="start-opt-name">Tutorial</span>
             <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="historical"${historicalN ? '' : ' disabled'}
+            title="${historicalN ? 'Play historical battles in editor order, vs AI' : 'Mark saved levels as Historical in the Editor'}">
+            <span class="start-opt-name">Play historical battle</span>
+            <span class="start-opt-meta">${historicalN ? `${mapWord(historicalN)} · vs AI` : 'No historical maps'}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="ai"${skirmishN ? '' : ' disabled'}
+            title="${skirmishN ? 'Play a skirmish map vs AI' : 'Mark saved levels as Skirmish in the Editor'}">
+            <span class="start-opt-name">vs AI</span>
+            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · skirmish` : 'No skirmish maps'}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="hotseat"${skirmishN ? '' : ' disabled'}
+            title="${skirmishN ? 'Play a skirmish map, two players on one device' : 'Mark saved levels as Skirmish in the Editor'}">
+            <span class="start-opt-name">Hotseat</span>
+            <span class="start-opt-meta">${skirmishN ? 'Two players, one device' : 'No skirmish maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="editor">
             <span class="start-opt-name">Level editor</span>
@@ -2587,7 +2649,9 @@ function bindToolbarEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const kind = btn.dataset.start;
-      if (kind === 'campaign' || kind === 'tutorial') startPlaylist(kind);
+      if (kind === 'campaign' || kind === 'tutorial' || kind === 'historical') {
+        startPlaylist(kind);
+      }
       else if (kind === 'ai') startSkirmish('ai');
       else if (kind === 'hotseat') startSkirmish('hotseat');
       else if (kind === 'editor') enterLevels(true);
@@ -2740,13 +2804,19 @@ function renderArmySelectPanel(): string {
   return `
     <section class="editor-panel editor-panel-army">
       <h3>Army</h3>
-      <div class="editor-army">
-        <button type="button" class="editor-side red${editorArmySide === 'red' ? ' active' : ''}" data-army-side="red">Red</button>
-        <button type="button" class="editor-side blue${editorArmySide === 'blue' ? ' active' : ''}" data-army-side="blue">Blue</button>
-        <label class="editor-cat">Era
-          <select id="editor-unit-cat">${eraOpts}</select>
-        </label>
-      </div>
+      <div class="editor-armies">${SIDES.map((s) => {
+        const opts = ARMY_CONTROLS.map(
+          (c) =>
+            `<option value="${c}"${editorControls[s] === c ? ' selected' : ''}>${ARMY_CONTROL_LABEL[c]}</option>`,
+        ).join('');
+        return `<div class="editor-army-row">
+        <button type="button" class="editor-side ${s}${editorArmySide === s ? ' active' : ''}" data-army-side="${s}">${SIDE_LABEL[s]}</button>
+        <select class="editor-control" data-army-control="${s}" aria-label="${SIDE_LABEL[s]} controller">${opts}</select>
+      </div>`;
+      }).join('')}</div>
+      <label class="editor-cat">Era
+        <select id="editor-unit-cat">${eraOpts}</select>
+      </label>
       <div class="editor-army">
         ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
         ${unitBrushes}
@@ -2893,7 +2963,8 @@ function renderEditorBar(): string {
   const namedForm = editorFormationId && editorFormationId !== STOCK_FORMATION_ID;
   const isDefaultForm = namedForm && editorFormationId === defaultFormationId;
   const armyHint = namedForm ? editorFormationName : 'Standard';
-  const armyOnto = editorArmySide === 'red' ? 'Red' : 'Blue';
+  const armyOnto = SIDE_LABEL[editorArmySide];
+  const armyFlipped = editorArmySide !== 'red';
 
   return `
     <div class="editor-bar">
@@ -2901,7 +2972,7 @@ function renderEditorBar(): string {
         <details data-editor-armies${editorArmiesOpen ? ' open' : ''}>
           <summary>
             <h3>Armies</h3>
-            <span class="lvl-meta">${escapeHtml(armyHint)} · onto ${armyOnto}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
+            <span class="lvl-meta">${escapeHtml(armyHint)} · onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''}</span>
           </summary>
           <div class="editor-fold-body">
             <div class="editor-save editor-army-save">
@@ -2912,7 +2983,7 @@ function renderEditorBar(): string {
               <button type="button" id="army-clear" class="ghost">Clear</button>
             </div>
             <div class="editor-library editor-army-library">
-              <span class="editor-label">Load onto ${armyOnto}${editorArmySide === 'blue' ? ' (flipped)' : ''}</span>
+              <span class="editor-label">Load onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''}</span>
               ${formList}
             </div>
           </div>
@@ -2983,10 +3054,10 @@ function renderEditorBar(): string {
 
 function gameOverClass(): string {
   if (!state.winner) return '';
-  if (mode === 'ai') {
-    return state.winner === humanSide ? 'game-over won' : 'game-over lost';
+  if (matchHasEnemies(state)) {
+    return playerTeamWon(state) ? 'game-over won' : 'game-over lost';
   }
-  return state.winner === 'red' ? 'game-over won' : 'game-over lost';
+  return 'game-over won';
 }
 
 function unitNumField(
@@ -3470,8 +3541,24 @@ function bindEditorEvents() {
   });
   app.querySelectorAll<HTMLButtonElement>('[data-army-side]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      editorArmySide = btn.dataset.armySide === 'blue' ? 'blue' : 'red';
+      const side = btn.dataset.armySide;
+      if (!isSide(side)) return;
+      editorArmySide = side;
       render();
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('[data-army-control]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const side = sel.dataset.armyControl;
+      if (!isSide(side)) return;
+      const v = sel.value;
+      editorControls = {
+        ...editorControls,
+        [side]: ARMY_CONTROLS.includes(v as ArmyControl)
+          ? (v as ArmyControl)
+          : editorControls[side],
+      };
+      markEditorDirty();
     });
   });
   const doSaveFormation = async (asNew: boolean, asDefault = false) => {
@@ -3554,7 +3641,7 @@ function bindLevelsEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-levels-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const v = btn.dataset.levelsFilter;
-      if (v === 'campaign' || v === 'tutorial' || v === 'historical') {
+      if (isLevelCategory(v)) {
         levelsFilter = v;
         render();
       }
@@ -3588,7 +3675,7 @@ function bindLevelsEvents() {
       if (editorLevelId === id) {
         editorLevelId = null;
         editorName = 'New level';
-        editorCategory = 'historical';
+        editorCategory = 'skirmish';
         editorPeriod = selectedPeriod;
         editorStartText = '';
         editorWinText = '';
@@ -3794,7 +3881,7 @@ function render() {
       <aside class="sidebar">
         <h2>Level editor</h2>
         <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lv1), Plateau (lvl2), Mountain (lvl3), and concrete wall. Heights connect by ±1 — no land↔plateau jumps. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start follow the drag order in Levels, <strong>Historical</strong> is skirmish-only.</p>
+        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> / <strong>Historical</strong> playlists on Start follow the drag order in Levels, <strong>Skirmish</strong> is vs AI / Hotseat.</p>
       </aside>
     `;
     bindEvents();
@@ -3811,7 +3898,7 @@ function render() {
         <button type="button" id="new-map">Restart level</button>
         <button type="button" id="edit-this-level">Edit level</button>
         ${skipBtn}
-        <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
+        <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`
     : !activeLevelId
     ? `<div class="map-params">
@@ -3836,7 +3923,18 @@ function render() {
         <label>Level
           <select id="level-select">${levelSelectOptions(activeLevelId)}</select>
         </label>
-        <span class="map-hint">${mode === 'hotseat' ? 'Hotseat' : 'vs AI'}</span>
+        <span class="map-hint">${
+          matchHasEnemies(state)
+            ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
+              ? 'vs AI + allies'
+              : 'vs AI'
+            : participatingSides(state).filter((s) => isPlayerControlled(state, s))
+                  .length > 1
+              ? 'Hotseat'
+              : mode === 'hotseat'
+                ? 'Hotseat'
+                : 'vs AI'
+        }</span>
       </div>`;
 
   app.innerHTML = `

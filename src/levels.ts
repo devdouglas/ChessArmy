@@ -1,4 +1,13 @@
-import { clampUnitsPerTurn, isKnownUnit, type Terrain, type UnitType } from './engine';
+import {
+  clampUnitsPerTurn,
+  isKnownUnit,
+  isSide,
+  sanitizeArmyControls,
+  type ArmyControl,
+  type Side,
+  type Terrain,
+  type UnitType,
+} from './engine';
 import type { HexOrientation } from './hex';
 import {
   COLS,
@@ -14,18 +23,28 @@ const STORAGE_KEY = 'chessarmy-levels-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
 const DEFAULT_KEY = 'chessarmy-default-level';
 
-export type LevelCategory = 'campaign' | 'tutorial' | 'historical';
+export type LevelCategory = 'campaign' | 'tutorial' | 'historical' | 'skirmish';
 
-export const LEVEL_CATEGORIES: LevelCategory[] = ['campaign', 'tutorial', 'historical'];
+export const LEVEL_CATEGORIES: LevelCategory[] = [
+  'campaign',
+  'tutorial',
+  'skirmish',
+  'historical',
+];
 
 export const LEVEL_CATEGORY_LABEL: Record<LevelCategory, string> = {
   campaign: 'Campaign',
   tutorial: 'Tutorial',
+  skirmish: 'Skirmish',
   historical: 'Historical',
 };
 
+export function isLevelCategory(raw: unknown): raw is LevelCategory {
+  return LEVEL_CATEGORIES.includes(raw as LevelCategory);
+}
+
 export function sanitizeCategory(raw: unknown): LevelCategory {
-  if (raw === 'campaign' || raw === 'tutorial' || raw === 'historical') return raw;
+  if (isLevelCategory(raw)) return raw;
   if (raw === 'free') return 'historical';
   return 'historical';
 }
@@ -41,6 +60,8 @@ export type SavedLevel = {
   terrain: Terrain[][];
   /** Stamped armies. Missing = spawn stock on Play. Empty = no pieces. */
   armies?: ArmyStamp[];
+  /** Per-color controller. Missing → red player, everyone else ai enemy. */
+  armyControls?: Record<Side, ArmyControl>;
   /** Missing on old saves → historical (was `free`). */
   category: LevelCategory;
   /** Missing on old saves → modern. */
@@ -170,7 +191,7 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
     if (!item || typeof item !== 'object') continue;
     const p = item as Partial<ArmyStamp>;
     if (!validType(p.type)) continue;
-    const side = p.side === 'blue' ? 'blue' : p.side === 'red' ? 'red' : null;
+    const side = isSide(p.side) ? p.side : null;
     if (!side) continue;
     const col = Math.floor(Number(p.col));
     const row = Math.floor(Number(p.row));
@@ -180,7 +201,7 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
     if (seen.has(k)) continue;
     seen.add(k);
     out.push({ type: p.type, col, row, side });
-    if (out.length >= 64) break;
+    if (out.length >= 128) break;
   }
   return out;
 }
@@ -246,6 +267,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
       const rows = l.rows || l.terrain.length;
       const armies = sanitizeArmies(l.armies, cols, rows);
       const sort = sanitizeSort(l.sort);
+      const armyControls = sanitizeArmyControls(
+        (l as SavedLevel & { armyControls?: unknown }).armyControls,
+      );
       return {
         ...l,
         orientation: l.orientation === 'flat' ? 'flat' : DEFAULT_ORIENTATION,
@@ -267,6 +291,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
           (l as SavedLevel & { star3?: unknown }).star3,
           DEFAULT_STAR_3,
         ),
+        armyControls,
         ...(armies !== undefined ? { armies } : {}),
       };
     });
@@ -348,6 +373,7 @@ export function saveLevel(
   period?: Period,
   texts?: { startText?: string; winText?: string; loseText?: string },
   stars?: { star2?: StarRule; star3?: StarRule },
+  armyControls?: Partial<Record<Side, ArmyControl>>,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -379,6 +405,7 @@ export function saveLevel(
         loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
         star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
         star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
+        armyControls: sanitizeArmyControls(armyControls ?? prev.armyControls),
         updatedAt: now,
       };
       levels[idx] = updated;
@@ -405,6 +432,7 @@ export function saveLevel(
     loseText: sanitizeLevelText(texts?.loseText),
     star2: sanitizeStarRule(stars?.star2, DEFAULT_STAR_2),
     star3: sanitizeStarRule(stars?.star3, DEFAULT_STAR_3),
+    armyControls: sanitizeArmyControls(armyControls),
     updatedAt: now,
   };
   levels.unshift(created);

@@ -1,7 +1,14 @@
 import {
   beginSideTurn,
+  defaultArmyControls,
+  emptyHadKing,
+  emptySideCounts,
   hasGeneral,
+  openingSide,
+  sanitizeArmyControls,
+  SIDES,
   statsOf,
+  type ArmyControl,
   type GameState,
   type Piece,
   type Side,
@@ -401,6 +408,7 @@ function freshGame(
   log: string,
   orientation: HexOrientation = DEFAULT_ORIENTATION,
   armies?: ArmyStamp[] | null,
+  controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
 ): GameState {
   idSeq = 0;
   const t = cloneTerrain(terrain);
@@ -414,24 +422,29 @@ function freshGame(
     ? piecesFromStamps(armies.filter(inBounds))
     : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)];
   const king = (side: Side) => hasGeneral(pieces, side);
+  const hadKing = emptyHadKing();
+  const casualties = emptySideCounts();
+  for (const s of SIDES) hadKing[s] = king(s);
+  const start = openingSide(pieces);
   const state: GameState = {
     cols,
     rows,
     orientation,
     terrain: t,
     pieces,
-    turn: 'red',
+    turn: start,
     scoutActionsLeft: null,
     scoutPieceId: null,
     scoutMoveSpent: null,
     staminaBonus: false,
     winner: null,
-    hadKing: { red: king('red'), blue: king('blue') },
+    controls: controls ? sanitizeArmyControls(controls) : defaultArmyControls(),
+    hadKing,
     unitsPerTurn: 1,
     actedIds: [],
-    startingSide: 'red',
+    startingSide: start,
     turnNumber: 1,
-    casualties: { red: 0, blue: 0 },
+    casualties,
     log: [log],
   };
   beginSideTurn(state);
@@ -441,6 +454,7 @@ function freshGame(
 export function createInitialState(
   opts: MapOptions = DEFAULT_MAP,
   armies?: ArmyStamp[] | null,
+  controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
 ): GameState {
   const clamped = clampMapOptions(opts);
   const terrain = emptyTerrain();
@@ -450,6 +464,7 @@ export function createInitialState(
     `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.wallCount} wall, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
     DEFAULT_ORIENTATION,
     armies,
+    controls,
   );
 }
 
@@ -459,6 +474,7 @@ export function createStateFromTerrain(
   levelName?: string,
   orientation: HexOrientation = DEFAULT_ORIENTATION,
   armies?: ArmyStamp[] | null,
+  controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
 ): GameState {
   return freshGame(
     terrain,
@@ -467,5 +483,6 @@ export function createStateFromTerrain(
       : 'Red moves first. Custom map.',
     orientation,
     armies,
+    controls,
   );
 }

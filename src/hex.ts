@@ -63,9 +63,12 @@ export function isHexDir(n: unknown): n is HexDir {
   return n === 0 || n === 1 || n === 2 || n === 3 || n === 4 || n === 5;
 }
 
-/** Red faces up-board (dir 2), blue faces down-board (dir 5). */
-export function defaultFacing(side: 'red' | 'blue'): HexDir {
-  return side === 'red' ? 2 : 5;
+/** Red up (2), blue down (5), yellow east (0), purple west (3). */
+export function defaultFacing(side: string): HexDir {
+  if (side === 'blue') return 5;
+  if (side === 'yellow') return 0;
+  if (side === 'purple') return 3;
+  return 2;
 }
 
 /** Cube dir of the hex-axis from `from` to `to`, or null if they are not aligned. */

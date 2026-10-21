@@ -129,12 +129,12 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
     }
     $out = [];
     $seen = [];
-    foreach (array_slice($raw, 0, 64) as $piece) {
+    foreach (array_slice($raw, 0, 128) as $piece) {
         if (!is_array($piece) || !allowed_unit($piece['type'] ?? null)) {
             continue;
         }
         $side = $piece['side'] ?? '';
-        if ($side !== 'red' && $side !== 'blue') {
+        if ($side !== 'red' && $side !== 'blue' && $side !== 'yellow' && $side !== 'purple') {
             continue;
         }
         $col = isset($piece['col']) && is_numeric($piece['col']) ? (int) $piece['col'] : -1;
@@ -153,6 +153,23 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
             'row' => $row,
             'side' => $side,
         ];
+    }
+    return $out;
+}
+
+function sanitize_army_controls(mixed $raw): array {
+    $defaults = [
+        'red' => 'player',
+        'blue' => 'ai-enemy',
+        'yellow' => 'ai-enemy',
+        'purple' => 'ai-enemy',
+    ];
+    $ok = ['player' => true, 'ai-enemy' => true, 'ai-ally' => true];
+    $src = is_array($raw) ? $raw : [];
+    $out = $defaults;
+    foreach ($defaults as $side => $fallback) {
+        $v = $src[$side] ?? '';
+        $out[$side] = isset($ok[$v]) ? $v : $fallback;
     }
     return $out;
 }
@@ -266,7 +283,7 @@ function sanitize_level(mixed $level): ?array {
     if ($cat === 'free') {
         $cat = 'historical';
     }
-    if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'historical') {
+    if ($cat !== 'campaign' && $cat !== 'tutorial' && $cat !== 'historical' && $cat !== 'skirmish') {
         $cat = 'historical';
     }
     $period = $level['period'] ?? 'modern';
@@ -296,6 +313,7 @@ function sanitize_level(mixed $level): ?array {
         'loseText' => sanitize_level_text($level['loseText'] ?? ''),
         'star2' => sanitize_star_rule($level['star2'] ?? null, ['metric' => 'turns', 'op' => 'lt', 'value' => 6]),
         'star3' => sanitize_star_rule($level['star3'] ?? null, ['metric' => 'casualties', 'op' => 'eq', 'value' => 0]),
+        'armyControls' => sanitize_army_controls($level['armyControls'] ?? null),
         'updatedAt' => $updated,
     ];
     if (array_key_exists('armies', $level)) {

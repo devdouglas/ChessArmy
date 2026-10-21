@@ -35,10 +35,16 @@
   --wall-stroke: #2a2e34;
   --red: #c44;
   --blue: #4a7ec8;
+  --yellow: #c9a227;
+  --purple: #8a5ab8;
   --piece-red: #a33;
   --piece-blue: #356;
+  --piece-yellow: #c4a030;
+  --piece-purple: #6a3a98;
   --piece-red-ink: #ffe4e0;
   --piece-blue-ink: #e0ecff;
+  --piece-yellow-ink: #2a2208;
+  --piece-purple-ink: #f0e4ff;
   --move: rgba(90, 210, 130, 0.28);
   --stamina: rgba(230, 185, 60, 0.32);
   --shoot: rgba(220, 70, 70, 0.3);
@@ -98,10 +104,16 @@ html[data-period='ancient'] {
   --wall-stroke: #3a3228;
   --red: #c45a38;
   --blue: #3d6a78;
+  --yellow: #d4a44a;
+  --purple: #7a4a78;
   --piece-red: #a84830;
   --piece-blue: #2e5460;
+  --piece-yellow: #b88838;
+  --piece-purple: #5c3458;
   --piece-red-ink: #ffe8d4;
   --piece-blue-ink: #d8eef0;
+  --piece-yellow-ink: #2c200c;
+  --piece-purple-ink: #f4e4f0;
   --move: rgba(200, 170, 90, 0.3);
   --stamina: rgba(220, 170, 70, 0.34);
   --shoot: rgba(200, 80, 50, 0.32);
@@ -147,10 +159,16 @@ html[data-period='futuristic'] {
   --wall-stroke: #121820;
   --red: #e04070;
   --blue: #20b8e0;
+  --yellow: #ffe060;
+  --purple: #b050ff;
   --piece-red: #c02858;
   --piece-blue: #1488a8;
+  --piece-yellow: #d4b020;
+  --piece-purple: #8030d0;
   --piece-red-ink: #ffe0ec;
   --piece-blue-ink: #d8f8ff;
+  --piece-yellow-ink: #1a1608;
+  --piece-purple-ink: #f4e8ff;
   --move: rgba(80, 255, 200, 0.22);
   --stamina: rgba(80, 200, 255, 0.3);
   --shoot: rgba(255, 60, 140, 0.32);
@@ -889,6 +907,53 @@ button.primary:focus-visible {
   background: #223040;
 }
 
+.editor-side.yellow.active {
+  border-color: #c9a227;
+  color: #f0e0a0;
+  background: #3a3420;
+}
+
+.editor-side.purple.active {
+  border-color: #8a5ab8;
+  color: #d8c0f0;
+  background: #2e2238;
+}
+
+.editor-armies {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.55rem;
+  margin-bottom: 0.45rem;
+}
+
+.editor-panel-army > .editor-cat {
+  margin-bottom: 0.45rem;
+}
+
+.editor-army-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.editor-army-row .editor-side {
+  flex: 0 0 4.6rem;
+  text-align: center;
+}
+
+.editor-control {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a453c;
+  padding: 0.25rem 0.3rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
 .editor-army .brush {
   display: inline-flex;
   align-items: center;
@@ -1539,12 +1604,13 @@ button.primary:focus-visible {
 
 .levels-filters {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 0.4rem;
   margin: 0 0 0.4rem;
 }
 
 .levels-filters-period {
+  grid-template-columns: repeat(3, 1fr);
   margin: 0 0 1.1rem;
 }
 
@@ -1741,6 +1807,14 @@ button.primary:focus-visible {
   fill: var(--piece-blue);
 }
 
+.thumb-piece.yellow {
+  fill: var(--piece-yellow);
+}
+
+.thumb-piece.purple {
+  fill: var(--piece-purple);
+}
+
 .level-row > button.danger,
 .level-row > button.level-play {
   background: var(--panel);
@@ -1863,12 +1937,20 @@ button.primary:focus-visible {
 .end-stats .blue {
   color: var(--blue);
 }
+.turn-banner .yellow,
+.end-stats .yellow {
+  color: var(--yellow);
+}
+.turn-banner .purple,
+.end-stats .purple {
+  color: var(--purple);
+}
 
 .match-cas {
   margin-left: 0.55rem;
 }
 
-.match-cas .blue {
+.match-cas span + span {
   margin-left: 0.55rem;
 }
 
@@ -2158,6 +2240,46 @@ svg.board .hex {
   background: rgba(74, 126, 200, 0.2);
   border-color: #4a7ec8;
   color: #8eb6f0;
+}
+
+.end-card.victory.side-yellow {
+  border-color: #c9a227;
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.4), 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.end-card.victory.side-yellow .end-title {
+  color: #e8d080;
+  text-shadow: 0 0 18px rgba(201, 162, 39, 0.45);
+}
+
+.end-card.victory.side-yellow .end-burst {
+  background: radial-gradient(circle at center, rgba(201, 162, 39, 0.5), transparent 55%);
+}
+
+.end-card.victory.side-yellow #end-rematch {
+  background: rgba(201, 162, 39, 0.2);
+  border-color: #c9a227;
+  color: #e8d080;
+}
+
+.end-card.victory.side-purple {
+  border-color: #8a5ab8;
+  box-shadow: 0 0 0 1px rgba(138, 90, 184, 0.4), 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.end-card.victory.side-purple .end-title {
+  color: #d0b0f0;
+  text-shadow: 0 0 18px rgba(160, 100, 220, 0.45);
+}
+
+.end-card.victory.side-purple .end-burst {
+  background: radial-gradient(circle at center, rgba(138, 90, 184, 0.5), transparent 55%);
+}
+
+.end-card.victory.side-purple #end-rematch {
+  background: rgba(138, 90, 184, 0.2);
+  border-color: #8a5ab8;
+  color: #d0b0f0;
 }
 
 .hex {
@@ -3091,6 +3213,16 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   font-weight: 650;
 }
 
+.log-side.yellow {
+  color: #e0c060;
+  font-weight: 650;
+}
+
+.log-side.purple {
+  color: #c090e8;
+  font-weight: 650;
+}
+
 .log-dmg {
   display: block;
   margin-top: 0.18rem;
@@ -3161,6 +3293,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 
   .map-params input[type='number'],
   .map-params select,
+  .editor-control,
   .editor-cat select,
   .level-settings #editor-name,
   .level-settings input[type='number'],
@@ -3174,6 +3307,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   .editor-brushes .brush,
   .editor-army .brush,
   .editor-side,
+  .editor-control,
   .editor-save button,
   .editor-levels button {
     min-height: var(--touch);
