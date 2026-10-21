@@ -19,7 +19,9 @@ export type UnitRole =
   | 'catapult'
   | 'tank'
   | 'general'
-  | 'tower';
+  | 'tower'
+  | 'dummy'
+  | 'peasant';
 
 /** Roster id: a stock role, or `u-…` for a copied unit. */
 export type UnitType = string;
@@ -38,6 +40,8 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'tank',
   'general',
   'tower',
+  'dummy',
+  'peasant',
 ];
 
 /** Live roster. Copies are appended; reset restores stock. */
@@ -78,6 +82,8 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   tank: 'Tank',
   general: 'General',
   tower: 'Tower',
+  dummy: 'Dummy',
+  peasant: 'Peasant',
 };
 
 export function sanitizeUnitCategory(raw: unknown): UnitCategory {
@@ -129,10 +135,17 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
   tank: { passUnits: false, infantry: false, king: false },
   general: { passUnits: false, infantry: false, king: true },
   tower: { passUnits: false, infantry: false, king: false },
+  dummy: { passUnits: false, infantry: false, king: false },
+  peasant: { passUnits: false, infantry: true, king: false },
 };
 
 /** Legacy noHigh kits — cannot climb. Everyone else could climb and/or swim. */
-const HEAVY_KITS: ReadonlySet<UnitRole> = new Set(['elephant', 'catapult', 'tank']);
+const HEAVY_KITS: ReadonlySet<UnitRole> = new Set([
+  'elephant',
+  'catapult',
+  'tank',
+  'dummy',
+]);
 
 export function stockMobility(role: UnitRole): { passWater: boolean; climbLevel: number } {
   if (HEAVY_KITS.has(role)) return { passWater: false, climbLevel: 0 };
@@ -162,7 +175,7 @@ export type UnitStats = UnitTraits & {
   category: UnitCategory;
   /** Kit + glyph. Copies keep the source kit unless changed. */
   role: UnitRole;
-  /** Stop on / enter water. Entering water from dry land spends stamina. */
+  /** Stop on / enter water. From water: 1 hex. Turn-start: 1 stamina or 2 HP. No regen in water. */
   passWater: boolean;
   /** Max occupiable height: 0 land, 1 hill, 2 plateau, 3 mountain. */
   climbLevel: number;
@@ -181,7 +194,7 @@ export type UnitStats = UnitTraits & {
   moveBudget: number;
   /** Stamina pool. 0 = cannot climb or double. */
   stamina: number;
-  /** Own turns to recover 1 stamina (walk resets; grant only on an idle End). 0 = never. */
+  /** Own turns to recover 1 stamina (any action resets; grant only on a fully idle End on land). 0 = never. */
   staminaRegen: number;
   /** Shots per piece per match (0 = unlimited). */
   ammo: number;
@@ -603,6 +616,60 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexArmorDefaults(0),
     ...KIT_TRAITS.tower,
     ...stockMobility('tower'),
+    abilities: [],
+  },
+  dummy: {
+    name: 'Dummy',
+    chess: 'Straw',
+    category: 'modern',
+    role: 'dummy',
+    move: 0,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 0,
+    value: 0,
+    moveBudget: 0,
+    stamina: 0,
+    staminaRegen: 0,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 0,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...KIT_TRAITS.dummy,
+    ...stockMobility('dummy'),
+    abilities: [],
+  },
+  peasant: {
+    name: 'Peasant',
+    chess: 'Levy',
+    category: 'ancient',
+    role: 'peasant',
+    move: 1,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 0,
+    value: 0,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...KIT_TRAITS.peasant,
+    ...stockMobility('peasant'),
     abilities: [],
   },
 };

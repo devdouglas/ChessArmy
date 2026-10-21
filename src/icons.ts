@@ -146,6 +146,30 @@ const ICONS: Record<UnitRole, string> = {
       H-6.3 Z"/>
     <rect x="-1.15" y="-0.15" width="2.3" height="2.5" rx="0.35"/>
   `,
+  // Scarecrow — pole, crossbar, sack head, ragged hat
+  dummy: `
+    <rect x="-0.7" y="-1.6" width="1.4" height="10.4" rx="0.4"/>
+    <rect x="-7.4" y="-1.4" width="14.8" height="1.55" rx="0.5"/>
+    <path d="M-7.4 -1.4 L-9.2 -3.6 L-8.4 -0.2 L-7.0 0.2 Z"/>
+    <path d="M7.4 -1.4 L9.2 -3.6 L8.4 -0.2 L7.0 0.2 Z"/>
+    <path d="M-7.2 0.1 L-8.8 2.6 L-6.6 0.9 Z"/>
+    <path d="M7.2 0.1 L8.8 2.6 L6.6 0.9 Z"/>
+    <ellipse cx="0" cy="-4.9" rx="3.55" ry="3.2"/>
+    <ellipse cx="0" cy="-7.15" rx="4.6" ry="0.95"/>
+    <path d="M-2.35 -7.15 Q0 -9.9 2.35 -7.15 Z"/>
+    <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+      d="M-1.55 -5.55 L-0.35 -4.35 M-0.35 -5.55 L-1.55 -4.35
+         M0.35 -5.55 L1.55 -4.35 M1.55 -5.55 L0.35 -4.35"/>
+    <path d="M-2.4 8.8 H2.4 L0.9 10 H-0.9 Z"/>
+  `,
+  // Hooded levy + pitchfork
+  peasant: `
+    <rect x="3.15" y="-5.6" width="1.1" height="13.4" rx="0.35"/>
+    <path d="M1.35 -7.5 H6.05 V-6.05 H5.2 V-7.25 H4.3 V-5.55 H3.1 V-7.25 H2.2 V-6.05 H1.35 Z"/>
+    <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
+    <circle cx="0" cy="-3.15" r="1.95"/>
+    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
+  `,
 };
 
 export function pieceIconSvg(type: UnitType, size = 16): string {
@@ -278,4 +302,6 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   tank: 'tracked hull',
   general: 'command star',
   tower: 'keep',
+  dummy: 'scarecrow',
+  peasant: 'fork',
 };

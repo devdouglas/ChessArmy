@@ -114,6 +114,8 @@ export type Piece = {
   staminaUsedThisTurn?: boolean;
   /** Walked this activation — idle regen does not tick. */
   movedThisTurn?: boolean;
+  /** Did anything this activation (move, shoot, climb). Idle regen requires none of this. */
+  actedThisTurn?: boolean;
   /** Own-turn Ends left until +1 stamina can land (grant only while idle). */
   staminaRegenWait?: number;
   /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
@@ -121,6 +123,9 @@ export type Piece = {
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
 };
+
+export type FxHit = { id: string; fatal: boolean; dealt: number };
+export type FxStamina = { id: string; kind: 'gain' | 'spend' };
 
 export type GameState = {
   cols: number;
@@ -144,10 +149,17 @@ export type GameState = {
   unitsPerTurn: number;
   /** Piece ids that already finished an activation this side-turn. */
   actedIds: string[];
-  /** Full rounds (Red+Blue). Starts at 1; ticks when Blue's side-turn ends. */
+  /** Side that opened the match. A level turn ticks when this side starts again. */
+  startingSide: Side;
+  /** Level turns. 1 on the opening action; +1 when `startingSide` starts after everyone else. */
   turnNumber: number;
   /** Pieces removed per side this match. */
   casualties: Record<Side, number>;
+  /** One-shot drown (etc) hits for the UI to flash. Cleared after play. */
+  fxHits?: FxHit[];
+  /** Stamina grants (gold) / water-penalty spends (blue). Played at that side's turn start. */
+  fxStamina?: FxStamina[];
+  pendingStaminaFx?: Partial<Record<Side, string[]>>;
 };
 
 export type Action =
@@ -197,7 +209,7 @@ export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation):
   return s.armor;
 }
 
-/** Cube dirs a hex-armor piece cannot walk (faces at −2). Empty if hex armor is off. */
+/** Cube dirs a hex-armor piece cannot walk or shoot (faces at −2). Empty if hex armor is off. */
 function blockedWalkDirs(piece: Piece): Set<HexDir> {
   const s = statsOf(piece.type);
   const blocked = new Set<HexDir>();
@@ -211,7 +223,7 @@ function blockedWalkDirs(piece: Piece): Set<HexDir> {
 }
 
 /** True when `to` sits on a −2 hex-armor ray from `from`. */
-function isBlockedWalkDest(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
+function isBlockedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
   const dir = axisDir(from, to, o);
   return dir !== null && blockedWalkDirs(piece).has(dir);
 }
@@ -279,18 +291,28 @@ export function canSpendStamina(piece: Piece): boolean {
   return staminaLeft(piece) > 0 && !piece.staminaUsedThisTurn;
 }
 
-function spendStamina(piece: Piece): void {
+function spendStaminaPool(piece: Piece): void {
   const max = staminaMax(piece);
   if (max <= 0) return;
   piece.stamina = Math.max(0, staminaLeft(piece) - 1);
-  piece.staminaUsedThisTurn = true;
   restartStaminaWait(piece);
+}
+
+function spendStamina(piece: Piece): void {
+  spendStaminaPool(piece);
+  piece.staminaUsedThisTurn = true;
+}
+
+/** Any action while below max restarts the idle countdown. */
+function markActed(piece: Piece): void {
+  piece.actedThisTurn = true;
+  if (staminaLeft(piece) < staminaMax(piece)) restartStaminaWait(piece);
 }
 
 /** Moving while below max restarts the idle countdown. */
 function markMoved(piece: Piece): void {
   piece.movedThisTurn = true;
-  if (staminaLeft(piece) < staminaMax(piece)) restartStaminaWait(piece);
+  markActed(piece);
 }
 
 function restartStaminaWait(piece: Piece): void {
@@ -373,14 +395,23 @@ export type MovePlan = {
   facing: HexDir;
 };
 
-/** Standing elevation added to a move action from `at` (hill +1, plateau +2, mountain +3). */
+function inWater(state: GameState, h: Hex): boolean {
+  return terrainAt(state, h) === 'water';
+}
+
+/** Standing elevation added to a move action from `at` (hill +1, plateau +2, mountain +3). Water is always 1 hex. Move 0 stays planted. */
 function moveRangeAt(state: GameState, piece: Piece, at: Hex): number {
-  return statsOf(piece.type).move + hexHeight(state, at);
+  const move = statsOf(piece.type).move;
+  if (move <= 0) return 0;
+  if (inWater(state, at)) return 1;
+  return move + hexHeight(state, at);
 }
 
 function activationMoveRange(state: GameState, piece: Piece): number {
   const stats = statsOf(piece.type);
+  if (stats.move <= 0) return 0;
   const from = { col: piece.col, row: piece.row };
+  if (inWater(state, from)) return 1;
   const elev = hexHeight(state, from);
   // Stamina's extra action is a fresh straight line of `move`. Leftover
   // steps from the previous action (stop after 1 of 2, etc.) do not carry.
@@ -491,7 +522,7 @@ function isLegalMovePath(
   path: Hex[],
 ): boolean {
   const from = { col: piece.col, row: piece.row };
-  if (isBlockedWalkDest(piece, from, to, state.orientation)) return false;
+  if (isBlockedFaceRay(piece, from, to, state.orientation)) return false;
   if (!isStepWalk(state, from, path, to)) return false;
   const first = straightMoveStops(state, piece);
   const one = first.get(key(to));
@@ -529,14 +560,14 @@ function isLegalMovePath(
     }
     if (ok) {
       const via = path[firstRange - 1];
-      if (via && !pathSpendsStamina(state, from, via, path.slice(0, firstRange))) return true;
+      if (via && !pathHaltsExtra(state, from, via, path.slice(0, firstRange))) return true;
     }
   }
   for (let i = 1; i < path.length; i++) {
     const via = path[i - 1];
     const a = first.get(key(via));
     if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
-    if (pieceAt(state, via) || pathSpendsStamina(state, from, via, a.path)) continue;
+    if (pieceAt(state, via) || pathHaltsExtra(state, from, via, a.path)) continue;
     const b = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (b && pathsEq(b.path, path.slice(i))) return true;
   }
@@ -599,7 +630,7 @@ export function stickyMovePlan(
   for (let i = Math.min(prev.length, activationMoveRange(state, piece)); i >= 1; i--) {
     const via = prev[i - 1];
     const stop = first.get(key(via));
-    if (!stop || pieceAt(state, via) || pathSpendsStamina(state, start, via, stop.path)) continue;
+    if (!stop || pieceAt(state, via) || pathHaltsExtra(state, start, via, stop.path)) continue;
     const tail = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (!tail) continue;
     return { path: [...prev.slice(0, i), ...tail.path], via };
@@ -764,6 +795,14 @@ function cloneState(state: GameState): GameState {
     log: [...state.log],
     actedIds: [...state.actedIds],
     casualties: { red: state.casualties.red, blue: state.casualties.blue },
+    fxHits: state.fxHits?.map((h) => ({ ...h })),
+    fxStamina: state.fxStamina?.map((h) => ({ ...h })),
+    pendingStaminaFx: state.pendingStaminaFx
+      ? {
+          red: state.pendingStaminaFx.red ? [...state.pendingStaminaFx.red] : undefined,
+          blue: state.pendingStaminaFx.blue ? [...state.pendingStaminaFx.blue] : undefined,
+        }
+      : undefined,
   };
 }
 
@@ -803,14 +842,16 @@ function other(side: Side): Side {
 }
 
 /**
- * Every own-turn End advances the countdown. Walking resets it to `regen`
- * (this End still counts, so remaining is regen-1). Only an idle End can
- * actually grant — otherwise spend/walk + regen 1 would refill the same turn.
+ * Every own-turn End advances the countdown. Any action (move, shoot, climb)
+ * resets it to `regen` (this End still counts, so remaining is regen-1). Only a
+ * fully idle End on land can grant — water never refills, even parked.
+ * Otherwise spend/shoot/walk + regen 1 would refill the same turn.
  */
 function tickStamina(state: GameState, side: Side): void {
   for (const p of state.pieces) {
     if (p.side !== side) continue;
-    const moved = !!p.movedThisTurn;
+    const busy = !!p.actedThisTurn || !!p.movedThisTurn;
+    p.actedThisTurn = false;
     p.movedThisTurn = false;
     p.staminaUsedThisTurn = false;
     const max = staminaMax(p);
@@ -821,9 +862,12 @@ function tickStamina(state: GameState, side: Side): void {
       continue;
     }
     const wait = (p.staminaRegenWait ?? regen) - 1;
-    if (!moved && wait <= 0) {
+    const wet = inWater(state, { col: p.col, row: p.row });
+    if (!busy && wait <= 0 && !wet) {
       p.stamina = Math.min(max, staminaLeft(p) + 1);
       p.staminaRegenWait = staminaLeft(p) < max ? regen : undefined;
+      const q = state.pendingStaminaFx ?? (state.pendingStaminaFx = {});
+      q[side] = [...(q[side] ?? []), p.id];
     } else {
       p.staminaRegenWait = Math.max(0, wait);
     }
@@ -851,6 +895,67 @@ function clearScoutLock(state: GameState): void {
   state.staminaBonus = false;
 }
 
+const WATER_DROWN_HP = 2;
+
+/** Start of a side's turn: each unit in water spends 1 stamina, or takes 2 HP. */
+export function applyWaterUpkeep(state: GameState, side: Side): void {
+  const drowned: Piece[] = [];
+  for (const p of state.pieces) {
+    if (p.side !== side) continue;
+    if (!inWater(state, { col: p.col, row: p.row })) continue;
+    if (staminaMax(p) > 0 && staminaLeft(p) > 0) {
+      spendStaminaPool(p);
+      state.fxStamina = [...(state.fxStamina ?? []), { id: p.id, kind: 'spend' }];
+      state.log.push(`${unitLog(p)} treads water (−1 stamina)`);
+    } else {
+      drowned.push(p);
+    }
+  }
+  for (const p of drowned) {
+    const before = hpLeft(p);
+    const remaining = Math.max(0, before - WATER_DROWN_HP);
+    const dealt = before - remaining;
+    p.hp = remaining;
+    if (dealt > 0) {
+      state.fxHits = [...(state.fxHits ?? []), { id: p.id, fatal: remaining <= 0, dealt }];
+    }
+    if (remaining <= 0) {
+      state.pieces = state.pieces.filter((x) => x.id !== p.id);
+      const lost = state.casualties[p.side] ?? 0;
+      state.casualties = { ...state.casualties, [p.side]: lost + 1 };
+      state.log.push(`${unitLog(p)} drowns`);
+    } else {
+      state.log.push(`${unitLog(p)} drowns — ${WATER_DROWN_HP} HP (${remaining} HP)`);
+    }
+  }
+}
+
+/** Match start / after the turn flag flips onto `state.turn`. */
+export function beginSideTurn(state: GameState, newRound = false): void {
+  if (newRound) state.turnNumber += 1;
+  const queued = state.pendingStaminaFx?.[state.turn] ?? [];
+  if (queued.length) {
+    const seen = new Set(
+      (state.fxStamina ?? []).filter((x) => x.kind === 'gain').map((x) => x.id),
+    );
+    const extra = queued
+      .filter((id) => !seen.has(id))
+      .map((id) => ({ id, kind: 'gain' as const }));
+    state.fxStamina = [...(state.fxStamina ?? []), ...extra];
+    state.pendingStaminaFx = {
+      ...state.pendingStaminaFx,
+      [state.turn]: [],
+    };
+  }
+  applyWaterUpkeep(state, state.turn);
+  if (state.fxStamina?.length) {
+    const live = new Set(state.pieces.map((p) => p.id));
+    state.fxStamina = state.fxStamina.filter((x) => live.has(x.id));
+    if (!state.fxStamina.length) state.fxStamina = undefined;
+  }
+  checkWin(state);
+}
+
 function endSideTurn(state: GameState): void {
   const finished = state.turn;
   clearScoutLock(state);
@@ -858,7 +963,8 @@ function endSideTurn(state: GameState): void {
   tickStamina(state, finished);
   state.actedIds = [];
   state.turn = other(state.turn);
-  if (finished === 'blue') state.turnNumber += 1;
+  const newRound = state.turn === (state.startingSide ?? 'red');
+  beginSideTurn(state, newRound);
 }
 
 /** Finish this piece's activation; end the side-turn if the unit quota is spent. */
@@ -898,8 +1004,17 @@ function afterAction(
   state: GameState,
   piece: Piece,
   kind: 'move' | 'shoot',
+  enteredWater = false,
 ): void {
+  markActed(piece);
   const stats = statsOf(piece.type);
+
+  // Stepping into water from land ends momentum. Already-wet is a normal activation
+  // — the turn-start swim cost is a pool penalty, not staminaUsedThisTurn.
+  if (kind === 'move' && enteredWater) {
+    finishActivation(state, piece);
+    return;
+  }
 
   if (state.staminaBonus && state.scoutPieceId === piece.id) {
     if (!piece.staminaUsedThisTurn) spendStamina(piece);
@@ -976,7 +1091,7 @@ function movePathOpts(
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isSolidTerrain(t)) return false;
-      if (t === 'water' && !stats.passWater) return false;
+      if (t === 'water') return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
@@ -987,7 +1102,7 @@ function movePathOpts(
   };
 }
 
-/** Height only changes by 1 per step. Climbing / entering water from dry land needs stamina. */
+/** Height only changes by 1 per step. Climbing needs stamina. */
 function canWalkStep(
   state: GameState,
   piece: Piece,
@@ -1004,13 +1119,6 @@ function canWalkStep(
   if (th > stats.climbLevel) return false;
   if (Math.abs(th - fh) > 1) return false;
   if (th > hexHeight(state, origin) && !canSpendStamina(piece)) return false;
-  if (
-    t === 'water' &&
-    terrainAt(state, origin) !== 'water' &&
-    !canSpendStamina(piece)
-  ) {
-    return false;
-  }
   return true;
 }
 
@@ -1027,7 +1135,12 @@ function pathEntersWater(state: GameState, from: Hex, dest: Hex, path: Hex[]): b
 }
 
 function pathSpendsStamina(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
-  return pathClimbs(state, from, dest, path) || pathEntersWater(state, from, dest, path);
+  return pathClimbs(state, from, dest, path);
+}
+
+/** Climb or entering water: no extra stamina action / two-action chain through that hex. */
+function pathHaltsExtra(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
+  return pathSpendsStamina(state, from, dest, path) || pathEntersWater(state, from, dest, path);
 }
 
 function extraMoveAction(state: GameState, piece: Piece): boolean {
@@ -1100,7 +1213,7 @@ function straightExtraStops(
       path.push(next);
       if (dist === firstRange) {
         via = next;
-        firstClimb = pathSpendsStamina(state, start, via, path.slice());
+        firstClimb = pathHaltsExtra(state, start, via, path.slice());
       }
       if (stop && dist > firstRange && via && !firstClimb && !first.has(key(next))) {
         if (dist <= firstRange + moveRangeAt(state, piece, via)) {
@@ -1137,7 +1250,7 @@ function twoActionStops(
     const via = a.path[a.path.length - 1];
     if (!via) continue;
     if (pieceAt(state, via)) continue;
-    if (pathSpendsStamina(state, start, via, a.path)) continue;
+    if (pathHaltsExtra(state, start, via, a.path)) continue;
     const second = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via));
     for (const [dk, b] of second) {
       if (dk === startKey || first.has(dk)) continue;
@@ -1177,7 +1290,7 @@ function allMoveStops(state: GameState, piece: Piece): Map<string, StraightStop>
   for (const [k, stop] of twoActionStops(state, piece, first)) keepBetterStop(out, k, stop);
   const start = { col: piece.col, row: piece.row };
   for (const k of [...out.keys()]) {
-    if (isBlockedWalkDest(piece, start, parseKey(k), state.orientation)) out.delete(k);
+    if (isBlockedFaceRay(piece, start, parseKey(k), state.orientation)) out.delete(k);
   }
   return out;
 }
@@ -1206,8 +1319,13 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   }
 
   // Shoot — show full LOS range; only enemy (or splash aim) is actionable
-  if (isReloading(piece) || isDepleted(piece)) {
-    return out; // move highlights only while reloading / empty
+  if (
+    stats.shoot <= 0 ||
+    isReloading(piece) ||
+    isDepleted(piece) ||
+    fromTerrain === 'water'
+  ) {
+    return out; // move highlights only while reloading / empty / in water / no gun
   }
 
   const shootRange = stats.shoot + terrainHeight(fromTerrain);
@@ -1218,6 +1336,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     for (let col = 0; col < state.cols; col++) {
       const h = { col, row };
       if (eq(h, from)) continue;
+      if (isBlockedFaceRay(piece, from, h, state.orientation)) continue;
       const d = hexDist(state, from, h);
       if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);
@@ -1267,9 +1386,32 @@ export function legalHighlights(state: GameState, pieceId: string): Highlight[] 
   return rangeHighlights(state, pieceId);
 }
 
-/** End the current side-turn (skip leftover units / scout lock). */
-export function passTurn(state: GameState): GameState {
+/**
+ * Park this piece: checkmark, spends a units/turn slot, still idle for regen.
+ * Illegal after a walk (Rest is for units that haven't moved).
+ */
+export function restPiece(state: GameState, pieceId: string): GameState {
+  if (state.winner) return state;
   const next = cloneState(state);
+  next.fxHits = [];
+  next.fxStamina = [];
+  const piece = getPiece(next, pieceId);
+  if (!piece || piece.side !== next.turn) return state;
+  if (piece.movedThisTurn) return state;
+  if (hasActed(next, piece.id)) return state;
+  if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
+  next.log.push(`${unitLog(piece)} rests`);
+  finishActivation(next, piece);
+  return resolveNoMoves(next);
+}
+
+/** End the current side-turn (skip leftover units / scout lock). */
+export function passTurn(state: GameState, keepFx = false): GameState {
+  const next = cloneState(state);
+  if (!keepFx) {
+    next.fxHits = [];
+    next.fxStamina = [];
+  }
   if (next.winner) return next;
   next.log.push(sideLog(next.turn, 'End turn'));
   endSideTurn(next);
@@ -1283,12 +1425,12 @@ export function resolveNoMoves(state: GameState): GameState {
   let guard = 0;
   while (!s.winner && guard < 4) {
     if (s.scoutPieceId && !getPiece(s, s.scoutPieceId)) {
-      s = passTurn(s);
+      s = passTurn(s, true);
       guard += 1;
       continue;
     }
     if (allLegalActions(s).length > 0) break;
-    s = passTurn(s);
+    s = passTurn(s, true);
     guard += 1;
   }
   return s;
@@ -1302,6 +1444,8 @@ export function applyAction(state: GameState, action: Action): GameState {
 
 function applyActionInner(state: GameState, action: Action): GameState {
   const next = cloneState(state);
+  next.fxHits = [];
+  next.fxStamina = [];
   if (next.winner) return next;
 
   if (action.kind === 'skip') {
@@ -1374,6 +1518,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
       );
     }
 
+    const fromHex = { col: piece.col, row: piece.row };
+    const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
     );
@@ -1388,7 +1534,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
-    afterAction(next, piece, 'move');
+    afterAction(next, piece, 'move', enteredWater);
     return next;
   }
 

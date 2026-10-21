@@ -118,7 +118,7 @@ function waterClimbFrom(
   const noHigh =
     typeof s.noHigh === 'boolean'
       ? s.noHigh
-      : role === 'elephant' || role === 'catapult' || role === 'tank';
+      : role === 'elephant' || role === 'catapult' || role === 'tank' || role === 'dummy';
   const swam = s.passWater === true || role === 'scout';
   if (!noHigh || swam) return { passWater: true, climbLevel: 2 };
   return { passWater: false, climbLevel: 0 };

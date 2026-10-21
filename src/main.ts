@@ -11,6 +11,7 @@ import {
   MAX_UNITS_PER_TURN,
   MIN_UNITS_PER_TURN,
   passTurn,
+  restPiece,
   getPiece,
   ammoLeft,
   hpLeft,
@@ -98,6 +99,7 @@ import {
   getLevel,
   LEVEL_CATEGORIES,
   LEVEL_CATEGORY_LABEL,
+  levelLabel,
   levelsInCategory,
   listLevels,
   saveLevel,
@@ -169,16 +171,18 @@ import {
 } from './units';
 import type { AbilityId } from './abilities';
 import {
+  flushStore,
   getServerStatus,
   onServerStatus,
-  serverStatusLabel,
+  type ServerStatus,
   syncFromServer,
 } from './sync';
 import { hasWonLevel, recordLevelWin } from './progress';
 import pkg from '../package.json';
 
+const APP_NAME = 'There Will Be Legions';
 const APP_VERSION = pkg.version;
-document.title = `Chess Army — v${APP_VERSION}`;
+document.title = `${APP_NAME} — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
@@ -232,7 +236,7 @@ let animating = false;
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
 let editorOrientation: HexOrientation = DEFAULT_ORIENTATION;
-let editorBrush: EditorBrush = 'water';
+let editorBrush: EditorBrush = 'land';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
 let editorCategory: LevelCategory = 'free';
@@ -369,7 +373,7 @@ function bootState(): GameState {
       return withLevelRules(
         createStateFromTerrain(
           lvl.terrain,
-          lvl.name,
+          levelLabel(lvl),
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
         ),
@@ -391,7 +395,7 @@ function startMatch(reshuffleRandom = true) {
       state = withLevelRules(
         createStateFromTerrain(
           lvl.terrain,
-          lvl.name,
+          levelLabel(lvl),
           lvl.orientation,
           playArmies(lvl.cols, lvl.rows, lvl),
         ),
@@ -400,6 +404,7 @@ function startMatch(reshuffleRandom = true) {
       briefingOpen = !!sanitizeLevelText(lvl.startText);
       applyLayout(computeLayout(), false);
       render();
+      void playPendingFx();
       void maybeAi();
       return;
     }
@@ -422,6 +427,7 @@ function startMatch(reshuffleRandom = true) {
   }
   applyLayout(computeLayout(), false);
   render();
+  void playPendingFx();
   void maybeAi();
 }
 
@@ -463,6 +469,26 @@ function wait(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms));
 }
 
+async function playPendingFx(): Promise<void> {
+  const hits = state.fxHits;
+  const stam = state.fxStamina ?? [];
+  const gains = stam.filter((x) => x.kind === 'gain');
+  const spends = stam.filter((x) => x.kind === 'spend');
+  if (!hits?.length && !gains.length && !spends.length) {
+    if (state.fxHits || state.fxStamina) {
+      state = { ...state, fxHits: undefined, fxStamina: undefined };
+    }
+    return;
+  }
+  state = { ...state, fxHits: undefined, fxStamina: undefined };
+  if (hits?.length) await flashDamaged(hits);
+  if (gains.length || spends.length) {
+    render();
+    if (gains.length) await flashStamina(gains, 'stam-gain');
+    if (spends.length) await flashStamina(spends, 'stam-spend');
+  }
+}
+
 function flashDamaged(
   hits: readonly { id: string; fatal?: boolean; dealt: number }[],
 ): Promise<void> {
@@ -485,6 +511,25 @@ function flashDamaged(
   if (maxN <= 0) return Promise.resolve();
   const blink = reduce ? 140 : HIT_FLASH_MS * maxN;
   return wait(dying && !reduce ? blink + 140 : blink);
+}
+
+function flashStamina(
+  events: readonly { id: string }[],
+  cls: 'stam-gain' | 'stam-spend',
+): Promise<void> {
+  if (!events.length) return Promise.resolve();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let any = false;
+  for (const ev of events) {
+    const el = document.querySelector(`g.piece-unit[data-id="${CSS.escape(ev.id)}"]`);
+    if (!el) continue;
+    el.classList.remove('stam-gain', 'stam-spend');
+    void (el as SVGElement).getBoundingClientRect();
+    el.classList.add(cls);
+    any = true;
+  }
+  if (!any) return Promise.resolve();
+  return wait(reduce ? 140 : HIT_FLASH_MS * 2);
 }
 
 function viewOrientation(): HexOrientation {
@@ -786,7 +831,7 @@ function unitCategoryForPeriod(period: Period): UnitCategory {
 
 function beginEditorSession(): void {
   editorUnitCategory = unitCategoryForPeriod(editorPeriod);
-  editorBrush = 'water';
+  editorBrush = 'land';
   editorArmySide = 'red';
   editorFormationId = STOCK_FORMATION_ID;
   editorFormationName = 'New army';
@@ -811,6 +856,19 @@ function enterLevels(syncPeriod = false) {
   aiThinking = false;
   animating = false;
   render();
+}
+
+function playSavedLevel(id: string) {
+  if (!getLevel(id)) return;
+  playlist = null;
+  mode = 'ai';
+  screen = 'play';
+  activeLevelId = id;
+  setActiveLevelId(id);
+  editorPainting = false;
+  aiThinking = false;
+  animating = false;
+  startMatch(false);
 }
 
 function enterEditor(fromLevelId?: string | null) {
@@ -945,7 +1003,7 @@ function paintEditorHex(col: number, row: number) {
   }
 }
 
-function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false): void {
+async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false): Promise<void> {
   const nameEl = app.querySelector<HTMLInputElement>('#editor-name');
   if (nameEl) editorName = nameEl.value;
   const catEl = app.querySelector<HTMLSelectElement>('#editor-category');
@@ -985,13 +1043,14 @@ function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false): void 
   editorStar3 = saved.star3;
   editorLevelId = saved.id;
   editorName = saved.name;
-  editorDirty = false;
   activeLevelId = saved.id;
   setActiveLevelId(saved.id);
   if (asDefault) {
     defaultLevelId = saved.id;
     setDefaultLevelId(saved.id);
   }
+  const ok = await flushStore();
+  editorDirty = !ok;
   if (thenPlay) {
     editorPainting = false;
     editorPointerAbort?.abort();
@@ -1147,10 +1206,10 @@ function availableActions(pieceId: string): { canMove: boolean; canShoot: boolea
 function highlightsFor(pieceId: string): Highlight[] {
   const piece = getPiece(state, pieceId);
   if (!piece) return [];
+  if (hasActed(state, pieceId)) return [];
   if (
     piece.side === state.turn &&
     canControl() &&
-    !hasActed(state, pieceId) &&
     (!state.scoutPieceId || state.scoutPieceId === pieceId)
   ) {
     return legalHighlights(state, pieceId);
@@ -1197,6 +1256,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
 
   if (action.kind === 'skip') {
     state = applyAction(state, action);
+    await playPendingFx();
     animating = false;
     return;
   }
@@ -1227,6 +1287,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
   }
 
   state = applyAction(state, action);
+  await playPendingFx();
   animating = false;
 }
 
@@ -1239,13 +1300,39 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
   return el;
 }
 
+function shotPoint(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  ctrl: { x: number; y: number } | null,
+  t: number,
+): { x: number; y: number } {
+  if (!ctrl) {
+    return {
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+    };
+  }
+  const u = 1 - t;
+  return {
+    x: u * u * from.x + 2 * u * t * ctrl.x + t * t * to.x,
+    y: u * u * from.y + 2 * u * t * ctrl.y + t * t * to.y,
+  };
+}
+
 async function animateShot(piece: Piece, at: Hex): Promise<void> {
   const from = pixelOf({ col: piece.col, row: piece.row });
   const to = pixelOf(at);
   const stats = UNIT_STATS[piece.type];
+  const arch = stats.shootArc === 'arch';
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const lift = arch ? Math.min(HEX_SIZE * 2.1, Math.max(HEX_SIZE * 0.55, dist * 0.32)) : 0;
+  const ctrl = arch
+    ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - lift }
+    : null;
+  const flightMs = arch ? SHOT_FLIGHT_MS + 70 : SHOT_FLIGHT_MS;
   const svg = document.querySelector('svg.board');
   if (!svg) {
-    await wait(SHOT_FLIGHT_MS);
+    await wait(flightMs);
     return;
   }
 
@@ -1262,14 +1349,19 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     }),
   );
 
-  // aim trail (dashed)
-  const trail = svgEl('line', {
-    class: 'shot-trail',
-    x1: String(from.x),
-    y1: String(from.y),
-    x2: String(to.x),
-    y2: String(to.y),
-  });
+  const trail = arch
+    ? svgEl('path', {
+        class: 'shot-trail arch',
+        fill: 'none',
+        d: `M ${from.x} ${from.y} Q ${ctrl!.x} ${ctrl!.y} ${to.x} ${to.y}`,
+      })
+    : svgEl('line', {
+        class: 'shot-trail',
+        x1: String(from.x),
+        y1: String(from.y),
+        x2: String(to.x),
+        y2: String(to.y),
+      });
   layer.appendChild(trail);
 
   // projectile
@@ -1284,13 +1376,11 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
   const t0 = performance.now();
   await new Promise<void>((resolve) => {
     const tick = (now: number) => {
-      const u = Math.min(1, (now - t0) / SHOT_FLIGHT_MS);
-      // ease-out slightly
+      const u = Math.min(1, (now - t0) / flightMs);
       const e = 1 - (1 - u) * (1 - u);
-      const x = from.x + (to.x - from.x) * e;
-      const y = from.y + (to.y - from.y) * e;
-      bullet.setAttribute('cx', String(x));
-      bullet.setAttribute('cy', String(y));
+      const p = shotPoint(from, to, ctrl, e);
+      bullet.setAttribute('cx', String(p.x));
+      bullet.setAttribute('cy', String(p.y));
       if (u < 1) requestAnimationFrame(tick);
       else resolve();
     };
@@ -1383,6 +1473,17 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   }
 }
 
+async function restSelected() {
+  if (!selectedId || !canRest(selectedId) || animating) return;
+  animating = true;
+  state = restPiece(state, selectedId);
+  await playPendingFx();
+  animating = false;
+  clearSelection();
+  render();
+  await maybeAi();
+}
+
 async function skipScout(nextId?: string) {
   if (!state.scoutPieceId || !canControl()) return;
   await playAnimatedAction({ kind: 'skip' });
@@ -1407,6 +1508,7 @@ async function maybeAi() {
     const action = pickAiAction(state);
     if (!action) {
       state = passTurn(state);
+      await playPendingFx();
       break;
     }
     const turnBefore = state.turn;
@@ -1421,6 +1523,7 @@ async function maybeAi() {
       !state.winner
     ) {
       state = passTurn(state);
+      await playPendingFx();
       break;
     }
     clearSelection();
@@ -1429,6 +1532,7 @@ async function maybeAi() {
   }
   if (state.turn !== humanSide && !state.winner) {
     state = passTurn(state);
+    await playPendingFx();
   }
 
   aiThinking = false;
@@ -1632,6 +1736,16 @@ function renderBoard(): string {
 
   const defs = `
     <defs>
+      <pattern id="land-tex" patternUnits="userSpaceOnUse" width="24" height="22">
+        <rect width="24" height="22" fill="var(--land)"/>
+        <path d="M7 16 L7.6 11 M8.5 16 L7.6 11" fill="none" stroke="var(--land-blade)" stroke-width="0.85" stroke-linecap="round" opacity="0.38"/>
+        <path d="M18 11 L18.5 7.2" fill="none" stroke="var(--land-blade)" stroke-width="0.75" stroke-linecap="round" opacity="0.28"/>
+      </pattern>
+      <pattern id="land-tex-alt" patternUnits="userSpaceOnUse" width="24" height="22">
+        <rect width="24" height="22" fill="var(--land2)"/>
+        <path d="M15 17 L15.6 12 M16.5 17 L15.6 12" fill="none" stroke="var(--land-blade)" stroke-width="0.85" stroke-linecap="round" opacity="0.34"/>
+        <path d="M6 10 L6.4 6.4" fill="none" stroke="var(--land-blade)" stroke-width="0.75" stroke-linecap="round" opacity="0.26"/>
+      </pattern>
       <pattern id="rock-tex" patternUnits="userSpaceOnUse" width="14" height="14">
         <rect width="14" height="14" fill="var(--rock)"/>
         <path d="M0 3 L4 1 L8 4 L6 8 L2 7 Z" fill="var(--rock-hi)" opacity="0.85"/>
@@ -1689,17 +1803,22 @@ function renderBoard(): string {
 
 function endTurnButton(): string {
   if (!canControl()) return '';
-  const used = state.actedIds.length;
-  const max = state.unitsPerTurn;
-  const label = max > 1 ? `End turn (${used}/${max})` : 'End turn';
-  return `<button type="button" id="end-turn">${label}</button>`;
+  return `<button type="button" id="end-turn" class="play-end-turn">End turn</button>`;
+}
+
+function canRest(pieceId: string): boolean {
+  if (!canControl()) return false;
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn) return false;
+  if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
+  if (state.scoutPieceId) return false;
+  return true;
 }
 
 function renderActionBar(): string {
-  const endBtn = endTurnButton();
   const piece = selectedId ? getPiece(state, selectedId) : null;
   if (!piece) {
-    return `<div class="action-bar idle${endBtn ? ' has-end' : ''}"><span class="action-bar-hint">Select a piece</span>${endBtn}</div>`;
+    return `<div class="action-bar idle"><span class="action-bar-hint">Select a piece</span></div>`;
   }
 
   const s = UNIT_STATS[piece.type];
@@ -1729,12 +1848,16 @@ function renderActionBar(): string {
       ? 'A second action is available — finish it or skip'
       : 'Scout still has an action — finish it or skip';
   } else if (hasActed(state, piece.id) && piece.side === state.turn) {
-    hint = 'Already acted this turn';
+    hint = piece.actedThisTurn || piece.movedThisTurn
+      ? 'Already acted this turn'
+      : 'Resting this turn';
   } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
     const n = staminaLeft(piece);
     hint = `A second action costs 1 stamina. ${n} stamina left.`;
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
     hint = 'Second scout action — move, shoot, or skip';
+  } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
+    hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (!canMove && !canShoot) {
     hint = isDepleted(piece)
       ? "Empty — can't shoot"
@@ -1764,8 +1887,13 @@ function renderActionBar(): string {
       ? `<span class="action-flag">${isDepleted(piece) ? 'empty' : 'reloading'}</span>`
       : '';
 
+  const restUi =
+    canRest(piece.id)
+      ? `<button type="button" id="rest-unit">Rest</button>`
+      : '';
+
   return `
-    <div class="action-bar${scoutUi ? ' has-skip' : ''}${endBtn ? ' has-end' : ''}">
+    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
@@ -1773,9 +1901,9 @@ function renderActionBar(): string {
         </svg>
         <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
+        ${restUi}
       </div>
       ${scoutUi}
-      ${endBtn}
       ${extra}
       <span class="action-bar-hint">${hint}</span>
     </div>`;
@@ -1796,7 +1924,7 @@ function renderSidebar(): string {
   if (piece) {
     const s = UNIT_STATS[piece.type];
     const elev = terrainHeight(state.terrain[piece.row][piece.col]);
-    const shootVal = s.shoot + elev;
+    const shootVal = s.shoot > 0 ? s.shoot + elev : 0;
     const shootRange =
       s.shootMin > 1 ? `${s.shootMin}–${shootVal}` : String(shootVal);
     const moveNote = [
@@ -1812,6 +1940,26 @@ function renderSidebar(): string {
     let stamWarn = false;
     if (piece.staminaUsedThisTurn) {
       stamNote = 'used this turn';
+      stamWarn = true;
+    } else if (
+      (piece.actedThisTurn || piece.movedThisTurn) &&
+      curSt < maxSt &&
+      s.staminaRegen > 0
+    ) {
+      stamNote = 'acted — no regen';
+      stamWarn = true;
+    } else if (
+      hasActed(state, piece.id) &&
+      curSt < maxSt &&
+      s.staminaRegen > 0
+    ) {
+      stamNote = 'resting';
+    } else if (
+      state.terrain[piece.row]?.[piece.col] === 'water' &&
+      curSt < maxSt &&
+      s.staminaRegen > 0
+    ) {
+      stamNote = 'no regen in water';
       stamWarn = true;
     } else if (curSt < maxSt && s.staminaRegen > 0) {
       const n = Math.max(1, piece.staminaRegenWait ?? s.staminaRegen);
@@ -1842,7 +1990,7 @@ function renderSidebar(): string {
     const moreRows = [
       statRow(
         'Move',
-        String(s.move + elev),
+        String(s.move > 0 ? s.move + elev : 0),
         [moveNote, elev === 2 ? '+2 from plateau' : elev === 1 ? '+1 from high' : '']
           .filter(Boolean)
           .join(' · '),
@@ -1877,7 +2025,7 @@ function renderSidebar(): string {
               return `${tag}${n > 0 ? '+' : ''}${n}`;
             }).join(' ')
           : `${s.armor > 0 ? '+' : ''}${s.armor}`,
-        s.hexArmor ? 'hex · front follows last move · −2 face blocks walk' : '',
+        s.hexArmor ? 'hex · front follows last move · −2 face blocks walk and shoot' : '',
       ),
     ];
     if (s.ammo > 0) {
@@ -1895,7 +2043,7 @@ function renderSidebar(): string {
     const extraNotes: string[] = [];
     if (s.passWater && s.passUnits) extraNotes.push('Move onto water; pathing through pieces');
     else {
-      if (s.passWater) extraNotes.push('Move onto water (stamina to enter from land)');
+      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; turn-start stamina penalty or 2 HP; no regen)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (s.charge > 0) extraNotes.push(`Charge through ${s.charge} dmg (armor applies; survivors don't block)`);
@@ -1954,22 +2102,22 @@ function renderSidebar(): string {
           ${moreStats}
           <div class="legend">
             <span class="l-move">Move</span>
-            <span class="l-stamina">Stamina (climb / water / extra move)</span>
+            <span class="l-stamina">Stamina (climb / extra move)</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
             <span class="l-shoot-border">Red border = shoot range</span>
           </div>
           <dl class="rules">
-            <div><dt>Water</dt><dd>shoot over. Move to water units can stop on it; entering from land costs stamina</dd></div>
+            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
-            <div><dt>Heights</dt><dd>Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only (no land↔plateau). Climbing / entering water costs stamina. Climb level is the max height a unit can occupy</dd></div>
+            <div><dt>Heights</dt><dd>Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>solid; rockets demolish</dd></div>
-            <div><dt>Stamina</dt><dd>climb, enter water, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
+            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
-            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn</dd></div>
+            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates)</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece</dd></div>
           </dl>
         </details>
@@ -2082,7 +2230,8 @@ function renderEndOverlay(): string {
 function renderStartOverlay(): string {
   if (!briefingBlocks()) return '';
   const text = levelCopy('start');
-  const title = activeSavedLevel()?.name ?? 'Level';
+  const saved = activeSavedLevel();
+  const title = saved ? levelLabel(saved) : 'Level';
   return `
     <div class="end-overlay briefing" role="dialog" aria-label="${escapeHtml(title)}">
       <div class="end-card briefing">
@@ -2319,7 +2468,7 @@ function levelSelectOptions(selectedId: string | null): string {
     for (const l of g.levels) {
       const tag = l.id === defaultLevelId ? ' (default)' : '';
       opts.push(
-        `<option value="${l.id}"${selectedId === l.id ? ' selected' : ''}>${escapeHtml(l.name)}${tag}</option>`,
+        `<option value="${l.id}"${selectedId === l.id ? ' selected' : ''}>${escapeHtml(levelLabel(l))}${tag}</option>`,
       );
     }
     opts.push('</optgroup>');
@@ -2334,17 +2483,52 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function syncStatusHtml(): string {
-  return `<span class="sync-status">${serverStatusLabel(getServerStatus())}</span>`;
+function syncDotState(s: ServerStatus = getServerStatus()): 'ok' | 'off' | 'checking' {
+  if (s === 'ok') return 'ok';
+  if (s === 'checking') return 'checking';
+  return 'off';
+}
+
+function syncDotLabel(s: ServerStatus = getServerStatus()): string {
+  if (s === 'ok') return 'Online';
+  if (s === 'checking') return 'Connecting';
+  if (s === 'err') return 'Server error';
+  return 'Offline';
+}
+
+function appVerHtml(): string {
+  const s = getServerStatus();
+  const state = syncDotState(s);
+  const label = syncDotLabel(s);
+  return `<span class="app-ver">v${APP_VERSION}<span class="sync-dot ${state}" title="${label}" role="img" aria-label="${label}"></span></span>`;
+}
+
+function paintSyncDot(s: ServerStatus = getServerStatus()): void {
+  const state = syncDotState(s);
+  const label = syncDotLabel(s);
+  app.querySelectorAll('.sync-dot').forEach((el) => {
+    el.className = `sync-dot ${state}`;
+    el.setAttribute('title', label);
+    el.setAttribute('aria-label', label);
+  });
+}
+
+function inEditorSection(): boolean {
+  return screen === 'levels' || screen === 'editor' || screen === 'units';
 }
 
 function renderToolbar(): string {
+  const editorNav = inEditorSection()
+    ? `<nav class="editor-nav" aria-label="Level editor">
+        <button type="button" id="editor-nav-levels" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Levels</button>
+        <button type="button" id="editor-nav-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
+      </nav>`
+    : '';
   return `<div class="toolbar">
-    <h1>CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h1>
-    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Start</button>
-    <button type="button" id="open-editor" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Editor</button>
-    <button type="button" id="open-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
-    ${syncStatusHtml()}
+    <h1><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h1>
+    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Play game</button>
+    <button type="button" id="open-editor" class="${inEditorSection() ? 'active' : ''}">Level editor</button>
+    ${editorNav}
   </div>`;
 }
 
@@ -2358,10 +2542,9 @@ function renderStartScreen(): string {
   ).join('');
   return `
     <div class="board-wrap start-wrap">
-      ${renderToolbar()}
       <div class="start-screen">
         <p class="start-kicker">Hex army-chess</p>
-        <h2 class="start-title">CHESS ARMY <span class="app-ver">v${APP_VERSION}</span></h2>
+        <h2 class="start-title"><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h2>
         <p class="start-tag">Kill the enemy General — or the whole army.</p>
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
@@ -2382,6 +2565,10 @@ function renderStartScreen(): string {
             title="${tutorialN ? 'Tutorial maps in alphabetical order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
             <span class="start-opt-name">Tutorial</span>
             <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI · A–Z` : 'No tutorial maps'}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="editor">
+            <span class="start-opt-name">Level editor</span>
+            <span class="start-opt-meta">Levels and units</span>
           </button>
         </div>
       </div>
@@ -2406,12 +2593,23 @@ function bindToolbarEvents() {
       if (kind === 'campaign' || kind === 'tutorial') startPlaylist(kind);
       else if (kind === 'ai') startSkirmish('ai');
       else if (kind === 'hotseat') startSkirmish('hotseat');
+      else if (kind === 'editor') enterLevels(true);
     });
   });
   app.querySelector('#open-editor')?.addEventListener('click', () => {
-    if (screen === 'levels') return;
+    if (inEditorSection()) return;
     if (!confirmLeaveEditor()) return;
     enterLevels(true);
+  });
+  app.querySelector('#editor-nav-levels')?.addEventListener('click', () => {
+    if (screen === 'levels') return;
+    if (!confirmLeaveEditor()) return;
+    enterLevels();
+  });
+  app.querySelector('#editor-nav-units')?.addEventListener('click', () => {
+    if (screen === 'units') return;
+    if (!confirmLeaveEditor()) return;
+    enterUnits();
   });
   app.querySelector('#edit-this-level')?.addEventListener('click', () => {
     if (!activeLevelId) return;
@@ -2419,13 +2617,6 @@ function bindToolbarEvents() {
   });
   app.querySelector('#edit-current-map')?.addEventListener('click', () => {
     enterEditorFromMatch();
-  });
-  app.querySelectorAll('#open-units').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (screen === 'units') return;
-      if (!confirmLeaveEditor()) return;
-      enterUnits();
-    });
   });
 }
 
@@ -2443,7 +2634,14 @@ function terrainSwatchSvg(kind: Terrain): string {
   let stroke = 'var(--hex-stroke)';
   let sw = 1.4;
   let extra = '';
-  if (kind === 'water') {
+  if (kind === 'land') {
+    extra = `<g clip-path="url(#${clipId})">
+      <path d="M-2.4 4.6 L-1.8 0.4 M-0.8 4.6 L-1.8 0.4"
+        fill="none" stroke="var(--land-blade)" stroke-width="0.8" stroke-linecap="round" opacity="0.5"/>
+      <path d="M3.2 3.2 L3.6 0.2"
+        fill="none" stroke="var(--land-blade)" stroke-width="0.7" stroke-linecap="round" opacity="0.38"/>
+    </g>`;
+  } else if (kind === 'water') {
     fill = 'var(--water)';
     stroke = 'var(--water-stroke)';
     extra = `<g clip-path="url(#${clipId})">
@@ -2614,9 +2812,12 @@ function renderLevelRow(l: SavedLevel): string {
     <button type="button" class="level-open" data-edit-level="${l.id}">
       ${renderLevelThumb(l)}
       <span class="level-copy">
-        <span class="level-name">${escapeHtml(l.name)}</span>
+        <span class="level-name">${escapeHtml(levelLabel(l))}</span>
         <span class="lvl-meta">${levelMetaLine(l)}</span>
       </span>
+    </button>
+    <button type="button" class="level-play" data-play-level="${l.id}" title="Play ${escapeHtml(levelLabel(l))}">
+      <svg viewBox="0 0 12 12" width="14" height="14" aria-hidden="true"><path d="M2.2 1.1v9.8L11 6Z" fill="currentColor"/></svg>
     </button>
     <button type="button" class="ghost danger" data-del-level="${l.id}" title="Delete">×</button>
   </li>`;
@@ -2684,7 +2885,7 @@ function renderLevelsOverview(): string {
       <div class="levels-overview">
         <div class="levels-head">
           <h2>Levels</h2>
-          <button type="button" id="level-new">New level</button>
+          <button type="button" id="level-new" class="primary">New level</button>
         </div>
         <div class="levels-filters">${filters}</div>
         <div class="levels-filters levels-filters-period">${periodFilters}</div>
@@ -2728,7 +2929,7 @@ function renderEditorBar(): string {
           <div class="editor-fold-body">
             <div class="editor-save editor-army-save">
               <input type="text" id="army-name" value="${escapeHtml(editorFormationName)}" placeholder="Army name" maxlength="48" />
-              <button type="button" id="army-save">${namedForm ? 'Save' : 'Save new'}</button>
+              <button type="button" id="army-save" class="primary">${namedForm ? 'Save' : 'Save new'}</button>
               <button type="button" id="army-save-as" class="ghost">Save as new</button>
               <button type="button" id="army-save-default" class="${isDefaultForm ? 'active' : ''}">${isDefaultForm ? 'Default army' : 'Save as default'}</button>
               <button type="button" id="army-clear" class="ghost">Clear</button>
@@ -2744,10 +2945,9 @@ function renderEditorBar(): string {
         <div class="editor-panel-head">
           <h3>Level <span id="editor-dirty" class="editor-unsaved"${editorDirty ? '' : ' hidden'}>unsaved</span></h3>
           <div class="editor-panel-head-actions">
-            <button type="button" id="editor-save">${editorLevelId ? 'Save' : 'Save new'}</button>
+            <button type="button" id="editor-save" class="primary">${editorLevelId ? 'Save' : 'Save new'}</button>
             <button type="button" id="editor-save-as" class="ghost">Save as new</button>
             <button type="button" id="editor-play">Play</button>
-            <button type="button" id="editor-back" class="ghost">Levels</button>
           </div>
         </div>
         <div class="level-settings">
@@ -2784,6 +2984,7 @@ function renderEditorBar(): string {
           </label>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
+            <p class="muted star-turns-hint">Turns = full rounds, counted when the starting player begins again (after everyone else has played).</p>
             <div class="star-rule-row locked">
               <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
               <span class="star-rule-n">1</span>
@@ -3023,6 +3224,38 @@ function renderUnitEditor(): string {
       <div class="editor-save">
         <button type="button" id="units-reset" class="ghost">Reset to stock</button>
       </div>
+      <details class="units-help">
+        <summary>Help</summary>
+        <p class="muted">Live immediately. New match to respawn ammo and HP.</p>
+        <dl class="help-list">
+          <dt>Piece</dt>
+          <dd><strong>HP</strong> default 1</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets)</dd>
+          <dd><strong>Value/weight</strong> scoring / AI</dd>
+          <dd><strong>Actions</strong> activations per turn</dd>
+          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock Ancient: Archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy</dd>
+          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower is glyph only</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
+          <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
+          <dt>Move</dt>
+          <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
+          <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
+          <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
+          <dd><strong>Climb level</strong> max height: 0 land, Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only</dd>
+          <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
+          <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
+          <dt>Shoot</dt>
+          <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
+          <dd><strong>DMG</strong> bullets</dd>
+          <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
+          <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
+          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (wall / higher ground) unchanged</dd>
+          <dd><strong>Min range</strong> closest hex you can fire</dd>
+          <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
+        </dl>
+      </details>
     </div>`;
 }
 
@@ -3184,10 +3417,10 @@ function bindEditorEvents() {
     render();
   });
   app.querySelector('#editor-play')?.addEventListener('click', () =>
-    doSaveLevel(false, false, true),
+    void doSaveLevel(false, false, true),
   );
-  app.querySelector('#editor-save')?.addEventListener('click', () => doSaveLevel(false));
-  app.querySelector('#editor-save-as')?.addEventListener('click', () => doSaveLevel(true));
+  app.querySelector('#editor-save')?.addEventListener('click', () => void doSaveLevel(false));
+  app.querySelector('#editor-save-as')?.addEventListener('click', () => void doSaveLevel(true));
   app.querySelector('#editor-clear')?.addEventListener('click', () => {
     const { cols, rows } = currentGrid();
     editorTerrain = emptyTerrain(cols, rows);
@@ -3264,7 +3497,7 @@ function bindEditorEvents() {
       render();
     });
   });
-  const doSaveFormation = (asNew: boolean, asDefault = false) => {
+  const doSaveFormation = async (asNew: boolean, asDefault = false) => {
     const nameEl = app.querySelector<HTMLInputElement>('#army-name');
     if (nameEl) editorFormationName = nameEl.value;
     const { cols, rows } = currentGrid();
@@ -3273,6 +3506,7 @@ function bindEditorEvents() {
       defaultFormationId = null;
       setDefaultFormationId(null);
       editorFormationId = STOCK_FORMATION_ID;
+      await flushStore();
       render();
       return;
     }
@@ -3287,12 +3521,13 @@ function bindEditorEvents() {
       defaultFormationId = saved.id;
       setDefaultFormationId(saved.id);
     }
+    await flushStore();
     render();
   };
-  app.querySelector('#army-save')?.addEventListener('click', () => doSaveFormation(false));
-  app.querySelector('#army-save-as')?.addEventListener('click', () => doSaveFormation(true));
+  app.querySelector('#army-save')?.addEventListener('click', () => void doSaveFormation(false));
+  app.querySelector('#army-save-as')?.addEventListener('click', () => void doSaveFormation(true));
   app.querySelector('#army-save-default')?.addEventListener('click', () =>
-    doSaveFormation(false, true),
+    void doSaveFormation(false, true),
   );
   app.querySelector('#army-clear')?.addEventListener('click', () => {
     editorPieces = editorPieces.filter((p) => p.side !== editorArmySide);
@@ -3331,12 +3566,8 @@ function bindEditorEvents() {
         editorFormationName = 'New army';
       }
       if (defaultFormationId === id) defaultFormationId = null;
-      render();
+      void flushStore().then(() => render());
     });
-  });
-  app.querySelector('#editor-back')?.addEventListener('click', () => {
-    if (!confirmLeaveEditor()) return;
-    enterLevels();
   });
   bindEditorBoard();
 }
@@ -3365,6 +3596,12 @@ function bindLevelsEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-edit-level]').forEach((btn) => {
     btn.addEventListener('click', () => enterEditor(btn.dataset.editLevel));
   });
+  app.querySelectorAll<HTMLButtonElement>('[data-play-level]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playSavedLevel(btn.dataset.playLevel!);
+    });
+  });
   app.querySelectorAll<HTMLButtonElement>('[data-del-level]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -3384,7 +3621,7 @@ function bindLevelsEvents() {
       }
       if (defaultLevelId === id) defaultLevelId = null;
       if (activeLevelId === id) activeLevelId = getActiveLevelId();
-      render();
+      void flushStore().then(() => render());
     });
   });
 }
@@ -3433,12 +3670,20 @@ function bindEvents() {
   app.querySelector('#skip-scout')?.addEventListener('click', () => {
     void skipScout();
   });
+  app.querySelector('#rest-unit')?.addEventListener('click', () => {
+    void restSelected();
+  });
   app.querySelector('#end-turn')?.addEventListener('click', () => {
-    if (!canControl()) return;
-    state = passTurn(state);
-    clearSelection();
-    render();
-    void maybeAi();
+    void (async () => {
+      if (!canControl() || animating) return;
+      animating = true;
+      state = passTurn(state);
+      await playPendingFx();
+      animating = false;
+      clearSelection();
+      render();
+      void maybeAi();
+    })();
   });
   app.querySelector('.hex-choice')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -3475,7 +3720,10 @@ function render() {
   maybeRecordLevelWin();
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
-  app.classList.toggle('start-screen', screen === 'start' || screen === 'levels');
+  app.classList.toggle(
+    'start-screen',
+    screen === 'start' || screen === 'levels' || screen === 'units',
+  );
 
   if (screen === 'start') {
     app.innerHTML = renderStartScreen();
@@ -3491,42 +3739,10 @@ function render() {
 
   if (screen === 'units') {
     app.innerHTML = `
-      <div class="board-wrap unit-editor-wrap">
+      <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
         ${renderUnitEditor()}
       </div>
-      <aside class="sidebar">
-        <h2>Units</h2>
-        <p class="muted">Live immediately. New match to respawn ammo and HP.</p>
-        <dl class="help-list">
-          <dt>Piece</dt>
-          <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked (those hexes are not legal move dests)</dd>
-          <dd><strong>Value/weight</strong> scoring / AI</dd>
-          <dd><strong>Actions</strong> activations per turn</dd>
-          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock Ancient: Archer, Cohort, Hoplite, Elephant, Barbarian, Catapult</dd>
-          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower is glyph only</dd>
-          <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
-          <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
-          <dt>Move</dt>
-          <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
-          <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, enter water from land, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
-          <dd><strong>Move to water</strong> stop on water hexes. Entering from land spends stamina like a climb</dd>
-          <dd><strong>Climb level</strong> max height: 0 land, Hill lv1, Plateau lvl2, Mountain lvl3. Step ±1 only</dd>
-          <dd><strong>Stam regen</strong> own turns to recover 1. Walking resets (that End still counts). Point lands only on an idle End. 0 = never</dd>
-          <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
-          <dt>Shoot</dt>
-          <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
-          <dd><strong>DMG</strong> bullets</dd>
-          <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
-          <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
-          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (wall / higher ground) unchanged</dd>
-          <dd><strong>Min range</strong> closest hex you can fire</dd>
-          <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
-        </dl>
-      </aside>
     `;
     bindEvents();
     return;
@@ -3546,9 +3762,9 @@ function render() {
         ${renderEditorBar()}
       </div>
       <aside class="sidebar">
-        <h2>Editor</h2>
+        <h2>Level editor</h2>
         <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lv1), Plateau (lvl2), Mountain (lvl3), and concrete wall. Heights connect by ±1 — no land↔plateau jumps. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels returns to the library. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start (A–Z), <strong>Free</strong> is skirmish-only.</p>
+        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> playlists on Start (A–Z), <strong>Free</strong> is skirmish-only.</p>
       </aside>
     `;
     bindEvents();
@@ -3564,7 +3780,7 @@ function render() {
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
         ${skipBtn}
-        <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${pl.index + 1} / ${pl.ids.length}${plLvl ? ` · ${escapeHtml(plLvl.name)}` : ''}</span>
+        <span class="playlist-progress">${pl.kind === 'campaign' ? 'Campaign' : 'Tutorial'} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`
     : !activeLevelId
     ? `<div class="map-params">
@@ -3575,7 +3791,7 @@ function render() {
         <label>Walls <input type="number" id="map-wall" min="0" max="${maxT}" value="${mapOpts.wallCount}" /></label>
         <button type="button" id="new-map">New map</button>
         <button type="button" id="edit-current-map">Edit this map</button>
-        <span class="map-hint">mid belt · climb / water costs stamina · heights ±1 · elevation +shoot / dest −range</span>
+        <span class="map-hint">mid belt · climb costs stamina · water 1 hex/action, turn-start stamina penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
@@ -3602,6 +3818,7 @@ function render() {
       <div class="board-stage">
         ${renderBoard()}
         ${renderHexChoice()}
+        ${endTurnButton()}
         ${state.winner ? renderEndOverlay() : renderStartOverlay()}
       </div>
       ${renderActionBar()}
@@ -3618,8 +3835,7 @@ function scheduleLayoutRefresh() {
 }
 
 onServerStatus((s) => {
-  const el = app.querySelector('.sync-status');
-  if (el) el.textContent = serverStatusLabel(s);
+  paintSyncDot(s);
 });
 
 async function initServerSync(): Promise<void> {
@@ -3636,8 +3852,7 @@ async function initServerSync(): Promise<void> {
     render();
     return;
   }
-  const el = app.querySelector('.sync-status');
-  if (el) el.textContent = serverStatusLabel();
+  paintSyncDot();
 }
 
 render();

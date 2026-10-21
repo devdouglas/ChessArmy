@@ -1,4 +1,13 @@
-import { hasGeneral, statsOf, type GameState, type Piece, type Side, type Terrain, type UnitType } from './engine';
+import {
+  beginSideTurn,
+  hasGeneral,
+  statsOf,
+  type GameState,
+  type Piece,
+  type Side,
+  type Terrain,
+  type UnitType,
+} from './engine';
 import { defaultFacing, neighbors, type HexOrientation } from './hex';
 
 export const COLS = 11;
@@ -405,7 +414,7 @@ function freshGame(
     ? piecesFromStamps(armies.filter(inBounds))
     : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)];
   const king = (side: Side) => hasGeneral(pieces, side);
-  return {
+  const state: GameState = {
     cols,
     rows,
     orientation,
@@ -420,10 +429,13 @@ function freshGame(
     hadKing: { red: king('red'), blue: king('blue') },
     unitsPerTurn: 1,
     actedIds: [],
+    startingSide: 'red',
     turnNumber: 1,
     casualties: { red: 0, blue: 0 },
     log: [log],
   };
+  beginSideTurn(state);
+  return state;
 }
 
 export function createInitialState(

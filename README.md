@@ -1,4 +1,4 @@
-# Chess Army
+# There Will Be Legions
 
 Hex army-chess. Kill the enemy **General** (only if they fielded one), or every enemy piece. You are **Red**. Default is vs AI (Blue); **Hotseat** is two humans.
 
@@ -15,14 +15,14 @@ npm run dev
 
 Open **http://localhost:5174/warchess/**
 
-Vite executes `*.php` via php-cgi. Toolbar should say **server**, not **local only**. Port **5174** is pinned (`strictPort`). Base path is `/warchess/` so a production drop-in is `https://host/warchess/`.
+Vite executes `*.php` via php-cgi. Version number shows a **green** dot when the store is up, **red** when offline. Port **5174** is pinned (`strictPort`). Base path is `/warchess/` so a production drop-in is `https://host/warchess/`.
 
 ```bash
 npm run build    # dist/, including api.php
 npm run preview  # same PHP middleware against dist/
 ```
 
-Without php-cgi the board still runs; saves stay in `localStorage` and the badge reads **local only**.
+Without php-cgi the board still runs; saves stay in `localStorage` and the version dot stays red.
 
 ## Units (stock)
 
@@ -77,7 +77,7 @@ Saved levels have a category: `campaign` | `tutorial` | `free` (old saves → fr
 `public/api.php` reads/writes `public/data.json`: units, levels, formations, default IDs.
 
 - `GET /warchess/api.php` → JSON store
-- `POST` with header `X-Warchess-Key: warchess-oneshot` overwrites it (512 KB cap)
+- `POST` with header `X-Warchess-Key: warchess-oneshot` overwrites it (2 MB cap)
 
 The client pulls on boot, then debounced-pushes on every persist. Empty server + local data seeds the file. Key is in `public/api.php` (`$SAVE_KEY`) and `src/sync.ts`.
 

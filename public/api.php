@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 $SAVE_KEY = 'warchess-oneshot';
 $DATA_FILE = __DIR__ . '/data.json';
-$MAX_BYTES = 512000;
+$MAX_BYTES = 2000000;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -103,9 +103,16 @@ function allowed_unit(mixed $type): bool {
         'bazooka' => true,
         'sniper' => true,
         'archer' => true,
+        'cohort' => true,
+        'hoplite' => true,
+        'elephant' => true,
+        'barbarian' => true,
+        'catapult' => true,
         'tank' => true,
         'general' => true,
         'tower' => true,
+        'dummy' => true,
+        'peasant' => true,
     ];
     if (!is_string($type) || strlen($type) > 40) {
         return false;

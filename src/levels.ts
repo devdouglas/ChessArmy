@@ -242,6 +242,18 @@ export function levelsInCategory(
     );
 }
 
+/** 1-based index among same category + period, A–Z. */
+export function levelOrdinal(level: SavedLevel): number {
+  return (
+    levelsInCategory(level.category, level.period).findIndex((l) => l.id === level.id) + 1
+  );
+}
+
+export function levelLabel(level: SavedLevel): string {
+  const n = levelOrdinal(level);
+  return n > 0 ? `lvl.${n}` : 'lvl.?';
+}
+
 export function saveLevel(
   name: string,
   terrain: Terrain[][],

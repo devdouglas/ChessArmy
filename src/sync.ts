@@ -47,13 +47,6 @@ function setStatus(next: ServerStatus): void {
   for (const fn of listeners) fn(next);
 }
 
-export function serverStatusLabel(s: ServerStatus = status): string {
-  if (s === 'checking') return 'server…';
-  if (s === 'ok') return 'server';
-  if (s === 'err') return 'server error';
-  return 'local only';
-}
-
 async function pullStore(): Promise<ServerStore | null> {
   try {
     const res = await fetch(API_URL, {
@@ -74,6 +67,15 @@ async function pullStore(): Promise<ServerStore | null> {
   } catch {
     return null;
   }
+}
+
+function newestUpdatedAt(items: { updatedAt?: number }[]): number {
+  let max = 0;
+  for (const item of items) {
+    const n = Number(item?.updatedAt) || 0;
+    if (n > max) max = n;
+  }
+  return max;
 }
 
 export async function pushStore(): Promise<boolean> {
@@ -106,6 +108,13 @@ export async function pushStore(): Promise<boolean> {
   }
 }
 
+/** Cancel the debounce and POST now. Save buttons should await this. */
+export async function flushStore(): Promise<boolean> {
+  window.clearTimeout(timer);
+  timer = 0;
+  return pushStore();
+}
+
 function queuePush(): void {
   window.clearTimeout(timer);
   timer = window.setTimeout(() => {
@@ -125,14 +134,18 @@ export async function syncFromServer(): Promise<{
   }
 
   const localLevels = listLevels();
+  const localForms = listFormations();
   const serverEmpty =
     remote.levels.length === 0 &&
     !remote.units &&
     remote.formations.length === 0;
-  if (
-    serverEmpty &&
-    (localLevels.length > 0 || !unitStatsAreStock() || listFormations().length > 0)
-  ) {
+  const shouldPushLocal =
+    (serverEmpty &&
+      (localLevels.length > 0 || !unitStatsAreStock() || localForms.length > 0)) ||
+    (!serverEmpty &&
+      Math.max(newestUpdatedAt(localLevels), newestUpdatedAt(localForms)) >
+        Math.max(newestUpdatedAt(remote.levels), newestUpdatedAt(remote.formations)));
+  if (shouldPushLocal) {
     const ok = await pushStore();
     if (!ok) setStatus('err');
     return { applied: false, defaultLevelId: getDefaultLevelId() };
@@ -167,3 +180,9 @@ export async function syncFromServer(): Promise<{
 }
 
 setPersistHook(queuePush);
+
+window.addEventListener('pagehide', () => {
+  window.clearTimeout(timer);
+  timer = 0;
+  void pushStore();
+});
