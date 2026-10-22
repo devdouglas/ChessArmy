@@ -3,3 +3,6 @@ dist/
 *.local
 .DS_Store
 .vite/
+public/data/.lock
+public/data/*.tmp
+public/data/levels/*.tmp

@@ -23,6 +23,7 @@ import { notifyPersist } from './persist-hook';
 import { getSelectedPeriod, sanitizePeriod, type Period } from './period';
 
 const STORAGE_KEY = 'chessarmy-levels-v1';
+const DELETED_KEY = 'chessarmy-levels-deleted-v1';
 const ACTIVE_KEY = 'chessarmy-active-level';
 const DEFAULT_KEY = 'chessarmy-default-level';
 const FILTER_KEY = 'chessarmy-levels-filter';
@@ -319,6 +320,48 @@ function writeLevels(levels: SavedLevel[]): void {
   notifyPersist();
 }
 
+function readDeletedLevels(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [id, ts] of Object.entries(parsed)) {
+      const n = Number(ts);
+      if (id && Number.isFinite(n) && n > 0) out[id] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeDeletedLevels(map: Record<string, number>): void {
+  localStorage.setItem(DELETED_KEY, JSON.stringify(map));
+}
+
+export function listDeletedLevels(): Record<string, number> {
+  return readDeletedLevels();
+}
+
+export function replaceDeletedLevels(map: Record<string, number>): void {
+  writeDeletedLevels(map);
+}
+
+function forgetDeletedLevel(id: string): void {
+  const map = readDeletedLevels();
+  if (!(id in map)) return;
+  delete map[id];
+  writeDeletedLevels(map);
+}
+
+function rememberDeletedLevel(id: string): void {
+  const map = readDeletedLevels();
+  map[id] = Date.now();
+  writeDeletedLevels(map);
+}
+
 /** Replace the local library (used when pulling from the server). */
 export function replaceLevels(levels: SavedLevel[]): void {
   writeLevels(normalizeLevels(levels));
@@ -429,6 +472,7 @@ export function saveLevel(
       updatedAt: now,
     };
     levels[prevIdx] = updated;
+    forgetDeletedLevel(updated.id);
     writeLevels(levels);
     return updated;
   }
@@ -456,11 +500,13 @@ export function saveLevel(
     updatedAt: now,
   };
   levels.unshift(created);
+  forgetDeletedLevel(created.id);
   writeLevels(levels);
   return created;
 }
 
 export function deleteLevel(id: string): void {
+  rememberDeletedLevel(id);
   writeLevels(listLevels().filter((l) => l.id !== id));
   if (getActiveLevelId() === id) setActiveLevelId(null);
   if (getDefaultLevelId() === id) setDefaultLevelId(null);

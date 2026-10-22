@@ -1,0 +1,102 @@
+{
+    "id": "lvl-mvj4iz0c-2wdez",
+    "name": "Fare well peasant life",
+    "cols": 5,
+    "rows": 6,
+    "orientation": "pointy",
+    "terrain": [
+        [
+            "high",
+            "high",
+            "high",
+            "land",
+            "water"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "startText": "Welcome peasant. Let me see what you got. \nMove and hit those scarecrows to the ground. \nManage your energy to climb to higher ground or swim. \nRest when needed because you are out of shape!",
+    "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
+    "loseText": "You almost drowned you idiot! Take a rest before you swim. You need your energy. And also, its not a good idea to fight from the water.",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 0,
+    "updatedAt": 1792655973855,
+    "armies": [
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 5,
+            "side": "red"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 0,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 4,
+            "row": 2,
+            "side": "blue"
+        }
+    ]
+}

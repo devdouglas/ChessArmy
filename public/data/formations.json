@@ -1,0 +1,123 @@
+[
+    {
+        "id": "frm-mvdq91ik-flfu9",
+        "name": "Minimal army",
+        "cols": 8,
+        "slots": [
+            {
+                "type": "soldier",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 4,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "general",
+                "col": 4,
+                "fromBack": 0
+            },
+            {
+                "type": "scout",
+                "col": 0,
+                "fromBack": 1
+            },
+            {
+                "type": "scout",
+                "col": 1,
+                "fromBack": 1
+            },
+            {
+                "type": "sniper",
+                "col": 5,
+                "fromBack": 0
+            }
+        ],
+        "updatedAt": 1792322014700
+    },
+    {
+        "id": "frm-mvdhx8st-xjpm1",
+        "name": "Standard",
+        "cols": 11,
+        "slots": [
+            {
+                "type": "sniper",
+                "col": 1,
+                "fromBack": 0
+            },
+            {
+                "type": "scout",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "bazooka",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "tank",
+                "col": 4,
+                "fromBack": 0
+            },
+            {
+                "type": "soldier",
+                "col": 1,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 2,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 8,
+                "fromBack": 1
+            },
+            {
+                "type": "general",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "soldier",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
+                "type": "sniper",
+                "col": 9,
+                "fromBack": 0
+            },
+            {
+                "type": "scout",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "bazooka",
+                "col": 7,
+                "fromBack": 0
+            }
+        ],
+        "updatedAt": 1792308027341
+    }
+]

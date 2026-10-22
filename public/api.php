@@ -1,13 +1,23 @@
 <?php
 /**
- * Warchess shared store. GET reads data.json, POST overwrites it.
+ * Warchess shared store.
+ * GET returns the assembled catalog. POST merges by id (newer updatedAt wins)
+ * into per-level files under data/levels/<id>.json. Missing-from-POST maps
+ * are kept. Deletes need a newer tombstone in deletedLevels.
  * Optional $SAVE_KEY: send the same value as header X-Warchess-Key.
  */
 declare(strict_types=1);
 
 $SAVE_KEY = 'warchess-oneshot';
 $DATA_FILE = __DIR__ . '/data.json';
+$DATA_DIR = __DIR__ . '/data';
+$LEVELS_DIR = $DATA_DIR . '/levels';
+$UNITS_FILE = $DATA_DIR . '/units.json';
+$FORMS_FILE = $DATA_DIR . '/formations.json';
+$META_FILE = $DATA_DIR . '/meta.json';
+$LOCK_FILE = $DATA_DIR . '/.lock';
 $MAX_BYTES = 2000000;
+$MAX_LEVELS = 80;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -33,22 +43,36 @@ function empty_store(): array {
         'defaultLevelId' => null,
         'formations' => [],
         'defaultFormationId' => null,
+        'deletedLevels' => [],
+        'deletedFormations' => [],
     ];
 }
 
-function read_store(string $file): array {
+function safe_item_id(string $id): bool {
+    return (bool) preg_match('/^[a-zA-Z0-9._-]{1,80}$/', $id);
+}
+
+function decode_json_file(string $file): mixed {
     if (!is_file($file)) {
-        return empty_store();
+        return null;
     }
     $raw = file_get_contents($file);
     if ($raw === false || $raw === '') {
-        return empty_store();
+        return null;
     }
-    $data = json_decode($raw, true);
+    return json_decode($raw, true);
+}
+
+function read_legacy_store(string $file): array {
+    $data = decode_json_file($file);
     if (!is_array($data)) {
         return empty_store();
     }
     return sanitize_store($data);
+}
+
+function read_store(string $file): array {
+    return read_legacy_store($file);
 }
 
 function sanitize_store(array $data): array {
@@ -93,7 +117,35 @@ function sanitize_store(array $data): array {
         'defaultLevelId' => $default,
         'formations' => $formations,
         'defaultFormationId' => $defaultForm,
+        'deletedLevels' => sanitize_deleted($data['deletedLevels'] ?? null),
+        'deletedFormations' => sanitize_deleted($data['deletedFormations'] ?? null),
     ];
+}
+
+function sanitize_deleted(mixed $raw): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $out = [];
+    $n = 0;
+    foreach ($raw as $id => $ts) {
+        if ($n >= 200) {
+            break;
+        }
+        if (!is_string($id) || !safe_item_id($id)) {
+            continue;
+        }
+        if (!is_numeric($ts)) {
+            continue;
+        }
+        $t = (int) $ts;
+        if ($t <= 0) {
+            continue;
+        }
+        $out[$id] = $t;
+        $n++;
+    }
+    return $out;
 }
 
 function allowed_unit(mixed $type): bool {
@@ -385,8 +437,265 @@ function sanitize_level(mixed $level): ?array {
     return $out;
 }
 
+function ensure_dir(string $dir): void {
+    if (is_dir($dir)) {
+        return;
+    }
+    if (!mkdir($dir, 0775, true) && !is_dir($dir)) {
+        fail(500, 'cannot create data dir');
+    }
+    @chmod($dir, 0775);
+}
+
+function split_initialized(): bool {
+    global $META_FILE, $LEVELS_DIR;
+    if (is_file($META_FILE)) {
+        return true;
+    }
+    if (!is_dir($LEVELS_DIR)) {
+        return false;
+    }
+    $files = glob($LEVELS_DIR . '/*.json') ?: [];
+    return $files !== [];
+}
+
+function newest_cap(array $items, int $max): array {
+    if (count($items) <= $max) {
+        return array_values($items);
+    }
+    usort($items, static function (array $a, array $b): int {
+        return ((int) ($b['updatedAt'] ?? 0)) <=> ((int) ($a['updatedAt'] ?? 0));
+    });
+    return array_slice($items, 0, $max);
+}
+
+function merge_deleted(array $a, array $b): array {
+    $out = $a;
+    foreach ($b as $id => $ts) {
+        $out[$id] = max((int) ($out[$id] ?? 0), (int) $ts);
+    }
+    return $out;
+}
+
+function merge_items(array $a, array $b, array $deleted): array {
+    $map = [];
+    foreach (array_merge($a, $b) as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $id = $item['id'] ?? '';
+        if (!is_string($id) || $id === '') {
+            continue;
+        }
+        $updated = (int) ($item['updatedAt'] ?? 0);
+        if (((int) ($deleted[$id] ?? 0)) >= $updated) {
+            continue;
+        }
+        $prev = $map[$id] ?? null;
+        if ($prev === null || $updated >= (int) ($prev['updatedAt'] ?? 0)) {
+            $map[$id] = $item;
+        }
+    }
+    return array_values($map);
+}
+
+function prune_deleted(array $deleted, array $items): array {
+    foreach ($items as $item) {
+        $id = $item['id'] ?? '';
+        if (!is_string($id) || $id === '') {
+            continue;
+        }
+        if (((int) ($deleted[$id] ?? 0)) < (int) ($item['updatedAt'] ?? 0)) {
+            unset($deleted[$id]);
+        }
+    }
+    return $deleted;
+}
+
+function merge_store(array $existing, array $incoming): array {
+    global $MAX_LEVELS;
+    $deletedLevels = merge_deleted(
+        $existing['deletedLevels'] ?? [],
+        $incoming['deletedLevels'] ?? [],
+    );
+    $deletedForms = merge_deleted(
+        $existing['deletedFormations'] ?? [],
+        $incoming['deletedFormations'] ?? [],
+    );
+    $levels = newest_cap(
+        merge_items($existing['levels'] ?? [], $incoming['levels'] ?? [], $deletedLevels),
+        $MAX_LEVELS,
+    );
+    $formations = newest_cap(
+        merge_items($existing['formations'] ?? [], $incoming['formations'] ?? [], $deletedForms),
+        $MAX_LEVELS,
+    );
+    $deletedLevels = prune_deleted($deletedLevels, $levels);
+    $deletedForms = prune_deleted($deletedForms, $formations);
+    $units = $incoming['units'] ?? null;
+    if (!is_array($units)) {
+        $units = $existing['units'] ?? null;
+    }
+    $defaultLevel = $incoming['defaultLevelId'] ?? null;
+    if (!is_string($defaultLevel) || $defaultLevel === '') {
+        $defaultLevel = $existing['defaultLevelId'] ?? null;
+    }
+    $defaultForm = $incoming['defaultFormationId'] ?? null;
+    if (!is_string($defaultForm) || $defaultForm === '' || $defaultForm === 'stock') {
+        $defaultForm = $existing['defaultFormationId'] ?? null;
+    }
+    return [
+        'units' => is_array($units) ? $units : null,
+        'levels' => $levels,
+        'defaultLevelId' => is_string($defaultLevel) && $defaultLevel !== '' ? $defaultLevel : null,
+        'formations' => $formations,
+        'defaultFormationId' => is_string($defaultForm) && $defaultForm !== '' && $defaultForm !== 'stock'
+            ? $defaultForm
+            : null,
+        'deletedLevels' => $deletedLevels,
+        'deletedFormations' => $deletedForms,
+    ];
+}
+
+function assemble_split_store(): array {
+    global $LEVELS_DIR, $UNITS_FILE, $FORMS_FILE, $META_FILE;
+    $meta = decode_json_file($META_FILE);
+    if (!is_array($meta)) {
+        $meta = [];
+    }
+    $units = decode_json_file($UNITS_FILE);
+    $forms = decode_json_file($FORMS_FILE);
+    $levels = [];
+    if (is_dir($LEVELS_DIR)) {
+        foreach (glob($LEVELS_DIR . '/*.json') ?: [] as $file) {
+            $id = basename($file, '.json');
+            if (!safe_item_id($id)) {
+                continue;
+            }
+            $row = decode_json_file($file);
+            if (is_array($row)) {
+                $levels[] = $row;
+            }
+        }
+    }
+    usort($levels, static function (array $a, array $b): int {
+        return ((int) ($b['updatedAt'] ?? 0)) <=> ((int) ($a['updatedAt'] ?? 0));
+    });
+    return sanitize_store([
+        'units' => is_array($units) ? $units : null,
+        'levels' => $levels,
+        'defaultLevelId' => $meta['defaultLevelId'] ?? null,
+        'formations' => is_array($forms) ? $forms : [],
+        'defaultFormationId' => $meta['defaultFormationId'] ?? null,
+        'deletedLevels' => $meta['deletedLevels'] ?? [],
+        'deletedFormations' => $meta['deletedFormations'] ?? [],
+    ]);
+}
+
+function read_live_store(): array {
+    global $DATA_FILE;
+    if (split_initialized()) {
+        return assemble_split_store();
+    }
+    return read_legacy_store($DATA_FILE);
+}
+
+function as_json_map(array $map): array|object {
+    return $map === [] ? new stdClass() : $map;
+}
+
+function store_for_json(array $store): array {
+    $store['deletedLevels'] = as_json_map($store['deletedLevels'] ?? []);
+    $store['deletedFormations'] = as_json_map($store['deletedFormations'] ?? []);
+    return $store;
+}
+
+function write_json_file(string $file, mixed $data): void {
+    $json = json_encode(
+        $data,
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT,
+    );
+    if ($json === false) {
+        fail(500, 'encode failed');
+    }
+    $dir = dirname($file);
+    ensure_dir($dir);
+    $tmp = $file . '.tmp';
+    if (file_put_contents($tmp, $json) === false) {
+        fail(500, 'write failed');
+    }
+    if (!rename($tmp, $file)) {
+        @unlink($tmp);
+        fail(500, 'write failed');
+    }
+    @chmod($file, 0664);
+}
+
+function write_split_store(array $store): void {
+    global $DATA_DIR, $LEVELS_DIR, $UNITS_FILE, $FORMS_FILE, $META_FILE;
+    ensure_dir($DATA_DIR);
+    ensure_dir($LEVELS_DIR);
+    foreach ($store['levels'] as $level) {
+        $id = $level['id'] ?? '';
+        if (!is_string($id) || !safe_item_id($id)) {
+            continue;
+        }
+        write_json_file($LEVELS_DIR . '/' . $id . '.json', $level);
+    }
+    foreach ($store['deletedLevels'] as $id => $_ts) {
+        if (!is_string($id) || !safe_item_id($id)) {
+            continue;
+        }
+        $path = $LEVELS_DIR . '/' . $id . '.json';
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+    write_json_file($UNITS_FILE, $store['units']);
+    write_json_file($FORMS_FILE, $store['formations']);
+    write_json_file($META_FILE, [
+        'defaultLevelId' => $store['defaultLevelId'],
+        'defaultFormationId' => $store['defaultFormationId'],
+        'deletedLevels' => as_json_map($store['deletedLevels']),
+        'deletedFormations' => as_json_map($store['deletedFormations']),
+    ]);
+}
+
+function with_store_lock(int $mode, callable $fn): mixed {
+    global $DATA_DIR, $LOCK_FILE;
+    ensure_dir($DATA_DIR);
+    $fp = fopen($LOCK_FILE, 'c+');
+    if ($fp === false) {
+        fail(500, 'cannot open store lock');
+    }
+    if (!flock($fp, $mode)) {
+        fclose($fp);
+        fail(500, 'lock failed');
+    }
+    try {
+        return $fn();
+    } finally {
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+}
+
 if ($method === 'GET') {
-    echo json_encode(read_store($DATA_FILE), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $store = with_store_lock(LOCK_SH, static function () {
+        return split_initialized() ? assemble_split_store() : null;
+    });
+    if ($store === null) {
+        $store = with_store_lock(LOCK_EX, static function () {
+            global $DATA_FILE;
+            if (split_initialized()) {
+                return assemble_split_store();
+            }
+            $legacy = read_legacy_store($DATA_FILE);
+            write_split_store($legacy);
+            return $legacy;
+        });
+    }
+    echo json_encode(store_for_json($store), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -411,33 +720,11 @@ if (!is_array($incoming)) {
     fail(400, 'invalid json');
 }
 
-$store = sanitize_store($incoming);
-$json = json_encode($store, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-if ($json === false) {
-    fail(500, 'encode failed');
-}
+$store = with_store_lock(LOCK_EX, static function () use ($incoming, $DATA_FILE) {
+    $existing = split_initialized() ? assemble_split_store() : read_legacy_store($DATA_FILE);
+    $merged = merge_store($existing, sanitize_store($incoming));
+    write_split_store($merged);
+    return $merged;
+});
 
-$fp = fopen($DATA_FILE, 'c+');
-if ($fp === false) {
-    fail(500, 'cannot open data.json (php write permissions?)');
-}
-
-if (!flock($fp, LOCK_EX)) {
-    fclose($fp);
-    fail(500, 'lock failed');
-}
-
-ftruncate($fp, 0);
-rewind($fp);
-$ok = fwrite($fp, $json) !== false;
-fflush($fp);
-flock($fp, LOCK_UN);
-fclose($fp);
-
-if (!$ok) {
-    fail(500, 'write failed');
-}
-
-@chmod($DATA_FILE, 0664);
-
-echo json_encode(['ok' => true, 'store' => $store], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok' => true, 'store' => store_for_json($store)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

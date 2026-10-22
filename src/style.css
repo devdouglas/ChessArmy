@@ -736,6 +736,13 @@ button.primary:focus-visible {
   min-width: 0;
 }
 
+.editor-top-army {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .editor-bar {
   grid-template-columns: 1fr;
   max-width: var(--page-max);
@@ -985,22 +992,23 @@ button.primary:focus-visible {
   color: var(--sel);
 }
 
-.editor-army .brush.erase {
+.editor-top-army > .brush.erase {
   display: inline-flex;
   align-items: center;
+  align-self: start;
   gap: 0.35rem;
 }
 
-.editor-army .brush.erase .icon-trash {
+.editor-top-army > .brush.erase .icon-trash {
   color: #c45a4a;
 }
 
-.editor-army .brush.erase.active {
+.editor-top-army > .brush.erase.active {
   border-color: #c45a4a;
   color: #f0b8b0;
 }
 
-.editor-army .brush.erase.active .icon-trash {
+.editor-top-army > .brush.erase.active .icon-trash {
   color: #e07060;
 }
 
@@ -1504,7 +1512,8 @@ button.primary:focus-visible {
 }
 
 .editor-brushes .brush,
-.editor-army .brush {
+.editor-army .brush,
+.editor-top-army > .brush.erase {
   background: var(--panel);
   color: var(--ink);
   border: 1px solid #3a453c;
@@ -1565,10 +1574,6 @@ button.primary:focus-visible {
 .editor-brushes .brush.flag.active {
   border-color: #c9a227;
   color: #f0d060;
-}
-.editor-brushes .brush.token.erase.active {
-  border-color: #c07070;
-  color: #e8a0a0;
 }
 
 .token-layer,
@@ -2922,6 +2927,74 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   fill: #e8a060;
 }
 
+.shot-pips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.08rem;
+  margin-left: 0.12rem;
+}
+
+.shot-pip {
+  display: block;
+  width: 0.62rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+}
+
+.shot-pip.on {
+  fill: #f0d060;
+}
+
+.shot-pip.reload {
+  fill: #e07030;
+}
+
+.shot-pip.off {
+  fill: #4a5248;
+}
+
+.hp-pips,
+.units-pips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.12rem;
+  margin-left: 0.12rem;
+  vertical-align: middle;
+}
+
+.hp-pip,
+.units-pip {
+  display: block;
+  width: 0.48rem;
+  height: 0.72rem;
+  border-radius: 1px;
+  flex: 0 0 auto;
+}
+
+.hp-pip.off,
+.units-pip.off {
+  background: #4a5248;
+}
+
+.hp-pips.red .hp-pip.on,
+.units-pips.red .units-pip.on {
+  background: var(--piece-red);
+}
+.hp-pips.blue .hp-pip.on,
+.units-pips.blue .units-pip.on {
+  background: var(--piece-blue);
+}
+.hp-pips.yellow .hp-pip.on,
+.units-pips.yellow .units-pip.on {
+  background: var(--piece-yellow);
+}
+.hp-pips.purple .hp-pip.on,
+.units-pips.purple .units-pip.on {
+  background: var(--piece-purple);
+}
+
 .action-bar-hint {
   font-size: 0.75rem;
   color: var(--sel);
@@ -3185,7 +3258,9 @@ svg.board.rotate-aim {
   border-bottom: 1px solid #2e362f;
 }
 
-.stat:has(.stam-pips) {
+.stat:has(.stam-pips),
+.stat:has(.shot-pips),
+.stat:has(.hp-pips) {
   align-items: center;
 }
 
@@ -3509,6 +3584,7 @@ svg.board.rotate-aim {
   .map-params button,
   .editor-brushes .brush,
   .editor-army .brush,
+  .editor-top-army > .brush.erase,
   .editor-side,
   .editor-control,
   .editor-save button,
@@ -3618,7 +3694,8 @@ svg.board.rotate-aim {
   }
 
   .editor-brushes .brush,
-  .editor-army .brush {
+  .editor-army .brush,
+  .editor-top-army > .brush.erase {
     flex: 1 1 auto;
     padding: 0.55rem 0.7rem;
     font-size: 0.85rem;

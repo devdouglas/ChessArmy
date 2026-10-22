@@ -1,20 +1,27 @@
 import { UNIT_STATS, type UnitStats, type UnitType } from './engine';
 import {
   getDefaultFormationId,
+  listDeletedFormations,
   listFormations,
+  replaceDeletedFormations,
   replaceFormations,
   setDefaultFormationId,
   type SavedFormation,
 } from './formations';
 import {
   getDefaultLevelId,
+  listDeletedLevels,
   listLevels,
+  replaceDeletedLevels,
   replaceLevels,
   setDefaultLevelId,
   type SavedLevel,
 } from './levels';
 import { setPersistHook, silencePersist } from './persist-hook';
+import { mergeByUpdatedAt, mergeDeleted, pruneDeleted } from './store-merge';
 import { applyRemoteUnitStats, persistUnitStats, unitStatsAreStock } from './units';
+
+export { mergeByUpdatedAt, mergeDeleted, pruneDeleted } from './store-merge';
 
 export type ServerStatus = 'checking' | 'ok' | 'local' | 'err';
 
@@ -24,6 +31,8 @@ export type ServerStore = {
   defaultLevelId: string | null;
   formations: SavedFormation[];
   defaultFormationId: string | null;
+  deletedLevels: Record<string, number>;
+  deletedFormations: Record<string, number>;
 };
 
 const API_URL = `${import.meta.env.BASE_URL}api.php`;
@@ -47,6 +56,16 @@ function setStatus(next: ServerStatus): void {
   for (const fn of listeners) fn(next);
 }
 
+function asDeletedMap(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [id, ts] of Object.entries(raw as Record<string, unknown>)) {
+    const n = Number(ts);
+    if (id && Number.isFinite(n) && n > 0) out[id] = n;
+  }
+  return out;
+}
+
 async function pullStore(): Promise<ServerStore | null> {
   try {
     const res = await fetch(API_URL, {
@@ -55,7 +74,7 @@ async function pullStore(): Promise<ServerStore | null> {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as ServerStore;
+    const data = (await res.json()) as Partial<ServerStore>;
     if (!data || typeof data !== 'object') return null;
     return {
       units: data.units && typeof data.units === 'object' ? data.units : null,
@@ -63,29 +82,42 @@ async function pullStore(): Promise<ServerStore | null> {
       defaultLevelId: data.defaultLevelId ?? null,
       formations: Array.isArray(data.formations) ? data.formations : [],
       defaultFormationId: data.defaultFormationId ?? null,
+      deletedLevels: asDeletedMap(data.deletedLevels),
+      deletedFormations: asDeletedMap(data.deletedFormations),
     };
   } catch {
     return null;
   }
 }
 
-function newestUpdatedAt(items: { updatedAt?: number }[]): number {
-  let max = 0;
-  for (const item of items) {
-    const n = Number(item?.updatedAt) || 0;
-    if (n > max) max = n;
-  }
-  return max;
+function itemStamp(items: { id: string; updatedAt?: number }[]): string {
+  return items
+    .map((item) => `${item.id}:${Number(item.updatedAt) || 0}`)
+    .sort()
+    .join('|');
 }
 
-export async function pushStore(): Promise<boolean> {
-  const body: ServerStore = {
+function deletedStamp(map: Record<string, number>): string {
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, ts]) => `${id}:${ts}`)
+    .join('|');
+}
+
+function localStore(): ServerStore {
+  return {
     units: UNIT_STATS,
     levels: listLevels(),
     defaultLevelId: getDefaultLevelId(),
     formations: listFormations(),
     defaultFormationId: getDefaultFormationId(),
+    deletedLevels: listDeletedLevels(),
+    deletedFormations: listDeletedFormations(),
   };
+}
+
+export async function pushStore(): Promise<boolean> {
+  const body = localStore();
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -122,7 +154,22 @@ function queuePush(): void {
   }, 450);
 }
 
-/** Pull shared JSON; seed the file if the server is empty and we have local data. */
+function applyMerged(store: ServerStore): void {
+  silencePersist(() => {
+    if (store.units) {
+      applyRemoteUnitStats(store.units);
+      persistUnitStats();
+    }
+    replaceLevels(store.levels);
+    replaceDeletedLevels(store.deletedLevels);
+    if (store.defaultLevelId) setDefaultLevelId(store.defaultLevelId);
+    replaceFormations(store.formations);
+    replaceDeletedFormations(store.deletedFormations);
+    if (store.defaultFormationId) setDefaultFormationId(store.defaultFormationId);
+  });
+}
+
+/** Pull shared JSON; merge by id. Newer updatedAt wins that map. */
 export async function syncFromServer(): Promise<{
   applied: boolean;
   defaultLevelId: string | null;
@@ -133,50 +180,59 @@ export async function syncFromServer(): Promise<{
     return { applied: false, defaultLevelId: null };
   }
 
-  const localLevels = listLevels();
-  const localForms = listFormations();
+  const local = localStore();
   const serverEmpty =
     remote.levels.length === 0 &&
     !remote.units &&
     remote.formations.length === 0;
-  const shouldPushLocal =
-    (serverEmpty &&
-      (localLevels.length > 0 || !unitStatsAreStock() || localForms.length > 0)) ||
-    (!serverEmpty &&
-      Math.max(newestUpdatedAt(localLevels), newestUpdatedAt(localForms)) >
-        Math.max(newestUpdatedAt(remote.levels), newestUpdatedAt(remote.formations)));
-  if (shouldPushLocal) {
+  if (
+    serverEmpty &&
+    (local.levels.length > 0 || !unitStatsAreStock() || local.formations.length > 0)
+  ) {
     const ok = await pushStore();
     if (!ok) setStatus('err');
     return { applied: false, defaultLevelId: getDefaultLevelId() };
   }
 
-  let applied = false;
-  silencePersist(() => {
-    if (remote.units) {
-      applyRemoteUnitStats(remote.units);
-      persistUnitStats();
-      applied = true;
-    }
-    if (remote.levels.length > 0) {
-      replaceLevels(remote.levels);
-      applied = true;
-    }
-    if (remote.defaultLevelId) {
-      setDefaultLevelId(remote.defaultLevelId);
-      applied = true;
-    }
-    if (remote.formations.length > 0) {
-      replaceFormations(remote.formations);
-      applied = true;
-    }
-    if (remote.defaultFormationId) {
-      setDefaultFormationId(remote.defaultFormationId);
-      applied = true;
-    }
-  });
-  setStatus('ok');
-  return { applied, defaultLevelId: getDefaultLevelId() };
+  const deletedLevels = pruneDeleted(
+    mergeDeleted(local.deletedLevels, remote.deletedLevels),
+    [...local.levels, ...remote.levels],
+  );
+  const deletedFormations = pruneDeleted(
+    mergeDeleted(local.deletedFormations, remote.deletedFormations),
+    [...local.formations, ...remote.formations],
+  );
+  const merged: ServerStore = {
+    units: remote.units ?? local.units,
+    levels: mergeByUpdatedAt(local.levels, remote.levels, deletedLevels),
+    defaultLevelId: remote.defaultLevelId ?? local.defaultLevelId,
+    formations: mergeByUpdatedAt(local.formations, remote.formations, deletedFormations),
+    defaultFormationId: remote.defaultFormationId ?? local.defaultFormationId,
+    deletedLevels,
+    deletedFormations,
+  };
+
+  const changed =
+    itemStamp(merged.levels) !== itemStamp(local.levels) ||
+    itemStamp(merged.formations) !== itemStamp(local.formations) ||
+    deletedStamp(merged.deletedLevels) !== deletedStamp(local.deletedLevels) ||
+    deletedStamp(merged.deletedFormations) !== deletedStamp(local.deletedFormations);
+
+  if (changed) applyMerged(merged);
+
+  const needsPush =
+    itemStamp(merged.levels) !== itemStamp(remote.levels) ||
+    itemStamp(merged.formations) !== itemStamp(remote.formations) ||
+    deletedStamp(merged.deletedLevels) !== deletedStamp(remote.deletedLevels) ||
+    deletedStamp(merged.deletedFormations) !== deletedStamp(remote.deletedFormations);
+  if (needsPush) {
+    const ok = await pushStore();
+    if (!ok) setStatus('err');
+  } else {
+    setStatus('ok');
+  }
+
+  return { applied: changed, defaultLevelId: getDefaultLevelId() };
 }
 
 setPersistHook(queuePush);

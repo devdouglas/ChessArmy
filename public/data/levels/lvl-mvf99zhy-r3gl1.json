@@ -1,0 +1,146 @@
+{
+    "id": "lvl-mvf99zhy-r3gl1",
+    "name": "0 B Demo",
+    "cols": 8,
+    "rows": 8,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water"
+        ],
+        [
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 6,
+    "updatedAt": 1792656126446,
+    "armies": [
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 4,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 4,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 3,
+            "row": 6,
+            "side": "red"
+        }
+    ]
+}

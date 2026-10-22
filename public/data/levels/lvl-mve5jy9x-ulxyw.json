@@ -1,0 +1,152 @@
+{
+    "id": "lvl-mve5jy9x-ulxyw",
+    "name": "3 Basics: Sniper",
+    "cols": 8,
+    "rows": 8,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "modern",
+    "unitsPerTurn": 10,
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 0,
+    "updatedAt": 1792349684573,
+    "armies": [
+        {
+            "type": "soldier",
+            "col": 1,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 2,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 7,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "sniper",
+            "col": 3,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "soldier",
+            "col": 1,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
+        }
+    ]
+}

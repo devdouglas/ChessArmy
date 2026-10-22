@@ -23,9 +23,9 @@ import { defaultFacing, neighbors, type HexOrientation } from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
-export const MIN_COLS = 8;
+export const MIN_COLS = 5;
 export const MAX_COLS = 21;
-export const MIN_ROWS = 8;
+export const MIN_ROWS = 5;
 export const MAX_ROWS = 21;
 export const DEFAULT_ORIENTATION: HexOrientation = 'pointy';
 

@@ -1,0 +1,197 @@
+{
+    "id": "lvl-mve3iphz-2c49m",
+    "name": "2 Basics: Armor",
+    "cols": 8,
+    "rows": 8,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "rock",
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "modern",
+    "unitsPerTurn": 10,
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [
+        {
+            "type": "wall",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 2,
+            "row": 2
+        }
+    ],
+    "sort": 0,
+    "updatedAt": 1792349670637,
+    "armies": [
+        {
+            "type": "tank",
+            "col": 3,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "general",
+            "col": 1,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 0,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 1,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 2,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 5,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 7,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 1,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "soldier",
+            "col": 6,
+            "row": 0,
+            "side": "blue"
+        }
+    ]
+}

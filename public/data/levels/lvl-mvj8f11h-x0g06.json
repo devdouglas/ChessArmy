@@ -1,0 +1,146 @@
+{
+    "id": "lvl-mvj8f11h-x0g06",
+    "name": "You have my bow!",
+    "cols": 8,
+    "rows": 8,
+    "orientation": "pointy",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "high",
+            "plateau",
+            "plateau",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "high",
+            "water",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "plateau",
+            "land",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "startText": "Welcome peasant. You are still not fit to fight but we can use determined people like you. Here is a bow. Its easy, point the pointy end to the target en release. Also, use the hill to see and shoot further.",
+    "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
+    "loseText": "You almost drowned you idiot. Maybe get to higher ground to reach further.",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 1,
+    "updatedAt": 1792655563528,
+    "armies": [
+        {
+            "type": "archer",
+            "col": 1,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 7,
+            "row": 5,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 5,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 1,
+            "row": 2,
+            "side": "blue"
+        }
+    ]
+}

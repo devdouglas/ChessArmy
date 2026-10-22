@@ -1,0 +1,359 @@
+{
+    "id": "lvl-mvj9k7r2-bl8mo",
+    "name": "Peasant revolt",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "pointy",
+    "terrain": [
+        [
+            "plateau",
+            "plateau",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "plateau",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "plateau",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "plateau",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "water",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "water",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land"
+        ]
+    ],
+    "category": "skirmish",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 0,
+    "updatedAt": 1792657087141,
+    "armies": [
+        {
+            "type": "cohort",
+            "col": 3,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 7,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8vjffgpkd",
+            "col": 6,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 7,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 7,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 7,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 5,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 1,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 10,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 9,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 10,
+            "row": 2,
+            "side": "blue"
+        }
+    ]
+}

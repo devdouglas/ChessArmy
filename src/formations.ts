@@ -11,6 +11,7 @@ import {
 import { notifyPersist } from './persist-hook';
 
 const STORAGE_KEY = 'chessarmy-formations-v1';
+const DELETED_KEY = 'chessarmy-formations-deleted-v1';
 const DEFAULT_KEY = 'chessarmy-default-formation';
 
 export const STOCK_FORMATION_ID = 'stock';
@@ -56,6 +57,48 @@ function normalize(list: SavedFormation[]): SavedFormation[] {
 function write(list: SavedFormation[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   notifyPersist();
+}
+
+function readDeletedFormations(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [id, ts] of Object.entries(parsed)) {
+      const n = Number(ts);
+      if (id && Number.isFinite(n) && n > 0) out[id] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeDeletedFormations(map: Record<string, number>): void {
+  localStorage.setItem(DELETED_KEY, JSON.stringify(map));
+}
+
+export function listDeletedFormations(): Record<string, number> {
+  return readDeletedFormations();
+}
+
+export function replaceDeletedFormations(map: Record<string, number>): void {
+  writeDeletedFormations(map);
+}
+
+function forgetDeletedFormation(id: string): void {
+  const map = readDeletedFormations();
+  if (!(id in map)) return;
+  delete map[id];
+  writeDeletedFormations(map);
+}
+
+function rememberDeletedFormation(id: string): void {
+  const map = readDeletedFormations();
+  map[id] = Date.now();
+  writeDeletedFormations(map);
 }
 
 export function listFormations(): SavedFormation[] {
@@ -111,6 +154,7 @@ export function saveFormation(
         updatedAt: now,
       };
       list[idx] = updated;
+      forgetDeletedFormation(updated.id);
       write(list);
       return updated;
     }
@@ -123,12 +167,14 @@ export function saveFormation(
     updatedAt: now,
   };
   list.unshift(created);
+  forgetDeletedFormation(created.id);
   write(list);
   return created;
 }
 
 export function deleteFormation(id: string): void {
   if (id === STOCK_FORMATION_ID) return;
+  rememberDeletedFormation(id);
   write(listFormations().filter((f) => f.id !== id));
   if (getDefaultFormationId() === id) setDefaultFormationId(null);
 }

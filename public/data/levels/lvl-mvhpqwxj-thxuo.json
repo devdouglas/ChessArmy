@@ -1,0 +1,233 @@
+{
+    "id": "lvl-mvhpqwxj-thxuo",
+    "name": "0 A terrain demo",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "pointy",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "high"
+        ],
+        [
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "high"
+        ],
+        [
+            "water",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land",
+            "plateau",
+            "plateau",
+            "plateau",
+            "plateau",
+            "plateau"
+        ],
+        [
+            "water",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land",
+            "plateau",
+            "plateau",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "plateau",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "plateau",
+            "high",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "startText": "You will learn how to use terrain in your advantage",
+    "winText": "good job",
+    "loseText": "try to find high ground before the enemy arrives.",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "tokens": [],
+    "sort": 8,
+    "updatedAt": 1792656126446,
+    "armies": [
+        {
+            "type": "archer",
+            "col": 1,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 9,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 1,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 6,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 9,
+            "row": 9,
+            "side": "red"
+        }
+    ]
+}

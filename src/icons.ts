@@ -1,6 +1,10 @@
 import {
+  ammoLeft,
+  isReloading,
   roleOf,
+  statsOf,
   type AbilityId,
+  type Piece,
   type Side,
   type TokenType,
   type UnitRole,
@@ -319,6 +323,60 @@ export function staminaPipsHtml(left: number, max: number): string {
     return `<svg class="stam-pip ${cls}" viewBox="-5 -7 10 14" width="12" height="16" aria-hidden="true"><path d="${STAMINA_BOLT}"/></svg>`;
   }).join('');
   return `<span class="stam-pips" aria-label="Stamina ${on} of ${max}">${bolts}</span>`;
+}
+
+/** Arrowhead + shaft, viewBox roughly -4..4 × -7..7. */
+const SHOT_ARROW =
+  'M0 -6.5 L3.6 -1.15 H1.35 V3.35 H2.55 L1.15 6.5 H-1.15 L-2.55 3.35 H-1.35 V-1.15 H-3.6 Z';
+
+/** Shot pips — gold ready, orange reloading, grey spent. */
+export function shotPipsHtml(left: number, max: number, reloading = false): string {
+  if (max <= 0) return '';
+  const ready = Math.max(0, Math.min(max, Math.floor(left)));
+  const cooling = reloading && ready < max ? 1 : 0;
+  const pips = Array.from({ length: max }, (_, i) => {
+    const cls = i < ready ? 'on' : i < ready + cooling ? 'reload' : 'off';
+    return `<svg class="shot-pip ${cls}" viewBox="-4 -7 8 14" width="10" height="16" aria-hidden="true"><path d="${SHOT_ARROW}"/></svg>`;
+  }).join('');
+  const label = reloading
+    ? `Shots ${ready} of ${max}, reloading`
+    : `Shots ${ready} of ${max}`;
+  return `<span class="shot-pips" aria-label="${label}">${pips}</span>`;
+}
+
+/** Ammo pips for a piece. Unlimited guns get one chamber pip. */
+export function pieceShotPipsHtml(piece: Piece): string {
+  const s = statsOf(piece.type);
+  if (s.shoot <= 0) return '';
+  const reloading = isReloading(piece);
+  if (s.ammo <= 0) return shotPipsHtml(reloading ? 0 : 1, 1, reloading);
+  return shotPipsHtml(ammoLeft(piece) ?? 0, s.ammo, reloading);
+}
+
+function factionBlockPips(
+  kind: 'hp' | 'units',
+  left: number,
+  max: number,
+  side: Side,
+  label: string,
+): string {
+  if (max <= 0) return '';
+  const on = Math.max(0, Math.min(max, Math.floor(left)));
+  const bits = Array.from({ length: max }, (_, i) => {
+    return `<span class="${kind}-pip ${i < on ? 'on' : 'off'}"></span>`;
+  }).join('');
+  return `<span class="${kind}-pips ${side}" aria-label="${label} ${on} of ${max}">${bits}</span>`;
+}
+
+/** Remaining / max HP as faction-colored blocks. */
+export function hpPipsHtml(left: number, max: number, side: Side): string {
+  return factionBlockPips('hp', left, max, side, 'HP');
+}
+
+/** Remaining activations this turn as faction-colored blocks. */
+export function unitQuotaPipsHtml(acted: number, cap: number, side: Side): string {
+  if (cap <= 1) return '';
+  return factionBlockPips('units', Math.max(0, cap - acted), cap, side, 'Units');
 }
 
 /** Played-this-turn check — right side of the piece. */

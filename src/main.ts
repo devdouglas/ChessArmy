@@ -189,6 +189,9 @@ import {
   facingPikeSvg,
   staminaEmptyMarkSvg,
   staminaPipsHtml,
+  pieceShotPipsHtml,
+  hpPipsHtml,
+  unitQuotaPipsHtml,
   starGlyphSvg,
 } from './icons';
 import {
@@ -225,7 +228,7 @@ type ActionMode = 'move' | 'shoot';
 type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
-type EditorBrush = Terrain | UnitType | TokenType | 'erase-unit' | 'erase-token';
+type EditorBrush = Terrain | UnitType | TokenType | 'erase';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
@@ -1091,40 +1094,38 @@ function markEditorDirty() {
 }
 
 function paintEditorUnit(col: number, row: number) {
+  if (!isUnitBrush(editorBrush)) return;
   const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
-  if (editorBrush === 'erase-unit') {
-    if (idx < 0) return;
-    editorPieces.splice(idx, 1);
-  } else if (isUnitBrush(editorBrush)) {
-    if (
-      idx >= 0 &&
-      editorPieces[idx].type === editorBrush &&
-      editorPieces[idx].side === editorArmySide
-    ) {
-      return;
-    }
-    if (idx >= 0) editorPieces.splice(idx, 1);
-    editorPieces.push({ type: editorBrush, col, row, side: editorArmySide });
-  } else {
+  if (
+    idx >= 0 &&
+    editorPieces[idx].type === editorBrush &&
+    editorPieces[idx].side === editorArmySide
+  ) {
     return;
   }
+  if (idx >= 0) editorPieces.splice(idx, 1);
+  editorPieces.push({ type: editorBrush, col, row, side: editorArmySide });
   markEditorDirty();
   refreshEditorBoard();
 }
 
 function paintEditorToken(col: number, row: number) {
+  if (!isTokenBrush(editorBrush)) return;
   if (!isWalkableTerrain(editorTerrain[row][col])) return;
   const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
-  if (editorBrush === 'erase-token') {
-    if (idx < 0) return;
-    editorTokens.splice(idx, 1);
-  } else if (isTokenBrush(editorBrush)) {
-    if (idx >= 0 && editorTokens[idx].type === editorBrush) return;
-    if (idx >= 0) editorTokens.splice(idx, 1);
-    editorTokens.push({ type: editorBrush, col, row });
-  } else {
-    return;
-  }
+  if (idx >= 0 && editorTokens[idx].type === editorBrush) return;
+  if (idx >= 0) editorTokens.splice(idx, 1);
+  editorTokens.push({ type: editorBrush, col, row });
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
+function paintEditorErase(col: number, row: number) {
+  const pidx = editorPieces.findIndex((p) => p.col === col && p.row === row);
+  const tidx = editorTokens.findIndex((t) => t.col === col && t.row === row);
+  if (pidx < 0 && tidx < 0) return;
+  if (pidx >= 0) editorPieces.splice(pidx, 1);
+  if (tidx >= 0) editorTokens.splice(tidx, 1);
   markEditorDirty();
   refreshEditorBoard();
 }
@@ -1132,11 +1133,15 @@ function paintEditorToken(col: number, row: number) {
 function paintEditorHex(col: number, row: number) {
   if (row < 0 || row >= editorTerrain.length) return;
   if (col < 0 || col >= editorTerrain[0].length) return;
-  if (editorBrush === 'erase-unit' || isUnitBrush(editorBrush)) {
+  if (editorBrush === 'erase') {
+    paintEditorErase(col, row);
+    return;
+  }
+  if (isUnitBrush(editorBrush)) {
     paintEditorUnit(col, row);
     return;
   }
-  if (editorBrush === 'erase-token' || isTokenBrush(editorBrush)) {
+  if (isTokenBrush(editorBrush)) {
     paintEditorToken(col, row);
     return;
   }
@@ -1236,6 +1241,64 @@ function clearSelection() {
   commitPath = [];
   rotateMode = false;
   rotatePreviewDir = null;
+}
+
+function livingOnSide(side: Side): { id: string }[] {
+  return state.pieces.filter((p) => p.side === side);
+}
+
+function isSoloArmy(side: Side): boolean {
+  return livingOnSide(side).length === 1;
+}
+
+function resetAim() {
+  pendingHex = null;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
+  rotateMode = false;
+  rotatePreviewDir = null;
+}
+
+/** Last unit on that army stays selected when the activation / turn ends. */
+function retainSelection(actingId: string): void {
+  resetAim();
+  const p = getPiece(state, actingId);
+  if (p && isSoloArmy(p.side)) {
+    selectedId = actingId;
+    refreshHighlights();
+    return;
+  }
+  selectedId = null;
+  highlights = [];
+}
+
+function clearSelectionUnlessSolo(): void {
+  if (selectedId) {
+    const p = getPiece(state, selectedId);
+    if (p && isSoloArmy(p.side)) {
+      resetAim();
+      refreshHighlights();
+      return;
+    }
+  }
+  clearSelection();
+}
+
+/** When a player side with one unit gets the turn, keep/restore that selection. */
+function ensureSoloTurnSelection(): void {
+  if (selectedId && !getPiece(state, selectedId)) {
+    selectedId = null;
+    highlights = [];
+  }
+  if (state.winner || !isPlayerControlled(state, state.turn)) return;
+  const mine = livingOnSide(state.turn);
+  if (mine.length !== 1) return;
+  if (selectedId !== mine[0].id) {
+    selectedId = mine[0].id;
+    resetAim();
+  }
+  refreshHighlights();
 }
 
 function activeSavedLevel(): SavedLevel | null {
@@ -1658,7 +1721,7 @@ async function tryAct(hex: Hex, kind: ActionMode) {
     refreshHighlights();
     render();
   } else {
-    clearSelection();
+    retainSelection(actingId);
     render();
     await maybeAi();
   }
@@ -1669,10 +1732,11 @@ async function restSelected() {
   rotateMode = false;
   rotatePreviewDir = null;
   animating = true;
-  state = restPiece(state, selectedId);
+  const actingId = selectedId;
+  state = restPiece(state, actingId);
   await playPendingFx();
   animating = false;
-  clearSelection();
+  retainSelection(actingId);
   render();
   await maybeAi();
 }
@@ -1721,7 +1785,7 @@ async function commitRotate(dir: HexDir) {
     refreshHighlights();
     render();
   } else {
-    clearSelection();
+    retainSelection(actingId);
     render();
     await maybeAi();
   }
@@ -1729,20 +1793,28 @@ async function commitRotate(dir: HexDir) {
 
 async function skipScout(nextId?: string) {
   if (!state.scoutPieceId || !canControl()) return;
+  const actingId = state.scoutPieceId;
   await playAnimatedAction({ kind: 'skip' });
   const next = nextId ? getPiece(state, nextId) : null;
   if (next && canControl()) {
     selectPiece(next.id);
   } else {
-    clearSelection();
+    retainSelection(actingId);
     render();
   }
   await maybeAi();
 }
 
 async function maybeAi() {
-  if (briefingBlocks() || state.winner) return;
-  if (isPlayerControlled(state, state.turn)) return;
+  if (briefingBlocks() || state.winner) {
+    ensureSoloTurnSelection();
+    return;
+  }
+  if (isPlayerControlled(state, state.turn)) {
+    ensureSoloTurnSelection();
+    render();
+    return;
+  }
   aiThinking = true;
   updateChrome();
 
@@ -1769,7 +1841,7 @@ async function maybeAi() {
       await playPendingFx();
       break;
     }
-    clearSelection();
+    clearSelectionUnlessSolo();
     render();
     guard += 1;
   }
@@ -1779,6 +1851,7 @@ async function maybeAi() {
   }
 
   aiThinking = false;
+  ensureSoloTurnSelection();
   render();
 }
 
@@ -2174,9 +2247,11 @@ function renderActionBar(): string {
       : '';
 
   const extra =
-    !choosing && (isDepleted(piece) || isReloading(piece))
-      ? `<span class="action-flag">${isDepleted(piece) ? 'empty' : 'reloading'}</span>`
-      : '';
+    !choosing && isReloading(piece)
+      ? `<span class="action-flag">reloading</span>`
+      : !choosing && isDepleted(piece)
+        ? `<span class="action-flag">empty</span>`
+        : '';
 
   const restUi =
     canRest(piece.id)
@@ -2195,7 +2270,9 @@ function renderActionBar(): string {
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
         <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
+        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side)}
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
+        ${pieceShotPipsHtml(piece)}
         ${restUi}
         ${rotateUi}
       </div>
@@ -2268,7 +2345,12 @@ function renderSidebar(): string {
       ...(maxSt > 0
         ? [statRow('Stamina', staminaPipsHtml(curSt, maxSt), stamNote, stamWarn)]
         : []),
-      statRow('HP', `${hpLeft(piece)}/${s.hp}`, hpLeft(piece) < s.hp ? 'wounded' : '', hpLeft(piece) < s.hp),
+      statRow(
+        'HP',
+        hpPipsHtml(hpLeft(piece), s.hp, piece.side),
+        hpLeft(piece) < s.hp ? 'wounded' : '',
+        hpLeft(piece) < s.hp,
+      ),
       ...(s.shootCooldown > 0
         ? [
             statRow(
@@ -2324,13 +2406,13 @@ function renderSidebar(): string {
         s.hexArmor ? 'hex · front follows last move · −2 face blocks walk and shoot' : '',
       ),
     ];
-    if (s.ammo > 0) {
+    if (s.shoot > 0) {
       moreRows.push(
         statRow(
-          'Ammo',
-          `${ammoLeft(piece) ?? 0}/${s.ammo}`,
-          isDepleted(piece) ? 'empty' : '',
-          isDepleted(piece),
+          'Shots',
+          pieceShotPipsHtml(piece),
+          isReloading(piece) ? 'reloading' : isDepleted(piece) ? 'empty' : '',
+          isReloading(piece) || isDepleted(piece),
         ),
       );
     }
@@ -2474,11 +2556,12 @@ function turnLabel(): string {
   if ((aiThinking || animating) && isAiControlled(state, state.turn)) {
     return `${stats} · <span class="${state.turn}">${sideTurnPhrase(state.turn)}</span> moving…`;
   }
-  const quota =
-    state.unitsPerTurn > 1
-      ? ` · ${state.actedIds.length}/${state.unitsPerTurn} units`
-      : '';
-  return `${stats} · <span class="${state.turn}">${sideTurnPhrase(state.turn)}</span>${quota}`;
+  const quota = unitQuotaPipsHtml(
+    state.actedIds.length,
+    state.unitsPerTurn,
+    state.turn,
+  );
+  return `${stats} · <span class="${state.turn}">${sideTurnPhrase(state.turn)}</span>${quota ? ` ${quota}` : ''}`;
 }
 
 function renderEndOverlay(): string {
@@ -3121,7 +3204,6 @@ function renderTokenPanel(): string {
       <h3>Tokens</h3>
       <div class="editor-brushes">
         ${tokens}
-        <button type="button" class="brush token erase${editorBrush === 'erase-token' ? ' active' : ''}" data-brush="erase-token">Erase token</button>
       </div>
     </section>`;
 }
@@ -3148,14 +3230,14 @@ function renderArmySelectPanel(): string {
     (c) =>
       `<option value="${c}"${editorUnitCategory === c ? ' selected' : ''}>${UNIT_CATEGORY_LABEL[c]}</option>`,
   ).join('');
-  const unitBrushes = [
-    ...catUnits.map(
+  const unitBrushes = catUnits
+    .map(
       (t) =>
         `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${unitBrushIconSvg(t)}<span>${escapeHtml(UNIT_STATS[t].name)}</span></button>`,
-    ),
-    `<button type="button" class="brush unit erase${editorBrush === 'erase-unit' ? ' active' : ''}" data-brush="erase-unit">Erase <svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg></button>`,
-  ].join('');
+    )
+    .join('');
   return `
+    <div class="editor-top-army">
     <section class="editor-panel editor-panel-army">
       <h3>Army</h3>
       <div class="editor-armies">${SIDES.map((s) => {
@@ -3175,7 +3257,9 @@ function renderArmySelectPanel(): string {
         ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
         ${unitBrushes}
       </div>
-    </section>`;
+    </section>
+    <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase <svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg></button>
+    </div>`;
 }
 
 function renderLevelThumb(lvl: SavedLevel): string {
@@ -3880,7 +3964,7 @@ function bindEditorEvents() {
     editorUnitCategory = sanitizeUnitCategory((e.target as HTMLSelectElement).value);
     if (isUnitBrush(editorBrush) && UNIT_STATS[editorBrush]?.category !== editorUnitCategory) {
       const first = UNIT_TYPES.find((t) => UNIT_STATS[t].category === editorUnitCategory);
-      editorBrush = first ?? 'erase-unit';
+      editorBrush = first ?? 'erase';
     }
     render();
   });
@@ -4250,10 +4334,13 @@ function bindEvents() {
     void (async () => {
       if (!canControl() || animating) return;
       animating = true;
+      const actingId = selectedId;
       state = passTurn(state);
       await playPendingFx();
       animating = false;
-      clearSelection();
+      if (actingId) retainSelection(actingId);
+      else clearSelection();
+      ensureSoloTurnSelection();
       render();
       void maybeAi();
     })();
