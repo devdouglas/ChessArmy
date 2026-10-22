@@ -71,20 +71,9 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
-    "tokens": [
-        {
-            "type": "palisade",
-            "col": 0,
-            "row": 4
-        },
-        {
-            "type": "palisade",
-            "col": 0,
-            "row": 5
-        }
-    ],
+    "tokens": [],
     "sort": 0,
-    "updatedAt": 1792667093688,
+    "updatedAt": 1792667548863,
     "armies": [
         {
             "type": "peasant",
@@ -109,12 +98,6 @@
             "col": 4,
             "row": 2,
             "side": "blue"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 1,
-            "row": 5,
-            "side": "red"
         }
     ]
 }

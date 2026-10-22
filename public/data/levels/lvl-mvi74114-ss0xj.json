@@ -173,8 +173,8 @@
         "purple": "ai-enemy"
     },
     "tokens": [],
-    "sort": 7,
-    "updatedAt": 1792656126446,
+    "sort": 8,
+    "updatedAt": 1792667568582,
     "armies": [
         {
             "type": "cohort",
@@ -195,10 +195,13 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8vjffgpkd",
+            "type": "u-mvf8ty84rdk3",
             "col": 9,
             "row": 5,
-            "side": "yellow"
+            "side": "yellow",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
             "type": "cohort",
@@ -207,10 +210,13 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8vjffgpkd",
+            "type": "u-mvf8ty84rdk3",
             "col": 0,
             "row": 6,
-            "side": "red"
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
             "type": "archer",

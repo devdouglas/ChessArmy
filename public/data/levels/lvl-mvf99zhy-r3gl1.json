@@ -110,8 +110,8 @@
         "purple": "ai-enemy"
     },
     "tokens": [],
-    "sort": 6,
-    "updatedAt": 1792667171845,
+    "sort": 7,
+    "updatedAt": 1792667568582,
     "armies": [
         {
             "type": "barbarian",
@@ -126,10 +126,13 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8vjffgpkd",
+            "type": "u-mvf8ty84rdk3",
             "col": 3,
             "row": 0,
-            "side": "yellow"
+            "side": "yellow",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
             "type": "cohort",
