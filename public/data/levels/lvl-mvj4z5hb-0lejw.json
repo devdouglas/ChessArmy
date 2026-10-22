@@ -1,28 +1,58 @@
 {
     "id": "lvl-mvj4z5hb-0lejw",
-    "name": "Your gladius!",
+    "name": "Your gladius and javelins!",
     "cols": 8,
     "rows": 8,
     "orientation": "pointy",
     "terrain": [
         [
-            "land",
-            "land",
-            "land",
-            "land",
+            "water",
+            "rock",
+            "rock",
+            "rock",
             "high",
             "high",
             "land",
             "land"
         ],
         [
-            "land",
-            "land",
-            "land",
+            "water",
+            "rock",
+            "rock",
             "high",
             "high",
             "high",
             "land",
+            "water"
+        ],
+        [
+            "rock",
+            "land",
+            "rock",
+            "rock",
+            "high",
+            "high",
+            "land",
+            "water"
+        ],
+        [
+            "rock",
+            "land",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
             "land"
         ],
         [
@@ -30,8 +60,18 @@
             "land",
             "land",
             "land",
-            "high",
-            "high",
+            "land",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
             "land",
             "water"
         ],
@@ -42,55 +82,16 @@
             "land",
             "land",
             "land",
-            "water",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "water",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "water",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "water"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
         ]
     ],
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
-    "startText": "Welcome peasant. Today is your first training to become a real warmachine for the empire. A good soldier needs to train hard. Today we will work on movement, endurance, stamina",
-    "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
+    "maxTurns": 0,
+    "startText": "Welcome peasant. Today you become a real warmachine for the empire. Your cohort has stamina, a gladius and 3 javelins.",
+    "winText": "Good job. Tomorrow you will learn to coordinate a small regiment.",
     "loseText": "You almost drowned you idiot. Check your stamina bar and rest before your jump in. Moving in and through water requires energy.",
     "star2": {
         "metric": "turns",
@@ -111,42 +112,12 @@
     "tokens": [
         {
             "type": "wall",
-            "col": 0,
-            "row": 4
-        },
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 4
-        },
-        {
-            "type": "wall",
-            "col": 2,
-            "row": 2
-        },
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 1
-        },
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 0
-        },
-        {
-            "type": "wall",
-            "col": 2,
-            "row": 3
-        },
-        {
-            "type": "wall",
             "col": 3,
             "row": 6
         }
     ],
     "sort": 3,
-    "updatedAt": 1792656397817,
+    "updatedAt": 1792664195998,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

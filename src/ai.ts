@@ -381,11 +381,16 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
 
   if (action.kind !== 'move') return score;
 
+  const palPlan = previewMove(state, piece, action.to);
+  for (const ph of palPlan.palisadeHits) {
+    score += ph.destroyed ? 280 : 140;
+  }
+
   if (isHoplite(piece) && piece.rangedHit && isHopliteForwardWalk(state, action, piece)) {
     score += 800;
   }
 
-  const stop = previewMove(state, piece, action.to).stop;
+  const stop = palPlan.stop;
   const foe = isHoplite(piece) ? nearestEnemy(state, from, me) : null;
   const hunt = foe ? { col: foe.col, row: foe.row } : huntHex(state, from, me);
   if (hunt) {

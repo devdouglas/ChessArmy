@@ -152,6 +152,7 @@
     "category": "historical",
     "period": "modern",
     "unitsPerTurn": 1,
+    "maxTurns": 0,
     "startText": "",
     "winText": "",
     "loseText": "",

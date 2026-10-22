@@ -1,6 +1,7 @@
 import {
   ammoLeft,
   isReloading,
+  PALISADE_HP,
   roleOf,
   statsOf,
   type AbilityId,
@@ -8,6 +9,7 @@ import {
   type Side,
   type TokenType,
   type UnitRole,
+  type UnitTokenType,
   type UnitType,
 } from './engine';
 import { hexCorners, type HexOrientation } from './hex';
@@ -199,6 +201,7 @@ export function tokenGlyphSvg(
   size = 16,
   o: HexOrientation = 'pointy',
   owner?: Side | null,
+  hp?: number,
 ): string {
   const s = size / 16;
   if (type === 'pikes') {
@@ -224,6 +227,38 @@ export function tokenGlyphSvg(
       <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
       <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.45" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>
       <polygon points="${hexCorners(0, 0, r * 0.48, o)}" fill="var(--wall-lo)" opacity="0.55" stroke="var(--wall-ink)" stroke-width="${(ink * 0.9).toFixed(2)}" stroke-linejoin="miter"/>
+    </g>`;
+  }
+  if (type === 'palisade') {
+    const r = size;
+    const sw = Math.max(1.1, r * 0.08);
+    const gs = r / 10;
+    const left = hp ?? PALISADE_HP;
+    const chips = Math.max(0, PALISADE_HP - left);
+    const stake = (x: number, top: number) =>
+      `<path d="M${(x - 0.72).toFixed(2)} 4.7 L${(x - 0.55).toFixed(2)} ${(top + 1.5).toFixed(2)} L${x.toFixed(2)} ${top.toFixed(2)} L${(x + 0.55).toFixed(2)} ${(top + 1.5).toFixed(2)} L${(x + 0.72).toFixed(2)} 4.7 Z"/>`;
+    const standing =
+      chips >= 2
+        ? `${stake(-5.1, -4.8)}${stake(-3.05, -5.5)}${stake(3.1, -5.6)}${stake(5.15, -4.6)}`
+        : chips >= 1
+          ? `${stake(-5.1, -4.8)}${stake(-3.05, -5.5)}${stake(1.05, -5.2)}${stake(3.1, -5.6)}${stake(5.15, -4.6)}`
+          : `${stake(-5.1, -4.8)}${stake(-3.05, -5.5)}${stake(-1.0, -5.1)}${stake(1.05, -5.2)}${stake(3.1, -5.6)}${stake(5.15, -4.6)}`;
+    const broken =
+      chips >= 2
+        ? `<path d="M-1.35 4.7 L-1.15 2.55 L-0.55 2.55 L-0.35 4.7 Z" fill="var(--palisade-lo)"/>
+         <path d="M-0.2 2.35 L2.85 5.15 L2.35 5.7 L-0.75 2.95 Z" fill="var(--palisade-hi)"/>
+         <path d="M0.9 4.7 L1.15 3.1 L1.7 3.1 L1.95 4.7 Z" fill="var(--palisade-lo)"/>`
+        : chips >= 1
+          ? `<path d="M-1.35 4.7 L-1.15 2.55 L-0.55 2.55 L-0.35 4.7 Z" fill="var(--palisade-lo)"/>
+         <path d="M-0.2 2.35 L2.85 5.15 L2.35 5.7 L-0.75 2.95 Z" fill="var(--palisade-hi)"/>`
+          : '';
+    return `<g class="token-palisade${chips ? ' damaged' : ''}">
+      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--palisade)" stroke="var(--palisade-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+      <g transform="scale(${gs.toFixed(3)})" fill="var(--palisade-hi)" stroke="var(--palisade-ink)" stroke-width="0.42" stroke-linejoin="round">
+        ${standing}
+        ${broken}
+        <rect x="-6.15" y="0.55" width="12.3" height="1.2" rx="0.35" fill="var(--palisade-lo)"/>
+      </g>
     </g>`;
   }
   if (type === 'flag') {
@@ -299,6 +334,15 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
 const STAMINA_BOLT =
   'M1.5 -5.6 L-2.7 0.15 H0.55 L-2.3 5.6 L2.9 -0.15 H-0.45 Z';
 
+/** Gold stamina bolt on a hex that will spend stamina if you move there. */
+export function staminaHexMarkSvg(cx: number, cy: number, r = 8): string {
+  const s = (r * 1.15) / 5.6;
+  return `
+    <g class="stamina-hex-mark" transform="translate(${cx}, ${cy})">
+      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#f0d060"/>
+    </g>`;
+}
+
 /** Empty stamina — bolt pip, top-left, with a red prohibition ring + slash. */
 export function staminaEmptyMarkSvg(cx: number, cy: number, r = 7): string {
   const ring = Math.max(1.35, r * 0.24);
@@ -359,18 +403,27 @@ function factionBlockPips(
   max: number,
   side: Side,
   label: string,
+  generalFirst = false,
 ): string {
   if (max <= 0) return '';
   const on = Math.max(0, Math.min(max, Math.floor(left)));
+  const regularOn = generalFirst ? Math.max(0, on - 1) : on;
   const bits = Array.from({ length: max }, (_, i) => {
-    return `<span class="${kind}-pip ${i < on ? 'on' : 'off'}"></span>`;
+    const isGen = generalFirst && i === 0;
+    const filled = isGen ? on > 0 : generalFirst ? i - 1 < regularOn : i < on;
+    return `<span class="${kind}-pip ${filled ? 'on' : 'off'}${isGen ? ' general' : ''}"></span>`;
   }).join('');
   return `<span class="${kind}-pips ${side}" aria-label="${label} ${on} of ${max}">${bits}</span>`;
 }
 
-/** Remaining / max HP as faction-colored blocks. */
-export function hpPipsHtml(left: number, max: number, side: Side): string {
-  return factionBlockPips('hp', left, max, side, 'HP');
+/** Remaining / max HP as faction-colored blocks. First pip is gold if a General token. */
+export function hpPipsHtml(
+  left: number,
+  max: number,
+  side: Side,
+  generalFirst = false,
+): string {
+  return factionBlockPips('hp', left, max, side, 'HP', generalFirst);
 }
 
 /** Remaining activations this turn as faction-colored blocks. */
@@ -416,6 +469,13 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
         <path d="${star}" fill="#f0d060" stroke="#8a7030" stroke-width="${sw}" stroke-linejoin="round"/>
       </g>`;
   }
+  return '';
+}
+
+/** Editor swatch for a unit token. */
+export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
+  const r = size * 0.42;
+  if (id === 'general') return abilityBadgeSvg('general', 0, 0, r);
   return '';
 }
 

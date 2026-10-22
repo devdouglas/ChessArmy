@@ -1,8 +1,8 @@
 {
     "id": "lvl-mvgpedo5-1hg23",
     "name": "A horse with no name",
-    "cols": 8,
-    "rows": 8,
+    "cols": 7,
+    "rows": 7,
     "orientation": "flat",
     "terrain": [
         [
@@ -12,21 +12,9 @@
             "land",
             "land",
             "land",
-            "land",
             "land"
         ],
         [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
             "land",
             "land",
             "land",
@@ -42,11 +30,27 @@
             "land",
             "land",
             "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
             "land",
             "land"
         ],
         [
             "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
             "land",
             "land",
             "land",
@@ -62,45 +66,25 @@
             "land",
             "land",
             "land",
-            "high",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land"
         ]
     ],
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
-    "startText": "",
-    "winText": "",
-    "loseText": "",
+    "maxTurns": 11,
+    "startText": "Here is a horse. Give it a name. Its yours till you die. It can charge through enemies. Enjoy!",
+    "winText": "Good job. There is general material in you.",
+    "loseText": "Time is up! \nTry to run through multiple units as once.(with stamina you can go through 3!). \nYou can not move backwards but you can rotate while staying on the same spot.",
     "star2": {
         "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "op": "lte",
+        "value": 9
     },
     "star3": {
-        "metric": "casualties",
-        "op": "eq",
-        "value": 0
+        "metric": "turns",
+        "op": "lte",
+        "value": 8
     },
     "armyControls": {
         "red": "player",
@@ -110,14 +94,8 @@
     },
     "tokens": [],
     "sort": 2,
-    "updatedAt": 1792654874840,
+    "updatedAt": 1792667136591,
     "armies": [
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 3,
-            "row": 6,
-            "side": "red"
-        },
         {
             "type": "u-mvgpbg68f593",
             "col": 1,
@@ -156,9 +134,18 @@
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 2,
+            "col": 3,
             "row": 1,
             "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 1,
+            "row": 6,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         }
     ]
 }

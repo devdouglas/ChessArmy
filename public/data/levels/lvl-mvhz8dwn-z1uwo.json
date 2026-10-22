@@ -109,6 +109,7 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
+    "maxTurns": 0,
     "startText": "",
     "winText": "",
     "loseText": "",

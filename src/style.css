@@ -34,6 +34,11 @@
   --plateau-stroke: #2e2c28;
   --rock-stroke: #1c1a18;
   --wall-stroke: #2a2e34;
+  --palisade: #6b4a28;
+  --palisade-hi: #8a6234;
+  --palisade-lo: #3d2814;
+  --palisade-ink: #2a1c10;
+  --palisade-stroke: #2a1c10;
   --red: #c44;
   --blue: #4a7ec8;
   --yellow: #c9a227;
@@ -104,6 +109,11 @@ html[data-period='ancient'] {
   --plateau-stroke: #3a3228;
   --rock-stroke: #221c16;
   --wall-stroke: #3a3228;
+  --palisade: #7a5230;
+  --palisade-hi: #9a6a3c;
+  --palisade-lo: #4a3018;
+  --palisade-ink: #2c1a0c;
+  --palisade-stroke: #2c1a0c;
   --red: #c45a38;
   --blue: #3d6a78;
   --yellow: #d4a44a;
@@ -160,6 +170,11 @@ html[data-period='futuristic'] {
   --plateau-stroke: #201838;
   --rock-stroke: #120e1c;
   --wall-stroke: #121820;
+  --palisade: #5a3a22;
+  --palisade-hi: #7a5230;
+  --palisade-lo: #2e1c10;
+  --palisade-ink: #140c08;
+  --palisade-stroke: #140c08;
   --red: #e04070;
   --blue: #20b8e0;
   --yellow: #ffe060;
@@ -889,6 +904,7 @@ button.primary:focus-visible {
 
 .editor-panel-map,
 .editor-panel-tokens,
+.editor-panel-unit-tokens,
 .editor-panel-army {
   min-height: 0;
 }
@@ -1558,6 +1574,10 @@ button.primary:focus-visible {
 .editor-brushes .brush.wall.active {
   border-color: #9aa0a8;
   color: #c8ced6;
+}
+.editor-brushes .brush.palisade.active {
+  border-color: #c4a060;
+  color: #e8c888;
 }
 .editor-brushes .brush.high.active {
   border-color: #c4a86a;
@@ -2538,8 +2558,24 @@ svg.board .hex {
 }
 
 .hl-tint-layer,
-.shoot-mark-layer {
+.shoot-mark-layer,
+.stamina-mark-layer {
   pointer-events: none;
+}
+
+.stamina-hex-mark {
+  pointer-events: none;
+  filter: drop-shadow(0 0 2.2px rgba(240, 208, 96, 0.55));
+  animation: stamina-hex-in 0.12s ease-out;
+}
+
+@keyframes stamina-hex-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .hl-tint {
@@ -3025,6 +3061,20 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 .hp-pips.purple .hp-pip.on,
 .units-pips.purple .units-pip.on {
   background: var(--piece-purple);
+}
+
+.hp-pips .hp-pip.on.general,
+.hp-pips.red .hp-pip.on.general,
+.hp-pips.blue .hp-pip.on.general,
+.hp-pips.yellow .hp-pip.on.general,
+.hp-pips.purple .hp-pip.on.general {
+  background: #f0d060;
+  box-shadow: inset 0 0 0 1px #8a6820;
+}
+
+.hp-pips .hp-pip.off.general {
+  background: #3a3830;
+  box-shadow: inset 0 0 0 1px #8a7030;
 }
 
 .action-bar-hint {

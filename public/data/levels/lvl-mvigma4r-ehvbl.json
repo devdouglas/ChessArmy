@@ -89,6 +89,7 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
+    "maxTurns": 0,
     "startText": "",
     "winText": "",
     "loseText": "",
@@ -110,7 +111,7 @@
     },
     "tokens": [],
     "sort": 9,
-    "updatedAt": 1792656126446,
+    "updatedAt": 1792667234614,
     "armies": [
         {
             "type": "cohort",
@@ -149,12 +150,6 @@
             "side": "red"
         },
         {
-            "type": "u-mvf8vjffgpkd",
-            "col": 3,
-            "row": 6,
-            "side": "red"
-        },
-        {
             "type": "archer",
             "col": 2,
             "row": 2,
@@ -165,6 +160,15 @@
             "col": 1,
             "row": 7,
             "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 3,
+            "row": 6,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         }
     ]
 }

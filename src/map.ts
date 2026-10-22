@@ -11,13 +11,16 @@ import {
   sanitizeTokens,
   seedFlagOwners,
   statsOf,
+  hpMax,
   type ArmyControl,
   type GameState,
   type Piece,
   type Side,
   type Terrain,
   type TileToken,
+  type UnitTokenType,
   type UnitType,
+  sanitizeUnitTokens,
 } from './engine';
 import { defaultFacing, neighbors, type HexOrientation } from './hex';
 
@@ -276,6 +279,7 @@ export type ArmySlot = {
   type: UnitType;
   col: number;
   fromBack: number;
+  unitTokens?: UnitTokenType[];
 };
 
 export type ArmyStamp = {
@@ -283,7 +287,13 @@ export type ArmyStamp = {
   col: number;
   row: number;
   side: Side;
+  unitTokens?: UnitTokenType[];
 };
+
+function stampTokens(raw: unknown): UnitTokenType[] | undefined {
+  const tokens = sanitizeUnitTokens(raw);
+  return tokens.length ? tokens : undefined;
+}
 
 export function slotsFromSide(
   pieces: ArmyStamp[],
@@ -297,6 +307,7 @@ export function slotsFromSide(
       type: p.type,
       col: side === 'red' ? p.col : cols - 1 - p.col,
       fromBack: side === 'red' ? rows - 1 - p.row : p.row,
+      unitTokens: stampTokens(p.unitTokens),
     }))
     .filter((s) => s.col >= 0 && s.fromBack >= 0);
 }
@@ -318,7 +329,7 @@ export function placeSlots(
     const k = `${col},${row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ type: s.type, col, row, side });
+    out.push({ type: s.type, col, row, side, unitTokens: stampTokens(s.unitTokens) });
   }
   return out;
 }
@@ -329,15 +340,22 @@ export function stockSlots(cols: number, rows: number): ArmySlot[] {
 }
 
 export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
-  return stamps.map((p) => ({
-    id: pid(p.side, p.type),
-    side: p.side,
-    type: p.type,
-    col: p.col,
-    row: p.row,
-    facing: defaultFacing(p.side),
-    ...spawnExtras(p.type),
-  }));
+  return stamps.map((p) => {
+    const tokens = stampTokens(p.unitTokens);
+    const piece: Piece = {
+      id: pid(p.side, p.type),
+      side: p.side,
+      type: p.type,
+      col: p.col,
+      row: p.row,
+      facing: defaultFacing(p.side),
+      ...spawnExtras(p.type),
+      unitTokens: tokens,
+    };
+    const max = hpMax(piece);
+    piece.hp = max > 1 ? max : undefined;
+    return piece;
+  });
 }
 
 function spawnArmy(side: Side, cols: number, rows: number): Piece[] {

@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvf99zhy-r3gl1",
-    "name": "0 B Demo",
+    "name": "Barbarians!",
     "cols": 8,
     "rows": 8,
     "orientation": "flat",
@@ -63,7 +63,7 @@
             "land",
             "land",
             "high",
-            "land"
+            "high"
         ],
         [
             "land",
@@ -89,13 +89,14 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
-    "startText": "",
-    "winText": "",
-    "loseText": "",
+    "maxTurns": 0,
+    "startText": "Some peasants are being attacked. Teach them a lesson",
+    "winText": "First blood. Good Job",
+    "loseText": "Come on",
     "star2": {
         "metric": "turns",
         "op": "lt",
-        "value": 6
+        "value": 5
     },
     "star3": {
         "metric": "casualties",
@@ -110,37 +111,58 @@
     },
     "tokens": [],
     "sort": 6,
-    "updatedAt": 1792656126446,
+    "updatedAt": 1792667171845,
     "armies": [
         {
-            "type": "archer",
+            "type": "barbarian",
             "col": 2,
             "row": 1,
-            "side": "blue"
+            "side": "yellow"
         },
         {
-            "type": "archer",
-            "col": 3,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "archer",
+            "type": "barbarian",
             "col": 4,
             "row": 1,
-            "side": "blue"
+            "side": "yellow"
         },
         {
-            "type": "archer",
-            "col": 4,
+            "type": "u-mvf8vjffgpkd",
+            "col": 3,
             "row": 0,
-            "side": "blue"
+            "side": "yellow"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "cohort",
             "col": 3,
             "row": 6,
             "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 3,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 4,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 4,
+            "row": 7,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         }
     ]
 }

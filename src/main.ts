@@ -28,6 +28,7 @@ import {
   legalHighlights,
   stickyMovePlan,
   pieceAt,
+  isPalisade,
   isWall,
   previewMove,
   rangeHighlights,
@@ -65,6 +66,8 @@ import {
   SIDE_LABEL,
   TOKEN_LABEL,
   TOKEN_TYPES,
+  UNIT_TOKEN_LABEL,
+  UNIT_TOKEN_TYPES,
   defaultArmyControls,
   hotseatArmyControls,
   isAiControlled,
@@ -86,8 +89,12 @@ import {
   type TileToken,
   type TokenType,
   type UnitCategory,
+  type UnitTokenType,
   type UnitType,
+  hasUnitToken,
   isTokenType,
+  isUnitTokenType,
+  sanitizeUnitTokens,
   isWalkableTerrain,
   liftWallTerrain,
   sanitizeTokens,
@@ -191,7 +198,9 @@ import {
   tokenGlyphSvg,
   facingPikeSvg,
   staminaEmptyMarkSvg,
+  staminaHexMarkSvg,
   staminaPipsHtml,
+  unitTokenGlyphSvg,
   pieceShotPipsHtml,
   hpPipsHtml,
   unitQuotaPipsHtml,
@@ -231,7 +240,8 @@ type ActionMode = 'move' | 'shoot';
 type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
-type EditorBrush = Terrain | UnitType | TokenType | 'erase';
+type UnitTokenBrush = `unit:${UnitTokenType}`;
+type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'erase';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
@@ -246,11 +256,19 @@ function isTerrainBrush(b: EditorBrush): b is Terrain {
 }
 
 function isUnitBrush(b: EditorBrush): b is UnitType {
-  return UNIT_TYPES.includes(b);
+  return (UNIT_TYPES as readonly string[]).includes(b);
 }
 
 function isTokenBrush(b: EditorBrush): b is TokenType {
   return isTokenType(b);
+}
+
+function isUnitTokenBrush(b: EditorBrush): b is UnitTokenBrush {
+  return b.startsWith('unit:') && isUnitTokenType(b.slice(5));
+}
+
+function unitTokenFromBrush(b: UnitTokenBrush): UnitTokenType {
+  return b.slice(5) as UnitTokenType;
 }
 
 let mapOpts: MapOptions = { ...DEFAULT_MAP };
@@ -393,7 +411,14 @@ function clipStamps(pieces: ArmyStamp[], cols: number, rows: number): ArmyStamp[
     const k = `${p.col},${p.row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ type: p.type, col: p.col, row: p.row, side: p.side });
+    const unitTokens = sanitizeUnitTokens(p.unitTokens);
+    out.push({
+      type: p.type,
+      col: p.col,
+      row: p.row,
+      side: p.side,
+      unitTokens: unitTokens.length ? unitTokens : undefined,
+    });
   }
   return out;
 }
@@ -1051,6 +1076,7 @@ function enterEditorFromMatch() {
       col: p.col,
       row: p.row,
       side: p.side,
+      unitTokens: p.unitTokens,
     })),
     editorTerrain[0]?.length ?? COLS,
     editorTerrain.length || ROWS,
@@ -1122,6 +1148,28 @@ function paintEditorToken(col: number, row: number) {
   refreshEditorBoard();
 }
 
+function paintEditorUnitToken(col: number, row: number) {
+  if (!isUnitTokenBrush(editorBrush)) return;
+  const kind = unitTokenFromBrush(editorBrush);
+  const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
+  if (idx < 0) return;
+  const cur = sanitizeUnitTokens(editorPieces[idx].unitTokens);
+  const has = cur.includes(kind);
+  if (!editorUnitTokenStroke) editorUnitTokenStroke = has ? 'remove' : 'add';
+  if (editorUnitTokenStroke === 'add' && has) return;
+  if (editorUnitTokenStroke === 'remove' && !has) return;
+  const next =
+    editorUnitTokenStroke === 'add'
+      ? [...cur, kind]
+      : cur.filter((t) => t !== kind);
+  editorPieces[idx] = {
+    ...editorPieces[idx],
+    unitTokens: next.length ? next : undefined,
+  };
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
 function paintEditorErase(col: number, row: number) {
   const pidx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   const tidx = editorTokens.findIndex((t) => t.col === col && t.row === row);
@@ -1141,6 +1189,10 @@ function paintEditorHex(col: number, row: number) {
   }
   if (isUnitBrush(editorBrush)) {
     paintEditorUnit(col, row);
+    return;
+  }
+  if (isUnitTokenBrush(editorBrush)) {
+    paintEditorUnitToken(col, row);
     return;
   }
   if (isTokenBrush(editorBrush)) {
@@ -1977,10 +2029,20 @@ function renderBoard(): string {
       if (splashSet.has(k)) hlOverlays += `<polygon class="hl-tint splash" points="${pts}" />`;
 
       if (shootTarget.has(k) || shootRange.has(k)) {
-        const under = !!pieceAt(state, hex) || isWall(state, hex);
+        const under =
+          !!pieceAt(state, hex) || isWall(state, hex) || isPalisade(state, hex);
         shootMarks += shootMarkSvg(x, y, shootTarget.has(k) && under);
       }
     }
+  }
+
+  let staminaMarks = '';
+  if (pathKind === 'stamina' && hoverHex) {
+    const { x, y } = pixelOf(hoverHex);
+    const occ = !!pieceAt(state, hoverHex);
+    const r = HEX_SIZE * (occ ? 0.24 : 0.28);
+    const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
+    staminaMarks += staminaHexMarkSvg(x, y + dy, r);
   }
 
   let tokensSvg = '';
@@ -1991,9 +2053,11 @@ function renderBoard(): string {
     const mark =
       t.type === 'wall'
         ? tokenGlyphSvg('wall', HEX_SIZE * 0.8, ori)
-        : t.type === 'flag'
-          ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
-          : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
+        : t.type === 'palisade'
+          ? tokenGlyphSvg('palisade', HEX_SIZE * 0.8, ori, null, t.hp)
+          : t.type === 'flag'
+            ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
+            : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     tokensSvg += `<g class="tile-token ${t.type}" transform="translate(${x}, ${y})">${mark}</g>`;
   }
 
@@ -2006,6 +2070,7 @@ function renderBoard(): string {
         col: p.col,
         row: p.row,
         facing: defaultFacing(p.side),
+        unitTokens: p.unitTokens,
       }))
     : state.pieces;
   const dmgBoard: GameState = editing
@@ -2165,6 +2230,7 @@ function renderBoard(): string {
     <g class="piece-layer">${piecesSvg}</g>
     <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
+    <g class="stamina-mark-layer">${staminaMarks}</g>
   </svg>`;
 }
 
@@ -2277,7 +2343,7 @@ function renderActionBar(): string {
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
         <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
-        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side)}
+        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side, hasUnitToken(piece, 'general'))}
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${pieceShotPipsHtml(piece)}
         ${restUi}
@@ -2354,9 +2420,14 @@ function renderSidebar(): string {
         : []),
       statRow(
         'HP',
-        hpPipsHtml(hpLeft(piece), s.hp, piece.side),
-        hpLeft(piece) < s.hp ? 'wounded' : '',
-        hpLeft(piece) < s.hp,
+        hpPipsHtml(
+          hpLeft(piece),
+          hpMax(piece),
+          piece.side,
+          hasUnitToken(piece, 'general'),
+        ),
+        hpLeft(piece) < hpMax(piece) ? 'wounded' : '',
+        hpLeft(piece) < hpMax(piece),
       ),
       ...(s.shootCooldown > 0
         ? [
@@ -2493,14 +2564,16 @@ function renderSidebar(): string {
           </div>
           <dl class="rules">
             <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
-            <div><dt>LOS low</dt><dd>wall always blocks; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
-            <div><dt>Arch</dt><dd>over units; terrain LOS unchanged</dd></div>
+            <div><dt>LOS low</dt><dd>wall always blocks; palisade blocks straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
+            <div><dt>Arch</dt><dd>over units and palisades; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays</dd></div>
+            <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
-            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor</dd></div>
-            <div><dt>Tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it</dd></div>
+            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits</dd></div>
+            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining) and the General ability — killing that piece can win the match</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Rotate (spends an action; front follows the mouse, click to lock)</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -2807,6 +2880,7 @@ function onHexClick(col: number, row: number) {
 }
 
 let editorPaintKey: string | null = null;
+let editorUnitTokenStroke: 'add' | 'remove' | null = null;
 
 function bindEditorBoard() {
   const svg = app.querySelector<SVGSVGElement>('svg.board');
@@ -2830,6 +2904,7 @@ function bindEditorBoard() {
   const stopPaint = () => {
     editorPainting = false;
     editorPaintKey = null;
+    editorUnitTokenStroke = null;
   };
 
   svg.addEventListener(
@@ -2839,6 +2914,7 @@ function bindEditorBoard() {
       e.preventDefault();
       editorPainting = true;
       editorPaintKey = null;
+      editorUnitTokenStroke = null;
       paintAt(e);
     },
     { signal },
@@ -3208,9 +3284,11 @@ function tokenSwatchSvg(type: TokenType): string {
     ${
       type === 'wall'
         ? tokenGlyphSvg('wall', size * 0.8, o)
-        : type === 'flag'
-          ? tokenGlyphSvg('flag', 13, o)
-          : tokenGlyphSvg(type, 13)
+        : type === 'palisade'
+          ? tokenGlyphSvg('palisade', size * 0.8, o)
+          : type === 'flag'
+            ? tokenGlyphSvg('flag', 13, o)
+            : tokenGlyphSvg(type, 13)
     }
   </svg>`;
 }
@@ -3237,7 +3315,36 @@ function renderTokenPanel(): string {
   ).join('');
   return `
     <section class="editor-panel editor-panel-tokens">
-      <h3>Tokens</h3>
+      <h3>Tile tokens</h3>
+      <div class="editor-brushes">
+        ${tokens}
+      </div>
+    </section>`;
+}
+
+function unitTokenSwatchSvg(type: UnitTokenType): string {
+  const o = editorOrientation;
+  const size = 10;
+  const pad = 4;
+  const spanX = (o === 'flat' ? 2 : Math.sqrt(3)) * size;
+  const spanY = (o === 'flat' ? Math.sqrt(3) : 2) * size;
+  const w = spanX + pad * 2;
+  const h = spanY + pad * 2;
+  const pts = hexCorners(0, 0, size, o);
+  return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
+    <polygon points="${pts}" fill="var(--land)" stroke="var(--hex-stroke)" stroke-width="1.4" stroke-linejoin="miter"/>
+    ${unitTokenGlyphSvg(type, 16)}
+  </svg>`;
+}
+
+function renderUnitTokenPanel(): string {
+  const tokens = UNIT_TOKEN_TYPES.map((t) => {
+    const brush: UnitTokenBrush = `unit:${t}`;
+    return `<button type="button" class="brush unit-token ${t}${editorBrush === brush ? ' active' : ''}" data-brush="${brush}">${unitTokenSwatchSvg(t)}<span>${UNIT_TOKEN_LABEL[t]}</span></button>`;
+  }).join('');
+  return `
+    <section class="editor-panel editor-panel-unit-tokens">
+      <h3>Unit tokens</h3>
       <div class="editor-brushes">
         ${tokens}
       </div>
@@ -3342,9 +3449,11 @@ function renderLevelThumb(lvl: SavedLevel): string {
     hexes += `<g transform="translate(${x + pad}, ${y + pad})">${
       t.type === 'wall'
         ? tokenGlyphSvg('wall', size * 0.8, ori)
-        : t.type === 'flag'
-          ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
-          : tokenGlyphSvg(t.type, size * 1.2)
+        : t.type === 'palisade'
+          ? tokenGlyphSvg('palisade', size * 0.8, ori, null, t.hp)
+          : t.type === 'flag'
+            ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
+            : tokenGlyphSvg(t.type, size * 1.2)
     }</g>`;
   }
   let dots = '';
@@ -3836,13 +3945,13 @@ function renderUnitEditor(): string {
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass. Palisades: you do not pass unless that melee hit breaks them</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
           <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
           <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
-          <dd><strong>Arc</strong> Straight: units block from low. Arch: fire over units. Terrain LOS (wall / higher ground) unchanged</dd>
+          <dd><strong>Arc</strong> Straight: units and palisades block from low. Arch: fire over units and palisades. Walls / higher ground still block</dd>
           <dd><strong>Min range</strong> closest hex you can fire</dd>
           <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
         </dl>
@@ -4464,6 +4573,7 @@ function render() {
           <div class="editor-top-paint">
             ${renderMapPanel()}
             ${renderTokenPanel()}
+            ${renderUnitTokenPanel()}
           </div>
           ${renderArmySelectPanel()}
         </div>

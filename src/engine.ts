@@ -142,16 +142,57 @@ export function emptyHadKing(): Record<Side, boolean> {
 
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
-export const TOKEN_TYPES = ['pikes', 'wall', 'flag'] as const;
+export const TOKEN_TYPES = ['pikes', 'wall', 'palisade', 'flag'] as const;
 export type TokenType = (typeof TOKEN_TYPES)[number];
-export type TileToken = { type: TokenType; col: number; row: number; owner?: Side };
+export type TileToken = {
+  type: TokenType;
+  col: number;
+  row: number;
+  owner?: Side;
+  /** Palisade hits left. Missing → full (`PALISADE_HP`). */
+  hp?: number;
+};
 
 export const TOKEN_LABEL: Record<TokenType, string> = {
   pikes: 'Pikes',
   wall: 'Wall',
+  palisade: 'Palisade',
   flag: 'Flag',
 };
 export const PIKE_DAMAGE = 1;
+export const PALISADE_HP = 3;
+
+/** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
+export const UNIT_TOKEN_TYPES = ['general'] as const;
+export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
+export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
+  general: 'General',
+};
+
+export function isUnitTokenType(v: unknown): v is UnitTokenType {
+  return (UNIT_TOKEN_TYPES as readonly string[]).includes(v as string);
+}
+
+export function sanitizeUnitTokens(raw: unknown): UnitTokenType[] {
+  if (!Array.isArray(raw)) return [];
+  const out: UnitTokenType[] = [];
+  for (const item of raw) {
+    if (!isUnitTokenType(item) || out.includes(item)) continue;
+    out.push(item);
+  }
+  return out;
+}
+
+export function unitTokensOf(piece: { unitTokens?: UnitTokenType[] }): UnitTokenType[] {
+  return piece.unitTokens ?? [];
+}
+
+export function hasUnitToken(
+  piece: { unitTokens?: UnitTokenType[] },
+  id: UnitTokenType,
+): boolean {
+  return unitTokensOf(piece).includes(id);
+}
 
 export function isTokenType(v: unknown): v is TokenType {
   return (TOKEN_TYPES as readonly string[]).includes(v as string);
@@ -205,6 +246,11 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
     seen.add(k);
     const tok: TileToken = { type: t.type, col, row };
     if (t.type === 'flag' && isSide(t.owner)) tok.owner = t.owner;
+    if (t.type === 'palisade') {
+      const hp = Math.floor(Number(t.hp));
+      // Old cap was 2 and we always wrote hp:2 for fresh tokens → treat as full.
+      if (Number.isFinite(hp) && hp === 1) tok.hp = 1;
+    }
     out.push(tok);
     if (out.length >= cap) break;
   }
@@ -242,6 +288,33 @@ export function isWall(
 ): boolean {
   if (tokenAt(state.tokens, h)?.type === 'wall') return true;
   return state.terrain[h.row]?.[h.col] === 'wall';
+}
+
+export function isPalisade(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return tokenAt(state.tokens, h)?.type === 'palisade';
+}
+
+/** Stone wall or wooden palisade — units cannot enter. */
+export function isBlockedWalk(
+  state: { tokens: TileToken[]; terrain: Terrain[][] },
+  h: Hex,
+): boolean {
+  return isWall(state, h) || isPalisade(state, h);
+}
+
+function palisadeHp(tok: TileToken | undefined): number {
+  if (!tok || tok.type !== 'palisade') return 0;
+  return tok.hp ?? PALISADE_HP;
+}
+
+function palisadeHpAt(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): number {
+  return palisadeHp(tokenAt(state.tokens, h));
 }
 
 export function isWalkableTerrain(t: Terrain): boolean {
@@ -290,6 +363,8 @@ export type Piece = {
   rangedHit?: boolean;
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
+  /** Attachments (General, …). Missing → none. */
+  unitTokens?: UnitTokenType[];
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number };
@@ -417,7 +492,7 @@ export function hexDamageOn(
   hex: Hex,
   victimSide: Side,
 ): { amount: number; from: Hex } | null {
-  if (isWall(state, hex)) return null;
+  if (isBlockedWalk(state, hex)) return null;
   let amount = 0;
   let from: Hex | null = null;
   for (const p of state.pieces) {
@@ -456,7 +531,7 @@ function hexDamageFaces(
     if (amount <= 0) continue;
     const dir = (((facing + rel) % 6) + 6) % 6 as HexDir;
     const h = neighborInDir(origin, dir, state.orientation);
-    if (!inBounds(state, h) || isWall(state, h)) continue;
+    if (!inBounds(state, h) || isBlockedWalk(state, h)) continue;
     out.push({ hex: h, dir, amount });
   }
   return out;
@@ -569,7 +644,7 @@ function ammoLog(piece: Piece, stats: UnitStats): string {
 }
 
 export function hpMax(piece: Piece): number {
-  return statsOf(piece.type).hp;
+  return statsOf(piece.type).hp + (hasUnitToken(piece, 'general') ? 1 : 0);
 }
 
 export function hpLeft(piece: Piece): number {
@@ -766,9 +841,16 @@ export type MoveHit = {
   from: Hex;
 };
 
+export type PalisadeHit = {
+  hex: Hex;
+  remaining: number;
+  destroyed: boolean;
+};
+
 export type MovePlan = {
   stop: Hex;
   hits: MoveHit[];
+  palisadeHits: PalisadeHit[];
   facing: HexDir;
 };
 
@@ -808,6 +890,7 @@ function activationMoveRange(state: GameState, piece: Piece): number {
  * Where a move actually ends: occupying an enemy hex is melee.
  * A kill takes the hex; a melee survivor leaves the attacker on the hex before.
  * Charge (charge > 0) damages every mid-path enemy and always passes through.
+ * Palisade: one melee hit per hex. Charge does not pass unless that hit breaks it.
  */
 export function previewMove(
   state: GameState,
@@ -823,6 +906,7 @@ export function previewMove(
 
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
   const hits: MoveHit[] = [];
+  const palisadeHits: PalisadeHit[] = [];
   // Last hex this piece may occupy. Friends / living enemies are pass-through only.
   let stop = from;
   let facing = facingOf(piece);
@@ -849,6 +933,16 @@ export function previewMove(
     if (step !== null) facing = step;
     const occ = pieceAt(state, h);
     if (!occ || occ.id === piece.id) {
+      const pal = tokenAt(state.tokens, h);
+      if (pal?.type === 'palisade') {
+        if (melee <= 0) break;
+        const remaining = Math.max(0, palisadeHp(pal) - 1);
+        palisadeHits.push({ hex: h, remaining, destroyed: remaining <= 0 });
+        if (remaining > 0) break;
+        stop = h;
+        prev = h;
+        continue;
+      }
       stop = h;
       prev = h;
       continue;
@@ -874,7 +968,7 @@ export function previewMove(
     prev = h;
   }
 
-  return { stop, hits, facing };
+  return { stop, hits, palisadeHits, facing };
 }
 
 function pathsEq(a: Hex[], b: Hex[]): boolean {
@@ -944,7 +1038,7 @@ function isLegalMovePath(
     const via = path[i - 1];
     const a = first.get(key(via));
     if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
-    if (pieceAt(state, via) || pathHaltsExtra(state, from, via, a.path)) continue;
+    if (pieceAt(state, via) || palisadeHpAt(state, via) > 1 || pathHaltsExtra(state, from, via, a.path)) continue;
     const b = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (b && pathsEq(b.path, path.slice(i))) return true;
   }
@@ -1067,6 +1161,7 @@ function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boo
   for (let i = 0; i < cells.length - 1; i++) {
     const h = cells[i];
     if (isWall(state, h)) return false;
+    if (isPalisade(state, h) && !overUnits) return false;
     if (hexHeight(state, h) > fromH) return false;
     if (fromH === 0 && !overUnits && pieceAt(state, h)) return false;
   }
@@ -1080,7 +1175,7 @@ function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boo
  */
 export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
   const out: Hex[] = [at];
-  const impactSolid = isWall(state, at);
+  const impactSolid = isBlockedWalk(state, at);
   const atDist = hexDist(state, from, at);
 
   // Concrete/rock hit: only 3 splash tiles — impact + 2 closest toward shooter
@@ -1096,7 +1191,7 @@ export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
     if (!inBounds(state, n)) continue;
 
     // Open impact: can clip an adjacent wall/rock, but not hexes in its shadow
-    if (isWall(state, n)) {
+    if (isBlockedWalk(state, n)) {
       out.push(n);
       continue;
     }
@@ -1109,7 +1204,7 @@ export function splashBlast(state: GameState, at: Hex, from: Hex): Hex[] {
 /** True if `n` sits in the shadow behind solid cover adjacent to impact `at`. */
 function inSolidShadow(state: GameState, from: Hex, at: Hex, n: Hex): boolean {
   for (const s of hexNeighbors(state, at)) {
-    if (!inBounds(state, s) || !isWall(state, s)) continue;
+    if (!inBounds(state, s) || !isBlockedWalk(state, s)) continue;
     if (eq(s, n)) return false;
     // n is behind solid s (from the shot) if farther from shooter than s and touches s
     if (hexDist(state, s, n) === 1 && hexDist(state, from, n) > hexDist(state, from, s)) {
@@ -1144,7 +1239,7 @@ function splashHasTarget(
 ): boolean {
   if (splashHitsEnemy(state, at, from, shooterSide)) return true;
   // Walls: must aim at the wall itself (not the tile in front) so the rocket impacts on it
-  return isWall(state, at);
+  return isBlockedWalk(state, at);
 }
 
 export const MIN_UNITS_PER_TURN = 1;
@@ -1182,6 +1277,7 @@ function cloneState(state: GameState): GameState {
     pieces: state.pieces.map((p) => ({
       ...p,
       abilities: p.abilities ? [...p.abilities] : undefined,
+      unitTokens: p.unitTokens ? [...p.unitTokens] : undefined,
     })),
     log: [...state.log],
     actedIds: [...state.actedIds],
@@ -1206,7 +1302,11 @@ function cloneState(state: GameState): GameState {
 }
 
 export function abilitiesOf(piece: Piece): AbilityId[] {
-  return piece.abilities ?? statsOf(piece.type).abilities ?? [];
+  const base = piece.abilities ?? statsOf(piece.type).abilities ?? [];
+  if (hasUnitToken(piece, 'general') && !base.includes('general')) {
+    return [...base, 'general'];
+  }
+  return base;
 }
 
 export function hasAbility(piece: Piece, id: AbilityId): boolean {
@@ -1595,6 +1695,12 @@ function movePathOpts(
       if (t === 'water' && !stats.passWater) return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       const occ = occupantAt(state, piece, from, h);
+      if (isPalisade(state, h)) {
+        if (occ) {
+          return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
+        }
+        return stats.meleeDamage > 0;
+      }
       if (!occ) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
       return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
@@ -1603,6 +1709,9 @@ function movePathOpts(
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isWall(state, h)) return false;
+      if (isPalisade(state, h)) {
+        return stats.meleeDamage > 0 && palisadeHpAt(state, h) <= 1;
+      }
       if (t === 'water') return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
@@ -1625,6 +1734,7 @@ function canWalkStep(
   const stats = statsOf(piece.type);
   const t = terrainAt(state, toHex);
   if (isWall(state, toHex)) return false;
+  if (isPalisade(state, toHex)) return stats.meleeDamage > 0;
   if (t === 'water' && !stats.passWater) return false;
   const fh = hexHeight(state, fromHex);
   const th = hexHeight(state, toHex);
@@ -1762,6 +1872,7 @@ function twoActionStops(
     const via = a.path[a.path.length - 1];
     if (!via) continue;
     if (pieceAt(state, via)) continue;
+    if (palisadeHpAt(state, via) > 1) continue;
     if (pathHaltsExtra(state, start, via, a.path)) continue;
     const second = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via));
     for (const [dk, b] of second) {
@@ -1853,10 +1964,10 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);
       if (terrain === 'rock' && !isWall(state, h)) continue; // can't shoot into rock
-      // Walls: only rockets can impact (to demolish); bullets treat like blocked aim
-      if (isWall(state, h) && !splash) continue;
-      // Splash (bazooka/tank) can't impact on water — except a wall sitting on it
-      if (splash && terrain === 'water' && !isWall(state, h)) continue;
+      // Walls / palisades: only rockets can impact (to demolish); bullets treat like blocked aim
+      if (isBlockedWalk(state, h) && !splash) continue;
+      // Splash (bazooka/tank) can't impact on water — except cover sitting on it
+      if (splash && terrain === 'water' && !isBlockedWalk(state, h)) continue;
       if (!losClear(state, from, h, stats.shootArc === 'arch')) continue;
 
       const target = pieceAt(state, h);
@@ -2027,18 +2138,37 @@ function applyActionInner(state: GameState, action: Action): GameState {
       dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
     }
 
+    for (const ph of plan.palisadeHits) {
+      const tok = tokenAt(next.tokens, ph.hex);
+      if (!tok || tok.type !== 'palisade') continue;
+      if (ph.destroyed) {
+        next.tokens = next.tokens.filter(
+          (t) =>
+            !(t.type === 'palisade' && t.col === ph.hex.col && t.row === ph.hex.row),
+        );
+        hitBits.push('palisade');
+      } else {
+        tok.hp = ph.remaining;
+        hitBits.push(`palisade (${ph.remaining} left)`);
+      }
+    }
+
     const bounced = !eq(plan.stop, action.to);
     const staminaTag = hit.kind === 'stamina' ? ' (stamina)' : '';
+    const brokePal =
+      plan.palisadeHits.some((p) => p.destroyed) && plan.hits.length === 0;
     if (hitBits.length) {
       next.log.push(
         `${unitLog(piece)} ${
           bounced
             ? 'strikes'
-            : plan.hits.some((h) => h.fatal)
-              ? 'captures'
-              : statsOf(piece.type).charge > 0
-                ? 'charges'
-                : 'hits'
+            : brokePal
+              ? 'breaks'
+              : plan.hits.some((h) => h.fatal)
+                ? 'captures'
+                : statsOf(piece.type).charge > 0
+                  ? 'charges'
+                  : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
@@ -2063,7 +2193,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
     );
-    if (!taken) {
+    const palStanding = tokenAt(next.tokens, plan.stop)?.type === 'palisade';
+    if (!taken && !palStanding) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
       applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
@@ -2098,7 +2229,6 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const blast = splashBlast(next, action.at, fromHex);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
-    let wallsDown = 0;
     for (const h of blast) {
       const t = pieceAt(next, h);
       // Splash hits everyone in the blast — friendlies included
@@ -2108,16 +2238,19 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
         dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin, true));
       }
-      // Concrete walls crumble under rockets; the tile underneath stays
-      if (isWall(next, h)) {
+      // Concrete walls and palisades crumble under rockets; the tile underneath stays
+      if (isBlockedWalk(next, h)) {
+        const kind = isPalisade(next, h) ? 'palisade' : 'wall';
         if (terrainAt(next, h) === 'wall') next.terrain[h.row][h.col] = 'land';
         next.tokens = next.tokens.filter(
-          (tok) => !(tok.type === 'wall' && tok.col === h.col && tok.row === h.row),
+          (tok) =>
+            !((tok.type === 'wall' || tok.type === 'palisade') &&
+              tok.col === h.col &&
+              tok.row === h.row),
         );
-        wallsDown++;
+        hitBits.push(kind);
       }
     }
-    if (wallsDown) hitBits.push(`${wallsDown} wall${wallsDown > 1 ? 's' : ''}`);
     next.log.push(
       `${unitLog(piece)} fires at ${action.at.col},${action.at.row}` +
         (hitBits.length ? ` — hits ${hitBits.join(' + ')}` : ' — splash misses') +

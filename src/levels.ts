@@ -2,6 +2,7 @@ import {
   clampMaxTurns,
   clampUnitsPerTurn,
   isKnownUnit,
+  sanitizeUnitTokens,
   isSide,
   sanitizeArmyControls,
   sanitizeTokens,
@@ -210,7 +211,16 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
     const k = `${col},${row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ type: p.type, col, row, side });
+    const unitTokens = sanitizeUnitTokens(
+      (p as ArmyStamp & { unitTokens?: unknown }).unitTokens,
+    );
+    out.push({
+      type: p.type,
+      col,
+      row,
+      side,
+      unitTokens: unitTokens.length ? unitTokens : undefined,
+    });
     if (out.length >= 128) break;
   }
   return out;

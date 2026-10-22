@@ -152,6 +152,7 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
+    "maxTurns": 0,
     "startText": "You will learn how to use terrain in your advantage",
     "winText": "good job",
     "loseText": "try to find high ground before the enemy arrives.",
@@ -173,7 +174,7 @@
     },
     "tokens": [],
     "sort": 8,
-    "updatedAt": 1792656126446,
+    "updatedAt": 1792667195333,
     "armies": [
         {
             "type": "archer",
@@ -209,7 +210,10 @@
             "type": "u-mvf8ty84rdk3",
             "col": 1,
             "row": 0,
-            "side": "blue"
+            "side": "blue",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
             "type": "archer",

@@ -175,6 +175,23 @@ function allowed_unit(mixed $type): bool {
     return (bool) preg_match('/^u-[a-z0-9]+$/', $type);
 }
 
+function sanitize_unit_tokens(mixed $raw): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $ok = ['general' => true];
+    $out = [];
+    $seen = [];
+    foreach ($raw as $item) {
+        if (!is_string($item) || !isset($ok[$item]) || isset($seen[$item])) {
+            continue;
+        }
+        $seen[$item] = true;
+        $out[] = $item;
+    }
+    return $out;
+}
+
 function sanitize_armies(mixed $raw, int $cols, int $rows): array {
     if (!is_array($raw)) {
         return [];
@@ -199,12 +216,17 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
             continue;
         }
         $seen[$k] = true;
-        $out[] = [
+        $rowOut = [
             'type' => $piece['type'],
             'col' => $col,
             'row' => $row,
             'side' => $side,
         ];
+        $unitTokens = sanitize_unit_tokens($piece['unitTokens'] ?? null);
+        if ($unitTokens) {
+            $rowOut['unitTokens'] = $unitTokens;
+        }
+        $out[] = $rowOut;
     }
     return $out;
 }
@@ -213,7 +235,7 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['pikes' => true, 'wall' => true, 'flag' => true];
+    $ok = ['pikes' => true, 'wall' => true, 'palisade' => true, 'flag' => true];
     $out = [];
     $seen = [];
     $cap = max(0, $cols * $rows);
@@ -244,6 +266,13 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
             $owner = $token['owner'] ?? '';
             if ($owner === 'red' || $owner === 'blue' || $owner === 'yellow' || $owner === 'purple') {
                 $rowOut['owner'] = $owner;
+            }
+        }
+        if ($type === 'palisade') {
+            $hp = isset($token['hp']) && is_numeric($token['hp']) ? (int) $token['hp'] : 3;
+            // Old cap was 2 (always written for fresh tokens). Keep 1 as damaged.
+            if ($hp === 1) {
+                $rowOut['hp'] = 1;
             }
         }
         $out[] = $rowOut;
@@ -290,11 +319,16 @@ function sanitize_formation(mixed $form): ?array {
         if ($col < 0 || $col > 32 || $fromBack < 0 || $fromBack > 32) {
             continue;
         }
-        $slots[] = [
+        $slotOut = [
             'type' => $slot['type'],
             'col' => $col,
             'fromBack' => $fromBack,
         ];
+        $unitTokens = sanitize_unit_tokens($slot['unitTokens'] ?? null);
+        if ($unitTokens) {
+            $slotOut['unitTokens'] = $unitTokens;
+        }
+        $slots[] = $slotOut;
     }
     $updated = isset($form['updatedAt']) && is_numeric($form['updatedAt'])
         ? (int) $form['updatedAt']

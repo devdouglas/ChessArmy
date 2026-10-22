@@ -51,6 +51,7 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
+    "maxTurns": 0,
     "startText": "Welcome peasant. Let me see what you got. \nMove and hit those scarecrows to the ground. \nManage your energy to climb to higher ground or swim. \nRest when needed because you are out of shape!",
     "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
     "loseText": "You almost drowned you idiot! Take a rest before you swim. You need your energy. And also, its not a good idea to fight from the water.",
@@ -70,9 +71,20 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
-    "tokens": [],
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 5
+        }
+    ],
     "sort": 0,
-    "updatedAt": 1792655973855,
+    "updatedAt": 1792667093688,
     "armies": [
         {
             "type": "peasant",
@@ -97,6 +109,12 @@
             "col": 4,
             "row": 2,
             "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 1,
+            "row": 5,
+            "side": "red"
         }
     ]
 }

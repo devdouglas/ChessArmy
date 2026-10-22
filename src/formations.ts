@@ -1,4 +1,4 @@
-import { isKnownUnit, type Side, type UnitType } from './engine';
+import { isKnownUnit, sanitizeUnitTokens, type Side, type UnitType } from './engine';
 import {
   COLS,
   ROWS,
@@ -40,7 +40,13 @@ function sanitizeSlot(raw: unknown): ArmySlot | null {
   const fromBack = Math.floor(Number(s.fromBack));
   if (!Number.isFinite(col) || !Number.isFinite(fromBack)) return null;
   if (col < 0 || col > 32 || fromBack < 0 || fromBack > 32) return null;
-  return { type: s.type, col, fromBack };
+  const unitTokens = sanitizeUnitTokens(s.unitTokens);
+  return {
+    type: s.type,
+    col,
+    fromBack,
+    unitTokens: unitTokens.length ? unitTokens : undefined,
+  };
 }
 
 function normalize(list: SavedFormation[]): SavedFormation[] {
@@ -224,7 +230,8 @@ export function defaultArmyStamps(cols: number, rows: number): ArmyStamp[] | nul
 
 export function slotsEqual(a: ArmySlot[], b: ArmySlot[]): boolean {
   if (a.length !== b.length) return false;
-  const key = (s: ArmySlot) => `${s.type}:${s.col}:${s.fromBack}`;
+  const key = (s: ArmySlot) =>
+    `${s.type}:${s.col}:${s.fromBack}:${(s.unitTokens ?? []).join(',')}`;
   const left = a.map(key).sort();
   const right = b.map(key).sort();
   return left.every((k, i) => k === right[i]);
