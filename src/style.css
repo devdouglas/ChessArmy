@@ -2087,6 +2087,38 @@ button.primary:focus-visible {
   max-width: 100%;
 }
 
+.turns-left-slot {
+  position: absolute;
+  top: 0.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.turns-left {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: #ead6a0;
+  background: rgba(12, 16, 22, 0.78);
+  border: 1px solid rgba(224, 192, 112, 0.4);
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.turns-left.warn {
+  color: #f0a060;
+  border-color: rgba(240, 160, 96, 0.55);
+}
+
+.turns-left.out {
+  color: #e07070;
+  border-color: rgba(224, 112, 112, 0.5);
+}
+
 svg.board {
   max-width: 100%;
   height: auto;

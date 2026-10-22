@@ -319,6 +319,8 @@ export type GameState = {
   hadKing: Record<Side, boolean>;
   /** How many pieces this side may activate before the turn ends. Default 1. */
   unitsPerTurn: number;
+  /** Full rounds allowed. 0 = no limit. */
+  maxTurns: number;
   /** Piece ids that already finished an activation this side-turn. */
   actedIds: string[];
   /** Side that opened the match. A level turn ticks when this side starts again. */
@@ -1154,6 +1156,20 @@ export function clampUnitsPerTurn(n: unknown): number {
   return Math.max(MIN_UNITS_PER_TURN, Math.min(MAX_UNITS_PER_TURN, Math.floor(v)));
 }
 
+export const MIN_MAX_TURNS = 0;
+export const MAX_MAX_TURNS = 99;
+
+export function clampMaxTurns(n: unknown): number {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(MIN_MAX_TURNS, Math.min(MAX_MAX_TURNS, Math.floor(v)));
+}
+
+export function timedOut(state: GameState): boolean {
+  const cap = state.maxTurns ?? 0;
+  return cap > 0 && state.turnNumber > cap;
+}
+
 export function hasActed(state: GameState, id: string): boolean {
   return state.actedIds.includes(id);
 }
@@ -1383,9 +1399,21 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
   }
 }
 
+function applyTurnLimit(state: GameState): void {
+  if (state.winner || !timedOut(state)) return;
+  const parts = participatingSides(state);
+  const start = state.startingSide ?? 'red';
+  const foe =
+    parts.find((s) => !sameTeam(state, s, start) && !sideDefeated(state, s)) ??
+    parts.find((s) => !sameTeam(state, s, start));
+  if (foe) state.winner = foe;
+}
+
 /** Match start / after the turn flag flips onto `state.turn`. */
 export function beginSideTurn(state: GameState, newRound = false, kickoff = false): void {
   if (newRound) state.turnNumber += 1;
+  applyTurnLimit(state);
+  if (state.winner) return;
   const queued = state.pendingStaminaFx?.[state.turn] ?? [];
   if (queued.length) {
     const seen = new Set(
@@ -1455,8 +1483,12 @@ function sideDefeated(state: GameState, side: Side): boolean {
   return false;
 }
 
-/** Why the loser is out: no pieces left, or their fielded king was killed. */
-export function defeatKind(state: GameState, loser: Side): 'wipeout' | 'king' {
+/** Why the loser is out: no pieces left, their fielded king was killed, or the turn cap. */
+export function defeatKind(
+  state: GameState,
+  loser: Side,
+): 'wipeout' | 'king' | 'turns' {
+  if (timedOut(state)) return 'turns';
   if (!state.pieces.some((p) => p.side === loser)) return 'wipeout';
   return 'king';
 }

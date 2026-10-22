@@ -5,13 +5,16 @@ import {
   ABILITY_LABEL,
   abilitiesOf,
   applyAction,
+  clampMaxTurns,
   clampUnitsPerTurn,
   defeatKind,
   flagsHeldBy,
   mapFlags,
   winByFlags,
   hasActed,
+  MAX_MAX_TURNS,
   MAX_UNITS_PER_TURN,
+  MIN_MAX_TURNS,
   MIN_UNITS_PER_TURN,
   passTurn,
   restPiece,
@@ -287,6 +290,7 @@ let editorName = 'New level';
 let editorCategory: LevelCategory = 'skirmish';
 let editorPeriod: Period = selectedPeriod;
 let editorUnitsPerTurn = 1;
+let editorMaxTurns = 0;
 let editorStartText = '';
 let editorWinText = '';
 let editorLoseText = '';
@@ -494,6 +498,7 @@ function startMatch(reshuffleRandom = true) {
 
 function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
   s.unitsPerTurn = clampUnitsPerTurn(lvl?.unitsPerTurn ?? 1);
+  s.maxTurns = clampMaxTurns(lvl?.maxTurns ?? 0);
   s.actedIds = [];
   return s;
 }
@@ -911,17 +916,11 @@ function advancePlaylist() {
 
 function maybeRecordLevelWin(): void {
   if (screen !== 'play' || !playerTeamWon(state) || !activeLevelId) return;
-  const lvl = getLevel(activeLevelId);
-  if (!lvl || lvl.category !== 'tutorial') return;
   recordLevelWin(activeLevelId);
 }
 
-function canSkipTutorialLevel(): boolean {
-  return (
-    playlist?.kind === 'tutorial' &&
-    !!activeLevelId &&
-    hasWonLevel(activeLevelId)
-  );
+function canSkipPlayedLevel(): boolean {
+  return !!playlist && !!activeLevelId && hasWonLevel(activeLevelId);
 }
 
 function loadEditorLevel(lvl: SavedLevel): void {
@@ -938,6 +937,7 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorCategory = lvl.category;
   editorPeriod = lvl.period;
   editorUnitsPerTurn = clampUnitsPerTurn(lvl.unitsPerTurn);
+  editorMaxTurns = clampMaxTurns(lvl.maxTurns);
   editorStartText = sanitizeLevelText(lvl.startText);
   editorWinText = sanitizeLevelText(lvl.winText);
   editorLoseText = sanitizeLevelText(lvl.loseText);
@@ -1018,6 +1018,7 @@ function newEditorLevel() {
   editorCategory = 'skirmish';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = 1;
+  editorMaxTurns = 0;
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
@@ -1038,6 +1039,7 @@ function enterEditorFromMatch() {
   editorCategory = 'skirmish';
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
+  editorMaxTurns = clampMaxTurns(state.maxTurns);
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
@@ -1177,6 +1179,8 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
   if (periodEl) editorPeriod = sanitizePeriod(periodEl.value);
   const uptEl = app.querySelector<HTMLInputElement>('#editor-units-per-turn');
   if (uptEl) editorUnitsPerTurn = clampUnitsPerTurn(uptEl.value);
+  const maxTurnsEl = app.querySelector<HTMLInputElement>('#editor-max-turns');
+  if (maxTurnsEl) editorMaxTurns = clampMaxTurns(maxTurnsEl.value);
   const startEl = app.querySelector<HTMLTextAreaElement>('#editor-start-text');
   if (startEl) editorStartText = startEl.value;
   const winEl = app.querySelector<HTMLTextAreaElement>('#editor-win-text');
@@ -1202,12 +1206,15 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
     { star2: editorStar2, star3: editorStar3 },
     editorControls,
     editorTokens,
+    editorMaxTurns,
   );
   editorStartText = saved.startText;
   editorWinText = saved.winText;
   editorLoseText = saved.loseText;
   editorStar2 = saved.star2;
   editorStar3 = saved.star3;
+  editorUnitsPerTurn = saved.unitsPerTurn;
+  editorMaxTurns = saved.maxTurns;
   editorLevelId = saved.id;
   editorName = saved.name;
   editorTerrain = cloneTerrain(saved.terrain);
@@ -2548,9 +2555,11 @@ function turnLabel(): string {
       ? mapFlags(state).length > 1
         ? 'all flags captured'
         : 'flag captured'
-      : defeatKind(state, loser) === 'wipeout'
-        ? 'army destroyed'
-        : 'general down';
+      : defeatKind(state, loser) === 'turns'
+        ? 'out of turns'
+        : defeatKind(state, loser) === 'wipeout'
+          ? 'army destroyed'
+          : 'general down';
     return `<span class="${state.winner}">${SIDE_LABEL[state.winner].toUpperCase()} wins</span> — ${how} · ${stats}`;
   }
   if ((aiThinking || animating) && isAiControlled(state, state.turn)) {
@@ -2586,7 +2595,9 @@ function renderEndOverlay(): string {
 
   const loser = opposingLoser(state.winner);
   const flags = winByFlags(state);
-  const wiped = !flags && defeatKind(state, loser) === 'wipeout';
+  const how = !flags ? defeatKind(state, loser) : 'wipeout';
+  const outOfTurns = how === 'turns';
+  const wiped = !flags && how === 'wipeout';
   const manyFlags = mapFlags(state).length > 1;
   const winHow = flags
     ? manyFlags
@@ -2599,16 +2610,20 @@ function renderEndOverlay(): string {
     ? manyFlags
       ? 'The enemy captured every flag.'
       : 'The enemy captured the flag.'
-    : wiped
-      ? 'Your army was destroyed.'
-      : 'Your general has fallen.';
+    : outOfTurns
+      ? 'Ran out of turns.'
+      : wiped
+        ? 'Your army was destroyed.'
+        : 'Your general has fallen.';
   const hotseatHow = flags
     ? manyFlags
       ? `${SIDE_LABEL[state.winner]} captured every flag.`
       : `${SIDE_LABEL[state.winner]} captured the flag.`
-    : wiped
-      ? `${SIDE_LABEL[state.winner]} destroyed the opposing army.`
-      : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
+    : outOfTurns
+      ? `${SIDE_LABEL[state.winner]} wins — out of turns.`
+      : wiped
+        ? `${SIDE_LABEL[state.winner]} destroyed the opposing army.`
+        : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
 
   const custom = youWon ? levelCopy('win') : youLost ? levelCopy('lose') : '';
   const stock =
@@ -2665,9 +2680,28 @@ function renderStartOverlay(): string {
         <p class="end-sub level-copy">${escapeHtml(text)}</p>
         <div class="end-actions">
           <button type="button" id="briefing-go">Begin</button>
+          ${
+            canSkipPlayedLevel()
+              ? `<button type="button" id="briefing-skip" class="ghost">Skip</button>`
+              : ''
+          }
         </div>
       </div>
     </div>`;
+}
+
+function turnsLeft(): number | null {
+  const cap = state.maxTurns ?? 0;
+  if (cap <= 0) return null;
+  return Math.max(0, cap - state.turnNumber + 1);
+}
+
+function turnsLeftHtml(): string {
+  const left = turnsLeft();
+  if (left === null) return '';
+  const cls = left <= 0 ? ' out' : left <= 2 ? ' warn' : '';
+  const label = left === 1 ? '1 turn left' : `${left} turns left`;
+  return `<div class="turns-left${cls}" aria-live="polite">${label}</div>`;
 }
 
 function updateChrome() {
@@ -2675,6 +2709,8 @@ function updateChrome() {
   if (banner) banner.innerHTML = turnLabel();
   const goals = app.querySelector('.star-goals');
   if (goals) goals.outerHTML = starGoalsHtml();
+  const slot = app.querySelector('.turns-left-slot');
+  if (slot) slot.innerHTML = turnsLeftHtml();
 }
 
 function choicePending(): boolean {
@@ -3322,7 +3358,7 @@ function renderLevelThumb(lvl: SavedLevel): string {
 function levelMetaLine(l: SavedLevel): string {
   const armyN = Array.isArray(l.armies) ? l.armies.length : null;
   const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
-  return `${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''} · ${army}${l.id === defaultLevelId ? ' · default' : ''}`;
+  return `${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.maxTurns > 0 ? ` · ${l.maxTurns}t` : ''} · ${army}${l.id === defaultLevelId ? ' · default' : ''}`;
 }
 
 function renderLevelRow(l: SavedLevel): string {
@@ -3468,9 +3504,15 @@ function renderEditorBar(): string {
               </select>
             </label>
           </div>
-          <label class="editor-cat level-settings-upt">Max units / turn
-            <input type="number" id="editor-units-per-turn" min="${MIN_UNITS_PER_TURN}" max="${MAX_UNITS_PER_TURN}" value="${editorUnitsPerTurn}" />
-          </label>
+          <div class="level-settings-row">
+            <label class="editor-cat level-settings-upt">Max units / turn
+              <input type="number" id="editor-units-per-turn" min="${MIN_UNITS_PER_TURN}" max="${MAX_UNITS_PER_TURN}" value="${editorUnitsPerTurn}" />
+            </label>
+            <label class="editor-cat level-settings-upt">Max turns
+              <input type="number" id="editor-max-turns" min="${MIN_MAX_TURNS}" max="${MAX_MAX_TURNS}" value="${editorMaxTurns}" title="0 = no limit" />
+            </label>
+          </div>
+          <p class="muted star-turns-hint">Max turns 0 = no limit. Counted in full rounds, same clock as stars.</p>
           <label class="editor-cat level-copy-field">Start text
             <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
           </label>
@@ -4016,6 +4058,12 @@ function bindEditorEvents() {
     el.value = String(editorUnitsPerTurn);
     editorDirty = true;
   });
+  app.querySelector('#editor-max-turns')?.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement;
+    editorMaxTurns = clampMaxTurns(el.value);
+    el.value = String(editorMaxTurns);
+    editorDirty = true;
+  });
   const bindLevelText = (sel: string, set: (v: string) => void) => {
     app.querySelector<HTMLTextAreaElement>(sel)?.addEventListener('change', (e) => {
       set((e.target as HTMLTextAreaElement).value);
@@ -4300,7 +4348,6 @@ function bindEvents() {
     if (activeLevelId) startMatch(false);
     else reset(true);
   });
-  app.querySelector('#skip-level')?.addEventListener('click', () => advancePlaylist());
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
   app.querySelector('#end-next')?.addEventListener('click', () => advancePlaylist());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
@@ -4309,6 +4356,7 @@ function bindEvents() {
     render();
     void maybeAi();
   });
+  app.querySelector('#briefing-skip')?.addEventListener('click', () => advancePlaylist());
   app.querySelector('#level-select')?.addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
     if (v === 'random') {
@@ -4436,14 +4484,10 @@ function render() {
 
   const pl = playlist;
   const plLvl = playlistLevel();
-  const skipBtn = canSkipTutorialLevel()
-    ? `<button type="button" id="skip-level">Skip</button>`
-    : '';
   const randomParams = pl
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
         <button type="button" id="edit-this-level">Edit level</button>
-        ${skipBtn}
         <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`
     : !activeLevelId
@@ -4491,6 +4535,7 @@ function render() {
       <div class="turn-banner">${turnLabel()}</div>
       ${starGoalsHtml()}
       <div class="board-stage">
+        <div class="turns-left-slot">${turnsLeftHtml()}</div>
         ${renderBoard()}
         ${renderHexChoice()}
         ${endTurnButton()}

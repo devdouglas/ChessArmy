@@ -391,6 +391,15 @@ function sanitize_level(mixed $level): ?array {
     if ($unitsPerTurn > 12) {
         $unitsPerTurn = 12;
     }
+    $maxTurns = isset($level['maxTurns']) && is_numeric($level['maxTurns'])
+        ? (int) $level['maxTurns']
+        : 0;
+    if ($maxTurns < 0) {
+        $maxTurns = 0;
+    }
+    if ($maxTurns > 99) {
+        $maxTurns = 99;
+    }
 
     $out = [
         'id' => $id,
@@ -402,6 +411,7 @@ function sanitize_level(mixed $level): ?array {
         'category' => $cat,
         'period' => $period,
         'unitsPerTurn' => $unitsPerTurn,
+        'maxTurns' => $maxTurns,
         'startText' => sanitize_level_text($level['startText'] ?? ''),
         'winText' => sanitize_level_text($level['winText'] ?? ''),
         'loseText' => sanitize_level_text($level['loseText'] ?? ''),

@@ -1,4 +1,5 @@
 import {
+  clampMaxTurns,
   clampUnitsPerTurn,
   isKnownUnit,
   isSide,
@@ -77,6 +78,8 @@ export type SavedLevel = {
   sort: number;
   /** Pieces a side may activate per turn. Missing on old saves → 1. */
   unitsPerTurn: number;
+  /** Full rounds to win. 0 = no cap. Missing on old saves → 0. */
+  maxTurns: number;
   /** Briefing at match start. Empty = skip overlay. */
   startText: string;
   /** Shown on victory (Red / human). Empty = stock win copy. */
@@ -295,6 +298,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         period: sanitizePeriod(l.period),
         sort: sort ?? Number.NaN,
         unitsPerTurn: clampUnitsPerTurn(l.unitsPerTurn ?? 1),
+        maxTurns: clampMaxTurns(
+          (l as SavedLevel & { maxTurns?: unknown }).maxTurns ?? 0,
+        ),
         startText: sanitizeLevelText(l.startText),
         winText: sanitizeLevelText(l.winText),
         loseText: sanitizeLevelText(l.loseText),
@@ -433,6 +439,7 @@ export function saveLevel(
   stars?: { star2?: StarRule; star3?: StarRule },
   armyControls?: Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[],
+  maxTurns?: number,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -462,6 +469,7 @@ export function saveLevel(
       period: nextPeriod,
       sort: moved ? nextSort(levels, nextCat, nextPeriod, prev.id) : prev.sort,
       unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? prev.unitsPerTurn ?? 1),
+      maxTurns: clampMaxTurns(maxTurns ?? prev.maxTurns ?? 0),
       startText: sanitizeLevelText(texts?.startText ?? prev.startText),
       winText: sanitizeLevelText(texts?.winText ?? prev.winText),
       loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
@@ -490,6 +498,7 @@ export function saveLevel(
     period: createdPeriod,
     sort: nextSort(levels, createdCat, createdPeriod),
     unitsPerTurn: clampUnitsPerTurn(unitsPerTurn),
+    maxTurns: clampMaxTurns(maxTurns ?? 0),
     startText: sanitizeLevelText(texts?.startText),
     winText: sanitizeLevelText(texts?.winText),
     loseText: sanitizeLevelText(texts?.loseText),

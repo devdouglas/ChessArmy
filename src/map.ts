@@ -452,6 +452,7 @@ function freshGame(
     controls: controls ? sanitizeArmyControls(controls) : defaultArmyControls(),
     hadKing,
     unitsPerTurn: 1,
+    maxTurns: 0,
     actedIds: [],
     startingSide: start,
     turnNumber: 1,
