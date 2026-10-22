@@ -273,6 +273,17 @@ export function tokenGlyphSvg(
   return '';
 }
 
+/** Red prohibition overlay — Do not touch, painted onto another token. */
+export function noTouchMarkSvg(r = 8): string {
+  const sw = Math.max(1.15, r * 0.2);
+  const inset = r * 0.62;
+  return `<g class="token-notouch">
+    <circle cx="0" cy="0" r="${r.toFixed(2)}" fill="#1a1f1c" fill-opacity="0.35" stroke="#e04030" stroke-width="${sw.toFixed(2)}"/>
+    <path d="M ${(-inset).toFixed(2)} ${inset.toFixed(2)} L ${inset.toFixed(2)} ${(-inset).toFixed(2)}"
+      fill="none" stroke="#e04030" stroke-width="${sw.toFixed(2)}" stroke-linecap="round"/>
+  </g>`;
+}
+
 /**
  * Facing-pike cluster. Origin at the butts, tips along local -Y.
  * Color via `currentColor` (set by `.hex-dmg-pikes.{side}`).

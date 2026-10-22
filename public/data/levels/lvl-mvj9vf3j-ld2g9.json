@@ -177,13 +177,10 @@
     "updatedAt": 1792657352771,
     "armies": [
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 6,
             "row": 10,
-            "side": "red",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "red"
         },
         {
             "type": "peasant",

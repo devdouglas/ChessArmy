@@ -141,13 +141,10 @@
             "side": "red"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "general",
             "col": 1,
             "row": 1,
-            "side": "blue",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "blue"
         },
         {
             "type": "soldier",

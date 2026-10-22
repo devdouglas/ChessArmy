@@ -142,7 +142,7 @@ export function emptyHadKing(): Record<Side, boolean> {
 
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
-export const TOKEN_TYPES = ['pikes', 'wall', 'palisade', 'flag'] as const;
+export const TOKEN_TYPES = ['pikes', 'wall', 'palisade', 'flag', 'notouch'] as const;
 export type TokenType = (typeof TOKEN_TYPES)[number];
 export type TileToken = {
   type: TokenType;
@@ -151,6 +151,8 @@ export type TileToken = {
   owner?: Side;
   /** Palisade hits left. Missing → full (`PALISADE_HP`). */
   hp?: number;
+  /** AI will not walk this hex (standalone token, or painted onto another). */
+  noTouch?: boolean;
 };
 
 export const TOKEN_LABEL: Record<TokenType, string> = {
@@ -158,6 +160,7 @@ export const TOKEN_LABEL: Record<TokenType, string> = {
   wall: 'Wall',
   palisade: 'Palisade',
   flag: 'Flag',
+  notouch: 'Do not touch',
 };
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
@@ -246,6 +249,7 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
     seen.add(k);
     const tok: TileToken = { type: t.type, col, row };
     if (t.type === 'flag' && isSide(t.owner)) tok.owner = t.owner;
+    if (t.noTouch === true) tok.noTouch = true;
     if (t.type === 'palisade') {
       const hp = Math.floor(Number(t.hp));
       // Old cap was 2 and we always wrote hp:2 for fresh tokens → treat as full.
@@ -295,6 +299,17 @@ export function isPalisade(
   h: Hex,
 ): boolean {
   return tokenAt(state.tokens, h)?.type === 'palisade';
+}
+
+export function tokenIsNoTouch(t: TileToken | undefined): boolean {
+  return t?.type === 'notouch' || t?.noTouch === true;
+}
+
+export function isNoTouch(
+  state: { tokens?: TileToken[] },
+  h: Hex,
+): boolean {
+  return tokenIsNoTouch(tokenAt(state.tokens ?? [], h));
 }
 
 /** Stone wall or wooden palisade — units cannot enter. */

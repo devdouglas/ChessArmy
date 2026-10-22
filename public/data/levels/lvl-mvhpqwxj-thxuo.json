@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvhpqwxj-thxuo",
-    "name": "0 A terrain demo",
+    "name": "The rebel scum",
     "cols": 11,
     "rows": 11,
     "orientation": "pointy",
@@ -172,55 +172,34 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
-    "tokens": [],
-    "sort": 4,
-    "updatedAt": 1792667568582,
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 0,
+            "noTouch": true
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 1,
+            "noTouch": true
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 2,
+            "noTouch": true
+        },
+        {
+            "type": "wall",
+            "col": 6,
+            "row": 3
+        }
+    ],
+    "sort": 5,
+    "updatedAt": 1792669119847,
     "armies": [
-        {
-            "type": "archer",
-            "col": 1,
-            "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "archer",
-            "col": 2,
-            "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "archer",
-            "col": 3,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "archer",
-            "col": 3,
-            "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 9,
-            "row": 3,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 1,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "general"
-            ]
-        },
-        {
-            "type": "archer",
-            "col": 2,
-            "row": 9,
-            "side": "red"
-        },
         {
             "type": "archer",
             "col": 6,
@@ -232,6 +211,96 @@
             "col": 9,
             "row": 9,
             "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 7,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 9,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 9,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 1,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 0,
+            "row": 7,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 0,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 9,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 0,
+            "side": "blue"
         }
     ]
 }

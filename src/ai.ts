@@ -2,6 +2,7 @@
  * Aggressive AI: if anyone can shoot or melee, they do.
  * Otherwise close on the enemy general (else nearest enemy). No fleeing.
  * Pikes: don't walk onto them unless that move attacks the enemy general.
+ * Do-not-touch tokens: never walk that hex (invalid path).
  * Own general: never attacks the army except the enemy general, or a unit
  * already in melee with him (adjacent, meleeDamage > 0).
  * Activate the general last — other pieces act first unless only the king can.
@@ -31,6 +32,7 @@ import {
   terrainHeight,
   tokenAt,
   UNIT_STATS,
+  isNoTouch,
   hexDamageOn,
   hexDamagePushHits,
   type Action,
@@ -277,6 +279,17 @@ function isPikeWalk(state: GameState, action: Action): boolean {
   return moveStepsOnPikes(state, piece, action.to);
 }
 
+/** Walk whose drawn/canonical path steps onto a Do-not-touch token. */
+function moveTouchesNoTouch(state: GameState, action: Action): boolean {
+  if (action.kind !== 'move') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  for (const h of pathForMove(state, piece, action.to)) {
+    if (isNoTouch(state, h)) return true;
+  }
+  return false;
+}
+
 /** Unprovoked hoplite walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
 function isHopliteHoldWalk(state: GameState, action: Action, me: Side): boolean {
   if (action.kind !== 'move') return false;
@@ -476,6 +489,7 @@ export function pickAiAction(state: GameState): Action | null {
   const actions = allLegalActions(state).filter((a) => {
     if (!generalAttackOk(state, a, me)) return false;
     if (moveCapturesFlag(state, a, me) && !attacksEnemyGeneral(state, a, me)) return false;
+    if (moveTouchesNoTouch(state, a)) return false;
     return true;
   });
   if (!actions.length) return null;

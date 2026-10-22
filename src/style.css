@@ -1595,6 +1595,10 @@ button.primary:focus-visible {
   border-color: #c9a227;
   color: #f0d060;
 }
+.editor-brushes .brush.notouch.active {
+  border-color: #e04030;
+  color: #f08070;
+}
 
 .token-layer,
 .tile-token {

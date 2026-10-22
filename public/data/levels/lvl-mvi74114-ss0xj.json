@@ -149,7 +149,7 @@
             "land"
         ]
     ],
-    "category": "tutorial",
+    "category": "skirmish",
     "period": "ancient",
     "unitsPerTurn": 3,
     "maxTurns": 0,
@@ -173,8 +173,8 @@
         "purple": "ai-enemy"
     },
     "tokens": [],
-    "sort": 8,
-    "updatedAt": 1792667568582,
+    "sort": 2,
+    "updatedAt": 1792669147474,
     "armies": [
         {
             "type": "cohort",
@@ -195,13 +195,10 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 9,
             "row": 5,
-            "side": "yellow",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "yellow"
         },
         {
             "type": "cohort",
@@ -210,13 +207,10 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 0,
             "row": 6,
-            "side": "red",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "red"
         },
         {
             "type": "archer",

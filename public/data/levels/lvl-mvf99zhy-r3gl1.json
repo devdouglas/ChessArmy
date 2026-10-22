@@ -90,9 +90,9 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "startText": "Some peasants are being attacked. Teach them a lesson",
+    "startText": "Some peasants are being attacked. Teach them a lesson.",
     "winText": "First blood. Good Job",
-    "loseText": "Come on",
+    "loseText": "They are strong and fast and we are no match... but fearless is their leader. Take him out!",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -110,29 +110,14 @@
         "purple": "ai-enemy"
     },
     "tokens": [],
-    "sort": 7,
-    "updatedAt": 1792667568582,
+    "sort": 6,
+    "updatedAt": 1792669739175,
     "armies": [
-        {
-            "type": "barbarian",
-            "col": 2,
-            "row": 1,
-            "side": "yellow"
-        },
         {
             "type": "barbarian",
             "col": 4,
             "row": 1,
             "side": "yellow"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 3,
-            "row": 0,
-            "side": "yellow",
-            "unitTokens": [
-                "general"
-            ]
         },
         {
             "type": "cohort",
@@ -163,6 +148,21 @@
             "col": 4,
             "row": 7,
             "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "barbarian",
+            "col": 3,
+            "row": 1,
+            "side": "yellow"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 3,
+            "row": 0,
+            "side": "yellow",
             "unitTokens": [
                 "general"
             ]

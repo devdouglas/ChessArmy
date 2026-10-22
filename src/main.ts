@@ -66,6 +66,7 @@ import {
   SIDE_LABEL,
   TOKEN_LABEL,
   TOKEN_TYPES,
+  tokenIsNoTouch,
   UNIT_TOKEN_LABEL,
   UNIT_TOKEN_TYPES,
   defaultArmyControls,
@@ -196,6 +197,7 @@ import {
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
+  noTouchMarkSvg,
   facingPikeSvg,
   staminaEmptyMarkSvg,
   staminaHexMarkSvg,
@@ -241,7 +243,7 @@ type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
 type UnitTokenBrush = `unit:${UnitTokenType}`;
-type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'erase';
+type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'notouch' | 'erase';
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
@@ -260,7 +262,7 @@ function isUnitBrush(b: EditorBrush): b is UnitType {
 }
 
 function isTokenBrush(b: EditorBrush): b is TokenType {
-  return isTokenType(b);
+  return isTokenType(b) && b !== 'notouch';
 }
 
 function isUnitTokenBrush(b: EditorBrush): b is UnitTokenBrush {
@@ -269,6 +271,10 @@ function isUnitTokenBrush(b: EditorBrush): b is UnitTokenBrush {
 
 function unitTokenFromBrush(b: UnitTokenBrush): UnitTokenType {
   return b.slice(5) as UnitTokenType;
+}
+
+function isNoTouchBrush(b: EditorBrush): b is 'notouch' {
+  return b === 'notouch';
 }
 
 let mapOpts: MapOptions = { ...DEFAULT_MAP };
@@ -1142,8 +1148,37 @@ function paintEditorToken(col: number, row: number) {
   if (!isWalkableTerrain(editorTerrain[row][col])) return;
   const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
   if (idx >= 0 && editorTokens[idx].type === editorBrush) return;
+  const keepTouch = idx >= 0 && tokenIsNoTouch(editorTokens[idx]);
   if (idx >= 0) editorTokens.splice(idx, 1);
-  editorTokens.push({ type: editorBrush, col, row });
+  editorTokens.push({
+    type: editorBrush,
+    col,
+    row,
+    ...(keepTouch ? { noTouch: true } : {}),
+  });
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
+function paintEditorNoTouch(col: number, row: number) {
+  if (!isNoTouchBrush(editorBrush)) return;
+  if (!isWalkableTerrain(editorTerrain[row][col])) return;
+  const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
+  const has = idx >= 0 && tokenIsNoTouch(editorTokens[idx]);
+  if (!editorNoTouchStroke) editorNoTouchStroke = has ? 'remove' : 'add';
+  if (editorNoTouchStroke === 'add' && has) return;
+  if (editorNoTouchStroke === 'remove' && !has) return;
+  if (editorNoTouchStroke === 'add') {
+    if (idx < 0) editorTokens.push({ type: 'notouch', col, row });
+    else editorTokens[idx] = { ...editorTokens[idx], noTouch: true };
+  } else if (idx >= 0) {
+    if (editorTokens[idx].type === 'notouch') editorTokens.splice(idx, 1);
+    else {
+      const next = { ...editorTokens[idx] };
+      delete next.noTouch;
+      editorTokens[idx] = next;
+    }
+  }
   markEditorDirty();
   refreshEditorBoard();
 }
@@ -1193,6 +1228,10 @@ function paintEditorHex(col: number, row: number) {
   }
   if (isUnitTokenBrush(editorBrush)) {
     paintEditorUnitToken(col, row);
+    return;
+  }
+  if (isNoTouchBrush(editorBrush)) {
+    paintEditorNoTouch(col, row);
     return;
   }
   if (isTokenBrush(editorBrush)) {
@@ -2048,6 +2087,8 @@ function renderBoard(): string {
   let tokensSvg = '';
   const drawTokens = editing ? editorTokens : state.tokens;
   for (const t of drawTokens) {
+    const banned = tokenIsNoTouch(t);
+    if (!editing && t.type === 'notouch') continue;
     const { x, y } = pixelOf({ col: t.col, row: t.row });
     const owner = flagOwnerForDraw(t);
     const mark =
@@ -2057,8 +2098,11 @@ function renderBoard(): string {
           ? tokenGlyphSvg('palisade', HEX_SIZE * 0.8, ori, null, t.hp)
           : t.type === 'flag'
             ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
-            : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
-    tokensSvg += `<g class="tile-token ${t.type}" transform="translate(${x}, ${y})">${mark}</g>`;
+            : t.type === 'notouch'
+              ? ''
+              : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
+    const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
+    tokensSvg += `<g class="tile-token ${t.type}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
   }
 
   let piecesSvg = '';
@@ -2572,7 +2616,7 @@ function renderSidebar(): string {
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits</dd></div>
-            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it</dd></div>
+            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
             <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining) and the General ability — killing that piece can win the match</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Rotate (spends an action; front follows the mouse, click to lock)</dd></div>
@@ -2881,6 +2925,7 @@ function onHexClick(col: number, row: number) {
 
 let editorPaintKey: string | null = null;
 let editorUnitTokenStroke: 'add' | 'remove' | null = null;
+let editorNoTouchStroke: 'add' | 'remove' | null = null;
 
 function bindEditorBoard() {
   const svg = app.querySelector<SVGSVGElement>('svg.board');
@@ -2905,6 +2950,7 @@ function bindEditorBoard() {
     editorPainting = false;
     editorPaintKey = null;
     editorUnitTokenStroke = null;
+    editorNoTouchStroke = null;
   };
 
   svg.addEventListener(
@@ -2915,6 +2961,7 @@ function bindEditorBoard() {
       editorPainting = true;
       editorPaintKey = null;
       editorUnitTokenStroke = null;
+      editorNoTouchStroke = null;
       paintAt(e);
     },
     { signal },
@@ -3308,16 +3355,34 @@ function renderMapPanel(): string {
     </section>`;
 }
 
+function noTouchSwatchSvg(): string {
+  const o = editorOrientation;
+  const size = 10;
+  const pad = 4;
+  const spanX = (o === 'flat' ? 2 : Math.sqrt(3)) * size;
+  const spanY = (o === 'flat' ? Math.sqrt(3) : 2) * size;
+  const w = spanX + pad * 2;
+  const h = spanY + pad * 2;
+  const pts = hexCorners(0, 0, size, o);
+  return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
+    <polygon points="${pts}" fill="var(--land)" stroke="var(--hex-stroke)" stroke-width="1.4" stroke-linejoin="miter"/>
+    ${noTouchMarkSvg(size * 0.72)}
+  </svg>`;
+}
+
 function renderTokenPanel(): string {
-  const tokens = TOKEN_TYPES.map(
-    (t) =>
-      `<button type="button" class="brush token ${t}${editorBrush === t ? ' active' : ''}" data-brush="${t}">${tokenSwatchSvg(t)}<span>${TOKEN_LABEL[t]}</span></button>`,
-  ).join('');
+  const tokens = TOKEN_TYPES.filter((t) => t !== 'notouch')
+    .map(
+      (t) =>
+        `<button type="button" class="brush token ${t}${editorBrush === t ? ' active' : ''}" data-brush="${t}">${tokenSwatchSvg(t)}<span>${TOKEN_LABEL[t]}</span></button>`,
+    )
+    .join('');
   return `
     <section class="editor-panel editor-panel-tokens">
       <h3>Tile tokens</h3>
       <div class="editor-brushes">
         ${tokens}
+        <button type="button" class="brush token notouch${editorBrush === 'notouch' ? ' active' : ''}" data-brush="notouch">${noTouchSwatchSvg()}<span>Do not touch</span></button>
       </div>
     </section>`;
 }
@@ -3454,7 +3519,7 @@ function renderLevelThumb(lvl: SavedLevel): string {
           : t.type === 'flag'
             ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
             : tokenGlyphSvg(t.type, size * 1.2)
-    }</g>`;
+    }${tokenIsNoTouch(t) ? noTouchMarkSvg(size * 0.55) : ''}</g>`;
   }
   let dots = '';
   for (const p of lvl.armies ?? []) {

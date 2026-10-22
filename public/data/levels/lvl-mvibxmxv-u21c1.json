@@ -247,13 +247,10 @@
             "side": "red"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 5,
             "row": 9,
-            "side": "red",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "red"
         },
         {
             "type": "u-mvf8ty84rdk3",
@@ -286,13 +283,10 @@
             "side": "blue"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 5,
             "row": 1,
-            "side": "blue",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "blue"
         },
         {
             "type": "u-mvf8ty84rdk3",

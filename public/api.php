@@ -235,7 +235,7 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['pikes' => true, 'wall' => true, 'palisade' => true, 'flag' => true];
+    $ok = ['pikes' => true, 'wall' => true, 'palisade' => true, 'flag' => true, 'notouch' => true];
     $out = [];
     $seen = [];
     $cap = max(0, $cols * $rows);
@@ -274,6 +274,9 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
             if ($hp === 1) {
                 $rowOut['hp'] = 1;
             }
+        }
+        if (!empty($token['noTouch'])) {
+            $rowOut['noTouch'] = true;
         }
         $out[] = $rowOut;
     }

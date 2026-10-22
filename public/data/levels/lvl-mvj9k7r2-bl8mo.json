@@ -195,13 +195,10 @@
             "side": "red"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvf8vjffgpkd",
             "col": 6,
             "row": 10,
-            "side": "red",
-            "unitTokens": [
-                "general"
-            ]
+            "side": "red"
         },
         {
             "type": "peasant",
