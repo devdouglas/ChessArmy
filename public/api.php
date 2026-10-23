@@ -159,6 +159,7 @@ function allowed_unit(mixed $type): bool {
         'archer' => true,
         'javelin' => true,
         'horsearcher' => true,
+        'chariotarcher' => true,
         'cohort' => true,
         'hoplite' => true,
         'elephant' => true,
@@ -429,7 +430,7 @@ function sanitize_star_rule(mixed $raw, array $fallback): array {
     return ['metric' => $metric, 'op' => $op, 'value' => $value];
 }
 
-function sanitize_level_text(mixed $raw): string {
+function sanitize_level_text(mixed $raw, int $max = 280): string {
     if (!is_string($raw)) {
         return '';
     }
@@ -437,7 +438,10 @@ function sanitize_level_text(mixed $raw): string {
     if (!is_string($text)) {
         return '';
     }
-    return substr(trim($text), 0, 280);
+    if ($max < 1) {
+        $max = 280;
+    }
+    return substr(trim($text), 0, $max);
 }
 
 function sanitize_level(mixed $level): ?array {
@@ -508,6 +512,7 @@ function sanitize_level(mixed $level): ?array {
         'period' => $period,
         'unitsPerTurn' => $unitsPerTurn,
         'maxTurns' => $maxTurns,
+        'teaserText' => sanitize_level_text($level['teaserText'] ?? '', 120),
         'startText' => sanitize_level_text($level['startText'] ?? ''),
         'winText' => sanitize_level_text($level['winText'] ?? ''),
         'loseText' => sanitize_level_text($level['loseText'] ?? ''),

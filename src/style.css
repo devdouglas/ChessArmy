@@ -512,6 +512,20 @@ button.primary:focus-visible {
   color: var(--muted);
 }
 
+.level-teaser {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: var(--ink);
+  opacity: 0.88;
+}
+
 .start-reset {
   margin-top: 1.15rem;
   background: transparent;
@@ -1445,6 +1459,11 @@ button.primary:focus-visible {
   line-height: 1.2;
 }
 
+.unit-card > details > summary .lvl-meta {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .unit-card > details > summary::after {
   content: '';
   flex: 0 0 auto;
@@ -2158,7 +2177,8 @@ button.primary:focus-visible {
   min-width: 0;
 }
 
-.level-open .level-name {
+.level-open .level-name,
+.level-open .level-teaser {
   grid-column: 1 / -1;
   min-width: 0;
   padding: 0 0.15rem;

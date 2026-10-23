@@ -90,6 +90,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Some peasants are being attacked. Teach them a lesson and kill them all. This time you came prepared.",
     "winText": "First blood. Good Job",
     "loseText": "They are strong and fast and we are no match... but fearless is their leader. Take him out!",

@@ -153,6 +153,7 @@
     "period": "modern",
     "unitsPerTurn": 1,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "",
     "winText": "",
     "loseText": "",

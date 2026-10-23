@@ -126,7 +126,7 @@ import {
 } from './hex';
 import {
   COLS,
-  DEFAULT_ORIENTATION,
+  RANDOM_COLS,
   MAX_COLS,
   MAX_ROWS,
   MIN_COLS,
@@ -159,6 +159,7 @@ import {
   isLevelCategory,
   sanitizeCategory,
   sanitizeLevelText,
+  sanitizeTeaserText,
   sanitizeStarRule,
   setActiveLevelId,
   setDefaultLevelId,
@@ -168,6 +169,7 @@ import {
   DEFAULT_STAR_2,
   DEFAULT_STAR_3,
   LEVEL_TEXT_MAX,
+  TEASER_TEXT_MAX,
   STAR_VALUE_MAX,
   type LevelCategory,
   type SavedLevel,
@@ -190,6 +192,7 @@ import {
   captureFormation,
   defaultArmyStamps,
   deleteFormation,
+  formationCombatValue,
   getDefaultFormationId,
   getFormation,
   listFormationsInPeriod,
@@ -327,14 +330,15 @@ let rotatePreviewDir: HexDir | null = null;
 
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
-let editorOrientation: HexOrientation = DEFAULT_ORIENTATION;
+let editorOrientation: HexOrientation = 'flat';
 let editorBrush: EditorBrush = 'land';
 let editorLevelId: string | null = null;
 let editorName = 'New level';
 let editorCategory: LevelCategory = 'skirmish';
 let editorPeriod: Period = selectedPeriod;
-let editorUnitsPerTurn = 1;
+let editorUnitsPerTurn = 5;
 let editorMaxTurns = 0;
+let editorTeaserText = '';
 let editorStartText = '';
 let editorWinText = '';
 let editorLoseText = '';
@@ -499,7 +503,7 @@ function bootState(): GameState {
   }
   return createInitialState(
     mapOpts,
-    defaultArmyStamps(COLS, ROWS, selectedPeriod),
+    defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
     matchControls(),
     matchAiStyles(),
   );
@@ -540,7 +544,7 @@ function startMatch(reshuffleRandom = true) {
     state = withLevelRules(
       createInitialState(
         mapOpts,
-        defaultArmyStamps(COLS, ROWS, selectedPeriod),
+        defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
         matchControls(),
         matchAiStyles(),
       ),
@@ -876,13 +880,13 @@ function pieceBodySvg(piece: Piece, pr: number): string {
 function readMapInputs(): MapOptions {
   const waterEl = app.querySelector<HTMLInputElement>('#map-water');
   const rockEl = app.querySelector<HTMLInputElement>('#map-rock');
-  const wallEl = app.querySelector<HTMLInputElement>('#map-wall');
+  const palisadeEl = app.querySelector<HTMLInputElement>('#map-palisade');
   const highEl = app.querySelector<HTMLInputElement>('#map-high');
   const plateauEl = app.querySelector<HTMLInputElement>('#map-plateau');
   return {
     waterCount: waterEl ? Number(waterEl.value) : mapOpts.waterCount,
     rockCount: rockEl ? Number(rockEl.value) : mapOpts.rockCount,
-    wallCount: wallEl ? Number(wallEl.value) : mapOpts.wallCount,
+    palisadeCount: palisadeEl ? Number(palisadeEl.value) : mapOpts.palisadeCount,
     highCount: highEl ? Number(highEl.value) : mapOpts.highCount,
     plateauCount: plateauEl ? Number(plateauEl.value) : mapOpts.plateauCount,
   };
@@ -1060,6 +1064,7 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorPeriod = lvl.period;
   editorUnitsPerTurn = clampUnitsPerTurn(lvl.unitsPerTurn);
   editorMaxTurns = clampMaxTurns(lvl.maxTurns);
+  editorTeaserText = sanitizeTeaserText(lvl.teaserText);
   editorStartText = sanitizeLevelText(lvl.startText);
   editorWinText = sanitizeLevelText(lvl.winText);
   editorLoseText = sanitizeLevelText(lvl.loseText);
@@ -1135,13 +1140,14 @@ function enterEditor(fromLevelId?: string | null) {
 
 function newEditorLevel() {
   editorTerrain = emptyTerrain(COLS, ROWS);
-  editorOrientation = DEFAULT_ORIENTATION;
+  editorOrientation = 'flat';
   editorLevelId = null;
   editorName = 'New level';
   editorCategory = 'skirmish';
   editorPeriod = selectedPeriod;
-  editorUnitsPerTurn = 1;
+  editorUnitsPerTurn = 5;
   editorMaxTurns = 0;
+  editorTeaserText = '';
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
@@ -1164,6 +1170,7 @@ function enterEditorFromMatch() {
   editorPeriod = selectedPeriod;
   editorUnitsPerTurn = clampUnitsPerTurn(state.unitsPerTurn);
   editorMaxTurns = clampMaxTurns(state.maxTurns);
+  editorTeaserText = '';
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
@@ -1377,6 +1384,8 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
   if (uptEl) editorUnitsPerTurn = clampUnitsPerTurn(uptEl.value);
   const maxTurnsEl = app.querySelector<HTMLInputElement>('#editor-max-turns');
   if (maxTurnsEl) editorMaxTurns = clampMaxTurns(maxTurnsEl.value);
+  const teaserEl = app.querySelector<HTMLTextAreaElement>('#editor-teaser-text');
+  if (teaserEl) editorTeaserText = teaserEl.value;
   const startEl = app.querySelector<HTMLTextAreaElement>('#editor-start-text');
   if (startEl) editorStartText = startEl.value;
   const winEl = app.querySelector<HTMLTextAreaElement>('#editor-win-text');
@@ -1395,6 +1404,7 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
     editorUnitsPerTurn,
     editorPeriod,
     {
+      teaserText: editorTeaserText,
       startText: editorStartText,
       winText: editorWinText,
       loseText: editorLoseText,
@@ -1405,6 +1415,7 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
     editorMaxTurns,
     editorAiStyles,
   );
+  editorTeaserText = saved.teaserText;
   editorStartText = saved.startText;
   editorWinText = saved.winText;
   editorLoseText = saved.loseText;
@@ -3325,7 +3336,7 @@ function randomMapThumbSrc() {
   if (randomMapThumb?.period === selectedPeriod) return randomMapThumb;
   const s = createInitialState(
     DEFAULT_MAP,
-    defaultArmyStamps(COLS, ROWS, selectedPeriod),
+    defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
   );
   randomMapThumb = {
     period: selectedPeriod,
@@ -3351,6 +3362,7 @@ function renderRandomMapPickOpt(kind: MapPickKind): string {
     ${renderLevelThumb(randomMapThumbSrc())}
     <span class="map-pick-copy">
       <span class="start-opt-name">Randomised map</span>
+      <span class="level-teaser">Choose your army and your opponent. Now go to war!</span>
       <span class="start-opt-meta">${meta}</span>
     </span>
   </button>`;
@@ -3368,6 +3380,7 @@ function renderMapPickOpt(l: SavedLevel, kind: MapPickKind, index: number, maps:
     ${renderLevelThumb(l)}
     <span class="map-pick-copy">
       <span class="start-opt-name">${lock}${name}</span>
+      ${levelTeaserHtml(l)}
       <span class="start-opt-meta">${mapPickMetaLine(l, kind, index, maps)}</span>
     </span>
   </button>`;
@@ -3829,6 +3842,11 @@ function renderLevelThumb(lvl: {
   return `<svg class="level-thumb" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${hexes}${dots}</svg>`;
 }
 
+function levelTeaserHtml(l: SavedLevel): string {
+  const t = sanitizeTeaserText(l.teaserText);
+  return t ? `<span class="level-teaser">${escapeHtml(t)}</span>` : '';
+}
+
 function levelMetaLine(l: SavedLevel): string {
   const armyN = Array.isArray(l.armies) ? l.armies.length : null;
   const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
@@ -3850,6 +3868,7 @@ function renderLevelRow(l: SavedLevel): string {
     </button>
     <button type="button" class="level-open" data-edit-level="${l.id}">
       <span class="level-name">${escapeHtml(levelLabel(l))}</span>
+      ${levelTeaserHtml(l)}
       ${renderLevelThumb(l)}
       <span class="lvl-meta">${levelMetaLine(l)}</span>
     </button>
@@ -3919,7 +3938,7 @@ function renderEditorBar(): string {
   const formRows = forms
     .map(
       (f) => `<li class="${f.id === editorFormationId ? 'active' : ''}">
-          <button type="button" data-load-form="${f.id}">${escapeHtml(f.name)} <span class="lvl-meta">${f.slots.length} pcs · ${f.cols} wide${f.id === eraDefault ? ' · default' : ''}</span></button>
+          <button type="button" data-load-form="${f.id}">${escapeHtml(f.name)} <span class="lvl-meta">${f.slots.length} pcs · ${formationCombatValue(f.slots)} · ${f.cols} wide${f.id === eraDefault ? ' · default' : ''}</span></button>
           <button type="button" class="ghost danger" data-del-form="${f.id}" title="Delete">×</button>
         </li>`,
     )
@@ -3996,6 +4015,9 @@ function renderEditorBar(): string {
             </label>
           </div>
           <p class="muted star-turns-hint">Max turns 0 = no limit. Counted in full rounds, same clock as stars.</p>
+          <label class="editor-cat level-copy-field">Teaser text
+            <textarea id="editor-teaser-text" maxlength="${TEASER_TEXT_MAX}" rows="2" placeholder="Shown on map lists under the title">${escapeHtml(editorTeaserText)}</textarea>
+          </label>
           <label class="editor-cat level-copy-field">Start text
             <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
           </label>
@@ -4193,6 +4215,7 @@ function renderUnitEditor(): string {
           <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
         </svg>
         <span class="unit-card-title">${escapeHtml(s.name)}</span>
+        <span class="lvl-meta">${s.hp} hp · ${s.value}</span>
       </summary>
       <div class="unit-card-body">
       <header>
@@ -4307,7 +4330,7 @@ function renderUnitEditor(): string {
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
-          <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
+          <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
@@ -4654,6 +4677,9 @@ function bindEditorEvents() {
       markEditorDirty();
     });
   };
+  bindLevelText('#editor-teaser-text', (v) => {
+    editorTeaserText = v;
+  });
   bindLevelText('#editor-start-text', (v) => {
     editorStartText = v;
   });
@@ -4832,6 +4858,7 @@ function bindLevelsEvents() {
         editorName = 'New level';
         editorCategory = 'skirmish';
         editorPeriod = selectedPeriod;
+        editorTeaserText = '';
         editorStartText = '';
         editorWinText = '';
         editorLoseText = '';
@@ -5003,8 +5030,8 @@ function bindEvents() {
   app.querySelector('#map-rock')?.addEventListener('change', (e) => {
     mapOpts.rockCount = Number((e.target as HTMLInputElement).value);
   });
-  app.querySelector('#map-wall')?.addEventListener('change', (e) => {
-    mapOpts.wallCount = Number((e.target as HTMLInputElement).value);
+  app.querySelector('#map-palisade')?.addEventListener('change', (e) => {
+    mapOpts.palisadeCount = Number((e.target as HTMLInputElement).value);
   });
   app.querySelector('#map-high')?.addEventListener('change', (e) => {
     mapOpts.highCount = Number((e.target as HTMLInputElement).value);
@@ -5099,7 +5126,7 @@ function render() {
         <label>Hill <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
         <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
         <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
-        <label>Walls <input type="number" id="map-wall" min="0" max="${maxT}" value="${mapOpts.wallCount}" /></label>
+        <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
         <button type="button" id="new-map">New map</button>
         <button type="button" id="edit-current-map">Edit this map</button>
         <span class="map-hint">mid belt · climb costs stamina · water 1 hex/action, turn-start stamina penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>

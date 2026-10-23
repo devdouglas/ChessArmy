@@ -276,6 +276,16 @@ export function defaultArmyStamps(
   ];
 }
 
+/** Value/weight of a saved army. General token +1, same as combatValue. */
+export function formationCombatValue(slots: ArmySlot[]): number {
+  let n = 0;
+  for (const s of slots) {
+    n += UNIT_STATS[s.type]?.value ?? 0;
+    if (s.unitTokens?.includes('general')) n += 1;
+  }
+  return n;
+}
+
 export function slotsEqual(a: ArmySlot[], b: ArmySlot[]): boolean {
   if (a.length !== b.length) return false;
   const key = (s: ArmySlot) =>

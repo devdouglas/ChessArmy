@@ -52,6 +52,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Welcome peasant. Let me see what you got. \nMove and hit those scarecrows to the ground. \nManage your energy to climb to higher ground or swim. \nRest when needed because you are out of shape!",
     "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
     "loseText": "You almost drowned you idiot! Take a rest before you swim. You need your energy. And also, its not a good idea to fight from the water.",

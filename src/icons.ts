@@ -102,6 +102,25 @@ const ICONS: Record<UnitRole, string> = {
       <path d="M6.05 -1.75 L8.55 0 L6.05 1.75 Z"/>
     </g>
   `,
+  // Wheel, cab, horse, bow
+  chariotarcher: `
+    <path fill-rule="evenodd" d="M-3.45 5.05 m-3.55 0 a3.55 3.55 0 1 0 7.1 0 a3.55 3.55 0 1 0 -7.1 0
+      M-3.45 5.05 m-2.25 0 a2.25 2.25 0 1 0 4.5 0 a2.25 2.25 0 1 0 -4.5 0"/>
+    <circle cx="-3.45" cy="5.05" r="0.7"/>
+    <rect x="-3.85" y="1.7" width="0.8" height="6.7" rx="0.25"/>
+    <rect x="-6.8" y="4.65" width="6.7" height="0.8" rx="0.25"/>
+    <path d="M-6.35 -0.2 H0.75 V3.75 H-6.35 Z"/>
+    <path d="M-6.35 -0.2 V-1.85 H0.75 V-0.2"/>
+    <circle cx="-2.45" cy="-3.5" r="1.65"/>
+    <rect x="-0.25" y="1.75" width="5.2" height="0.8" rx="0.25"/>
+    <ellipse cx="5.75" cy="2.5" rx="3.7" ry="1.95"/>
+    <path d="M8.2 1.15 C10.05 -0.9 8.1 -3.55 5.55 -2.4 L6.25 0.3 Z"/>
+    <rect x="3.5" y="4.05" width="1.15" height="3.95" rx="0.4"/>
+    <rect x="6.85" y="4.05" width="1.15" height="3.75" rx="0.4"/>
+    <path d="M0.2 -6.65 C3.45 -3.8 3.45 0.55 0.2 3.4 L1.15 2.2 C3.25 0.05 3.25 -3.3 1.15 -5.45 Z"/>
+    <rect x="-2.55" y="-1.7" width="6.15" height="0.9" rx="0.25"/>
+    <path d="M3.25 -2.55 L5.55 -1.25 L3.25 0.05 Z"/>
+  `,
   // Scutum + galea
   cohort: `
     <path fill-rule="evenodd" d="M-8.6 -6.8
@@ -607,6 +626,7 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   archer: 'bow',
   javelin: 'javelins',
   horsearcher: 'horse bow',
+  chariotarcher: 'chariot bow',
   cohort: 'scutum',
   hoplite: 'aspis',
   elephant: 'war elephant',

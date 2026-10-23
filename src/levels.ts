@@ -85,6 +85,8 @@ export type SavedLevel = {
   unitsPerTurn: number;
   /** Full rounds to win. 0 = no cap. Missing on old saves → 0. */
   maxTurns: number;
+  /** One-liner on map lists under the title. Empty = omit. */
+  teaserText: string;
   /** Briefing at match start. Empty = skip overlay. */
   startText: string;
   /** Shown on victory (Red / human). Empty = stock win copy. */
@@ -166,6 +168,7 @@ export function starRuleLabel(rule: StarRule): string {
 }
 
 export const LEVEL_TEXT_MAX = 280;
+export const TEASER_TEXT_MAX = 120;
 
 export function sanitizeLevelText(raw: unknown): string {
   if (typeof raw !== 'string') return '';
@@ -174,6 +177,10 @@ export function sanitizeLevelText(raw: unknown): string {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
     .trim()
     .slice(0, LEVEL_TEXT_MAX);
+}
+
+export function sanitizeTeaserText(raw: unknown): string {
+  return sanitizeLevelText(raw).slice(0, TEASER_TEXT_MAX);
 }
 
 export { emptyTerrain, cloneTerrain };
@@ -318,6 +325,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         maxTurns: clampMaxTurns(
           (l as SavedLevel & { maxTurns?: unknown }).maxTurns ?? 0,
         ),
+        teaserText: sanitizeTeaserText(
+          (l as SavedLevel & { teaserText?: unknown }).teaserText,
+        ),
         startText: sanitizeLevelText(l.startText),
         winText: sanitizeLevelText(l.winText),
         loseText: sanitizeLevelText(l.loseText),
@@ -453,7 +463,12 @@ export function saveLevel(
   category?: LevelCategory,
   unitsPerTurn?: number,
   period?: Period,
-  texts?: { startText?: string; winText?: string; loseText?: string },
+  texts?: {
+    teaserText?: string;
+    startText?: string;
+    winText?: string;
+    loseText?: string;
+  },
   stars?: { star2?: StarRule; star3?: StarRule },
   armyControls?: Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[],
@@ -489,6 +504,7 @@ export function saveLevel(
       sort: moved ? nextSort(levels, nextCat, nextPeriod, prev.id) : prev.sort,
       unitsPerTurn: clampUnitsPerTurn(unitsPerTurn ?? prev.unitsPerTurn ?? 1),
       maxTurns: clampMaxTurns(maxTurns ?? prev.maxTurns ?? 0),
+      teaserText: sanitizeTeaserText(texts?.teaserText ?? prev.teaserText),
       startText: sanitizeLevelText(texts?.startText ?? prev.startText),
       winText: sanitizeLevelText(texts?.winText ?? prev.winText),
       loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
@@ -519,6 +535,7 @@ export function saveLevel(
     sort: nextSort(levels, createdCat, createdPeriod),
     unitsPerTurn: clampUnitsPerTurn(unitsPerTurn),
     maxTurns: clampMaxTurns(maxTurns ?? 0),
+    teaserText: sanitizeTeaserText(texts?.teaserText),
     startText: sanitizeLevelText(texts?.startText),
     winText: sanitizeLevelText(texts?.winText),
     loseText: sanitizeLevelText(texts?.loseText),

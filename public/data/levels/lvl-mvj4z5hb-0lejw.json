@@ -90,6 +90,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Welcome peasant. Today you become a real warmachine for the empire. Your cohort has stamina, a gladius and 3 javelins.",
     "winText": "Good job. Tomorrow you will learn to coordinate a small regiment.",
     "loseText": "You almost drowned you idiot. Check your stamina bar and rest before your jump in. Moving in and through water requires energy.",

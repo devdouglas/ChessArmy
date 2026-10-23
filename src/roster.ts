@@ -14,6 +14,7 @@ export type UnitRole =
   | 'archer'
   | 'javelin'
   | 'horsearcher'
+  | 'chariotarcher'
   | 'cohort'
   | 'hoplite'
   | 'elephant'
@@ -42,6 +43,7 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'archer',
   'javelin',
   'horsearcher',
+  'chariotarcher',
   'cohort',
   'hoplite',
   'elephant',
@@ -93,6 +95,7 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   archer: 'Archer',
   javelin: 'Javelin',
   horsearcher: 'Horse archer',
+  chariotarcher: 'Chariot archer',
   cohort: 'Cohort',
   hoplite: 'Hoplite',
   elephant: 'Elephant',
@@ -167,6 +170,7 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
   archer: { passUnits: false, infantry: true, king: false },
   javelin: { passUnits: false, infantry: true, king: false },
   horsearcher: { passUnits: true, infantry: false, king: false },
+  chariotarcher: { passUnits: false, infantry: false, king: false },
   cohort: { passUnits: false, infantry: true, king: false },
   hoplite: { passUnits: false, infantry: true, king: false },
   elephant: { passUnits: false, infantry: false, king: false },
@@ -565,6 +569,36 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.horsearcher,
     ...stockMobility('horsearcher'),
+    abilities: [],
+  },
+  chariotarcher: {
+    name: 'Chariot archer',
+    chess: 'Quadriga',
+    category: 'ancient',
+    role: 'chariotarcher',
+    move: 2,
+    shoot: 3,
+    shootMin: 1,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 5,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 1,
+    charge: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.chariotarcher,
+    ...stockMobility('chariotarcher'),
+    passWater: false,
+    climbLevel: 1,
     abilities: [],
   },
   cohort: {

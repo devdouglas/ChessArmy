@@ -98,6 +98,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Welcome peasant. You are still not fit to fight but we can use determined people like you. Here is a bow. Its easy, point the pointy end to the target en release. Also, use the hill to see and shoot further.",
     "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
     "loseText": "You almost drowned you idiot. Maybe get to higher ground to reach further.",

@@ -29,29 +29,35 @@ import { defaultFacing, neighbors, type HexOrientation } from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
+/** Randomised maps are two files wider than the stock grid. */
+export const RANDOM_COLS = COLS + 2;
 export const MIN_COLS = 5;
 export const MAX_COLS = 21;
 export const MIN_ROWS = 5;
 export const MAX_ROWS = 21;
 export const DEFAULT_ORIENTATION: HexOrientation = 'pointy';
+/** Randomised maps (skirmish / hotseat) are always flat-top. */
+export const RANDOM_ORIENTATION: HexOrientation = 'flat';
 
-/** Rows kept clear: army ranks + the line immediately in front of each army. */
-const CLEAR_ROWS = new Set([0, 1, 2, 8, 9, 10]);
+/** Army ranks + the line immediately in front of each army. */
+function isClearRow(row: number, rows: number): boolean {
+  return row < 3 || row >= rows - 3;
+}
 
 export type MapOptions = {
   waterCount: number;
   rockCount: number;
-  wallCount: number;
+  palisadeCount: number;
   highCount: number;
   plateauCount: number;
 };
 
 export const DEFAULT_MAP: MapOptions = {
-  waterCount: 10,
-  rockCount: 6,
-  wallCount: 4,
+  waterCount: 8,
+  rockCount: 4,
+  palisadeCount: 3,
   highCount: 6,
-  plateauCount: 3,
+  plateauCount: 5,
 };
 
 /** Back rank files 1→8 */
@@ -101,34 +107,125 @@ export function resizeTerrain(
   return next;
 }
 
-function eligibleCells(): { col: number; row: number }[] {
+function eligibleCells(
+  cols = RANDOM_COLS,
+  rows = ROWS,
+): { col: number; row: number }[] {
   const cells: { col: number; row: number }[] = [];
-  for (let row = 0; row < ROWS; row++) {
-    if (CLEAR_ROWS.has(row)) continue;
-    for (let col = 0; col < COLS; col++) {
+  for (let row = 0; row < rows; row++) {
+    if (isClearRow(row, rows)) continue;
+    for (let col = 0; col < cols; col++) {
       cells.push({ col, row });
     }
   }
   return cells;
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+/** Adjacent same-type. Water flank / sideways spread stays 3×. */
+const CLUSTER = 7;
+const WATER_SIDE = 3;
+
+function inMap(
+  h: { col: number; row: number },
+  cols: number,
+  rows: number,
+): boolean {
+  return h.col >= 0 && h.row >= 0 && h.col < cols && h.row < rows;
+}
+
+function pickWeighted<T>(items: T[], weight: (item: T) => number): T | undefined {
+  if (!items.length) return undefined;
+  const ws = items.map((item) => {
+    const w = weight(item);
+    return w > 0 && Number.isFinite(w) ? w : 0;
+  });
+  let total = 0;
+  for (const w of ws) total += w;
+  if (total <= 0) return items[Math.floor(Math.random() * items.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= ws[i];
+    if (r < 0) return items[i];
   }
-  return a;
+  return items[items.length - 1];
+}
+
+function takeWeighted<T>(
+  items: T[],
+  weight: (item: T) => number,
+): T | undefined {
+  const picked = pickWeighted(items, weight);
+  if (!picked) return undefined;
+  const i = items.indexOf(picked);
+  if (i >= 0) items.splice(i, 1);
+  return picked;
+}
+
+function adjMatch(
+  t: Terrain[][],
+  h: { col: number; row: number },
+  type: Terrain,
+  cols: number,
+  rows: number,
+  pred?: (n: { col: number; row: number }) => boolean,
+): boolean {
+  for (const n of neighbors(h, RANDOM_ORIENTATION)) {
+    if (!inMap(n, cols, rows)) continue;
+    if (t[n.row][n.col] !== type) continue;
+    if (pred && !pred(n)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Left / right third — water and palisades seed and grow here. */
+function isFlankCol(col: number, cols: number): boolean {
+  const band = Math.max(2, Math.floor(cols / 3));
+  return col < band || col >= cols - band;
+}
+
+function clusterWeight(
+  t: Terrain[][],
+  h: { col: number; row: number },
+  type: Terrain,
+  cols: number,
+  rows: number,
+): number {
+  let w = 1;
+  if (adjMatch(t, h, type, cols, rows)) w *= CLUSTER;
+  if (type === 'water') {
+    const sideways = adjMatch(t, h, 'water', cols, rows, (n) => n.col !== h.col);
+    if (isFlankCol(h.col, cols) || sideways) w *= WATER_SIDE;
+  }
+  return w;
+}
+
+function palisadeWeight(
+  h: { col: number; row: number },
+  palKeys: Set<string>,
+  cols: number,
+): number {
+  let w = 1;
+  let adj = false;
+  let sideways = false;
+  for (const n of neighbors(h, RANDOM_ORIENTATION)) {
+    if (!palKeys.has(`${n.col},${n.row}`)) continue;
+    adj = true;
+    if (n.col !== h.col) sideways = true;
+  }
+  if (adj) w *= CLUSTER;
+  if (isFlankCol(h.col, cols) || sideways) w *= WATER_SIDE;
+  return w;
 }
 
 type TerrainKey = 'water' | 'rock' | 'high' | 'plateau';
 
-/** Cap counts so they fit the playable belt. Walls overlay walkable tiles. */
+/** Cap counts so they fit the playable belt. Palisades overlay walkable tiles. */
 export function clampMapOptions(opts: MapOptions): MapOptions {
-  const max = eligibleCells().length;
+  const max = eligibleCells(RANDOM_COLS, ROWS).length;
   let water = Math.max(0, Math.floor(opts.waterCount));
   let rock = Math.max(0, Math.floor(opts.rockCount));
-  let wall = Math.max(0, Math.min(max, Math.floor(opts.wallCount)));
+  let palisade = Math.max(0, Math.min(max, Math.floor(opts.palisadeCount)));
   let high = Math.max(0, Math.floor(opts.highCount));
   let plateau = Math.max(0, Math.floor(opts.plateauCount));
   const total = water + rock + high + plateau;
@@ -161,7 +258,7 @@ export function clampMapOptions(opts: MapOptions): MapOptions {
   return {
     waterCount: water,
     rockCount: rock,
-    wallCount: wall,
+    palisadeCount: palisade,
     highCount: high,
     plateauCount: plateau,
   };
@@ -172,30 +269,32 @@ export function maxTerrainCells(): number {
 }
 
 function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
-  const { waterCount, rockCount, wallCount, highCount, plateauCount } = clampMapOptions(opts);
-  const picks = shuffle(eligibleCells());
-  let i = 0;
-  for (let w = 0; w < waterCount && i < picks.length; w++, i++) {
-    const { col, row } = picks[i];
-    t[row][col] = 'water';
-  }
-  for (let r = 0; r < rockCount && i < picks.length; r++, i++) {
-    const { col, row } = picks[i];
-    t[row][col] = 'rock';
-  }
-  for (let h = 0; h < highCount && i < picks.length; h++, i++) {
-    const { col, row } = picks[i];
-    t[row][col] = 'high';
-  }
+  const rows = t.length || ROWS;
+  const cols = t[0]?.length ?? RANDOM_COLS;
+  const { waterCount, rockCount, palisadeCount, highCount, plateauCount } =
+    clampMapOptions(opts);
+  const open = eligibleCells(cols, rows);
+  const stamp = (type: Terrain, count: number) => {
+    for (let n = 0; n < count; n++) {
+      const h = takeWeighted(open, (cell) =>
+        clusterWeight(t, cell, type, cols, rows),
+      );
+      if (!h) break;
+      t[h.row][h.col] = type;
+    }
+  };
+  stamp('water', waterCount);
+  stamp('rock', rockCount);
+  stamp('high', highCount);
   // Plateau is +2 — only paint land touching high so random maps stay walkable.
   const besideHigh: { col: number; row: number }[] = [];
   const seen = new Set<string>();
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (t[row][col] !== 'high') continue;
-      for (const n of neighbors({ col, row }, DEFAULT_ORIENTATION)) {
-        if (n.col < 0 || n.row < 0 || n.col >= COLS || n.row >= ROWS) continue;
-        if (CLEAR_ROWS.has(n.row) || t[n.row][n.col] !== 'land') continue;
+      for (const n of neighbors({ col, row }, RANDOM_ORIENTATION)) {
+        if (!inMap(n, cols, rows)) continue;
+        if (isClearRow(n.row, rows) || t[n.row][n.col] !== 'land') continue;
         const k = `${n.col},${n.row}`;
         if (seen.has(k)) continue;
         seen.add(k);
@@ -203,18 +302,28 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
       }
     }
   }
-  const plateauPicks = shuffle(besideHigh);
-  for (let p = 0; p < plateauCount && p < plateauPicks.length; p++) {
-    const { col, row } = plateauPicks[p];
-    t[row][col] = 'plateau';
+  for (let p = 0; p < plateauCount; p++) {
+    const h = takeWeighted(besideHigh, (cell) =>
+      clusterWeight(t, cell, 'plateau', cols, rows),
+    );
+    if (!h) break;
+    t[h.row][h.col] = 'plateau';
   }
-  const walls: TileToken[] = [];
-  const wallPicks = shuffle(eligibleCells());
-  for (let w = 0; w < wallCount && w < wallPicks.length; w++) {
-    const { col, row } = wallPicks[w];
-    walls.push({ type: 'wall', col, row });
+  const palisades: TileToken[] = [];
+  const palKeys = new Set<string>();
+  const palOpen = eligibleCells(cols, rows).filter(({ col, row }) => {
+    const cell = t[row][col];
+    return cell === 'land' || cell === 'high' || cell === 'plateau';
+  });
+  for (let p = 0; p < palisadeCount; p++) {
+    const h = takeWeighted(palOpen, (cell) =>
+      palisadeWeight(cell, palKeys, cols),
+    );
+    if (!h) break;
+    palisades.push({ type: 'palisade', col: h.col, row: h.row });
+    palKeys.add(`${h.col},${h.row}`);
   }
-  return walls;
+  return palisades;
 }
 
 let idSeq = 0;
@@ -502,12 +611,12 @@ export function createInitialState(
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
 ): GameState {
   const clamped = clampMapOptions(opts);
-  const terrain = emptyTerrain();
+  const terrain = emptyTerrain(RANDOM_COLS, ROWS);
   const walls = paintTerrain(terrain, clamped);
   return freshGame(
     terrain,
-    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.wallCount} wall, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
-    DEFAULT_ORIENTATION,
+    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
+    RANDOM_ORIENTATION,
     armies,
     controls,
     walls,

@@ -45,29 +45,9 @@
     },
     {
         "id": "frm-mvdhx8st-xjpm1",
-        "name": "Roman army",
+        "name": "Roman",
         "cols": 11,
         "slots": [
-            {
-                "type": "archer",
-                "col": 2,
-                "fromBack": 0
-            },
-            {
-                "type": "archer",
-                "col": 7,
-                "fromBack": 0
-            },
-            {
-                "type": "javelin",
-                "col": 3,
-                "fromBack": 0
-            },
-            {
-                "type": "javelin",
-                "col": 8,
-                "fromBack": 0
-            },
             {
                 "type": "u-mvf8ty84rdk3",
                 "col": 5,
@@ -77,18 +57,8 @@
                 ]
             },
             {
-                "type": "u-mvf8ty84rdk3",
-                "col": 1,
-                "fromBack": 0
-            },
-            {
-                "type": "u-mvf8ty84rdk3",
-                "col": 9,
-                "fromBack": 0
-            },
-            {
                 "type": "cohort",
-                "col": 2,
+                "col": 1,
                 "fromBack": 1
             },
             {
@@ -98,28 +68,106 @@
             },
             {
                 "type": "cohort",
-                "col": 6,
-                "fromBack": 1
-            },
-            {
-                "type": "cohort",
                 "col": 7,
                 "fromBack": 1
             },
             {
+                "type": "cohort",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
                 "type": "catapult",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 4,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
                 "col": 6,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 7,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 9,
                 "fromBack": 0
             }
         ],
-        "updatedAt": 1792754602060,
+        "updatedAt": 1792759428868,
         "period": "ancient"
     },
     {
-        "id": "frm-mvkw0rvg-nz059",
-        "name": "Greek army",
+        "id": "frm-mvkw69ma-5pqg4",
+        "name": "Greek",
         "cols": 11,
         "slots": [
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "archer",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 7,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 9,
+                "fromBack": 0
+            },
+            {
+                "type": "hoplite",
+                "col": 1,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 9,
+                "fromBack": 1
+            },
             {
                 "type": "archer",
                 "col": 2,
@@ -127,19 +175,18 @@
             },
             {
                 "type": "archer",
-                "col": 7,
+                "col": 4,
                 "fromBack": 0
-            },
-            {
-                "type": "javelin",
-                "col": 3,
-                "fromBack": 0
-            },
-            {
-                "type": "javelin",
-                "col": 8,
-                "fromBack": 0
-            },
+            }
+        ],
+        "updatedAt": 1792759414073,
+        "period": "ancient"
+    },
+    {
+        "id": "frm-mvkw8p26-9v8ip",
+        "name": "Barbarian",
+        "cols": 11,
+        "slots": [
             {
                 "type": "u-mvf8ty84rdk3",
                 "col": 5,
@@ -150,7 +197,7 @@
             },
             {
                 "type": "u-mvf8ty84rdk3",
-                "col": 1,
+                "col": 7,
                 "fromBack": 0
             },
             {
@@ -159,32 +206,223 @@
                 "fromBack": 0
             },
             {
-                "type": "cohort",
-                "col": 2,
+                "type": "barbarian",
+                "col": 1,
                 "fromBack": 1
             },
             {
-                "type": "cohort",
+                "type": "barbarian",
                 "col": 3,
                 "fromBack": 1
             },
             {
+                "type": "barbarian",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "javelin",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 4,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "barbarian",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "barbarian",
+                "col": 9,
+                "fromBack": 1
+            }
+        ],
+        "updatedAt": 1792759408028,
+        "period": "ancient"
+    },
+    {
+        "id": "frm-mvkwe0nv-xq6ra",
+        "name": "Mongols",
+        "cols": 11,
+        "slots": [
+            {
+                "type": "barbarian",
+                "col": 2,
+                "fromBack": 1
+            },
+            {
+                "type": "barbarian",
+                "col": 8,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 1,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "barbarian",
+                "col": 5,
+                "fromBack": 2
+            }
+        ],
+        "updatedAt": 1792755629390,
+        "period": "ancient"
+    },
+    {
+        "id": "frm-mvkwg3vl-cxxvq",
+        "name": "Carthage",
+        "cols": 11,
+        "slots": [
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "elephant",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "elephant",
+                "col": 7,
+                "fromBack": 0
+            },
+            {
                 "type": "cohort",
-                "col": 6,
+                "col": 1,
                 "fromBack": 1
             },
             {
                 "type": "cohort",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
                 "col": 7,
                 "fromBack": 1
             },
             {
                 "type": "catapult",
-                "col": 6,
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 2,
                 "fromBack": 0
             }
         ],
-        "updatedAt": 1792754969884,
+        "updatedAt": 1792755757435,
+        "period": "ancient"
+    },
+    {
+        "id": "frm-mvkymizn-lnh8x",
+        "name": "Egyptian",
+        "cols": 11,
+        "slots": [
+            {
+                "type": "elephant",
+                "col": 7,
+                "fromBack": 0
+            },
+            {
+                "type": "hoplite",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "hoplite",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "archer",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "chariotarcher",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "barbarian",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
+                "type": "barbarian",
+                "col": 1,
+                "fromBack": 1
+            },
+            {
+                "type": "horsearcher",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 6,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 8,
+                "fromBack": 0
+            }
+        ],
+        "updatedAt": 1792759388552,
         "period": "ancient"
     }
 ]

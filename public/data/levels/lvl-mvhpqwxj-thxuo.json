@@ -153,6 +153,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "You will learn how to use terrain in your advantage",
     "winText": "good job",
     "loseText": "try to find high ground before the enemy arrives.",

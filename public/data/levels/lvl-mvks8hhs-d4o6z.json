@@ -120,6 +120,7 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Time to show your general skills",
     "winText": "",
     "loseText": "",

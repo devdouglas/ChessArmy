@@ -153,6 +153,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "Hold your ground. Peasants are looking for payback",
     "winText": "",
     "loseText": "",

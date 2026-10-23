@@ -110,6 +110,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
+    "teaserText": "",
     "startText": "",
     "winText": "",
     "loseText": "",

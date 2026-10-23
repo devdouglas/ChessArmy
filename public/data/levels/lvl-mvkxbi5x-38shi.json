@@ -1,0 +1,367 @@
+{
+    "id": "lvl-mvkxbi5x-38shi",
+    "name": "The divide",
+    "cols": 13,
+    "rows": 11,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "rock",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land",
+            "land",
+            "high",
+            "plateau",
+            "rock",
+            "rock",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "plateau",
+            "land",
+            "high",
+            "high",
+            "water",
+            "plateau",
+            "land",
+            "rock",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "plateau",
+            "high",
+            "high",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "plateau",
+            "water",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "skirmish",
+    "period": "ancient",
+    "unitsPerTurn": 1,
+    "maxTurns": 0,
+    "teaserText": "Divide and conquer",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 5
+        }
+    ],
+    "sort": 5,
+    "updatedAt": 1792757200210,
+    "armies": [
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 10,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 4,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 8,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "catapult",
+            "col": 4,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 9,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 5,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 7,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 8,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 10,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "elephant",
+            "col": 8,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "elephant",
+            "col": 4,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "hoplite",
+            "col": 8,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "hoplite",
+            "col": 4,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "catapult",
+            "col": 3,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 9,
+            "row": 0,
+            "side": "blue"
+        }
+    ]
+}
