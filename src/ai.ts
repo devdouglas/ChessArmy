@@ -1,5 +1,8 @@
 /**
- * Aggressive AI: if anyone can shoot or melee, they do.
+ * AI picker. Every behaviour is a checklist rule (ai-config) on aggressive /
+ * defensive. Default style is aggressive; stock checklist has every rule on,
+ * which is this original ruleset:
+ * If anyone can shoot or melee, they do.
  * Otherwise close on the enemy general (else nearest enemy). No fleeing.
  * Pikes: don't walk onto them unless that move attacks the enemy general.
  * Do-not-touch tokens: never walk that hex (invalid path).
@@ -10,6 +13,7 @@
  * enemy / free flags mean nothing.
  * Hoplites: hold and rotate toward the nearest enemy. A ranged hit makes them
  * step forward and try to attack; then they go back to holding.
+ * Targets defenses: rocket or melee a wall/palisade on the path to the hunt.
  */
 
 import {
@@ -35,12 +39,22 @@ import {
   isNoTouch,
   hexDamageOn,
   hexDamagePushHits,
+  isBlockedWalk,
   type Action,
+  aiStyleOf,
   type GameState,
   type Piece,
   type Side,
 } from './engine';
-import { distance, eq, neighborInDir, type Hex, type HexDir } from './hex';
+import { distance, eq, line, neighborInDir, pathTo, type Hex, type HexDir } from './hex';
+import { isAiRuleOn, type AiRuleId } from './ai-config';
+
+type RuleOn = (id: AiRuleId) => boolean;
+
+function rulesFor(state: GameState): RuleOn {
+  const style = aiStyleOf(state, state.turn);
+  return (id) => isAiRuleOn(style, id);
+}
 
 function dist(state: GameState, a: Hex, b: Hex): number {
   return distance(a, b, state.orientation);
@@ -95,24 +109,28 @@ function enemyGeneral(state: GameState, me: Side, from: Hex) {
   return best;
 }
 
-function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
-  const ours = (state.tokens ?? []).filter(
-    (t) => t.type === 'flag' && t.owner && sameTeam(state, t.owner, me),
-  );
-  if (ours.length) {
-    let best = ours[0];
-    let bestD = Infinity;
-    for (const f of ours) {
-      const d = dist(state, from, { col: f.col, row: f.row });
-      if (d < bestD) {
-        bestD = d;
-        best = f;
+function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null {
+  if (on('guard-owned-flags')) {
+    const ours = (state.tokens ?? []).filter(
+      (t) => t.type === 'flag' && t.owner && sameTeam(state, t.owner, me),
+    );
+    if (ours.length) {
+      let best = ours[0];
+      let bestD = Infinity;
+      for (const f of ours) {
+        const d = dist(state, from, { col: f.col, row: f.row });
+        if (d < bestD) {
+          bestD = d;
+          best = f;
+        }
       }
+      return { col: best.col, row: best.row };
     }
-    return { col: best.col, row: best.row };
   }
-  const gen = enemyGeneral(state, me, from);
-  if (gen) return { col: gen.col, row: gen.row };
+  if (on('hunt-enemy-general')) {
+    const gen = enemyGeneral(state, me, from);
+    if (gen) return { col: gen.col, row: gen.row };
+  }
   let best: Hex | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
@@ -125,6 +143,63 @@ function huntHex(state: GameState, from: Hex, me: Side): Hex | null {
     }
   }
   return best;
+}
+
+function inBoard(state: GameState, h: Hex): boolean {
+  return h.col >= 0 && h.row >= 0 && h.col < state.cols && h.row < state.rows;
+}
+
+/** Walk to hunt as if walls/palisades were open. Those hexes are the blocking defenses. */
+function ghostPathToHunt(state: GameState, from: Hex, hunt: Hex): Hex[] {
+  if (eq(from, hunt)) return [];
+  const found = pathTo(from, hunt, {
+    cols: state.cols,
+    rows: state.rows,
+    maxDist: state.cols * state.rows,
+    orientation: state.orientation,
+    canStop: (h) => {
+      if (!inBoard(state, h)) return false;
+      if (eq(h, hunt)) return true;
+      const t = terrainAt(state, h);
+      return !(t === 'rock' && !isBlockedWalk(state, h));
+    },
+    canPass: (h) => {
+      if (!inBoard(state, h) || eq(h, hunt)) return false;
+      const t = terrainAt(state, h);
+      return !(t === 'rock' && !isBlockedWalk(state, h));
+    },
+  });
+  return found ?? line(from, hunt, state.orientation);
+}
+
+function blockingDefenses(state: GameState, from: Hex, hunt: Hex): Hex[] {
+  return ghostPathToHunt(state, from, hunt).filter(
+    (h) => isBlockedWalk(state, h) && !eq(h, hunt),
+  );
+}
+
+function actionHitsDefenseHex(state: GameState, action: Action, hex: Hex): boolean {
+  if (action.kind === 'shoot') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece) return false;
+    const from: Hex = { col: piece.col, row: piece.row };
+    if (hasSplash(UNIT_STATS[piece.type])) {
+      return splashBlast(state, action.at, from).some((h) => eq(h, hex));
+    }
+    return eq(action.at, hex);
+  }
+  if (action.kind !== 'move') return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece) return false;
+  return previewMove(state, piece, action.to).palisadeHits.some((ph) => eq(ph.hex, hex));
+}
+
+function isDefenseOnlyShot(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind !== 'shoot' || shootHitsEnemy(state, action, me)) return false;
+  const piece = getPiece(state, action.pieceId);
+  if (!piece || !hasSplash(UNIT_STATS[piece.type])) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  return splashBlast(state, action.at, from).some((h) => isBlockedWalk(state, h));
 }
 
 function shootHitsEnemy(state: GameState, action: Action, me: Side): boolean {
@@ -349,26 +424,30 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
   return score;
 }
 
-function scoreAction(state: GameState, action: Action, me: Side): number {
-  if (action.kind === 'skip') return -80;
+function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): number {
+  if (action.kind === 'skip') return on('avoid-skip') ? -80 : 0;
 
   const piece = getPiece(state, action.pieceId);
   if (!piece) return -Infinity;
 
   const from: Hex = { col: piece.col, row: piece.row };
-  let score = scoreKillDelta(state, applyAction(state, action), me);
+  let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
 
   if (action.kind === 'rest') {
-    score += isHoplite(piece) && !piece.rangedHit ? 400 : 20;
+    score += isHoplite(piece) && !piece.rangedHit && on('hoplite-hold') ? 400 : 20;
     return score;
   }
 
-  // Wall-only rockets are legal, not attacks — don't spend the shot on concrete.
-  if (action.kind === 'shoot' && !shootHitsEnemy(state, action, me)) {
+  const hunt = huntHex(state, from, me, on);
+  const blocking = hunt ? blockingDefenses(state, from, hunt) : [];
+  const hitsBlocking = blocking.some((h) => actionHitsDefenseHex(state, action, h));
+  if (on('targets-defenses') && hitsBlocking) {
+    score += 2200;
+  } else if (isDefenseOnlyShot(state, action, me)) {
     score -= 600;
   }
 
-  if (isAttackAction(state, action, me)) {
+  if (isAttackAction(state, action, me) && on('prefer-attacks')) {
     score += 4_000;
     if (action.kind === 'shoot') {
       const t = pieceAt(state, action.at);
@@ -379,7 +458,7 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
   }
 
   if (action.kind === 'rotate') {
-    if (!isHoplite(piece) || piece.rangedHit) {
+    if (!isHoplite(piece) || piece.rangedHit || !on('hoplite-hold')) {
       score -= 600;
       return score;
     }
@@ -395,35 +474,51 @@ function scoreAction(state: GameState, action: Action, me: Side): number {
   if (action.kind !== 'move') return score;
 
   const palPlan = previewMove(state, piece, action.to);
-  for (const ph of palPlan.palisadeHits) {
-    score += ph.destroyed ? 280 : 140;
+  if (on('break-palisades')) {
+    for (const ph of palPlan.palisadeHits) {
+      score += ph.destroyed ? 280 : 140;
+    }
   }
 
-  if (isHoplite(piece) && piece.rangedHit && isHopliteForwardWalk(state, action, piece)) {
+  if (
+    on('hoplite-advance-on-hit') &&
+    isHoplite(piece) &&
+    piece.rangedHit &&
+    isHopliteForwardWalk(state, action, piece)
+  ) {
     score += 800;
   }
 
   const stop = palPlan.stop;
   const foe = isHoplite(piece) ? nearestEnemy(state, from, me) : null;
-  const hunt = foe ? { col: foe.col, row: foe.row } : huntHex(state, from, me);
-  if (hunt) {
-    const closer = dist(state, from, hunt) - dist(state, stop, hunt);
-    score += closer * 80;
-    if (closer > 0) score += 300;
-    else if (closer < 0) score -= 900;
+  const closeHunt = foe ? { col: foe.col, row: foe.row } : hunt;
+  if (closeHunt && (on('close-on-hunt') || on('no-flee'))) {
+    const closer = dist(state, from, closeHunt) - dist(state, stop, closeHunt);
+    if (on('close-on-hunt')) {
+      score += closer * 80;
+      if (closer > 0) score += 300;
+    }
+    if (on('no-flee') && closer < 0) score -= 900;
   }
 
-  const fromH = terrainHeight(terrainAt(state, from));
-  const toH = terrainHeight(terrainAt(state, stop));
-  if (toH > fromH) score += 40 * (toH - fromH);
-  if (toH < fromH) score -= 20 * (fromH - toH);
+  if (on('prefer-high-ground')) {
+    const fromH = terrainHeight(terrainAt(state, from));
+    const toH = terrainHeight(terrainAt(state, stop));
+    if (toH > fromH) score += 40 * (toH - fromH);
+    if (toH < fromH) score -= 20 * (fromH - toH);
+  }
 
-  score += UNIT_STATS[piece.type].value * 0.05;
+  if (on('value-scoring')) score += UNIT_STATS[piece.type].value * 0.05;
   score += Math.random() * 0.3;
   return score;
 }
 
-function hopliteHoldAction(state: GameState, me: Side, pool: Action[]): Action | null {
+function hopliteHoldAction(
+  state: GameState,
+  me: Side,
+  pool: Action[],
+  on: RuleOn,
+): Action | null {
   const ids = new Set<string>();
   for (const a of pool) {
     if (a.kind === 'skip') continue;
@@ -447,7 +542,7 @@ function hopliteHoldAction(state: GameState, me: Side, pool: Action[]): Action |
     holds.push({ kind: 'rest', pieceId: id });
   }
   if (!holds.length) return null;
-  return pickBest(holds, state, me);
+  return pickBest(holds, state, me, on);
 }
 
 function isOwnGeneralAction(state: GameState, action: Action): boolean {
@@ -465,17 +560,17 @@ function isMobileAction(state: GameState, action: Action): boolean {
 }
 
 /** Drop own-general actions while any other piece can still act. Scout lock is sacred. */
-function othersFirst(state: GameState, pool: Action[]): Action[] {
-  if (state.scoutPieceId || !pool.length) return pool;
+function othersFirst(state: GameState, pool: Action[], on: RuleOn): Action[] {
+  if (!on('general-last') || state.scoutPieceId || !pool.length) return pool;
   const rest = pool.filter((a) => !isOwnGeneralAction(state, a));
   return rest.length ? rest : pool;
 }
 
-function pickBest(actions: Action[], state: GameState, me: Side): Action {
+function pickBest(actions: Action[], state: GameState, me: Side, on: RuleOn): Action {
   let best = actions[0];
   let bestScore = -Infinity;
   for (const a of actions) {
-    const s = scoreAction(state, a, me);
+    const s = scoreAction(state, a, me, on);
     if (s > bestScore) {
       bestScore = s;
       best = a;
@@ -486,35 +581,70 @@ function pickBest(actions: Action[], state: GameState, me: Side): Action {
 
 export function pickAiAction(state: GameState): Action | null {
   const me = state.turn;
+  const on = rulesFor(state);
   const actions = allLegalActions(state).filter((a) => {
-    if (!generalAttackOk(state, a, me)) return false;
-    if (moveCapturesFlag(state, a, me) && !attacksEnemyGeneral(state, a, me)) return false;
-    if (moveTouchesNoTouch(state, a)) return false;
+    if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
+    if (
+      on('never-capture-flags') &&
+      moveCapturesFlag(state, a, me) &&
+      !attacksEnemyGeneral(state, a, me)
+    ) {
+      return false;
+    }
+    if (on('avoid-notouch') && moveTouchesNoTouch(state, a)) return false;
+    if (!on('targets-defenses')) {
+      if (isDefenseOnlyShot(state, a, me)) return false;
+      const piece = a.kind === 'skip' ? undefined : getPiece(state, a.pieceId);
+      if (piece) {
+        const from: Hex = { col: piece.col, row: piece.row };
+        const hunt = huntHex(state, from, me, on);
+        if (
+          hunt &&
+          blockingDefenses(state, from, hunt).some((h) =>
+            actionHitsDefenseHex(state, a, h),
+          )
+        ) {
+          return false;
+        }
+      }
+    }
     return true;
   });
   if (!actions.length) return null;
 
-  const generalHits = othersFirst(
-    state,
-    actions.filter((a) => attacksEnemyGeneral(state, a, me)),
-  );
-  if (generalHits.length) return pickBest(generalHits, state, me);
+  if (on('prefer-general-kills')) {
+    const generalHits = othersFirst(
+      state,
+      actions.filter((a) => attacksEnemyGeneral(state, a, me)),
+      on,
+    );
+    if (generalHits.length) return pickBest(generalHits, state, me, on);
+  }
 
-  const pool = othersFirst(state, actions);
-  const safe = pool.filter(
-    (a) => !isPikeWalk(state, a) && !isHopliteHoldWalk(state, a, me),
-  );
-  const attacks = safe.filter((a) => isAttackAction(state, a, me));
-  if (attacks.length) return pickBest(attacks, state, me);
+  const pool = othersFirst(state, actions, on);
+  const safe = pool.filter((a) => {
+    if (on('avoid-pikes') && isPikeWalk(state, a)) return false;
+    if (on('hoplite-hold') && isHopliteHoldWalk(state, a, me)) return false;
+    return true;
+  });
+  if (on('prefer-attacks')) {
+    const attacks = safe.filter((a) => isAttackAction(state, a, me));
+    if (attacks.length) return pickBest(attacks, state, me, on);
+  }
 
-  const mobile = safe.filter((a) => isMobileAction(state, a));
-  if (mobile.length) return pickBest(mobile, state, me);
+  const mobile = safe.filter((a) => {
+    if (on('hoplite-hold')) return isMobileAction(state, a);
+    return a.kind !== 'skip';
+  });
+  if (mobile.length) return pickBest(mobile, state, me, on);
 
-  const hold = hopliteHoldAction(state, me, pool);
-  if (hold) return hold;
+  if (on('hoplite-hold')) {
+    const hold = hopliteHoldAction(state, me, pool, on);
+    if (hold) return hold;
+  }
 
-  if (safe.length) return pickBest(safe, state, me);
-  return pickBest(pool, state, me);
+  if (safe.length) return pickBest(safe, state, me, on);
+  return pickBest(pool, state, me, on);
 }
 
 /** Play AI until it's the human's turn again (handles scout double-action). */

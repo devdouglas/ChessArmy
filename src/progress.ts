@@ -24,12 +24,24 @@ export function hasWonLevel(id: string): boolean {
   return wins.has(id);
 }
 
-export function recordLevelWin(id: string): void {
-  if (!id || wins.has(id)) return;
-  wins.add(id);
+function persist(): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...wins]));
   } catch {
-    /* ignore */
+    /* ignore quota / private mode */
   }
+}
+
+export function recordLevelWin(id: string): void {
+  if (!id || wins.has(id)) return;
+  wins.add(id);
+  persist();
+}
+
+export function clearLevelWins(ids: Iterable<string>): void {
+  let changed = false;
+  for (const id of ids) {
+    if (id && wins.delete(id)) changed = true;
+  }
+  if (changed) persist();
 }

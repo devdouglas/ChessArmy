@@ -5,9 +5,11 @@ import {
   sanitizeUnitTokens,
   isSide,
   sanitizeArmyControls,
+  sanitizeAiStyles,
   sanitizeTokens,
   liftWallTerrain,
   type ArmyControl,
+  type AiStyle,
   type Side,
   type Terrain,
   type TileToken,
@@ -69,6 +71,8 @@ export type SavedLevel = {
   armies?: ArmyStamp[];
   /** Per-color controller. Missing → red player, everyone else ai enemy. */
   armyControls?: Record<Side, ArmyControl>;
+  /** Per-color AI checklist. Missing → aggressive. */
+  aiStyles?: Record<Side, AiStyle>;
   /** Overlay stamps (pikes, walls, flags, …). Missing on old saves → none. */
   tokens?: TileToken[];
   /** Missing on old saves → historical (was `free`). */
@@ -290,6 +294,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
       const armyControls = sanitizeArmyControls(
         (l as SavedLevel & { armyControls?: unknown }).armyControls,
       );
+      const aiStyles = sanitizeAiStyles(
+        (l as SavedLevel & { aiStyles?: unknown }).aiStyles,
+      );
       const lifted = liftWallTerrain(
         cloneTerrain(l.terrain),
         sanitizeTokens(
@@ -323,6 +330,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
           DEFAULT_STAR_3,
         ),
         armyControls,
+        aiStyles,
         tokens: lifted.tokens,
         ...(armies !== undefined ? { armies } : {}),
       };
@@ -450,6 +458,7 @@ export function saveLevel(
   armyControls?: Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[],
   maxTurns?: number,
+  aiStyles?: Partial<Record<Side, AiStyle>>,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
@@ -486,6 +495,7 @@ export function saveLevel(
       star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
       star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
       armyControls: sanitizeArmyControls(armyControls ?? prev.armyControls),
+      aiStyles: sanitizeAiStyles(aiStyles ?? prev.aiStyles),
       tokens: lifted.tokens,
       updatedAt: now,
     };
@@ -515,6 +525,7 @@ export function saveLevel(
     star2: sanitizeStarRule(stars?.star2, DEFAULT_STAR_2),
     star3: sanitizeStarRule(stars?.star3, DEFAULT_STAR_3),
     armyControls: sanitizeArmyControls(armyControls),
+    aiStyles: sanitizeAiStyles(aiStyles),
     tokens: lifted.tokens,
     updatedAt: now,
   };

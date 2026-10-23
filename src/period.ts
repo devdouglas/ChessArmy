@@ -8,6 +8,14 @@ export const PERIOD_LABEL: Record<Period, string> = {
   futuristic: 'Futuristic',
 };
 
+export function eraIsWip(era: string): boolean {
+  return era === 'modern' || era === 'futuristic';
+}
+
+export function periodOptionLabel(p: Period): string {
+  return eraIsWip(p) ? `${PERIOD_LABEL[p]} (under construction)` : PERIOD_LABEL[p];
+}
+
 const STORAGE_KEY = 'chessarmy-period';
 
 export function sanitizePeriod(raw: unknown): Period {

@@ -39,6 +39,7 @@ function fail(int $code, string $error): never {
 function empty_store(): array {
     return [
         'units' => null,
+        'aiChecklist' => null,
         'levels' => [],
         'defaultLevelId' => null,
         'formations' => [],
@@ -113,6 +114,7 @@ function sanitize_store(array $data): array {
 
     return [
         'units' => $units,
+        'aiChecklist' => sanitize_ai_checklist($data['aiChecklist'] ?? null),
         'levels' => $levels,
         'defaultLevelId' => $default,
         'formations' => $formations,
@@ -155,6 +157,8 @@ function allowed_unit(mixed $type): bool {
         'bazooka' => true,
         'sniper' => true,
         'archer' => true,
+        'javelin' => true,
+        'horsearcher' => true,
         'cohort' => true,
         'hoplite' => true,
         'elephant' => true,
@@ -165,6 +169,12 @@ function allowed_unit(mixed $type): bool {
         'tower' => true,
         'dummy' => true,
         'peasant' => true,
+        'fighter' => true,
+        'gunship' => true,
+        'bomber' => true,
+        'frigate' => true,
+        'cruiser' => true,
+        'dreadnought' => true,
     ];
     if (!is_string($type) || strlen($type) > 40) {
         return false;
@@ -279,6 +289,42 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
             $rowOut['noTouch'] = true;
         }
         $out[] = $rowOut;
+    }
+    return $out;
+}
+
+function sanitize_ai_styles(mixed $raw): array {
+    $defaults = [
+        'red' => 'aggressive',
+        'blue' => 'aggressive',
+        'yellow' => 'aggressive',
+        'purple' => 'aggressive',
+    ];
+    $ok = ['aggressive' => true, 'defensive' => true];
+    $src = is_array($raw) ? $raw : [];
+    $out = $defaults;
+    foreach ($defaults as $side => $fallback) {
+        $v = $src[$side] ?? '';
+        $out[$side] = isset($ok[$v]) ? $v : $fallback;
+    }
+    return $out;
+}
+
+function sanitize_ai_checklist(mixed $raw): ?array {
+    if (!is_array($raw)) {
+        return null;
+    }
+    $out = [];
+    foreach (['aggressive', 'defensive'] as $style) {
+        $col = is_array($raw[$style] ?? null) ? $raw[$style] : [];
+        $clean = [];
+        foreach ($col as $id => $on) {
+            if (!is_string($id) || !preg_match('/^[a-z0-9-]{1,48}$/', $id)) {
+                continue;
+            }
+            $clean[$id] = (bool) $on;
+        }
+        $out[$style] = $clean;
     }
     return $out;
 }
@@ -455,6 +501,7 @@ function sanitize_level(mixed $level): ?array {
         'star2' => sanitize_star_rule($level['star2'] ?? null, ['metric' => 'turns', 'op' => 'lt', 'value' => 6]),
         'star3' => sanitize_star_rule($level['star3'] ?? null, ['metric' => 'casualties', 'op' => 'eq', 'value' => 0]),
         'armyControls' => sanitize_army_controls($level['armyControls'] ?? null),
+        'aiStyles' => sanitize_ai_styles($level['aiStyles'] ?? null),
         'tokens' => sanitize_tokens($level['tokens'] ?? null, $cols, $rows),
         'sort' => isset($level['sort']) && is_numeric($level['sort']) ? (int) $level['sort'] : 0,
         'updatedAt' => $updated,
@@ -583,6 +630,10 @@ function merge_store(array $existing, array $incoming): array {
     if (!is_array($units)) {
         $units = $existing['units'] ?? null;
     }
+    $aiChecklist = $incoming['aiChecklist'] ?? null;
+    if (!is_array($aiChecklist)) {
+        $aiChecklist = $existing['aiChecklist'] ?? null;
+    }
     $defaultLevel = $incoming['defaultLevelId'] ?? null;
     if (!is_string($defaultLevel) || $defaultLevel === '') {
         $defaultLevel = $existing['defaultLevelId'] ?? null;
@@ -593,6 +644,7 @@ function merge_store(array $existing, array $incoming): array {
     }
     return [
         'units' => is_array($units) ? $units : null,
+        'aiChecklist' => is_array($aiChecklist) ? $aiChecklist : null,
         'levels' => $levels,
         'defaultLevelId' => is_string($defaultLevel) && $defaultLevel !== '' ? $defaultLevel : null,
         'formations' => $formations,
@@ -630,6 +682,7 @@ function assemble_split_store(): array {
     });
     return sanitize_store([
         'units' => is_array($units) ? $units : null,
+        'aiChecklist' => $meta['aiChecklist'] ?? null,
         'levels' => $levels,
         'defaultLevelId' => $meta['defaultLevelId'] ?? null,
         'formations' => is_array($forms) ? $forms : [],
@@ -705,6 +758,7 @@ function write_split_store(array $store): void {
         'defaultFormationId' => $store['defaultFormationId'],
         'deletedLevels' => as_json_map($store['deletedLevels']),
         'deletedFormations' => as_json_map($store['deletedFormations']),
+        'aiChecklist' => $store['aiChecklist'],
     ]);
 }
 

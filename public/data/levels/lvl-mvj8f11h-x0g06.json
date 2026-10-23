@@ -1,9 +1,9 @@
 {
     "id": "lvl-mvj8f11h-x0g06",
     "name": "You have my bow!",
-    "cols": 8,
+    "cols": 9,
     "rows": 8,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -13,42 +13,47 @@
             "plateau",
             "water",
             "water",
-            "water"
-        ],
-        [
-            "land",
-            "land",
-            "high",
-            "high",
-            "water",
-            "water",
-            "water",
-            "water"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "water",
-            "water",
-            "water",
-            "water"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "water",
-            "water",
-            "water",
             "water",
             "land"
         ],
         [
             "land",
+            "land",
+            "high",
             "plateau",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
             "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "rock",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "water",
             "water",
             "water",
             "land",
@@ -63,27 +68,30 @@
             "water",
             "water",
             "land",
+            "land",
             "land"
         ],
         [
             "land",
             "land",
             "land",
+            "water",
+            "water",
+            "water",
+            "water",
             "land",
-            "water",
-            "water",
-            "water",
             "land"
         ],
         [
             "land",
             "land",
             "land",
-            "land",
             "water",
             "water",
             "water",
-            "water"
+            "water",
+            "water",
+            "land"
         ]
     ],
     "category": "tutorial",
@@ -109,9 +117,91 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
-    "tokens": [],
-    "sort": 1,
-    "updatedAt": 1792655563528,
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 7
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 7
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 4
+        }
+    ],
+    "sort": 2,
+    "updatedAt": 1792745419332,
     "armies": [
         {
             "type": "archer",
@@ -127,20 +217,20 @@
         },
         {
             "type": "peasant",
-            "col": 5,
-            "row": 4,
-            "side": "blue"
-        },
-        {
-            "type": "peasant",
             "col": 3,
             "row": 2,
             "side": "blue"
         },
         {
-            "type": "peasant",
+            "type": "u-mvgpbg68f593",
             "col": 1,
             "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 4,
             "side": "blue"
         }
     ]

@@ -109,9 +109,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
-    "sort": 6,
-    "updatedAt": 1792669739175,
+    "sort": 7,
+    "updatedAt": 1792735544748,
     "armies": [
         {
             "type": "barbarian",

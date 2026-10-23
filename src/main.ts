@@ -62,6 +62,8 @@ import {
   sanitizeUnitCategory,
   ARMY_CONTROLS,
   ARMY_CONTROL_LABEL,
+  AI_STYLES,
+  AI_STYLE_LABEL,
   SIDES,
   SIDE_LABEL,
   TOKEN_LABEL,
@@ -70,18 +72,22 @@ import {
   UNIT_TOKEN_LABEL,
   UNIT_TOKEN_TYPES,
   defaultArmyControls,
+  defaultAiStyles,
   hotseatArmyControls,
   isAiControlled,
   isPlayerControlled,
   isSide,
+  isAiStyle,
   matchHasEnemies,
   participatingSides,
   playerCasualties,
   playerTeamWon,
   sameTeam,
   sanitizeArmyControls,
+  sanitizeAiStyles,
   type Action,
   type ArmyControl,
+  type AiStyle,
   type GameState,
   type Highlight,
   type Piece,
@@ -100,6 +106,7 @@ import {
   liftWallTerrain,
   sanitizeTokens,
   hexDamageMarks,
+  isBlockedFaceRay,
 } from './engine';
 import {
   defaultFacing,
@@ -167,6 +174,8 @@ import {
 import {
   PERIODS,
   PERIOD_LABEL,
+  eraIsWip,
+  periodOptionLabel,
   applyPeriodTheme,
   getSelectedPeriod,
   sanitizePeriod,
@@ -189,6 +198,23 @@ import {
   stockFormation,
 } from './formations';
 import { pickAiAction } from './ai';
+import {
+  AI_RULE_CATEGORIES,
+  AI_RULE_CATEGORY_LABEL,
+  aiChecklistAreStock,
+  categoryAllOn,
+  categoryAnyOn,
+  categoryRules,
+  isAiRuleId,
+  isAiRuleOn,
+  resetAiChecklist,
+  setAiCategory,
+  setAiRule,
+  setAiStyleColumn,
+  styleAllOn,
+  styleAnyOn,
+  type AiRuleCategory,
+} from './ai-config';
 import {
   actedBadgeSvg,
   ammoBadgeSvg,
@@ -230,7 +256,7 @@ import {
   type ServerStatus,
   syncFromServer,
 } from './sync';
-import { hasWonLevel, recordLevelWin } from './progress';
+import { clearLevelWins, hasWonLevel, recordLevelWin } from './progress';
 import pkg from '../package.json';
 
 const APP_NAME = 'There Will Be Legions';
@@ -239,9 +265,10 @@ document.title = `${APP_NAME} — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
-type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units';
+type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
+type MapPickKind = 'ai' | 'hotseat' | 'tutorial' | 'campaign';
 type UnitTokenBrush = `unit:${UnitTokenType}`;
 type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'notouch' | 'erase';
 
@@ -287,8 +314,8 @@ let screen: Screen = 'start';
 let briefingOpen = false;
 let selectedPeriod: Period = getSelectedPeriod();
 let playlist: Playlist | null = null;
-let unitEditorCategory: UnitCategory =
-  selectedPeriod === 'ancient' ? 'ancient' : 'modern';
+let mapPick: MapPickKind | null = null;
+let unitEditorCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
 const unitEditorOpen = new Set<UnitType>();
 let sidebarMoreOpen = false;
 let selectedId: string | null = null;
@@ -301,8 +328,6 @@ let hoverPath: Hex[] = [];
 let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
-/** Selected piece is aiming a facing change; click commits it as an action. */
-let rotateMode = false;
 let rotatePreviewDir: HexDir | null = null;
 
 /** Editor draft */
@@ -324,8 +349,8 @@ let editorPieces: ArmyStamp[] = [];
 let editorTokens: TileToken[] = [];
 let editorArmySide: Side = 'red';
 let editorControls: Record<Side, ArmyControl> = defaultArmyControls();
-let editorUnitCategory: UnitCategory =
-  selectedPeriod === 'ancient' ? 'ancient' : 'modern';
+let editorAiStyles: Record<Side, AiStyle> = defaultAiStyles();
+let editorUnitCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
 let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
 let editorArmiesOpen = false;
@@ -447,6 +472,11 @@ function matchControls(lvl?: SavedLevel | null): Record<Side, ArmyControl> {
   return mode === 'hotseat' ? hotseatArmyControls() : defaultArmyControls();
 }
 
+function matchAiStyles(lvl?: SavedLevel | null): Record<Side, AiStyle> {
+  if (lvl) return sanitizeAiStyles(lvl.aiStyles);
+  return defaultAiStyles();
+}
+
 function bootState(): GameState {
   if (defaultLevelId && !getLevel(defaultLevelId)) {
     if (activeLevelId === defaultLevelId) activeLevelId = null;
@@ -466,12 +496,18 @@ function bootState(): GameState {
           playArmies(lvl.cols, lvl.rows, lvl),
           matchControls(lvl),
           lvl.tokens,
+          matchAiStyles(lvl),
         ),
         lvl,
       );
     }
   }
-  return createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS), matchControls());
+  return createInitialState(
+    mapOpts,
+    defaultArmyStamps(COLS, ROWS),
+    matchControls(),
+    matchAiStyles(),
+  );
 }
 
 function startMatch(reshuffleRandom = true) {
@@ -490,10 +526,11 @@ function startMatch(reshuffleRandom = true) {
           playArmies(lvl.cols, lvl.rows, lvl),
           matchControls(lvl),
           lvl.tokens,
+          matchAiStyles(lvl),
         ),
         lvl,
       );
-      briefingOpen = !!sanitizeLevelText(lvl.startText);
+      briefingOpen = !!sanitizeLevelText(lvl.startText) || canSkipPlayedLevel();
       applyLayout(computeLayout(), false);
       render();
       void playPendingFx();
@@ -506,7 +543,12 @@ function startMatch(reshuffleRandom = true) {
   if (reshuffleRandom) {
     mapOpts = readMapInputs();
     state = withLevelRules(
-      createInitialState(mapOpts, defaultArmyStamps(COLS, ROWS), matchControls()),
+      createInitialState(
+        mapOpts,
+        defaultArmyStamps(COLS, ROWS),
+        matchControls(),
+        matchAiStyles(),
+      ),
     );
   } else {
     // Keep current terrain layout; respawn armies
@@ -518,6 +560,7 @@ function startMatch(reshuffleRandom = true) {
         defaultArmyStamps(state.cols, state.rows),
         matchControls(),
         state.tokens,
+        matchAiStyles(),
       ),
     );
   }
@@ -530,6 +573,7 @@ function startMatch(reshuffleRandom = true) {
 function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
   s.unitsPerTurn = clampUnitsPerTurn(lvl?.unitsPerTurn ?? 1);
   s.maxTurns = clampMaxTurns(lvl?.maxTurns ?? 0);
+  s.aiStyles = sanitizeAiStyles(lvl?.aiStyles ?? s.aiStyles);
   s.actedIds = [];
   return s;
 }
@@ -655,6 +699,16 @@ function shootMarkSvg(x: number, y: number, target: boolean): string {
   </g>`;
 }
 
+function hexRotateMarkSvg(x: number, y: number, col: number, row: number): string {
+  const bw = Math.max(26, HEX_SIZE * 0.88);
+  const bh = Math.max(11, HEX_SIZE * 0.32);
+  const fs = Math.max(6.2, HEX_SIZE * 0.19);
+  return `<g class="hex-rotate-btn" data-col="${col}" data-row="${row}" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)})">
+    <rect x="${(-bw / 2).toFixed(1)}" y="${(-bh / 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(bh / 2).toFixed(1)}" />
+    <text text-anchor="middle" dominant-baseline="middle" font-size="${fs.toFixed(1)}">Turn</text>
+  </g>`;
+}
+
 /** Degrees to rotate a piece so local -Y (icon "up") matches current facing. */
 function cubeDirRotation(from: Hex, dir: HexDir): number {
   const o = viewOrientation();
@@ -669,43 +723,8 @@ function facingRotation(piece: Piece): number {
 }
 
 function aimedPiece(p: Piece): Piece {
-  if (!rotateMode || p.id !== selectedId || rotatePreviewDir == null) return p;
+  if (p.id !== selectedId || rotatePreviewDir == null) return p;
   return { ...p, facing: rotatePreviewDir };
-}
-
-function svgPoint(
-  svg: SVGSVGElement,
-  clientX: number,
-  clientY: number,
-): { x: number; y: number } | null {
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return null;
-  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-  return { x: pt.x, y: pt.y };
-}
-
-/** Nearest of the 6 cube facings from `from` toward a board-space point. */
-function facingTowardScreen(from: Hex, pt: { x: number; y: number }): HexDir {
-  const origin = pixelOf(from);
-  const dx = pt.x - origin.x;
-  const dy = pt.y - origin.y;
-  if (!dx && !dy) {
-    const p = selectedId ? getPiece(state, selectedId) : null;
-    return p ? facingOf(p) : 0;
-  }
-  const o = viewOrientation();
-  let best: HexDir = 0;
-  let bestScore = -Infinity;
-  for (let d = 0; d < 6; d++) {
-    const n = neighborInDir(from, d as HexDir, o);
-    const p = pixelOf(n);
-    const score = dx * (p.x - origin.x) + dy * (p.y - origin.y);
-    if (score > bestScore) {
-      bestScore = score;
-      best = d as HexDir;
-    }
-  }
-  return best;
 }
 
 /** `to` as an equivalent angle within ±180° of `from` (short arc). */
@@ -883,6 +902,7 @@ function showStart() {
   briefingOpen = false;
   screen = 'start';
   playlist = null;
+  mapPick = null;
   aiThinking = false;
   animating = false;
   clearSelection();
@@ -893,18 +913,61 @@ function skirmishMaps(): SavedLevel[] {
   return levelsInCategory('skirmish', selectedPeriod);
 }
 
-function pickSkirmishLevelId(): string | null {
-  const maps = skirmishMaps();
-  if (!maps.length) return null;
-  if (activeLevelId && maps.some((l) => l.id === activeLevelId)) return activeLevelId;
-  if (defaultLevelId && maps.some((l) => l.id === defaultLevelId)) return defaultLevelId;
-  return maps[0].id;
+function tutorialMaps(): SavedLevel[] {
+  return levelsInCategory('tutorial', selectedPeriod);
 }
 
-function startSkirmish(nextMode: Mode) {
-  const id = pickSkirmishLevelId();
-  if (!id) return;
-  mode = nextMode;
+function mapsForPick(kind: MapPickKind): SavedLevel[] {
+  if (kind === 'tutorial') return tutorialMaps();
+  if (kind === 'campaign') return levelsInCategory('campaign', selectedPeriod);
+  return skirmishMaps();
+}
+
+function pickLocks(kind: MapPickKind): boolean {
+  return kind === 'tutorial' || kind === 'campaign';
+}
+
+/** First in editor order is always open; a win on map i unlocks i+1. */
+function sequenceUnlocked(maps: SavedLevel[], index: number): boolean {
+  if (index <= 0) return true;
+  const prev = maps[index - 1];
+  return !!prev && hasWonLevel(prev.id);
+}
+
+/** Next tutorial/campaign map if this one is already cleared. */
+function nextUnlockedSequential(): SavedLevel | null {
+  const lvl = activeSavedLevel();
+  if (!lvl || (lvl.category !== 'tutorial' && lvl.category !== 'campaign')) {
+    return null;
+  }
+  if (!hasWonLevel(lvl.id)) return null;
+  const maps = levelsInCategory(lvl.category, lvl.period);
+  const i = maps.findIndex((l) => l.id === lvl.id);
+  if (i < 0 || i + 1 >= maps.length) return null;
+  if (!sequenceUnlocked(maps, i + 1)) return null;
+  return maps[i + 1];
+}
+
+function showMapPick(kind: MapPickKind) {
+  if (!mapsForPick(kind).length) return;
+  editorPainting = false;
+  briefingOpen = false;
+  mapPick = kind;
+  playlist = null;
+  screen = 'start';
+  aiThinking = false;
+  animating = false;
+  clearSelection();
+  render();
+}
+
+function startPickedMap(id: string, kind: MapPickKind) {
+  const maps = mapsForPick(kind);
+  const index = maps.findIndex((l) => l.id === id);
+  if (index < 0) return;
+  if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return;
+  mapPick = null;
+  mode = kind === 'hotseat' ? 'hotseat' : 'ai';
   playlist = null;
   screen = 'play';
   activeLevelId = id;
@@ -951,7 +1014,25 @@ function maybeRecordLevelWin(): void {
 }
 
 function canSkipPlayedLevel(): boolean {
-  return !!playlist && !!activeLevelId && hasWonLevel(activeLevelId);
+  if (nextUnlockedSequential()) return true;
+  return !!playlist && !!activeLevelId && hasWonLevel(activeLevelId) && playlistHasNext();
+}
+
+function skipBriefing() {
+  const next = nextUnlockedSequential();
+  if (next) {
+    if (playlist) {
+      const i = playlist.ids.indexOf(next.id);
+      if (i >= 0) playlist = { ...playlist, index: i };
+    }
+    mode = 'ai';
+    screen = 'play';
+    activeLevelId = next.id;
+    setActiveLevelId(next.id);
+    startMatch(false);
+    return;
+  }
+  advancePlaylist();
 }
 
 function loadEditorLevel(lvl: SavedLevel): void {
@@ -979,6 +1060,7 @@ function loadEditorLevel(lvl: SavedLevel): void {
     : seedArmies(cols, rows);
   editorTokens = lifted.tokens;
   editorControls = sanitizeArmyControls(lvl.armyControls);
+  editorAiStyles = sanitizeAiStyles(lvl.aiStyles);
 }
 
 function confirmLeaveEditor(): boolean {
@@ -987,7 +1069,7 @@ function confirmLeaveEditor(): boolean {
 }
 
 function unitCategoryForPeriod(period: Period): UnitCategory {
-  return period === 'ancient' ? 'ancient' : 'modern';
+  return sanitizeUnitCategory(period);
 }
 
 function beginEditorSession(): void {
@@ -1058,6 +1140,7 @@ function newEditorLevel() {
   editorPieces = [];
   editorTokens = [];
   editorControls = defaultArmyControls();
+  editorAiStyles = defaultAiStyles();
   editorDirty = false;
   beginEditorSession();
 }
@@ -1088,6 +1171,7 @@ function enterEditorFromMatch() {
     editorTerrain.length || ROWS,
   );
   editorControls = sanitizeArmyControls(state.controls);
+  editorAiStyles = sanitizeAiStyles(state.aiStyles);
   editorTokens = sanitizeTokens(
     state.tokens,
     editorTerrain[0]?.length ?? COLS,
@@ -1103,6 +1187,17 @@ function enterUnits() {
   editorPointerAbort?.abort();
   briefingOpen = false;
   screen = 'units';
+  clearSelection();
+  aiThinking = false;
+  animating = false;
+  render();
+}
+
+function enterAi() {
+  editorPainting = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
+  screen = 'ai';
   clearSelection();
   aiThinking = false;
   animating = false;
@@ -1298,6 +1393,7 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
     editorControls,
     editorTokens,
     editorMaxTurns,
+    editorAiStyles,
   );
   editorStartText = saved.startText;
   editorWinText = saved.winText;
@@ -1337,7 +1433,6 @@ function clearSelection() {
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
-  rotateMode = false;
   rotatePreviewDir = null;
 }
 
@@ -1354,7 +1449,6 @@ function resetAim() {
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
-  rotateMode = false;
   rotatePreviewDir = null;
 }
 
@@ -1520,7 +1614,7 @@ function starRuleEditorRow(n: 2 | 3, rule: StarRule): string {
 }
 
 function briefingBlocks(): boolean {
-  return briefingOpen && !state.winner && !!levelCopy('start');
+  return briefingOpen && !state.winner && (!!levelCopy('start') || canSkipPlayedLevel());
 }
 
 function canControl(): boolean {
@@ -1578,7 +1672,6 @@ function selectPiece(id: string | null) {
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
-  rotateMode = false;
   rotatePreviewDir = null;
   refreshHighlights();
   render();
@@ -1827,7 +1920,6 @@ async function tryAct(hex: Hex, kind: ActionMode) {
 
 async function restSelected() {
   if (!selectedId || !canRest(selectedId) || animating) return;
-  rotateMode = false;
   rotatePreviewDir = null;
   animating = true;
   const actingId = selectedId;
@@ -1849,15 +1941,22 @@ function canRotate(pieceId: string): boolean {
   return true;
 }
 
-function toggleRotate() {
-  if (!selectedId || !canRotate(selectedId) || animating) return;
-  rotateMode = !rotateMode;
-  pendingHex = null;
-  hoverHex = null;
-  hoverPath = [];
-  const p = getPiece(state, selectedId);
-  rotatePreviewDir = rotateMode && p ? facingOf(p) : null;
-  render();
+/** Cube dir of an adjacent rear / −2 (red) face, if this piece can spend a rotate on it. */
+function redZoneDir(piece: Piece, hex: Hex): HexDir | null {
+  if (!canRotate(piece.id)) return null;
+  const from: Hex = { col: piece.col, row: piece.row };
+  const dir = dirBetween(from, hex, state.orientation);
+  if (dir === null || dir === facingOf(piece)) return null;
+  const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
+  if (rel !== 3 && !isBlockedFaceRay(piece, from, hex, state.orientation)) return null;
+  return dir;
+}
+
+function rotateChoiceHex(): Hex | null {
+  if (pendingHex || !hoverHex || !selectedId) return null;
+  const piece = getPiece(state, selectedId);
+  if (!piece || redZoneDir(piece, hoverHex) == null) return null;
+  return hoverHex;
 }
 
 async function commitRotate(dir: HexDir) {
@@ -1871,7 +1970,6 @@ async function commitRotate(dir: HexDir) {
     await tweenFacing(g, facingRotation(piece), facingRotation({ ...piece, facing: dir }), 140);
   }
   state = rotatePiece(state, actingId, dir);
-  rotateMode = false;
   rotatePreviewDir = null;
   await playPendingFx();
   animating = false;
@@ -1985,7 +2083,7 @@ function renderBoard(): string {
   const editing = screen === 'editor';
 
   // Full ranges while selected: move tint + shoot marks together
-  const allHl = !editing && selectedId && !rotateMode ? highlights : [];
+  const allHl = !editing && selectedId ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina'>();
   const shootRange = new Set<string>();
   const shootTarget = new Set<string>();
@@ -2024,6 +2122,7 @@ function renderBoard(): string {
   let hexes = '';
   let hlOverlays = '';
   let shootMarks = '';
+  let rotateMarks = '';
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const hex = { col, row };
@@ -2063,6 +2162,11 @@ function renderBoard(): string {
 
       if (pendingHex && eq(pendingHex, hex)) {
         hlOverlays += `<polygon class="hl-tint pending" points="${pts}" />`;
+      }
+
+      if (hoverHex && eq(hoverHex, hex) && rotateChoiceHex()) {
+        hlOverlays += `<polygon class="hl-tint red-zone" points="${pts}" />`;
+        rotateMarks += hexRotateMarkSvg(x, y, col, row);
       }
 
       if (splashSet.has(k)) hlOverlays += `<polygon class="hl-tint splash" points="${pts}" />`;
@@ -2266,7 +2370,7 @@ function renderBoard(): string {
       </pattern>
     </defs>`;
 
-  return `<svg class="board${rotateMode ? ' rotate-aim' : ''}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+  return `<svg class="board" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
     ${defs}
     <g class="hex-layer">${hexes}</g>
     <g class="token-layer">${tokensSvg}</g>
@@ -2275,6 +2379,7 @@ function renderBoard(): string {
     <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
     <g class="stamina-mark-layer">${staminaMarks}</g>
+    <g class="rotate-btn-layer">${rotateMarks}</g>
   </svg>`;
 }
 
@@ -2331,12 +2436,8 @@ function renderActionBar(): string {
   } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
     const n = staminaLeft(piece);
     hint = `A second action costs 1 stamina. ${n} stamina left.`;
-  } else if (rotateMode) {
-    hint = 'Rotate — front follows the mouse, click to face that way (uses an action)';
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
-    hint = UNIT_STATS[piece.type].hexArmor
-      ? 'Second scout action — move, shoot, skip, or rotate'
-      : 'Second scout action — move, shoot, or skip';
+    hint = 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (!canMove && !canShoot) {
@@ -2374,13 +2475,9 @@ function renderActionBar(): string {
     canRest(piece.id)
       ? `<button type="button" id="rest-unit">Rest</button>`
       : '';
-  const rotateUi =
-    canRotate(piece.id)
-      ? `<button type="button" id="rotate-unit"${rotateMode ? ' class="active"' : ''}>Rotate</button>`
-      : '';
 
   return `
-    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}${rotateUi ? ' has-rotate' : ''}">
+    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
@@ -2391,7 +2488,6 @@ function renderActionBar(): string {
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${pieceShotPipsHtml(piece)}
         ${restUi}
-        ${rotateUi}
       </div>
       ${scoutUi}
       ${extra}
@@ -2546,7 +2642,9 @@ function renderSidebar(): string {
       if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; turn-start stamina penalty or 2 HP; no regen)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
-    if (s.charge > 0) extraNotes.push(`Charge through ${s.charge} dmg (armor applies; survivors don't block)`);
+    if (s.charge > 0) extraNotes.push(
+      `Charge through ${s.charge} dmg (armor applies). Like palisade: a living blocker stops you unless that hit kills it, or you land empty beyond`,
+    );
     extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
     if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
@@ -2614,12 +2712,12 @@ function renderSidebar(): string {
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it</dd></div>
-            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal one (leftover steps don't carry)</dd></div>
+            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal move or turn (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits</dd></div>
             <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
             <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining) and the General ability — killing that piece can win the match</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Rotate (spends an action; front follows the mouse, click to lock)</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action, leftover stamina still buys the extra move)</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
         </details>
@@ -2655,8 +2753,9 @@ function sideTurnPhrase(side: Side): string {
     if (humans.length <= 1) return `Your turn (${name})`;
     return `${name} to move`;
   }
-  if (c === 'ai-ally') return `${name} (AI ally)`;
-  return `${name} (AI)`;
+  const style = AI_STYLE_LABEL[sanitizeAiStyles(state.aiStyles)[side]];
+  if (c === 'ai-ally') return `${name} (AI ally · ${style})`;
+  return `${name} (AI · ${style})`;
 }
 
 function opposingLoser(winner: Side): Side {
@@ -2756,13 +2855,23 @@ function renderEndOverlay(): string {
   const sub = custom || stock;
 
   const winnerSide = state.winner;
-  const nextBtn =
-    youWon && inList && !lastInList
+  const cat = activeSavedLevel()?.category;
+  const sequential = cat === 'tutorial' || cat === 'campaign';
+  const nextBtn = youWon && sequential
+    ? `<button type="button" id="end-next">Continue</button>`
+    : youWon && inList && !lastInList
       ? `<button type="button" id="end-next">Next map</button>`
       : '';
-  const startBtn = inList
-    ? `<button type="button" id="end-start" class="ghost">Start</button>`
-    : '';
+  const rematchBtn =
+    inList && !(youWon && sequential)
+      ? `<button type="button" id="end-rematch">Replay</button>`
+      : `<button type="button" id="end-rematch" class="ghost">Replay</button>`;
+  const startBtn =
+    youWon && sequential
+      ? ''
+      : inList
+        ? `<button type="button" id="end-start" class="ghost">Start</button>`
+        : `<button type="button" id="end-start">Done</button>`;
 
   return `
     <div class="end-overlay ${tone}" role="dialog" aria-label="${title}">
@@ -2778,8 +2887,7 @@ function renderEndOverlay(): string {
         <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
           ${nextBtn}
-          <button type="button" id="end-rematch">Rematch</button>
-          ${startBtn}
+          ${inList ? `${rematchBtn}${startBtn}` : `${startBtn}${rematchBtn}`}
         </div>
       </div>
     </div>`;
@@ -2794,7 +2902,7 @@ function renderStartOverlay(): string {
     <div class="end-overlay briefing" role="dialog" aria-label="${escapeHtml(title)}">
       <div class="end-card briefing">
         <h2 class="end-title">${escapeHtml(title)}</h2>
-        <p class="end-sub level-copy">${escapeHtml(text)}</p>
+        ${text ? `<p class="end-sub level-copy">${escapeHtml(text)}</p>` : ''}
         <div class="end-actions">
           <button type="button" id="briefing-go">Begin</button>
           ${
@@ -2868,6 +2976,18 @@ function placeHexChoice() {
   pop.classList.add('is-on');
 }
 
+function bindHexChoice() {
+  const pop = app.querySelector<HTMLElement>('.hex-choice');
+  if (!pop) return;
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  pop.querySelectorAll<HTMLButtonElement>('[data-action-mode]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void resolvePending(btn.dataset.actionMode as ActionMode);
+    });
+  });
+}
+
 function onHexClick(col: number, row: number) {
   if (briefingBlocks() || animating || aiThinking) return;
   const hex = { col, row };
@@ -2875,7 +2995,15 @@ function onHexClick(col: number, row: number) {
 
   // Own piece selected + can act → resolve by what that hex allows
   if (canActWithSelected() && selectedId) {
+    const piece = getPiece(state, selectedId);
     const { canMove, canShoot } = hexActions(selectedId, hex);
+    if (!canMove && !canShoot && piece) {
+      const dir = redZoneDir(piece, hex);
+      if (dir != null) {
+        void commitRotate(dir);
+        return;
+      }
+    }
     if (canMove && canShoot) {
       if (pendingHex && eq(pendingHex, hex)) {
         pendingHex = null;
@@ -3007,58 +3135,32 @@ function bindBoardOnly() {
   if (!svg) return;
 
   svg.addEventListener('click', (e) => {
-    if (rotateMode) {
-      if (selectedId && canRotate(selectedId)) {
-        const pt = svgPoint(svg, e.clientX, e.clientY);
-        const p = getPiece(state, selectedId);
-        if (!pt || !p) return;
-        void commitRotate(facingTowardScreen({ col: p.col, row: p.row }, pt));
-      }
-      return;
-    }
     const hex = hexFromPointer(svg, e.clientX, e.clientY);
     if (!hex) return;
     onHexClick(hex.col, hex.row);
   });
-
-  const paintHover = (next: Hex | null) => {
-    const changed =
-      (!!next && (!hoverHex || !eq(hoverHex, next))) || (!next && !!hoverHex);
-    if (!changed) return;
-    hoverHex = next;
-    const board = app.querySelector('svg.board');
-    if (board) {
-      board.outerHTML = renderBoard();
-      bindBoardOnly();
-      placeHexChoice();
-    }
-  };
+  svg.querySelectorAll<SVGGElement>('.hex-rotate-btn').forEach((g) => {
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const piece = selectedId ? getPiece(state, selectedId) : null;
+      const col = Number(g.dataset.col);
+      const row = Number(g.dataset.row);
+      const at = Number.isInteger(col) && Number.isInteger(row) ? { col, row } : null;
+      const dir = piece && at ? redZoneDir(piece, at) : null;
+      if (dir != null) void commitRotate(dir);
+    });
+  });
 
   svg.addEventListener('pointerleave', () => {
-    if (animating || rotateMode) return;
-    paintHover(null);
+    if (animating) return;
+    paintBoardHover(null);
   });
 
   svg.addEventListener('pointermove', (e) => {
     if (animating) return;
-    if (rotateMode && selectedId) {
-      const p = getPiece(state, selectedId);
-      const pt = svgPoint(svg, e.clientX, e.clientY);
-      if (!p || !pt) return;
-      const dir = facingTowardScreen({ col: p.col, row: p.row }, pt);
-      if (rotatePreviewDir === dir) return;
-      rotatePreviewDir = dir;
-      const board = app.querySelector('svg.board');
-      if (board) {
-        board.outerHTML = renderBoard();
-        bindBoardOnly();
-        placeHexChoice();
-      }
-      return;
-    }
     const hex = hexFromPointer(svg, e.clientX, e.clientY);
     if (!hex) {
-      paintHover(null);
+      paintBoardHover(null);
       return;
     }
     const sel = selectedId ? getPiece(state, selectedId) : null;
@@ -3069,8 +3171,31 @@ function bindBoardOnly() {
       !!sel &&
       hasSplash(UNIT_STATS[sel.type]) &&
       highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
-    paintHover(moveHover || splashHover ? hex : null);
+    const zoneHover = !!sel && redZoneDir(sel, hex) != null;
+    paintBoardHover(moveHover || splashHover || zoneHover ? hex : null);
   });
+}
+
+function paintBoardHover(next: Hex | null) {
+  if (animating) return;
+  const changed =
+    (!!next && (!hoverHex || !eq(hoverHex, next))) || (!next && !!hoverHex);
+  if (!changed) return;
+  hoverHex = next;
+  const sel = selectedId ? getPiece(state, selectedId) : null;
+  const moveHover = !!(
+    next &&
+    highlights.some(
+      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, next),
+    )
+  );
+  rotatePreviewDir = sel && next && !moveHover ? redZoneDir(sel, next) : null;
+  const board = app.querySelector('svg.board');
+  if (board) {
+    board.outerHTML = renderBoard();
+    bindBoardOnly();
+    placeHexChoice();
+  }
 }
 
 function levelSelectOptions(selectedId: string | null): string {
@@ -3130,14 +3255,15 @@ function paintSyncDot(s: ServerStatus = getServerStatus()): void {
 }
 
 function inEditorSection(): boolean {
-  return screen === 'levels' || screen === 'editor' || screen === 'units';
+  return screen === 'levels' || screen === 'editor' || screen === 'units' || screen === 'ai';
 }
 
 function renderToolbar(): string {
   const editorNav = inEditorSection()
-    ? `<nav class="editor-nav" aria-label="Level editor">
+    ? `<nav class="editor-nav" aria-label="Levels, units, and AI">
         <button type="button" id="editor-nav-levels" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Levels</button>
         <button type="button" id="editor-nav-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
+        <button type="button" id="editor-nav-ai" class="${screen === 'ai' ? 'active' : ''}">AI</button>
       </nav>`
     : '';
   return `<div class="toolbar">
@@ -3147,7 +3273,69 @@ function renderToolbar(): string {
   </div>`;
 }
 
+function mapPickTitle(kind: MapPickKind): string {
+  if (kind === 'ai') return 'Skirmish vs AI';
+  if (kind === 'hotseat') return 'Hotseat';
+  if (kind === 'campaign') return 'Campaign';
+  return 'Tutorial';
+}
+
+function mapPickMetaLine(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
+  const armyN = Array.isArray(l.armies) ? l.armies.length : null;
+  const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
+  const size = `${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'} · ${army}`;
+  if (!pickLocks(kind)) return size;
+  if (!sequenceUnlocked(maps, index)) return 'Locked · win the previous map';
+  return hasWonLevel(l.id) ? `Cleared · ${size}` : size;
+}
+
+function renderMapPickOpt(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
+  const locked = pickLocks(kind) && !sequenceUnlocked(maps, index);
+  const name = escapeHtml(levelLabel(l));
+  const lock = locked
+    ? `<svg class="map-pick-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7.2" width="9.6" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.1 7.2V5.1a2.9 2.9 0 0 1 5.8 0v2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`
+    : '';
+  return `<button type="button" class="start-opt map-pick-opt${locked ? ' locked' : ''}" data-pick-map="${l.id}"${
+    locked ? ' disabled' : ''
+  } title="${locked ? `${name} — locked` : `Play ${name}`}" aria-label="${locked ? `${name} (locked)` : name}">
+    ${renderLevelThumb(l)}
+    <span class="map-pick-copy">
+      <span class="start-opt-name">${lock}${name}</span>
+      <span class="start-opt-meta">${mapPickMetaLine(l, kind, index, maps)}</span>
+    </span>
+  </button>`;
+}
+
+function renderMapPickScreen(kind: MapPickKind): string {
+  const maps = mapsForPick(kind);
+  const title = mapPickTitle(kind);
+  const era = PERIOD_LABEL[selectedPeriod];
+  const tag =
+    pickLocks(kind)
+      ? `Pick a map · ${era} · vs AI. Finish one to unlock the next.`
+      : kind === 'hotseat'
+        ? `Pick a map · ${era} · two players, one device.`
+        : `Pick a map · ${era} · vs AI.`;
+  const emptyCat = kind === 'hotseat' || kind === 'ai' ? 'skirmish' : kind;
+  const body = maps.length
+    ? `<div class="map-pick-list">${maps.map((l, i) => renderMapPickOpt(l, kind, i, maps)).join('')}</div>`
+    : `<p class="editor-empty">No ${emptyCat} maps for ${era.toLowerCase()}. Mark saved levels as ${LEVEL_CATEGORY_LABEL[emptyCat]} in the Editor.</p>`;
+  return `
+    <div class="board-wrap start-wrap">
+      <div class="start-screen start-pick">
+        <div class="map-pick-head">
+          <p class="start-kicker">${mapPickTitle(kind)}</p>
+          <button type="button" id="map-pick-back">Back</button>
+        </div>
+        <h2 class="start-title">${escapeHtml(title)}</h2>
+        <p class="start-tag">${escapeHtml(tag)}</p>
+        ${body}
+      </div>
+    </div>`;
+}
+
 function renderStartScreen(): string {
+  if (mapPick) return renderMapPickScreen(mapPick);
   const campaignN = levelsInCategory('campaign', selectedPeriod).length;
   const tutorialN = levelsInCategory('tutorial', selectedPeriod).length;
   const historicalN = levelsInCategory('historical', selectedPeriod).length;
@@ -3155,7 +3343,7 @@ function renderStartScreen(): string {
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
   const periodPicks = PERIODS.map(
     (p) =>
-      `<button type="button" class="period-pick${selectedPeriod === p ? ' active' : ''}" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
+      `<button type="button" class="period-pick${selectedPeriod === p ? ' active' : ''}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
   ).join('');
   return `
     <div class="board-wrap start-wrap">
@@ -3166,42 +3354,47 @@ function renderStartScreen(): string {
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
           <button type="button" class="start-opt" data-start="campaign"${campaignN ? '' : ' disabled'}
-            title="${campaignN ? 'Play campaign maps in editor order, vs AI' : 'Mark saved levels as Campaign in the Editor'}">
+            title="${campaignN ? 'Pick a campaign map vs AI. Finish one to unlock the next.' : 'Mark saved levels as Campaign in the Editor'}">
             <span class="start-opt-name">Campaign</span>
             <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI` : 'No campaign maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
-            title="${tutorialN ? 'Tutorial maps in editor order, vs AI' : 'Mark saved levels as Tutorial in the Editor'}">
+            title="${tutorialN ? 'Pick a tutorial map vs AI. Finish one to unlock the next.' : 'Mark saved levels as Tutorial in the Editor'}">
             <span class="start-opt-name">Tutorial</span>
             <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="historical"${historicalN ? '' : ' disabled'}
-            title="${historicalN ? 'Play historical battles in editor order, vs AI' : 'Mark saved levels as Historical in the Editor'}">
-            <span class="start-opt-name">Play historical battle</span>
+            title="${historicalN ? 'Historical battles in editor order, vs AI' : 'Mark saved levels as Historical in the Editor'}">
+            <span class="start-opt-name">Historical Battle</span>
             <span class="start-opt-meta">${historicalN ? `${mapWord(historicalN)} · vs AI` : 'No historical maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="ai"${skirmishN ? '' : ' disabled'}
-            title="${skirmishN ? 'Play a skirmish map vs AI' : 'Mark saved levels as Skirmish in the Editor'}">
-            <span class="start-opt-name">vs AI</span>
-            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · skirmish` : 'No skirmish maps'}</span>
+            title="${skirmishN ? 'Pick a skirmish map vs AI' : 'Mark saved levels as Skirmish in the Editor'}">
+            <span class="start-opt-name">Skirmish vs AI</span>
+            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'No skirmish maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="hotseat"${skirmishN ? '' : ' disabled'}
-            title="${skirmishN ? 'Play a skirmish map, two players on one device' : 'Mark saved levels as Skirmish in the Editor'}">
+            title="${skirmishN ? 'Pick a skirmish map, two players on one device' : 'Mark saved levels as Skirmish in the Editor'}">
             <span class="start-opt-name">Hotseat</span>
             <span class="start-opt-meta">${skirmishN ? 'Two players, one device' : 'No skirmish maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="editor">
             <span class="start-opt-name">Level editor</span>
-            <span class="start-opt-meta">Levels and units</span>
+            <span class="start-opt-meta">Levels, units, and AI</span>
           </button>
         </div>
+        <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
       </div>
     </div>`;
 }
 
 function bindToolbarEvents() {
   app.querySelector('#go-start')?.addEventListener('click', () => {
-    if (screen === 'start') return;
+    if (screen === 'start' && !mapPick) return;
+    if (screen === 'start' && mapPick) {
+      showStart();
+      return;
+    }
     if (!confirmLeaveEditor()) return;
     showStart();
   });
@@ -3214,12 +3407,28 @@ function bindToolbarEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const kind = btn.dataset.start;
-      if (kind === 'campaign' || kind === 'tutorial' || kind === 'historical') {
-        startPlaylist(kind);
-      }
-      else if (kind === 'ai') startSkirmish('ai');
-      else if (kind === 'hotseat') startSkirmish('hotseat');
+      if (kind === 'historical') startPlaylist(kind);
+      else if (kind === 'campaign') showMapPick('campaign');
+      else if (kind === 'tutorial') showMapPick('tutorial');
+      else if (kind === 'ai') showMapPick('ai');
+      else if (kind === 'hotseat') showMapPick('hotseat');
       else if (kind === 'editor') enterLevels(true);
+    });
+  });
+  app.querySelector('#reset-progress')?.addEventListener('click', () => {
+    if (!confirm('Reset all tutorial and campaign progress?')) return;
+    const ids = listLevels()
+      .filter((l) => l.category === 'tutorial' || l.category === 'campaign')
+      .map((l) => l.id);
+    clearLevelWins(ids);
+    render();
+  });
+  app.querySelector('#map-pick-back')?.addEventListener('click', () => showStart());
+  app.querySelectorAll<HTMLButtonElement>('[data-pick-map]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.pickMap;
+      if (!id || !mapPick) return;
+      startPickedMap(id, mapPick);
     });
   });
   app.querySelector('#editor-nav-levels')?.addEventListener('click', () => {
@@ -3231,6 +3440,11 @@ function bindToolbarEvents() {
     if (screen === 'units') return;
     if (!confirmLeaveEditor()) return;
     enterUnits();
+  });
+  app.querySelector('#editor-nav-ai')?.addEventListener('click', () => {
+    if (screen === 'ai') return;
+    if (!confirmLeaveEditor()) return;
+    enterAi();
   });
   app.querySelector('#edit-this-level')?.addEventListener('click', () => {
     if (!activeLevelId) return;
@@ -3436,7 +3650,7 @@ function renderArmySelectPanel(): string {
   );
   const eraOpts = UNIT_CATEGORIES.map(
     (c) =>
-      `<option value="${c}"${editorUnitCategory === c ? ' selected' : ''}>${UNIT_CATEGORY_LABEL[c]}</option>`,
+      `<option value="${c}"${editorUnitCategory === c ? ' selected' : ''}>${eraIsWip(c) ? `${UNIT_CATEGORY_LABEL[c]} (under construction)` : UNIT_CATEGORY_LABEL[c]}</option>`,
   ).join('');
   const unitBrushes = catUnits
     .map(
@@ -3453,9 +3667,19 @@ function renderArmySelectPanel(): string {
           (c) =>
             `<option value="${c}"${editorControls[s] === c ? ' selected' : ''}>${ARMY_CONTROL_LABEL[c]}</option>`,
         ).join('');
+        const styleOpts = AI_STYLES.map(
+          (st) =>
+            `<option value="${st}"${editorAiStyles[s] === st ? ' selected' : ''}>${AI_STYLE_LABEL[st]}</option>`,
+        ).join('');
+        const ai = editorControls[s] !== 'player';
         return `<div class="editor-army-row">
         <button type="button" class="editor-side ${s}${editorArmySide === s ? ' active' : ''}" data-army-side="${s}">${SIDE_LABEL[s]}</button>
         <select class="editor-control" data-army-control="${s}" aria-label="${SIDE_LABEL[s]} controller">${opts}</select>
+        ${
+          ai
+            ? `<select class="editor-control editor-style" data-army-style="${s}" aria-label="${SIDE_LABEL[s]} AI style">${styleOpts}</select>`
+            : ''
+        }
       </div>`;
       }).join('')}</div>
       <label class="editor-cat">Era
@@ -3568,7 +3792,7 @@ function renderLevelsOverview(): string {
   ).join('');
   const periodFilters = PERIODS.map(
     (p) =>
-      `<button type="button" class="levels-filter${levelsPeriodFilter === p ? ' active' : ''}" data-levels-period="${p}" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
+      `<button type="button" class="levels-filter${levelsPeriodFilter === p ? ' active' : ''}" data-levels-period="${p}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
   ).join('');
 
   const levels = levelsInCategory(levelsFilter, levelsPeriodFilter);
@@ -3673,7 +3897,7 @@ function renderEditorBar(): string {
               <select id="editor-period" data-period="${editorPeriod}">
                 ${PERIODS.map(
                   (p) =>
-                    `<option value="${p}"${editorPeriod === p ? ' selected' : ''}>${PERIOD_LABEL[p]}</option>`,
+                    `<option value="${p}"${editorPeriod === p ? ' selected' : ''}>${periodOptionLabel(p)}</option>`,
                 ).join('')}
               </select>
             </label>
@@ -3852,7 +4076,7 @@ function renderUnitEditor(): string {
       const s = UNIT_STATS[type];
       const catOpts = UNIT_CATEGORIES.map(
         (c) =>
-          `<option value="${c}"${s.category === c ? ' selected' : ''}>${UNIT_CATEGORY_LABEL[c]}</option>`,
+          `<option value="${c}"${s.category === c ? ' selected' : ''}>${eraIsWip(c) ? `${UNIT_CATEGORY_LABEL[c]} (under construction)` : UNIT_CATEGORY_LABEL[c]}</option>`,
       ).join('');
       const kitOpts = STOCK_UNIT_TYPES.map(
         (r) =>
@@ -3970,7 +4194,7 @@ function renderUnitEditor(): string {
 
   const filters = UNIT_CATEGORIES.map(
     (c) =>
-      `<button type="button" data-unit-filter="${c}" class="${unitEditorCategory === c ? 'active' : ''}">${UNIT_CATEGORY_LABEL[c]}</button>`,
+      `<button type="button" data-unit-filter="${c}" class="${unitEditorCategory === c ? 'active' : ''}">${UNIT_CATEGORY_LABEL[c]}${eraIsWip(c) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
   ).join('');
 
   return `
@@ -3995,22 +4219,22 @@ function renderUnitEditor(): string {
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets)</dd>
-          <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter, and again at the start of their next turn if they stay. 0 is outline only</dd>
+          <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
-          <dd><strong>Category</strong> Modern / Ancient — filter above. Stock Ancient: Archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy</dd>
-          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower is glyph only</dd>
+          <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
+          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after a normal move take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after a normal move or turn take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage when walking through a unit (armor applies, including negative). Survivors lose HP and you pass. Palisades: you do not pass unless that melee hit breaks them</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage on every unit you walk through (armor applies, including negative). Same as palisade: a living blocker stops you — click the 2nd unit and the 1st still takes the hit; you only continue if that charge would kill them (like a palisade on its last hit). Empty dest beyond: pass through the line and damage them even if they survive. Palisades: you do not pass unless that melee hit breaks them</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
@@ -4022,6 +4246,155 @@ function renderUnitEditor(): string {
         </dl>
       </details>
     </div>`;
+}
+
+function aiCheckCell(style: AiStyle, id: string, on: boolean, kind: 'rule' | 'cat' | 'all'): string {
+  const data =
+    kind === 'rule'
+      ? `data-ai-rule="${id}"`
+      : kind === 'cat'
+        ? `data-ai-cat="${id}"`
+        : 'data-ai-all';
+  return `<td class="ai-check-cell ${style}">
+    <label class="ai-check-box">
+      <input type="checkbox" ${data} data-ai-style="${style}"${on ? ' checked' : ''} />
+      <span class="sr-only">${AI_STYLE_LABEL[style]}</span>
+    </label>
+  </td>`;
+}
+
+function renderAiChecklist(): string {
+  const head = AI_STYLES.map(
+    (st) =>
+      `<th class="ai-check-col ${st}" scope="col">
+        <span class="ai-check-col-name">${AI_STYLE_LABEL[st]}${st === 'aggressive' ? '<span class="ai-check-default">default</span>' : ''}</span>
+        <label class="ai-check-box ai-check-master">
+          <input type="checkbox" data-ai-all data-ai-style="${st}"${styleAllOn(st) ? ' checked' : ''} />
+          <span class="sr-only">All ${AI_STYLE_LABEL[st]} rules</span>
+        </label>
+      </th>`,
+  ).join('');
+  const groups = AI_RULE_CATEGORIES.map((cat) => {
+    const rules = categoryRules(cat)
+      .map(
+        (rule) => `<tr>
+          <th scope="row">
+            <span class="ai-rule-name">${escapeHtml(rule.label)}</span>
+            <span class="ai-rule-blurb">${escapeHtml(rule.blurb)}</span>
+          </th>
+          ${AI_STYLES.map((st) => aiCheckCell(st, rule.id, isAiRuleOn(st, rule.id), 'rule')).join('')}
+        </tr>`,
+      )
+      .join('');
+    return `<tbody>
+      <tr class="ai-check-group">
+        <th scope="colgroup">${AI_RULE_CATEGORY_LABEL[cat]}</th>
+        ${AI_STYLES.map((st) => aiCheckCell(st, cat, categoryAllOn(st, cat), 'cat')).join('')}
+      </tr>
+      ${rules}
+    </tbody>`;
+  }).join('');
+
+  return `
+    <div class="ai-editor">
+      <div class="ai-editor-head">
+        <h2>AI checklist</h2>
+        <p class="editor-label" id="ai-status">${
+          aiChecklistAreStock() ? 'Stock rules · all on' : 'Custom rules · saved in this browser'
+        }</p>
+      </div>
+      <p class="muted ai-editor-lead">Two personalities. Check a box to run that rule when the army’s AI is set to that style (level editor, next to player / AI). Default is <strong>aggressive</strong>. Stock = everything on — the current AI.</p>
+      <div class="ai-check-wrap">
+        <table class="ai-check">
+          <thead>
+            <tr>
+              <th scope="col">Rule</th>
+              ${head}
+            </tr>
+          </thead>
+          ${groups}
+        </table>
+      </div>
+      <div class="editor-save">
+        <button type="button" id="ai-reset" class="ghost">Reset to stock</button>
+      </div>
+      <details class="units-help">
+        <summary>Help</summary>
+        <p class="muted">Category headers toggle every rule in that group for that column. Column headers toggle the whole personality. Unchecked rules are skipped — the AI falls through to whatever is still on. Per-army style is stored on the level.</p>
+      </details>
+    </div>`;
+}
+
+function syncAiHeaderChecks() {
+  app.querySelectorAll<HTMLInputElement>('input[data-ai-all][data-ai-style]').forEach((el) => {
+    const st = el.dataset.aiStyle;
+    if (!isAiStyle(st)) return;
+    el.checked = styleAllOn(st);
+    el.indeterminate = !el.checked && styleAnyOn(st);
+  });
+  app.querySelectorAll<HTMLInputElement>('input[data-ai-cat][data-ai-style]').forEach((el) => {
+    const st = el.dataset.aiStyle;
+    const cat = el.dataset.aiCat;
+    if (!isAiStyle(st) || !isAiRuleCategory(cat)) return;
+    el.checked = categoryAllOn(st, cat);
+    el.indeterminate = !el.checked && categoryAnyOn(st, cat);
+  });
+  const status = app.querySelector('#ai-status');
+  if (status) {
+    status.textContent = aiChecklistAreStock()
+      ? 'Stock rules · all on'
+      : 'Custom rules · saved in this browser';
+  }
+}
+
+function isAiRuleCategory(v: unknown): v is AiRuleCategory {
+  return AI_RULE_CATEGORIES.includes(v as AiRuleCategory);
+}
+
+function bindAiChecklistEvents() {
+  const refresh = () => {
+    app.querySelectorAll<HTMLInputElement>('input[data-ai-rule][data-ai-style]').forEach((el) => {
+      const st = el.dataset.aiStyle;
+      const id = el.dataset.aiRule;
+      if (!isAiStyle(st) || !isAiRuleId(id)) return;
+      el.checked = isAiRuleOn(st, id);
+    });
+    syncAiHeaderChecks();
+  };
+  app.querySelectorAll<HTMLInputElement>('input[data-ai-rule]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const st = el.dataset.aiStyle;
+      const id = el.dataset.aiRule;
+      if (!isAiStyle(st) || !isAiRuleId(id)) return;
+      setAiRule(st, id, el.checked);
+      syncAiHeaderChecks();
+    });
+  });
+  app.querySelectorAll<HTMLInputElement>('input[data-ai-cat]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const st = el.dataset.aiStyle;
+      const cat = el.dataset.aiCat;
+      if (!isAiStyle(st) || !isAiRuleCategory(cat)) return;
+      setAiCategory(st, cat, el.checked);
+      refresh();
+    });
+  });
+  app.querySelectorAll<HTMLInputElement>('input[data-ai-all]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const st = el.dataset.aiStyle;
+      if (!isAiStyle(st)) return;
+      setAiStyleColumn(st, el.checked);
+      refresh();
+    });
+  });
+  app.querySelector('#ai-reset')?.addEventListener('click', () => {
+    if (!aiChecklistAreStock() && !confirm('Reset both AI personalities to stock (all rules on)?')) {
+      return;
+    }
+    resetAiChecklist();
+    render();
+  });
+  syncAiHeaderChecks();
 }
 
 function bindUnitEditorEvents() {
@@ -4223,6 +4596,11 @@ function bindEditorEvents() {
   app.querySelector('#editor-period')?.addEventListener('change', (e) => {
     editorPeriod = sanitizePeriod((e.target as HTMLSelectElement).value);
     selectedPeriod = setSelectedPeriod(editorPeriod);
+    editorUnitCategory = unitCategoryForPeriod(editorPeriod);
+    if (isUnitBrush(editorBrush) && UNIT_STATS[editorBrush]?.category !== editorUnitCategory) {
+      const first = UNIT_TYPES.find((t) => UNIT_STATS[t].category === editorUnitCategory);
+      editorBrush = (first ?? 'land') as EditorBrush;
+    }
     editorDirty = true;
     render();
   });
@@ -4281,12 +4659,20 @@ function bindEditorEvents() {
       const side = sel.dataset.armyControl;
       if (!isSide(side)) return;
       const v = sel.value;
-      editorControls = {
-        ...editorControls,
-        [side]: ARMY_CONTROLS.includes(v as ArmyControl)
-          ? (v as ArmyControl)
-          : editorControls[side],
-      };
+      const next = ARMY_CONTROLS.includes(v as ArmyControl)
+        ? (v as ArmyControl)
+        : editorControls[side];
+      const wasAi = editorControls[side] !== 'player';
+      editorControls = { ...editorControls, [side]: next };
+      markEditorDirty();
+      if (wasAi !== (next !== 'player')) render();
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('[data-army-style]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const side = sel.dataset.armyStyle;
+      if (!isSide(side) || !isAiStyle(sel.value)) return;
+      editorAiStyles = { ...editorAiStyles, [side]: sel.value };
       markEditorDirty();
     });
   });
@@ -4517,20 +4903,24 @@ function bindEvents() {
     bindUnitEditorEvents();
     return;
   }
+  if (screen === 'ai') {
+    bindAiChecklistEvents();
+    return;
+  }
 
   app.querySelector('#new-map')?.addEventListener('click', () => {
     if (activeLevelId) startMatch(false);
     else reset(true);
   });
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
-  app.querySelector('#end-next')?.addEventListener('click', () => advancePlaylist());
+  app.querySelector('#end-next')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
     briefingOpen = false;
     render();
     void maybeAi();
   });
-  app.querySelector('#briefing-skip')?.addEventListener('click', () => advancePlaylist());
+  app.querySelector('#briefing-skip')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#level-select')?.addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
     if (v === 'random') {
@@ -4549,9 +4939,6 @@ function bindEvents() {
   app.querySelector('#rest-unit')?.addEventListener('click', () => {
     void restSelected();
   });
-  app.querySelector('#rotate-unit')?.addEventListener('click', () => {
-    toggleRotate();
-  });
   app.querySelector('#end-turn')?.addEventListener('click', () => {
     void (async () => {
       if (!canControl() || animating) return;
@@ -4567,15 +4954,7 @@ function bindEvents() {
       void maybeAi();
     })();
   });
-  app.querySelector('.hex-choice')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
-  app.querySelectorAll<HTMLButtonElement>('[data-action-mode]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      void resolvePending(btn.dataset.actionMode as ActionMode);
-    });
-  });
+  bindHexChoice();
   app.querySelector<HTMLDetailsElement>('[data-sidebar-more]')?.addEventListener('toggle', (e) => {
     sidebarMoreOpen = (e.currentTarget as HTMLDetailsElement).open;
   });
@@ -4604,7 +4983,7 @@ function render() {
   applyPeriodTheme(activePeriod());
   app.classList.toggle(
     'start-screen',
-    screen === 'start' || screen === 'levels' || screen === 'units',
+    screen === 'start' || screen === 'levels' || screen === 'units' || screen === 'ai',
   );
 
   if (screen === 'start') {
@@ -4624,6 +5003,17 @@ function render() {
       <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
         ${renderUnitEditor()}
+      </div>
+    `;
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'ai') {
+    app.innerHTML = `
+      <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
+        ${renderToolbar()}
+        ${renderAiChecklist()}
       </div>
     `;
     bindEvents();
@@ -4650,7 +5040,7 @@ function render() {
       <aside class="sidebar">
         <h2>${escapeHtml(editorName.trim() || 'New level')}</h2>
         <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels / Units in the header switches library and roster. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> / <strong>Tutorial</strong> / <strong>Historical</strong> playlists on Start follow the drag order in Levels, <strong>Skirmish</strong> is vs AI / Hotseat.</p>
+        <p class="muted">Levels / Units / AI in the header switches library, roster, and the AI checklist. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> and <strong>Tutorial</strong> pick a map (win one to unlock the next). <strong>Historical</strong> playlists on Start follow the drag order in Levels. <strong>Skirmish</strong> pick a map. AI armies pick aggressive or defensive next to the controller.</p>
       </aside>
     `;
     bindEvents();

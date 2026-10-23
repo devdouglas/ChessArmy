@@ -118,8 +118,8 @@ try {
     const bluePassed = passTurn(after);
     assert(bluePassed.turn === 'red', 'back to red');
     const red = bluePassed.pieces.find((x) => x.id === p.id)!;
-    assert(hpLeft(red) === 1, 'start of next turn pulses again');
-    assert(bluePassed.log.some((l) => l.includes('endures facing pikes')), 'upkeep is logged');
+    assert(hpLeft(red) === 2, 'staying on the hex does not pulse again');
+    assert(!bluePassed.log.some((l) => l.includes('endures facing pikes')), 'no upkeep hit');
     UNIT_STATS.soldier.hp = saved.hp;
   }
 
@@ -164,7 +164,7 @@ try {
     p.row = front.row;
     const hp = hpLeft(p);
     beginSideTurn(s, false, true);
-    assert(hpLeft(p) === hp, 'explicit kickoff flag skips the pulse');
+    assert(hpLeft(p) === hp, 'start of turn does not pulse facing pikes');
   }
 
   {

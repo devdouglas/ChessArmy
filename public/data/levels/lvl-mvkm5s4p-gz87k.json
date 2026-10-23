@@ -1,0 +1,254 @@
+{
+    "id": "lvl-mvkm5s4p-gz87k",
+    "name": "Unit tryout",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "pointy",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "skirmish",
+    "period": "futuristic",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "wall",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "wall",
+            "col": 6,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 1
+        }
+    ],
+    "sort": 0,
+    "updatedAt": 1792738765958,
+    "armies": [
+        {
+            "type": "fighter",
+            "col": 1,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "gunship",
+            "col": 3,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "bomber",
+            "col": 5,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "frigate",
+            "col": 7,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "cruiser",
+            "col": 2,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "dreadnought",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "dreadnought",
+            "col": 5,
+            "row": 0,
+            "side": "blue"
+        }
+    ]
+}

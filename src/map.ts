@@ -1,11 +1,13 @@
 import {
   beginSideTurn,
   defaultArmyControls,
+  defaultAiStyles,
   emptyHadKing,
   emptySideCounts,
   hasGeneral,
   openingSide,
   sanitizeArmyControls,
+  sanitizeAiStyles,
   SIDES,
   liftWallTerrain,
   sanitizeTokens,
@@ -13,6 +15,7 @@ import {
   statsOf,
   hpMax,
   type ArmyControl,
+  type AiStyle,
   type GameState,
   type Piece,
   type Side,
@@ -434,6 +437,7 @@ function freshGame(
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[] | null,
+  aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
 ): GameState {
   idSeq = 0;
   const custom = armies && armies.length > 0;
@@ -468,6 +472,7 @@ function freshGame(
     staminaBonus: false,
     winner: null,
     controls: controls ? sanitizeArmyControls(controls) : defaultArmyControls(),
+    aiStyles: aiStyles ? sanitizeAiStyles(aiStyles) : defaultAiStyles(),
     hadKing,
     unitsPerTurn: 1,
     maxTurns: 0,
@@ -486,6 +491,7 @@ export function createInitialState(
   opts: MapOptions = DEFAULT_MAP,
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
+  aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
 ): GameState {
   const clamped = clampMapOptions(opts);
   const terrain = emptyTerrain();
@@ -497,6 +503,7 @@ export function createInitialState(
     armies,
     controls,
     walls,
+    aiStyles,
   );
 }
 
@@ -508,6 +515,7 @@ export function createStateFromTerrain(
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[] | null,
+  aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
 ): GameState {
   return freshGame(
     terrain,
@@ -518,5 +526,6 @@ export function createStateFromTerrain(
     armies,
     controls,
     tokens,
+    aiStyles,
   );
 }

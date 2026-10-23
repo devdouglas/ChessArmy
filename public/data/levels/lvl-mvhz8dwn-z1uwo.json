@@ -3,7 +3,7 @@
     "name": "Just keep swimming",
     "cols": 8,
     "rows": 10,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -129,27 +129,21 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
-    "sort": 4,
-    "updatedAt": 1792669119847,
+    "sort": 5,
+    "updatedAt": 1792743634034,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
             "col": 3,
             "row": 0,
             "side": "blue"
-        },
-        {
-            "type": "cohort",
-            "col": 1,
-            "row": 9,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 9,
-            "side": "red"
         },
         {
             "type": "archer",
@@ -162,6 +156,12 @@
             "col": 6,
             "row": 1,
             "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 5,
+            "row": 9,
+            "side": "red"
         }
     ]
 }

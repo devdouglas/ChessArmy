@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvj9vf3j-ld2g9",
-    "name": "Peasant revolt v2",
+    "name": "Peasant revolt with Hoplites",
     "cols": 11,
     "rows": 11,
     "orientation": "pointy",
@@ -172,9 +172,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
     "sort": 1,
-    "updatedAt": 1792657352771,
+    "updatedAt": 1792743158375,
     "armies": [
         {
             "type": "u-mvf8vjffgpkd",

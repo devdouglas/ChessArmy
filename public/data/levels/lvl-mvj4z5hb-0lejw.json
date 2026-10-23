@@ -3,11 +3,11 @@
     "name": "Your gladius and javelins!",
     "cols": 8,
     "rows": 8,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "water",
-            "rock",
+            "water",
             "rock",
             "rock",
             "high",
@@ -17,7 +17,7 @@
         ],
         [
             "water",
-            "rock",
+            "water",
             "rock",
             "high",
             "high",
@@ -72,7 +72,7 @@
             "land",
             "land",
             "land",
-            "land",
+            "water",
             "water"
         ],
         [
@@ -109,6 +109,12 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [
         {
             "type": "wall",
@@ -116,8 +122,8 @@
             "row": 6
         }
     ],
-    "sort": 3,
-    "updatedAt": 1792664195998,
+    "sort": 4,
+    "updatedAt": 1792743613567,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

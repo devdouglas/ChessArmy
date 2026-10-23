@@ -117,6 +117,12 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [
         {
             "type": "wall",

@@ -19,6 +19,13 @@ import {
 } from './levels';
 import { setPersistHook, silencePersist } from './persist-hook';
 import { mergeByUpdatedAt, mergeDeleted, pruneDeleted } from './store-merge';
+import {
+  aiChecklistAreStock,
+  applyRemoteAiChecklist,
+  getAiChecklist,
+  persistAiChecklist,
+  sanitizeAiChecklist,
+} from './ai-config';
 import { applyRemoteUnitStats, persistUnitStats, unitStatsAreStock } from './units';
 
 export { mergeByUpdatedAt, mergeDeleted, pruneDeleted } from './store-merge';
@@ -27,6 +34,7 @@ export type ServerStatus = 'checking' | 'ok' | 'local' | 'err';
 
 export type ServerStore = {
   units: Partial<Record<UnitType, Partial<UnitStats>>> | null;
+  aiChecklist: ReturnType<typeof getAiChecklist> | null;
   levels: SavedLevel[];
   defaultLevelId: string | null;
   formations: SavedFormation[];
@@ -78,6 +86,8 @@ async function pullStore(): Promise<ServerStore | null> {
     if (!data || typeof data !== 'object') return null;
     return {
       units: data.units && typeof data.units === 'object' ? data.units : null,
+      aiChecklist:
+        data.aiChecklist && typeof data.aiChecklist === 'object' ? data.aiChecklist : null,
       levels: Array.isArray(data.levels) ? data.levels : [],
       defaultLevelId: data.defaultLevelId ?? null,
       formations: Array.isArray(data.formations) ? data.formations : [],
@@ -107,6 +117,7 @@ function deletedStamp(map: Record<string, number>): string {
 function localStore(): ServerStore {
   return {
     units: UNIT_STATS,
+    aiChecklist: getAiChecklist(),
     levels: listLevels(),
     defaultLevelId: getDefaultLevelId(),
     formations: listFormations(),
@@ -160,6 +171,10 @@ function applyMerged(store: ServerStore): void {
       applyRemoteUnitStats(store.units);
       persistUnitStats();
     }
+    if (store.aiChecklist) {
+      applyRemoteAiChecklist(store.aiChecklist);
+      persistAiChecklist();
+    }
     replaceLevels(store.levels);
     replaceDeletedLevels(store.deletedLevels);
     if (store.defaultLevelId) setDefaultLevelId(store.defaultLevelId);
@@ -184,10 +199,14 @@ export async function syncFromServer(): Promise<{
   const serverEmpty =
     remote.levels.length === 0 &&
     !remote.units &&
+    !remote.aiChecklist &&
     remote.formations.length === 0;
   if (
     serverEmpty &&
-    (local.levels.length > 0 || !unitStatsAreStock() || local.formations.length > 0)
+    (local.levels.length > 0 ||
+      !unitStatsAreStock() ||
+      !aiChecklistAreStock() ||
+      local.formations.length > 0)
   ) {
     const ok = await pushStore();
     if (!ok) setStatus('err');
@@ -204,6 +223,7 @@ export async function syncFromServer(): Promise<{
   );
   const merged: ServerStore = {
     units: remote.units ?? local.units,
+    aiChecklist: sanitizeAiChecklist(remote.aiChecklist ?? local.aiChecklist),
     levels: mergeByUpdatedAt(local.levels, remote.levels, deletedLevels),
     defaultLevelId: remote.defaultLevelId ?? local.defaultLevelId,
     formations: mergeByUpdatedAt(local.formations, remote.formations, deletedFormations),
@@ -212,11 +232,15 @@ export async function syncFromServer(): Promise<{
     deletedFormations,
   };
 
+  const checklistStamp = (c: ServerStore['aiChecklist']) =>
+    c ? JSON.stringify(c) : '';
+
   const changed =
     itemStamp(merged.levels) !== itemStamp(local.levels) ||
     itemStamp(merged.formations) !== itemStamp(local.formations) ||
     deletedStamp(merged.deletedLevels) !== deletedStamp(local.deletedLevels) ||
-    deletedStamp(merged.deletedFormations) !== deletedStamp(local.deletedFormations);
+    deletedStamp(merged.deletedFormations) !== deletedStamp(local.deletedFormations) ||
+    checklistStamp(merged.aiChecklist) !== checklistStamp(local.aiChecklist);
 
   if (changed) applyMerged(merged);
 
@@ -224,7 +248,8 @@ export async function syncFromServer(): Promise<{
     itemStamp(merged.levels) !== itemStamp(remote.levels) ||
     itemStamp(merged.formations) !== itemStamp(remote.formations) ||
     deletedStamp(merged.deletedLevels) !== deletedStamp(remote.deletedLevels) ||
-    deletedStamp(merged.deletedFormations) !== deletedStamp(remote.deletedFormations);
+    deletedStamp(merged.deletedFormations) !== deletedStamp(remote.deletedFormations) ||
+    checklistStamp(merged.aiChecklist) !== checklistStamp(remote.aiChecklist);
   if (needsPush) {
     const ok = await pushStore();
     if (!ok) setStatus('err');

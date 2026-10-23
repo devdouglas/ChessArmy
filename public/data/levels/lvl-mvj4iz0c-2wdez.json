@@ -3,13 +3,13 @@
     "name": "Fare well peasant life",
     "cols": 5,
     "rows": 6,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "high",
             "high",
             "high",
-            "land",
+            "water",
             "water"
         ],
         [
@@ -71,9 +71,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
     "sort": 0,
-    "updatedAt": 1792667548863,
+    "updatedAt": 1792743511092,
     "armies": [
         {
             "type": "peasant",

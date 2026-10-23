@@ -63,6 +63,45 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M5.6 -2.6 L9.2 0 L5.6 2.6 Z"/>
     <path d="M-7.0 -2.3 L-4.4 0 L-7.0 2.3 Z"/>
   `,
+  // Two leaf-headed javelins
+  javelin: `
+    <g transform="translate(-1.35,0.85) rotate(-50)">
+      <rect x="-7.1" y="-0.48" width="11.0" height="0.96" rx="0.35"/>
+      <path d="M3.7 -1.55 L8.55 0 L3.7 1.55 Z"/>
+      <path d="M-7.1 -0.85 L-8.55 0 L-7.1 0.85 Z"/>
+    </g>
+    <g transform="translate(1.2,-0.55) rotate(-24)">
+      <rect x="-7.45" y="-0.62" width="11.9" height="1.24" rx="0.4"/>
+      <path d="M4.2 -2.05 L9.55 0 L4.2 2.05 L5.2 0 Z"/>
+      <path d="M-7.45 -1.05 L-9.15 0 L-7.45 1.05 Z"/>
+    </g>
+  `,
+  // Knight horse + recurve bow
+  horsearcher: `
+    <g transform="translate(-2.55,0.35) scale(0.72)">
+      <path d="M-5.4 7.2
+        L-5.8 2.2
+        C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
+        C-0.8 -7.4 0.4 -8.4 1.6 -8.8
+        L2.4 -6.6
+        C4.4 -6.2 6.6 -4.8 7.8 -3.2
+        C8.8 -2.0 8.6 -0.4 7.2 0.1
+        C6.2 0.4 5.4 -0.5 4.8 -1.1
+        C3.2 0.6 1.6 2.8 0.6 5.0
+        L0.1 7.2
+        Z"/>
+    </g>
+    <g transform="translate(4.35,0.15)">
+      <path d="M-0.55 -7.15
+        C3.45 -3.85 3.45 3.85 -0.55 7.15
+        L0.7 5.75
+        C3.35 2.85 3.35 -2.85 0.7 -5.75
+        Z"/>
+      <path d="M0.55 -5.95 L0.55 5.95 L1.55 5.95 L1.55 -5.95 Z"/>
+      <rect x="-3.7" y="-0.52" width="10.35" height="1.04" rx="0.3"/>
+      <path d="M6.05 -1.75 L8.55 0 L6.05 1.75 Z"/>
+    </g>
+  `,
   // Scutum + galea
   cohort: `
     <path fill-rule="evenodd" d="M-8.6 -6.8
@@ -183,6 +222,60 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
     <circle cx="0" cy="-3.15" r="1.95"/>
     <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
+  `,
+  // Delta interceptor
+  fighter: `
+    <path d="M0 -8.4 L7.2 6.6 L0 3.4 L-7.2 6.6 Z"/>
+    <ellipse cx="0" cy="-2.15" rx="1.25" ry="2.05"/>
+    <rect x="-3.35" y="5.05" width="2.35" height="2.85" rx="0.4"/>
+    <rect x="1.0" y="5.05" width="2.35" height="2.85" rx="0.4"/>
+  `,
+  // Chin-gun hull + stub wings
+  gunship: `
+    <ellipse cx="0" cy="0.15" rx="2.35" ry="7.05"/>
+    <path d="M-2.15 -0.55 L-8.7 1.35 L-8.25 3.35 L-2.15 1.7 Z"/>
+    <path d="M2.15 -0.55 L8.7 1.35 L8.25 3.35 L2.15 1.7 Z"/>
+    <ellipse cx="0" cy="-4.55" rx="1.45" ry="1.75"/>
+    <path d="M-1.55 5.45 H1.55 L0.85 7.35 H-0.85 Z"/>
+    <rect x="-0.5" y="6.85" width="1.0" height="2.55" rx="0.28"/>
+  `,
+  // Fat flying wing + twin tails
+  bomber: `
+    <path d="M0 -6.55 L9.35 4.55 L3.45 3.05 L3.45 7.05 L0 5.35 L-3.45 7.05 L-3.45 3.05 L-9.35 4.55 Z"/>
+    <ellipse cx="0" cy="-0.55" rx="2.15" ry="3.25"/>
+    <rect x="-1.7" y="4.55" width="3.4" height="2.9" rx="0.4"/>
+  `,
+  // Slim warship hull
+  frigate: `
+    <path d="M0 -8.7 L2.55 -4.05 L2.7 6.15 L1.25 8.45 L-1.25 8.45 L-2.7 6.15 L-2.55 -4.05 Z"/>
+    <rect x="-1.55" y="-1.7" width="3.1" height="4.55" rx="0.4"/>
+    <rect x="-0.7" y="-5.05" width="1.4" height="2.5" rx="0.3"/>
+    <rect x="-2.15" y="6.45" width="1.5" height="2.25" rx="0.3"/>
+    <rect x="0.65" y="6.45" width="1.5" height="2.25" rx="0.3"/>
+  `,
+  // Capital hull + wing guns
+  cruiser: `
+    <path d="M0 -8.35 L3.75 -3.55 L4.15 5.45 L2.05 8.25 L-2.05 8.25 L-4.15 5.45 L-3.75 -3.55 Z"/>
+    <rect x="-2.45" y="-1.25" width="4.9" height="5.25" rx="0.5"/>
+    <rect x="-1.15" y="-4.55" width="2.3" height="2.85" rx="0.35"/>
+    <rect x="-7.35" y="0.25" width="3.5" height="1.45" rx="0.35"/>
+    <rect x="3.85" y="0.25" width="3.5" height="1.45" rx="0.35"/>
+    <rect x="-1.9" y="6.15" width="1.5" height="2.4" rx="0.3"/>
+    <rect x="0.4" y="6.15" width="1.5" height="2.4" rx="0.3"/>
+  `,
+  // Ram prow + triple turrets
+  dreadnought: `
+    <path d="M0 -8.15 L4.75 -3.85 L5.35 5.05 L2.65 8.45 L-2.65 8.45 L-5.35 5.05 L-4.75 -3.85 Z"/>
+    <path d="M-1.7 -6.15 L0 -9.55 L1.7 -6.15 Z"/>
+    <circle cx="0" cy="-2.35" r="1.65"/>
+    <rect x="-0.38" y="-5.55" width="0.76" height="3.15" rx="0.2"/>
+    <circle cx="-2.05" cy="1.55" r="1.4"/>
+    <rect x="-4.85" y="1.2" width="2.75" height="0.7" rx="0.2"/>
+    <circle cx="2.05" cy="1.55" r="1.4"/>
+    <rect x="2.1" y="1.2" width="2.75" height="0.7" rx="0.2"/>
+    <rect x="-1.35" y="3.35" width="2.7" height="3.15" rx="0.4"/>
+    <rect x="-3.5" y="6.55" width="2.05" height="2.35" rx="0.35"/>
+    <rect x="1.45" y="6.55" width="2.05" height="2.35" rx="0.35"/>
   `,
 };
 
@@ -512,6 +605,8 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   bazooka: 'rocket',
   sniper: 'scoped rifle',
   archer: 'bow',
+  javelin: 'javelins',
+  horsearcher: 'horse bow',
   cohort: 'scutum',
   hoplite: 'aspis',
   elephant: 'war elephant',
@@ -522,4 +617,10 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   tower: 'keep',
   dummy: 'scarecrow',
   peasant: 'fork',
+  fighter: 'delta fighter',
+  gunship: 'gunship',
+  bomber: 'flying wing',
+  frigate: 'frigate',
+  cruiser: 'cruiser',
+  dreadnought: 'dreadnought',
 };

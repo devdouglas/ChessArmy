@@ -3,7 +3,7 @@
     "name": "Capture the flags",
     "cols": 11,
     "rows": 11,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -25,16 +25,117 @@
             "high",
             "plateau",
             "plateau",
+            "plateau",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high"
+        ],
+        [
+            "high",
+            "high",
             "high",
             "high",
             "land",
             "land",
-            "land"
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
         ],
         [
+            "high",
+            "high",
+            "high",
+            "high",
             "land",
             "land",
             "land",
+            "high",
+            "high",
+            "high",
+            "high"
+        ],
+        [
             "high",
             "high",
             "high",
@@ -42,111 +143,10 @@
             "high",
             "land",
             "land",
-            "land"
-        ],
-        [
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
+            "high",
+            "high",
+            "high"
         ]
     ],
     "category": "campaign",
@@ -172,36 +172,17 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 1
-        },
         {
             "type": "wall",
             "col": 2,
             "row": 3
-        },
-        {
-            "type": "wall",
-            "col": 4,
-            "row": 3
-        },
-        {
-            "type": "wall",
-            "col": 6,
-            "row": 3
-        },
-        {
-            "type": "wall",
-            "col": 8,
-            "row": 2
-        },
-        {
-            "type": "wall",
-            "col": 9,
-            "row": 0
         },
         {
             "type": "flag",
@@ -217,10 +198,70 @@
             "type": "flag",
             "col": 7,
             "row": 0
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 3,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 9,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 2,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 9,
+            "row": 0
         }
     ],
-    "sort": 3,
-    "updatedAt": 1792604752398,
+    "sort": 1,
+    "updatedAt": 1792745679776,
     "armies": [
         {
             "type": "archer",
@@ -259,18 +300,6 @@
             "side": "blue"
         },
         {
-            "type": "catapult",
-            "col": 8,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "catapult",
-            "col": 2,
-            "row": 0,
-            "side": "blue"
-        },
-        {
             "type": "cohort",
             "col": 1,
             "row": 9,
@@ -308,15 +337,48 @@
         },
         {
             "type": "catapult",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvkn6vl7l0zw",
+            "col": 1,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvkn6vl7l0zw",
+            "col": 9,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "javelin",
+            "col": 0,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 7,
+            "row": 10,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "catapult",
             "col": 10,
-            "row": 5,
-            "side": "purple"
+            "row": 2,
+            "side": "blue"
         },
         {
             "type": "catapult",
             "col": 0,
-            "row": 4,
-            "side": "yellow"
+            "row": 2,
+            "side": "blue"
         }
     ]
 }

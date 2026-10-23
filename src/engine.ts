@@ -43,6 +43,7 @@ export {
   CLIMB_LEVEL_LABEL,
   CLIMB_LEVELS,
   DEFAULT_UNIT_STATS,
+  GLYPH_ONLY_KITS,
   HEX_ARMOR_LABEL,
   HEX_ARMOR_SIDES,
   HEX_DAMAGE_LABEL,
@@ -130,6 +131,41 @@ export function sanitizeArmyControls(raw: unknown): Record<Side, ArmyControl> {
     if (isArmyControl(src[s])) out[s] = src[s];
   }
   return out;
+}
+
+/** How an AI army plays. Default is aggressive (current ruleset). */
+export type AiStyle = 'aggressive' | 'defensive';
+export const AI_STYLES: AiStyle[] = ['aggressive', 'defensive'];
+export const AI_STYLE_LABEL: Record<AiStyle, string> = {
+  aggressive: 'aggressive',
+  defensive: 'defensive',
+};
+
+export function isAiStyle(v: unknown): v is AiStyle {
+  return v === 'aggressive' || v === 'defensive';
+}
+
+export function defaultAiStyles(): Record<Side, AiStyle> {
+  return {
+    red: 'aggressive',
+    blue: 'aggressive',
+    yellow: 'aggressive',
+    purple: 'aggressive',
+  };
+}
+
+export function sanitizeAiStyles(raw: unknown): Record<Side, AiStyle> {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const out = defaultAiStyles();
+  for (const s of SIDES) {
+    if (isAiStyle(src[s])) out[s] = src[s];
+  }
+  return out;
+}
+
+export function aiStyleOf(state: GameState, side: Side): AiStyle {
+  const v = state.aiStyles?.[side];
+  return isAiStyle(v) ? v : 'aggressive';
 }
 
 export function emptySideCounts(): Record<Side, number> {
@@ -405,6 +441,8 @@ export type GameState = {
   log: string[];
   /** Who drives each color. */
   controls: Record<Side, ArmyControl>;
+  /** Aggressive / defensive checklist for each color. Missing → aggressive. */
+  aiStyles: Record<Side, AiStyle>;
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
   hadKing: Record<Side, boolean>;
   /** How many pieces this side may activate before the turn ends. Default 1. */
@@ -489,7 +527,7 @@ function blockedWalkDirs(piece: Piece): Set<HexDir> {
 }
 
 /** True when `to` sits on a −2 hex-armor ray from `from`. */
-function isBlockedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
+export function isBlockedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
   const dir = axisDir(from, to, o);
   return dir !== null && blockedWalkDirs(piece).has(dir);
 }
@@ -772,7 +810,7 @@ function claimFlag(state: GameState, piece: Piece, tok: TileToken): void {
   );
 }
 
-function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex, why: 'enter' | 'upkeep'): boolean {
+function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
   const hit = hexDamageOn(state, hex, piece.side);
   if (!hit) return false;
   const before = hpLeft(piece);
@@ -780,11 +818,10 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex, why: 'enter
   const dealt = before - dmg.remaining;
   if (dealt <= 0) return false;
   state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
-  const verb = why === 'upkeep' ? 'endures facing pikes' : 'steps into facing pikes';
   state.log.push(
     dmg.fatal
       ? `${unitLog(piece)} dies on facing pikes`
-      : `${unitLog(piece)} ${verb} — ${dealt} HP (${dmg.remaining} HP)`,
+      : `${unitLog(piece)} steps into facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
   );
   return dmg.fatal;
 }
@@ -813,13 +850,7 @@ function applyWalkTokens(
         if (dmg.fatal) return;
       }
     }
-    if (strikeFacingPikes(state, piece, h, 'enter')) return;
-  }
-}
-
-function applyHexDamageUpkeep(state: GameState, side: Side): void {
-  for (const p of [...state.pieces.filter((x) => x.side === side)]) {
-    if (strikeFacingPikes(state, p, { col: p.col, row: p.row }, 'upkeep')) continue;
+    if (strikeFacingPikes(state, piece, h)) return;
   }
 }
 
@@ -901,10 +932,20 @@ function activationMoveRange(state: GameState, piece: Piece): number {
   return moveRange + elev;
 }
 
+function destLandsBeyond(state: GameState, piece: Piece, dest: Hex): boolean {
+  const occ = pieceAt(state, dest);
+  if (occ && occ.id !== piece.id) return false;
+  if (tokenAt(state.tokens, dest)?.type === 'palisade') return false;
+  return true;
+}
+
 /**
  * Where a move actually ends: occupying an enemy hex is melee.
  * A kill takes the hex; a melee survivor leaves the attacker on the hex before.
- * Charge (charge > 0) damages every mid-path enemy and always passes through.
+ * Charge (charge > 0) hits every mid-path enemy. Same gate as palisade: you only
+ * continue to a unit behind if this hit would destroy the blocker (click the 2nd,
+ * the 1st still eats the charge). Empty dest beyond: pass through the line and
+ * damage them even if they survive.
  * Palisade: one melee hit per hex. Charge does not pass unless that hit breaks it.
  */
 export function previewMove(
@@ -918,6 +959,8 @@ export function previewMove(
   const melee = Math.max(0, stats.meleeDamage);
   const charge = Math.max(0, stats.charge);
   const path = resolveMovePath(state, piece, to, along);
+  const dest = path[path.length - 1];
+  const landsBeyond = dest ? destLandsBeyond(state, piece, dest) : false;
 
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
   const hits: MoveHit[] = [];
@@ -976,6 +1019,7 @@ export function previewMove(
     if (charging) {
       if (died) stop = h;
       prev = h;
+      if (!died && !landsBeyond) break;
       continue;
     }
     if (!died) break;
@@ -1297,6 +1341,7 @@ function cloneState(state: GameState): GameState {
     log: [...state.log],
     actedIds: [...state.actedIds],
     controls: { ...state.controls },
+    aiStyles: { ...defaultAiStyles(), ...state.aiStyles },
     casualties: { ...emptySideCounts(), ...state.casualties },
     hadKing: { ...emptyHadKing(), ...state.hadKing },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
@@ -1525,7 +1570,7 @@ function applyTurnLimit(state: GameState): void {
 }
 
 /** Match start / after the turn flag flips onto `state.turn`. */
-export function beginSideTurn(state: GameState, newRound = false, kickoff = false): void {
+export function beginSideTurn(state: GameState, newRound = false, _kickoff = false): void {
   if (newRound) state.turnNumber += 1;
   applyTurnLimit(state);
   if (state.winner) return;
@@ -1544,7 +1589,6 @@ export function beginSideTurn(state: GameState, newRound = false, kickoff = fals
     };
   }
   applyWaterUpkeep(state, state.turn);
-  if (!kickoff) applyHexDamageUpkeep(state, state.turn);
   if (state.fxStamina?.length) {
     const live = new Set(state.pieces.map((p) => p.id));
     state.fxStamina = state.fxStamina.filter((x) => live.has(x.id));
@@ -1649,8 +1693,12 @@ function afterAction(
     return;
   }
 
-  // Unused stamina after a normal move buys one extra action.
-  if (kind === 'move' && !piece.staminaUsedThisTurn && canSpendStamina(piece)) {
+  // Unused stamina after a normal move or rotate buys one extra action.
+  if (
+    (kind === 'move' || kind === 'rotate') &&
+    !piece.staminaUsedThisTurn &&
+    canSpendStamina(piece)
+  ) {
     state.scoutPieceId = piece.id;
     state.scoutActionsLeft = 1;
     state.staminaBonus = true;
@@ -1732,7 +1780,10 @@ function movePathOpts(
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
-      if (stats.charge > 0) return isHostile(state, occ.side, piece.side);
+      // Charge may path onto/past a blocker (like a palisade). Occupied dest
+      // behind only resolves if this charge would kill them; empty dest trampling
+      // still goes through survivors. previewMove is the gate.
+      if (stats.charge > 0 && isHostile(state, occ.side, piece.side)) return true;
       return sameTeam(state, occ.side, piece.side);
     },
   };
@@ -2026,7 +2077,8 @@ export function legalHighlights(state: GameState, pieceId: string): Highlight[] 
 
 /**
  * Spend one action to face `dir`. Legal whenever the piece can still act
- * (including a leftover scout / stamina-bonus action). Not idle — no regen.
+ * (including a leftover scout / stamina-bonus action). Unused stamina still
+ * buys the extra move. Not idle — no regen.
  */
 export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): GameState {
   if (state.winner) return state;

@@ -5,6 +5,7 @@ import {
 } from './abilities';
 import {
   DEFAULT_UNIT_STATS,
+  GLYPH_ONLY_KITS,
   KIT_TRAITS,
   TRAIT_FIELDS,
   isCustomUnitId,
@@ -389,7 +390,7 @@ export function patchUnitShootArc(type: UnitType, shootArc: ShootArc): void {
   persistUnitStats();
 }
 
-/** Writes kit glyph + traits. Tower is glyph only — numbers and flags stay. */
+/** Writes kit glyph + traits. Glyph-only kits (tower, javelin, horse archer, ships) leave numbers and flags. */
 export function patchUnitKit(type: UnitType, role: UnitRole): void {
   if (!isUnitRole(role) || !UNIT_TYPES.includes(type)) return;
   const kit = DEFAULT_UNIT_STATS[role];
@@ -397,7 +398,7 @@ export function patchUnitKit(type: UnitType, role: UnitRole): void {
   const next = sanitizeUnitStats(type, {
     ...prev,
     role,
-    ...(role === 'tower' ? {} : { chess: kit.chess, ...KIT_TRAITS[role] }),
+    ...(GLYPH_ONLY_KITS.has(role) ? {} : { chess: kit.chess, ...KIT_TRAITS[role] }),
   });
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();

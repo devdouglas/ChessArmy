@@ -3,7 +3,7 @@
     "name": "The rebel scum",
     "cols": 11,
     "rows": 11,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -172,6 +172,12 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [
         {
             "type": "palisade",
@@ -197,8 +203,8 @@
             "row": 3
         }
     ],
-    "sort": 5,
-    "updatedAt": 1792669119847,
+    "sort": 6,
+    "updatedAt": 1792743650833,
     "armies": [
         {
             "type": "archer",

@@ -1,13 +1,15 @@
 import {
   allLegalActions,
+  applyAction,
   facingOf,
   hasActed,
+  legalHighlights,
   rotatePiece,
   UNIT_STATS,
   type GameState,
 } from '../src/engine';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
-import type { HexDir } from '../src/hex';
+import { neighborInDir, type HexDir } from '../src/hex';
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -51,8 +53,28 @@ const turned = rotatePiece(start, cohort.id, 0);
 assert(turned !== start, 'legal rotate clones state');
 assert(facingOf(turned.pieces.find((p) => p.id === cohort.id)!) === 0, 'facing locked to click dir');
 assert(turned.log.some((l) => l.includes('turns')), 'log says turns');
-assert(hasActed(turned, cohort.id), 'rotate spends the activation');
-assert(rotatePiece(turned, cohort.id, 5) === turned, 'cannot rotate twice');
+assert(!hasActed(turned, cohort.id), 'rotate leaves the stamina extra');
+assert(turned.staminaBonus, 'stamina extra after first rotate');
+assert(turned.scoutPieceId === cohort.id, 'lock after first rotate');
+const step = neighborInDir({ col: cohort.col, row: cohort.row }, 0, 'pointy');
+assert(
+  legalHighlights(turned, cohort.id).some(
+    (h) => (h.kind === 'move' || h.kind === 'stamina') && h.hex.col === step.col && h.hex.row === step.row,
+  ),
+  'second action can still walk',
+);
+const walked = applyAction(turned, { kind: 'move', pieceId: cohort.id, to: step });
+assert(hasActed(walked, cohort.id), 'stamina walk after rotate finishes');
+const secondTurn = rotatePiece(turned, cohort.id, 5);
+assert(secondTurn !== turned, 'rotate as the stamina extra is legal');
+assert(hasActed(secondTurn, cohort.id), 'second rotate spends stamina and finishes');
+
+const dry = board();
+const dryCohort = dry.pieces.find((p) => p.side === 'red' && p.type === 'cohort')!;
+dryCohort.stamina = 0;
+const spent = rotatePiece(dry, dryCohort.id, 0);
+assert(hasActed(spent, dryCohort.id), 'no stamina → rotate ends the activation');
+assert(rotatePiece(spent, dryCohort.id, 5) === spent, 'cannot rotate twice with empty stamina');
 
 const otherSide = rotatePiece(start, blue.id, 0);
 assert(otherSide === start, 'other side cannot rotate');

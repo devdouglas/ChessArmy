@@ -3,7 +3,7 @@
     "name": "Hoplite wall",
     "cols": 8,
     "rows": 8,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -109,9 +109,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
     "sort": 9,
-    "updatedAt": 1792667234614,
+    "updatedAt": 1792743725618,
     "armies": [
         {
             "type": "cohort",
@@ -134,12 +140,6 @@
         {
             "type": "hoplite",
             "col": 3,
-            "row": 3,
-            "side": "blue"
-        },
-        {
-            "type": "hoplite",
-            "col": 0,
             "row": 3,
             "side": "blue"
         },
@@ -169,6 +169,12 @@
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "hoplite",
+            "col": 4,
+            "row": 3,
+            "side": "blue"
         }
     ]
 }

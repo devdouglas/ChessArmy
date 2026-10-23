@@ -1,26 +1,13 @@
 {
-    "id": "lvl-mvibxmxv-u21c1",
-    "name": "Test level",
+    "id": "lvl-mvkp1239-5x50c",
+    "name": "Open field",
     "cols": 11,
     "rows": 11,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
-            "rock",
-            "rock",
             "land",
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "rock",
-            "rock",
             "land",
             "land",
             "land",
@@ -32,8 +19,8 @@
             "land"
         ],
         [
-            "rock",
-            "rock",
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -45,7 +32,20 @@
             "land"
         ],
         [
-            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
             "land",
             "land",
             "land",
@@ -149,9 +149,9 @@
             "land"
         ]
     ],
-    "category": "campaign",
+    "category": "skirmish",
     "period": "ancient",
-    "unitsPerTurn": 10,
+    "unitsPerTurn": 1,
     "maxTurns": 0,
     "startText": "",
     "winText": "",
@@ -164,7 +164,7 @@
     "star3": {
         "metric": "casualties",
         "op": "eq",
-        "value": 2
+        "value": 0
     },
     "armyControls": {
         "red": "player",
@@ -172,125 +172,112 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
-    "tokens": [
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 6
-        },
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 7
-        },
-        {
-            "type": "wall",
-            "col": 2,
-            "row": 8
-        },
-        {
-            "type": "wall",
-            "col": 1,
-            "row": 5
-        },
-        {
-            "type": "wall",
-            "col": 0,
-            "row": 5
-        },
-        {
-            "type": "pikes",
-            "col": 3,
-            "row": 3
-        },
-        {
-            "type": "pikes",
-            "col": 4,
-            "row": 3
-        },
-        {
-            "type": "pikes",
-            "col": 5,
-            "row": 3
-        },
-        {
-            "type": "pikes",
-            "col": 6,
-            "row": 3
-        }
-    ],
-    "sort": 2,
-    "updatedAt": 1792601772168,
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [],
+    "sort": 3,
+    "updatedAt": 1792743335222,
     "armies": [
         {
             "type": "cohort",
-            "col": 4,
-            "row": 8,
+            "col": 2,
+            "row": 9,
             "side": "red"
         },
         {
             "type": "cohort",
-            "col": 5,
-            "row": 8,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 8,
-            "side": "red"
-        },
-        {
-            "type": "archer",
             "col": 4,
             "row": 9,
             "side": "red"
         },
         {
-            "type": "u-mvf8vjffgpkd",
-            "col": 5,
+            "type": "cohort",
+            "col": 6,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 8,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 7,
             "row": 9,
             "side": "red"
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 6,
-            "row": 9,
+            "col": 3,
+            "row": 10,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 7,
+            "row": 10,
             "side": "red"
         },
         {
-            "type": "cohort",
+            "type": "hoplite",
+            "col": 2,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "hoplite",
             "col": 4,
             "row": 2,
             "side": "blue"
         },
         {
-            "type": "cohort",
-            "col": 5,
-            "row": 2,
-            "side": "blue"
-        },
-        {
-            "type": "cohort",
+            "type": "hoplite",
             "col": 6,
             "row": 2,
             "side": "blue"
         },
         {
-            "type": "catapult",
-            "col": 5,
-            "row": 0,
+            "type": "hoplite",
+            "col": 8,
+            "row": 2,
             "side": "blue"
         },
         {
-            "type": "u-mvf8vjffgpkd",
-            "col": 5,
+            "type": "u-mvf8ty84rdk3",
+            "col": 3,
             "row": 1,
             "side": "blue"
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 4,
+            "col": 3,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 7,
             "row": 1,
             "side": "blue"
         }

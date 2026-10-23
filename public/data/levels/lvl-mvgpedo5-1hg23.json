@@ -72,19 +72,19 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
-    "maxTurns": 11,
+    "maxTurns": 16,
     "startText": "Here is a horse. Give it a name. Its yours till you die. It can charge through enemies. Enjoy!",
     "winText": "Good job. There is general material in you.",
-    "loseText": "Time is up! \nTry to run through multiple units as once.(with stamina you can go through 3!). \nYou can not move backwards but you can rotate while staying on the same spot.",
+    "loseText": "Time is up! \nTry to run through multiple units as once.(with stamina you can go through 3!). \nYou can not move backwards but you can turn while staying on the same spot.",
     "star2": {
         "metric": "turns",
         "op": "lte",
-        "value": 9
+        "value": 12
     },
     "star3": {
         "metric": "turns",
         "op": "lte",
-        "value": 8
+        "value": 10
     },
     "armyControls": {
         "red": "player",
@@ -92,9 +92,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
-    "sort": 2,
-    "updatedAt": 1792667136591,
+    "sort": 3,
+    "updatedAt": 1792737965712,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

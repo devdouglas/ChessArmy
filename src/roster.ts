@@ -12,6 +12,8 @@ export type UnitRole =
   | 'bazooka'
   | 'sniper'
   | 'archer'
+  | 'javelin'
+  | 'horsearcher'
   | 'cohort'
   | 'hoplite'
   | 'elephant'
@@ -21,7 +23,13 @@ export type UnitRole =
   | 'general'
   | 'tower'
   | 'dummy'
-  | 'peasant';
+  | 'peasant'
+  | 'fighter'
+  | 'gunship'
+  | 'bomber'
+  | 'frigate'
+  | 'cruiser'
+  | 'dreadnought';
 
 /** Roster id: a stock role, or `u-…` for a copied unit. */
 export type UnitType = string;
@@ -32,6 +40,8 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'bazooka',
   'sniper',
   'archer',
+  'javelin',
+  'horsearcher',
   'cohort',
   'hoplite',
   'elephant',
@@ -42,6 +52,12 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'tower',
   'dummy',
   'peasant',
+  'fighter',
+  'gunship',
+  'bomber',
+  'frigate',
+  'cruiser',
+  'dreadnought',
 ];
 
 /** Live roster. Copies are appended; reset restores stock. */
@@ -59,13 +75,14 @@ export function isKnownUnit(t: unknown): t is UnitType {
   return typeof t === 'string' && UNIT_TYPES.includes(t);
 }
 
-export type UnitCategory = 'modern' | 'ancient';
+export type UnitCategory = 'modern' | 'ancient' | 'futuristic';
 
-export const UNIT_CATEGORIES: UnitCategory[] = ['modern', 'ancient'];
+export const UNIT_CATEGORIES: UnitCategory[] = ['modern', 'ancient', 'futuristic'];
 
 export const UNIT_CATEGORY_LABEL: Record<UnitCategory, string> = {
   modern: 'Modern',
   ancient: 'Ancient',
+  futuristic: 'Futuristic',
 };
 
 export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
@@ -74,6 +91,8 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   bazooka: 'Bazooka',
   sniper: 'Sniper',
   archer: 'Archer',
+  javelin: 'Javelin',
+  horsearcher: 'Horse archer',
   cohort: 'Cohort',
   hoplite: 'Hoplite',
   elephant: 'Elephant',
@@ -84,10 +103,16 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   tower: 'Tower',
   dummy: 'Dummy',
   peasant: 'Peasant',
+  fighter: 'Fighter',
+  gunship: 'Gunship',
+  bomber: 'Bomber',
+  frigate: 'Frigate',
+  cruiser: 'Cruiser',
+  dreadnought: 'Dreadnought',
 };
 
 export function sanitizeUnitCategory(raw: unknown): UnitCategory {
-  if (raw === 'modern' || raw === 'ancient') return raw;
+  if (raw === 'modern' || raw === 'ancient' || raw === 'futuristic') return raw;
   if (raw === 'roman' || raw === 'greek') return 'ancient';
   return 'modern';
 }
@@ -121,12 +146,27 @@ export const TRAIT_FIELDS = [
   'king',
 ] as const satisfies readonly (keyof UnitTraits)[];
 
+/** Kit dropdown writes glyph only — numbers and pathing stay. */
+export const GLYPH_ONLY_KITS: ReadonlySet<UnitRole> = new Set([
+  'tower',
+  'javelin',
+  'horsearcher',
+  'fighter',
+  'gunship',
+  'bomber',
+  'frigate',
+  'cruiser',
+  'dreadnought',
+]);
+
 export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
   soldier: { passUnits: false, infantry: true, king: false },
   scout: { passUnits: true, infantry: false, king: false },
   bazooka: { passUnits: false, infantry: false, king: false },
   sniper: { passUnits: false, infantry: false, king: false },
   archer: { passUnits: false, infantry: true, king: false },
+  javelin: { passUnits: false, infantry: true, king: false },
+  horsearcher: { passUnits: true, infantry: false, king: false },
   cohort: { passUnits: false, infantry: true, king: false },
   hoplite: { passUnits: false, infantry: true, king: false },
   elephant: { passUnits: false, infantry: false, king: false },
@@ -137,6 +177,12 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
   tower: { passUnits: false, infantry: false, king: false },
   dummy: { passUnits: false, infantry: false, king: false },
   peasant: { passUnits: false, infantry: true, king: false },
+  fighter: { passUnits: true, infantry: false, king: false },
+  gunship: { passUnits: true, infantry: false, king: false },
+  bomber: { passUnits: false, infantry: false, king: false },
+  frigate: { passUnits: true, infantry: false, king: false },
+  cruiser: { passUnits: false, infantry: false, king: false },
+  dreadnought: { passUnits: false, infantry: false, king: false },
 };
 
 /** Legacy noHigh kits — cannot climb. Everyone else could climb and/or swim. */
@@ -147,7 +193,17 @@ const HEAVY_KITS: ReadonlySet<UnitRole> = new Set([
   'dummy',
 ]);
 
+const FLYING_KITS: ReadonlySet<UnitRole> = new Set([
+  'fighter',
+  'gunship',
+  'bomber',
+  'frigate',
+  'cruiser',
+  'dreadnought',
+]);
+
 export function stockMobility(role: UnitRole): { passWater: boolean; climbLevel: number } {
+  if (FLYING_KITS.has(role)) return { passWater: true, climbLevel: 3 };
   if (HEAVY_KITS.has(role)) return { passWater: false, climbLevel: 0 };
   return { passWater: true, climbLevel: 2 };
 }
@@ -202,7 +258,7 @@ export type UnitStats = UnitTraits & {
   hp: number;
   /** Damage when bumping an occupied dest hex. 0 = melee is not a legal action. */
   meleeDamage: number;
-  /** Mid-path charge-through damage. 0 = cannot charge through units. Survivors don't block. */
+  /** Mid-path charge-through damage. 0 = cannot charge through units. A living blocker stops you from a later occupied dest unless that charge kills them. Empty dest beyond: trample the line even if they survive. */
   charge: number;
   /** Damage of a non-splash shot. */
   shootDamage: number;
@@ -453,6 +509,62 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.archer,
     ...stockMobility('archer'),
+    abilities: [],
+  },
+  javelin: {
+    name: 'Javelin',
+    chess: 'Pilum',
+    category: 'ancient',
+    role: 'javelin',
+    move: 1,
+    shoot: 2,
+    shootMin: 1,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 2,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.javelin,
+    ...stockMobility('javelin'),
+    abilities: [],
+  },
+  horsearcher: {
+    name: 'Horse archer',
+    chess: 'Parthian',
+    category: 'ancient',
+    role: 'horsearcher',
+    move: 2,
+    shoot: 3,
+    shootMin: 1,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 4,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.horsearcher,
+    ...stockMobility('horsearcher'),
     abilities: [],
   },
   cohort: {
@@ -735,6 +847,174 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.peasant,
     ...stockMobility('peasant'),
+    abilities: [],
+  },
+  fighter: {
+    name: 'Fighter',
+    chess: 'Dart',
+    category: 'futuristic',
+    role: 'fighter',
+    move: 3,
+    shoot: 2,
+    shootMin: 1,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 1,
+    value: 3,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.fighter,
+    ...stockMobility('fighter'),
+    abilities: [],
+  },
+  gunship: {
+    name: 'Gunship',
+    chess: 'Sentry',
+    category: 'futuristic',
+    role: 'gunship',
+    move: 2,
+    shoot: 3,
+    shootMin: 1,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 1,
+    value: 4,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.gunship,
+    ...stockMobility('gunship'),
+    abilities: [],
+  },
+  bomber: {
+    name: 'Bomber',
+    chess: 'Payload',
+    category: 'futuristic',
+    role: 'bomber',
+    move: 1,
+    shoot: 4,
+    shootMin: 2,
+    shootArc: 'arch',
+    actions: 1,
+    shootCooldown: 2,
+    value: 5,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 1,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.bomber,
+    ...stockMobility('bomber'),
+    abilities: [],
+  },
+  frigate: {
+    name: 'Frigate',
+    chess: 'Knife',
+    category: 'futuristic',
+    role: 'frigate',
+    move: 2,
+    shoot: 2,
+    shootMin: 1,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 1,
+    value: 4,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 1,
+    charge: 1,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.frigate,
+    ...stockMobility('frigate'),
+    abilities: [],
+  },
+  cruiser: {
+    name: 'Cruiser',
+    chess: 'Hull',
+    category: 'futuristic',
+    role: 'cruiser',
+    move: 2,
+    shoot: 3,
+    shootMin: 1,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 1,
+    value: 7,
+    moveBudget: 0,
+    stamina: 1,
+    staminaRegen: 1,
+    ammo: 0,
+    hp: 3,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 1,
+    ...hexArmorDefaults(1),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.cruiser,
+    ...stockMobility('cruiser'),
+    abilities: [],
+  },
+  dreadnought: {
+    name: 'Dreadnought',
+    chess: 'Leviathan',
+    category: 'futuristic',
+    role: 'dreadnought',
+    move: 1,
+    shoot: 4,
+    shootMin: 2,
+    shootArc: 'straight',
+    actions: 1,
+    shootCooldown: 2,
+    value: 10,
+    moveBudget: 0,
+    stamina: 0,
+    staminaRegen: 0,
+    ammo: 0,
+    hp: 4,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 1,
+    armor: 2,
+    ...hexArmorDefaults(2),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.dreadnought,
+    ...stockMobility('dreadnought'),
     abilities: [],
   },
 };

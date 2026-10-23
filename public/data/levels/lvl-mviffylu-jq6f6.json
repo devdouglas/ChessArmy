@@ -3,7 +3,7 @@
     "name": "Hoplites",
     "cols": 8,
     "rows": 8,
-    "orientation": "pointy",
+    "orientation": "flat",
     "terrain": [
         [
             "land",
@@ -109,9 +109,15 @@
         "yellow": "ai-enemy",
         "purple": "ai-enemy"
     },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
     "tokens": [],
-    "sort": 7,
-    "updatedAt": 1792669119847,
+    "sort": 8,
+    "updatedAt": 1792743673668,
     "armies": [
         {
             "type": "cohort",
