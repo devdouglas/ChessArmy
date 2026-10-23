@@ -12,11 +12,11 @@ Home screen, filtered by era (**Ancient** / **Modern** / **Futuristic**). Modern
 
 | Option | What it does |
 |--------|----------------|
-| **Campaign** | Saved campaign maps vs AI, editor order. Win one to unlock the next. |
-| **Tutorial** | Same lockstep vs AI. |
-| **Historical Battle** | Historical maps in editor order, vs AI, no lock. |
-| **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. |
-| **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. |
+| **Campaign** | Saved campaign maps vs AI, editor order. Win one to unlock the next. Locked until Tutorial is finished. |
+| **Tutorial** | Same lockstep vs AI. Always open (if the era has tutorial maps). |
+| **Historical Battle** | Historical maps in editor order, vs AI, no lock. Locked until Tutorial is finished. |
+| **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. Locked until Tutorial is finished. |
+| **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. Locked until Tutorial is finished. |
 | **Editor** | Levels, units, AI checklist. |
 
 **Start hotseat** (in-match, next to Restart level): same map, both sides human, no AI. Page background tints to the active colour on each turn switch.

@@ -1029,6 +1029,12 @@ function tutorialMaps(): SavedLevel[] {
   return levelsInCategory('tutorial', selectedPeriod);
 }
 
+/** Other play modes stay shut until every tutorial map in this era is cleared. */
+function tutorialDone(): boolean {
+  const maps = tutorialMaps();
+  return maps.length === 0 || maps.every((l) => hasWonLevel(l.id));
+}
+
 function mapsForPick(kind: MapPickKind): SavedLevel[] {
   if (kind === 'tutorial') return tutorialMaps();
   if (kind === 'campaign') return levelsInCategory('campaign', selectedPeriod);
@@ -1065,6 +1071,7 @@ function skirmishPick(kind: MapPickKind): boolean {
 }
 
 function showMapPick(kind: MapPickKind) {
+  if (kind !== 'tutorial' && !tutorialDone()) return;
   if (!mapsForPick(kind).length && !skirmishPick(kind)) return;
   editorPainting = false;
   briefingOpen = false;
@@ -1097,6 +1104,7 @@ function startPickedMap(id: string, kind: MapPickKind) {
 }
 
 function startPlaylist(kind: PlaylistKind) {
+  if (kind !== 'tutorial' && !tutorialDone()) return;
   const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
   playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
@@ -3620,6 +3628,16 @@ function renderStartScreen(): string {
   const historicalN = levelsInCategory('historical', selectedPeriod).length;
   const skirmishN = skirmishMaps().length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
+  const tutOpen = tutorialDone();
+  const menuLock = tutOpen
+    ? ''
+    : `<svg class="map-pick-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7.2" width="9.6" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.1 7.2V5.1a2.9 2.9 0 0 1 5.8 0v2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+  const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
+    !tutOpen || empty
+      ? ` disabled title="${!tutOpen ? 'Finish the Tutorial to unlock' : emptyTitle}"`
+      : ` title="${openTitle}"`;
+  const gateMeta = (empty: boolean, emptyMeta: string, openMeta: string) =>
+    !tutOpen ? 'Locked · finish Tutorial' : empty ? emptyMeta : openMeta;
   const periodPicks = PERIODS.map(
     (p) =>
       `<button type="button" class="period-pick${selectedPeriod === p ? ' active' : ''}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
@@ -3632,30 +3650,26 @@ function renderStartScreen(): string {
         <p class="start-tag">Kill the enemy General — or the whole army.</p>
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
-          <button type="button" class="start-opt" data-start="campaign"${campaignN ? '' : ' disabled'}
-            title="${campaignN ? 'Pick a campaign map vs AI. Finish one to unlock the next.' : 'Mark saved levels as Campaign in the Editor'}">
-            <span class="start-opt-name">Campaign</span>
-            <span class="start-opt-meta">${campaignN ? `${mapWord(campaignN)} · vs AI` : 'No campaign maps'}</span>
+          <button type="button" class="start-opt" data-start="campaign"${gateAttr(!campaignN, 'Mark saved levels as Campaign in the Editor', 'Pick a campaign map vs AI. Finish one to unlock the next.')}>
+            <span class="start-opt-name">${menuLock}Campaign</span>
+            <span class="start-opt-meta">${gateMeta(!campaignN, 'No campaign maps', `${mapWord(campaignN)} · vs AI`)}</span>
           </button>
           <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
             title="${tutorialN ? 'Pick a tutorial map vs AI. Finish one to unlock the next.' : 'Mark saved levels as Tutorial in the Editor'}">
             <span class="start-opt-name">Tutorial</span>
             <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
-          <button type="button" class="start-opt" data-start="historical"${historicalN ? '' : ' disabled'}
-            title="${historicalN ? 'Historical battles in editor order, vs AI' : 'Mark saved levels as Historical in the Editor'}">
-            <span class="start-opt-name">Historical Battle</span>
-            <span class="start-opt-meta">${historicalN ? `${mapWord(historicalN)} · vs AI` : 'No historical maps'}</span>
+          <button type="button" class="start-opt" data-start="historical"${gateAttr(!historicalN, 'Mark saved levels as Historical in the Editor', 'Historical battles in editor order, vs AI')}>
+            <span class="start-opt-name">${menuLock}Historical Battle</span>
+            <span class="start-opt-meta">${gateMeta(!historicalN, 'No historical maps', `${mapWord(historicalN)} · vs AI`)}</span>
           </button>
-          <button type="button" class="start-opt" data-start="ai"
-            title="Pick a skirmish map vs AI, or a randomised map">
-            <span class="start-opt-name">Skirmish vs AI</span>
-            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'Randomised map · vs AI'}</span>
+          <button type="button" class="start-opt" data-start="ai"${gateAttr(false, '', 'Pick a skirmish map vs AI, or a randomised map')}>
+            <span class="start-opt-name">${menuLock}Skirmish vs AI</span>
+            <span class="start-opt-meta">${gateMeta(false, '', skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'Randomised map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="random"
-            title="Generated map vs AI. Pick two armies and the enemy AI.">
-            <span class="start-opt-name">Randomised Battle</span>
-            <span class="start-opt-meta">Generated map · vs AI</span>
+          <button type="button" class="start-opt" data-start="random"${gateAttr(false, '', 'Generated map vs AI. Pick two armies and the enemy AI.')}>
+            <span class="start-opt-name">${menuLock}Randomised Battle</span>
+            <span class="start-opt-meta">${gateMeta(false, '', 'Generated map · vs AI')}</span>
           </button>
         </div>
         <div class="start-tools">
@@ -3686,6 +3700,15 @@ function bindToolbarEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const kind = btn.dataset.start;
+      if (
+        !tutorialDone() &&
+        (kind === 'campaign' ||
+          kind === 'historical' ||
+          kind === 'ai' ||
+          kind === 'random')
+      ) {
+        return;
+      }
       if (kind === 'historical') startPlaylist(kind);
       else if (kind === 'campaign') showMapPick('campaign');
       else if (kind === 'tutorial') showMapPick('tutorial');
