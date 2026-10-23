@@ -1,9 +1,10 @@
 /**
  * AI picker. Every behaviour is a checklist rule (ai-config) on aggressive /
- * defensive. Default style is aggressive; stock checklist has every rule on,
+ * defensive / advance. Default style is aggressive; stock checklist has every rule on,
  * which is this original ruleset:
  * If anyone can shoot or melee, they do. Dual choice: shoot first (checklist).
  * Otherwise Attack: close on the enemy general (else nearest enemy). Unchecked: other pathfinding. No fleeing.
+ * Hold position only when Attack is not hunting (and no owned-flag hunt).
  * Pikes: don't walk onto them unless that move attacks the enemy general.
  * Do-not-touch tokens: never walk that hex (invalid path).
  * Own general: never attacks the army except the enemy general, or a unit
@@ -14,7 +15,9 @@
  * Hold position: stay put and turn toward the nearest enemy. A ranged hit
  * makes them move and try to attack the nearest unit; then they hold again.
  * Targets defenses: rocket or melee a wall/palisade on the path to the hunt.
- * Not hunting: prefer high ground in 3, return to start hex.
+ * Prefer high ground: cover ridges on the path to the hunt; else a hill in 3.
+ * Not hunting: return to start hex.
+ * Advance: walk the far edge, rear first, nobody more than one hex ahead of the line.
  */
 
 import {
@@ -124,6 +127,10 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
       return { col: best.col, row: best.row };
     }
   }
+  if (on('advance-front')) {
+    const far = farEdgeHex(state, from, me);
+    if (!eq(from, far)) return far;
+  }
   if (!on('hunt-enemy-general')) return null;
   const gen = enemyGeneral(state, me, from);
   if (gen) return { col: gen.col, row: gen.row };
@@ -145,7 +152,152 @@ function inBoard(state: GameState, h: Hex): boolean {
   return h.col >= 0 && h.row >= 0 && h.col < state.cols && h.row < state.rows;
 }
 
+/** Blue-side home (low rows) marches down the board; red-side home marches up. */
+function armyAdvancesDown(state: GameState, me: Side): boolean {
+  let sum = 0;
+  let n = 0;
+  for (const p of state.pieces) {
+    if (p.side !== me) continue;
+    sum += p.startRow ?? p.row;
+    n += 1;
+  }
+  if (!n) return me !== 'red';
+  return sum / n < (state.rows - 1) / 2;
+}
+
+function farEdgeRow(state: GameState, me: Side): number {
+  return armyAdvancesDown(state, me) ? state.rows - 1 : 0;
+}
+
+function farEdgeHex(state: GameState, from: Hex, me: Side): Hex {
+  return { col: from.col, row: farEdgeRow(state, me) };
+}
+
+function lineProgress(state: GameState, h: Hex, me: Side): number {
+  return armyAdvancesDown(state, me) ? h.row : state.rows - 1 - h.row;
+}
+
+const LINE_SLACK = 1;
+
+function canMarch(p: Piece): boolean {
+  return UNIT_STATS[p.type].move > 0;
+}
+
+function marcherIds(state: GameState, pool: Action[], me: Side): Set<string> {
+  const ids = new Set<string>();
+  for (const a of pool) {
+    if (a.kind !== 'move') continue;
+    const p = getPiece(state, a.pieceId);
+    if (p && p.side === me && canMarch(p)) ids.add(p.id);
+  }
+  return ids;
+}
+
+function rearProgress(state: GameState, me: Side, marchers: Set<string>): number {
+  let min = Infinity;
+  for (const p of state.pieces) {
+    if (p.side !== me || !marchers.has(p.id)) continue;
+    min = Math.min(min, lineProgress(state, { col: p.col, row: p.row }, me));
+  }
+  return min;
+}
+
+function breaksLine(
+  state: GameState,
+  piece: Piece,
+  stop: Hex,
+  me: Side,
+  marchers: Set<string>,
+): boolean {
+  if (!canMarch(piece)) return false;
+  const rear = rearProgress(state, me, marchers);
+  if (!Number.isFinite(rear)) return false;
+  return lineProgress(state, stop, me) > rear + LINE_SLACK;
+}
+
+function preferRear(state: GameState, actions: Action[], me: Side): Action[] {
+  const ids = new Set<string>();
+  for (const a of actions) {
+    if (a.kind === 'skip') continue;
+    ids.add(a.pieceId);
+  }
+  if (ids.size <= 1) return actions;
+  let minP = Infinity;
+  const prog = new Map<string, number>();
+  for (const id of ids) {
+    const p = getPiece(state, id);
+    if (!p || !canMarch(p)) continue;
+    const pr = lineProgress(state, { col: p.col, row: p.row }, me);
+    prog.set(id, pr);
+    if (pr < minP) minP = pr;
+  }
+  if (!Number.isFinite(minP)) return actions;
+  const rear = actions.filter(
+    (a) => a.kind !== 'skip' && prog.get(a.pieceId) === minP,
+  );
+  return rear.length ? rear : actions;
+}
+
 const HIGH_SEEK = 3;
+
+/** Walk to `goal` with higher hexes cheaper, so the route covers ridges. */
+function highGroundPath(
+  state: GameState,
+  piece: Piece,
+  from: Hex,
+  goal: Hex,
+): Hex[] {
+  if (eq(from, goal)) return [];
+  const stats = UNIT_STATS[piece.type];
+  const found = pathTo(from, goal, {
+    cols: state.cols,
+    rows: state.rows,
+    maxDist: Math.max(5, state.cols * state.rows) * 5,
+    orientation: state.orientation,
+    stepCost: (a, b) => {
+      const ha = terrainHeight(terrainAt(state, a));
+      const hb = terrainHeight(terrainAt(state, b));
+      if (Math.abs(hb - ha) > 1) return 0;
+      if (hb > stats.climbLevel) return 0;
+      return hb > 0 ? 1 : 5;
+    },
+    canStop: (h) => {
+      if (!inBoard(state, h)) return false;
+      if (eq(h, goal)) return true;
+      const t = terrainAt(state, h);
+      if (t === 'water' && !stats.passWater) return false;
+      if (terrainHeight(t) > stats.climbLevel) return false;
+      return true;
+    },
+    canPass: (h) => {
+      if (!inBoard(state, h) || eq(h, goal)) return false;
+      const t = terrainAt(state, h);
+      if (t === 'water' && !stats.passWater) return false;
+      if (terrainHeight(t) > stats.climbLevel) return false;
+      return true;
+    },
+  });
+  return found ?? [];
+}
+
+/** Walk hexes must be a prefix of the ridge, not a shortcut that skips it. */
+function ridgeFollowIndex(walk: Hex[], ridge: Hex[]): number {
+  if (!walk.length || !ridge.length || walk.length > ridge.length) return -1;
+  for (let i = 0; i < walk.length; i++) {
+    if (!eq(walk[i], ridge[i])) return -1;
+  }
+  return walk.length - 1;
+}
+
+function walkHexesToStop(state: GameState, piece: Piece, to: Hex, stop: Hex): Hex[] {
+  const walk: Hex[] = [];
+  for (const h of pathForMove(state, piece, to)) {
+    walk.push(h);
+    if (eq(h, stop)) return walk;
+  }
+  if (!walk.length || !eq(walk[walk.length - 1], stop)) walk.push(stop);
+  return walk;
+}
 
 /** Highest walkable hex in 3 of `from` that this piece can occupy. */
 function highGroundSeek(state: GameState, piece: Piece, from: Hex): Hex | null {
@@ -407,6 +559,12 @@ function moveTouchesNoTouch(state: GameState, action: Action): boolean {
   return false;
 }
 
+/** Stay put only when Hold is on and Attack/flag-hunt is not pulling them. */
+function isHolding(state: GameState, piece: Piece, me: Side, on: RuleOn): boolean {
+  if (!on('hold-position') || piece.rangedHit) return false;
+  return huntHex(state, { col: piece.col, row: piece.row }, me, on) == null;
+}
+
 /** Unprovoked hold walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
 function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
   if (action.kind !== 'move') return false;
@@ -467,7 +625,7 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
 
   if (action.kind === 'rest') {
-    score += on('hold-position') && !piece.rangedHit ? 400 : 20;
+    score += isHolding(state, piece, me, on) ? 400 : 20;
     return score;
   }
 
@@ -493,7 +651,7 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
   }
 
   if (action.kind === 'rotate') {
-    if (!on('hold-position') || piece.rangedHit) {
+    if (!isHolding(state, piece, me, on)) {
       score -= 600;
       return score;
     }
@@ -517,29 +675,28 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
 
   const stop = palPlan.stop;
   const closeHunt = foe ? { col: foe.col, row: foe.row } : hunt;
+  let highIdx = -1;
+  if (on('prefer-high-ground')) {
+    const ridgeGoal = closeHunt ?? highGroundSeek(state, piece, from);
+    if (ridgeGoal) {
+      highIdx = ridgeFollowIndex(
+        walkHexesToStop(state, piece, action.to, stop),
+        highGroundPath(state, piece, from, ridgeGoal),
+      );
+    }
+    const fromH = terrainHeight(terrainAt(state, from));
+    const toH = terrainHeight(terrainAt(state, stop));
+    if (toH > fromH) score += 40 * (toH - fromH);
+    if (toH < fromH) score -= 20 * (fromH - toH);
+    if (highIdx >= 0) score += 420 + highIdx * 80;
+  }
   if (closeHunt && (on('close-on-hunt') || on('no-flee') || foe)) {
     const closer = dist(state, from, closeHunt) - dist(state, stop, closeHunt);
     if (on('close-on-hunt') || foe) {
       score += closer * 80;
       if (closer > 0) score += 300;
     }
-    if (on('no-flee') && closer < 0) score -= 900;
-  }
-
-  if (on('prefer-high-ground')) {
-    const fromH = terrainHeight(terrainAt(state, from));
-    const toH = terrainHeight(terrainAt(state, stop));
-    if (toH > fromH) score += 40 * (toH - fromH);
-    if (toH < fromH) score -= 20 * (fromH - toH);
-    if (!hunt && !foe) {
-      const high = highGroundSeek(state, piece, from);
-      if (high) {
-        const closer = dist(state, from, high) - dist(state, stop, high);
-        score += closer * 90;
-        if (closer > 0) score += 320;
-        if (eq(stop, high)) score += 80;
-      }
-    }
+    if (on('no-flee') && closer < 0 && highIdx < 0) score -= 900;
   }
 
   if (on('return-to-start') && !hunt && !foe) {
@@ -572,7 +729,7 @@ function holdAction(
   for (const a of pool) {
     if (a.kind === 'skip') continue;
     const p = getPiece(state, a.pieceId);
-    if (!p || p.rangedHit) continue;
+    if (!p || !isHolding(state, p, me, on)) continue;
     ids.add(p.id);
   }
   const holds: Action[] = [];
@@ -727,7 +884,7 @@ export function pickAiAction(state: GameState): Action | null {
   });
   if (!actions.length) return null;
 
-  const pool = othersFirst(state, actions, on);
+  const pool = on('keep-line') ? actions : othersFirst(state, actions, on);
   const safe = pool.filter((a) => {
     if (
       on('avoid-pikes') &&
@@ -736,7 +893,10 @@ export function pickAiAction(state: GameState): Action | null {
     ) {
       return false;
     }
-    if (on('hold-position') && isHoldWalk(state, a, me)) return false;
+    if (a.kind !== 'skip' && isHoldWalk(state, a, me)) {
+      const piece = getPiece(state, a.pieceId);
+      if (piece && isHolding(state, piece, me, on)) return false;
+    }
     return true;
   });
   const attacks = preferTargets(
@@ -753,15 +913,34 @@ export function pickAiAction(state: GameState): Action | null {
   if (attacks.length) return pickBest(attacks, state, me, on);
 
   const mobile = safe.filter((a) => {
-    if (on('hold-position')) return isMobileAction(state, a);
-    return a.kind !== 'skip';
+    if (a.kind === 'skip') return false;
+    const piece = getPiece(state, a.pieceId);
+    if (piece && isHolding(state, piece, me, on)) return isMobileAction(state, a);
+    return true;
   });
-  if (mobile.length) return pickBest(mobile, state, me, on);
-
-  if (on('hold-position')) {
-    const hold = holdAction(state, me, pool, on);
-    if (hold) return hold;
+  let march = mobile;
+  if (on('keep-line')) {
+    const marchers = marcherIds(state, mobile, me);
+    march = mobile.filter((a) => {
+      if (a.kind !== 'move') return true;
+      const piece = getPiece(state, a.pieceId);
+      if (!piece) return false;
+      return !breaksLine(
+        state,
+        piece,
+        previewMove(state, piece, a.to).stop,
+        me,
+        marchers,
+      );
+    });
+    const steps = march.filter((a) => a.kind === 'move');
+    if (steps.length) march = steps;
+    march = preferRear(state, march, me);
   }
+  if (march.length) return pickBest(march, state, me, on);
+
+  const hold = holdAction(state, me, pool, on);
+  if (hold) return hold;
 
   if (safe.length) return pickBest(safe, state, me, on);
   return pickBest(pool, state, me, on);

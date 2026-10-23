@@ -229,7 +229,7 @@
         }
     ],
     "sort": 5,
-    "updatedAt": 1792757200210,
+    "updatedAt": 1792760697761,
     "armies": [
         {
             "type": "u-mvf8ty84rdk3",
@@ -316,51 +316,63 @@
             ]
         },
         {
-            "type": "elephant",
-            "col": 8,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "elephant",
+            "type": "u-mvf8ty84rdk3",
             "col": 4,
             "row": 0,
             "side": "blue"
         },
         {
-            "type": "cohort",
+            "type": "u-mvf8ty84rdk3",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "barbarian",
             "col": 10,
             "row": 1,
             "side": "blue"
         },
         {
-            "type": "cohort",
-            "col": 2,
-            "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "hoplite",
+            "type": "barbarian",
             "col": 8,
             "row": 1,
             "side": "blue"
         },
         {
-            "type": "hoplite",
-            "col": 4,
+            "type": "barbarian",
+            "col": 6,
             "row": 1,
             "side": "blue"
         },
         {
-            "type": "catapult",
+            "type": "javelin",
+            "col": 9,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "javelin",
+            "col": 7,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "javelin",
             "col": 3,
             "row": 0,
             "side": "blue"
         },
         {
-            "type": "archer",
-            "col": 9,
-            "row": 0,
+            "type": "barbarian",
+            "col": 4,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "barbarian",
+            "col": 2,
+            "row": 1,
             "side": "blue"
         }
     ]

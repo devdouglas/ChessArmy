@@ -301,7 +301,7 @@ function sanitize_ai_styles(mixed $raw): array {
         'yellow' => 'aggressive',
         'purple' => 'aggressive',
     ];
-    $ok = ['aggressive' => true, 'defensive' => true];
+    $ok = ['aggressive' => true, 'defensive' => true, 'advance' => true];
     $src = is_array($raw) ? $raw : [];
     $out = $defaults;
     foreach ($defaults as $side => $fallback) {
@@ -316,7 +316,7 @@ function sanitize_ai_checklist(mixed $raw): ?array {
         return null;
     }
     $out = [];
-    foreach (['aggressive', 'defensive'] as $style) {
+    foreach (['aggressive', 'defensive', 'advance'] as $style) {
         $col = is_array($raw[$style] ?? null) ? $raw[$style] : [];
         $clean = [];
         foreach ($col as $id => $on) {

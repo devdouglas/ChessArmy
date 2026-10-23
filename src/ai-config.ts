@@ -1,6 +1,7 @@
 /**
  * AI checklist: every current pickAiAction behaviour, toggleable per style.
- * Aggressive is the default army style. Both columns start fully checked.
+ * Aggressive is the default army style. Aggressive/defensive start fully
+ * checked except Advance-only rules. Advance walks the army forward together.
  */
 import {
   AI_STYLES,
@@ -46,6 +47,12 @@ export const AI_RULES = [
     blurb: 'Close on the enemy general, else the nearest enemy. Unchecked: other pathfinding rules apply.',
   },
   {
+    id: 'advance-front',
+    category: 'targeting',
+    label: 'Advance the front',
+    blurb: 'Walk toward the far edge of the board in this army’s file. Unchecked: Attack / other hunts.',
+  },
+  {
     id: 'guard-owned-flags',
     category: 'targeting',
     label: 'Guard owned flags',
@@ -62,6 +69,12 @@ export const AI_RULES = [
     category: 'pathfinding',
     label: 'Close on the hunt',
     blurb: 'Moves that get closer to the hunt target score higher.',
+  },
+  {
+    id: 'keep-line',
+    category: 'pathfinding',
+    label: 'Keep the line',
+    blurb: 'Rear units step first. Nobody outruns the slowest mover by more than one hex. Attacks still happen.',
   },
   {
     id: 'no-flee',
@@ -85,7 +98,7 @@ export const AI_RULES = [
     id: 'prefer-high-ground',
     category: 'pathfinding',
     label: 'Prefer high ground',
-    blurb: 'When not hunting, move onto higher ground within 3 hexes. Climbing still scores up while hunting.',
+    blurb: 'Take the higher route to the hunt. When not attacking, walk onto higher ground within 3 hexes.',
   },
   {
     id: 'return-to-start',
@@ -115,7 +128,7 @@ export const AI_RULES = [
     id: 'hold-position',
     category: 'engagement',
     label: 'Hold position',
-    blurb: 'Stay put and turn toward the nearest enemy. A ranged hit makes them move and try to attack the nearest unit.',
+    blurb: 'When Attack is off: stay put and turn toward the nearest enemy. A ranged hit makes them move and try to attack the nearest unit.',
   },
   {
     id: 'general-last',
@@ -147,12 +160,26 @@ export function isAiRuleId(v: unknown): v is AiRuleId {
   return typeof v === 'string' && RULE_IDS.includes(v as AiRuleId);
 }
 
-export function defaultAiChecklist(): AiChecklist {
+function stockCol(overrides: Partial<Record<AiRuleId, boolean>> = {}): Record<AiRuleId, boolean> {
   const col = {} as Record<AiRuleId, boolean>;
   for (const id of RULE_IDS) col[id] = true;
+  col['advance-front'] = false;
+  col['keep-line'] = false;
+  return { ...col, ...overrides };
+}
+
+export function defaultAiChecklist(): AiChecklist {
   return {
-    aggressive: { ...col },
-    defensive: { ...col },
+    aggressive: stockCol(),
+    defensive: stockCol(),
+    advance: stockCol({
+      'hunt-enemy-general': false,
+      'guard-owned-flags': false,
+      'return-to-start': false,
+      'hold-position': false,
+      'advance-front': true,
+      'keep-line': true,
+    }),
   };
 }
 

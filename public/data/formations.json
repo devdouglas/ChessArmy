@@ -424,5 +424,107 @@
         ],
         "updatedAt": 1792759388552,
         "period": "ancient"
+    },
+    {
+        "id": "frm-mvkyr8mq-hb5lx",
+        "name": "Peasants",
+        "cols": 13,
+        "slots": [
+            {
+                "type": "peasant",
+                "col": 2,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 4,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 5,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 6,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 8,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 10,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 10,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 9,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 4,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 9,
+                "fromBack": 1
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "archer",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 6,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 7,
+                "fromBack": 0
+            }
+        ],
+        "updatedAt": 1792759623309,
+        "period": "ancient"
     }
 ]

@@ -254,7 +254,12 @@ import {
   type ServerStatus,
   syncFromServer,
 } from './sync';
-import { clearLevelWins, hasWonLevel, recordLevelWin } from './progress';
+import {
+  bestStarsForLevel,
+  clearLevelWins,
+  hasWonLevel,
+  recordLevelWin,
+} from './progress';
 import pkg from '../package.json';
 
 const APP_NAME = 'There Will Be Legions';
@@ -267,6 +272,13 @@ type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
 type MapPickKind = 'ai' | 'hotseat' | 'tutorial' | 'campaign';
+type RandomArmyPick = { id: string; name: string; meta: string };
+type RandomSetup = {
+  kind: MapPickKind;
+  yoursId: string;
+  theirsId: string;
+  aiStyle: AiStyle;
+};
 type UnitTokenBrush = `unit:${UnitTokenType}`;
 type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'notouch' | 'erase';
 
@@ -306,11 +318,14 @@ let mapOpts: MapOptions = { ...DEFAULT_MAP };
 let defaultLevelId: string | null = getDefaultLevelId();
 let defaultFormationId: string | null = getDefaultFormationId();
 let activeLevelId: string | null = defaultLevelId ?? getActiveLevelId();
-let state: GameState = bootState();
 let mode: Mode = 'ai';
 let screen: Screen = 'start';
-let briefingOpen = false;
 let selectedPeriod: Period = getSelectedPeriod();
+let randomSetup: RandomSetup | null = null;
+let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
+const RANDOM_UNITS_PER_TURN = 6;
+let state: GameState = bootState();
+let briefingOpen = false;
 let playlist: Playlist | null = null;
 let mapPick: MapPickKind | null = null;
 let unitEditorCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
@@ -467,13 +482,106 @@ function playArmies(
 }
 
 function matchControls(lvl?: SavedLevel | null): Record<Side, ArmyControl> {
+  if (mode === 'hotseat') return hotseatArmyControls();
   if (lvl) return sanitizeArmyControls(lvl.armyControls);
-  return mode === 'hotseat' ? hotseatArmyControls() : defaultArmyControls();
+  return defaultArmyControls();
+}
+
+function applyHotseatTint() {
+  const el = document.documentElement;
+  if (screen === 'play' && mode === 'hotseat') {
+    el.dataset.hotseat = state.winner ?? state.turn;
+  } else {
+    delete el.dataset.hotseat;
+  }
 }
 
 function matchAiStyles(lvl?: SavedLevel | null): Record<Side, AiStyle> {
   if (lvl) return sanitizeAiStyles(lvl.aiStyles);
+  if (randomArmies && mode !== 'hotseat') {
+    return { ...defaultAiStyles(), blue: randomArmies.aiStyle };
+  }
   return defaultAiStyles();
+}
+
+function randomArmyChoices(): RandomArmyPick[] {
+  const era = selectedPeriod;
+  const out: RandomArmyPick[] = [];
+  if (era === 'modern') {
+    out.push({ id: STOCK_FORMATION_ID, name: 'Standard', meta: `${RANDOM_COLS} wide` });
+  }
+  for (const f of listFormationsInPeriod(era)) {
+    out.push({
+      id: f.id,
+      name: f.name,
+      meta: `${f.slots.length} pcs · ${formationCombatValue(f.slots)}`,
+    });
+  }
+  return out;
+}
+
+function formationByPickId(id: string, cols: number, rows: number) {
+  if (id === STOCK_FORMATION_ID) return stockFormation(cols, rows);
+  return getFormation(id) ?? stockFormation(cols, rows);
+}
+
+function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
+  if (randomArmies) {
+    return [
+      ...stampFormation(
+        formationByPickId(randomArmies.yoursId, cols, rows),
+        'red',
+        cols,
+        rows,
+      ),
+      ...stampFormation(
+        formationByPickId(randomArmies.theirsId, cols, rows),
+        'blue',
+        cols,
+        rows,
+      ),
+    ];
+  }
+  return (
+    defaultArmyStamps(cols, rows, selectedPeriod) ?? bothStockStamps(cols, rows)
+  );
+}
+
+function openRandomSetup(kind: MapPickKind) {
+  const picks = randomArmyChoices();
+  const valid = (id: string | null | undefined) =>
+    !!id && picks.some((p) => p.id === id);
+  const fallback = picks[0]?.id ?? STOCK_FORMATION_ID;
+  const def = valid(getDefaultFormationId())
+    ? getDefaultFormationId()!
+    : fallback;
+  const other = picks.find((p) => p.id !== def)?.id ?? def;
+  randomSetup = {
+    kind,
+    yoursId: valid(randomArmies?.yoursId) ? randomArmies!.yoursId : def,
+    theirsId: valid(randomArmies?.theirsId) ? randomArmies!.theirsId : other,
+    aiStyle: randomArmies?.aiStyle ?? 'aggressive',
+  };
+  render();
+}
+
+function confirmRandomSetup() {
+  if (!randomSetup) return;
+  if (!randomArmyChoices().length) return;
+  randomArmies = {
+    yoursId: randomSetup.yoursId,
+    theirsId: randomSetup.theirsId,
+    aiStyle: randomSetup.aiStyle,
+  };
+  const kind = randomSetup.kind;
+  randomSetup = null;
+  mapPick = null;
+  mode = kind === 'hotseat' ? 'hotseat' : 'ai';
+  playlist = null;
+  screen = 'play';
+  activeLevelId = null;
+  setActiveLevelId(null);
+  startMatch(true);
 }
 
 function bootState(): GameState {
@@ -501,11 +609,13 @@ function bootState(): GameState {
       );
     }
   }
-  return createInitialState(
-    mapOpts,
-    defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
-    matchControls(),
-    matchAiStyles(),
+  return withLevelRules(
+    createInitialState(
+      mapOpts,
+      randomMatchArmies(RANDOM_COLS, ROWS),
+      matchControls(),
+      matchAiStyles(),
+    ),
   );
 }
 
@@ -544,7 +654,7 @@ function startMatch(reshuffleRandom = true) {
     state = withLevelRules(
       createInitialState(
         mapOpts,
-        defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
+        randomMatchArmies(RANDOM_COLS, ROWS),
         matchControls(),
         matchAiStyles(),
       ),
@@ -556,7 +666,7 @@ function startMatch(reshuffleRandom = true) {
         state.terrain,
         undefined,
         state.orientation,
-        defaultArmyStamps(state.cols, state.rows, selectedPeriod),
+        randomMatchArmies(state.cols, state.rows),
         matchControls(),
         state.tokens,
         matchAiStyles(),
@@ -570,7 +680,9 @@ function startMatch(reshuffleRandom = true) {
 }
 
 function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
-  s.unitsPerTurn = clampUnitsPerTurn(lvl?.unitsPerTurn ?? 1);
+  s.unitsPerTurn = clampUnitsPerTurn(
+    lvl?.unitsPerTurn ?? RANDOM_UNITS_PER_TURN,
+  );
   s.maxTurns = clampMaxTurns(lvl?.maxTurns ?? 0);
   s.aiStyles = sanitizeAiStyles(lvl?.aiStyles ?? s.aiStyles);
   s.actedIds = [];
@@ -899,6 +1011,7 @@ function reset(reshuffle = true) {
 function showStart() {
   editorPainting = false;
   briefingOpen = false;
+  randomSetup = null;
   screen = 'start';
   playlist = null;
   mapPick = null;
@@ -967,13 +1080,7 @@ function showMapPick(kind: MapPickKind) {
 function startPickedMap(id: string, kind: MapPickKind) {
   if (id === 'random') {
     if (!skirmishPick(kind)) return;
-    mapPick = null;
-    mode = kind === 'hotseat' ? 'hotseat' : 'ai';
-    playlist = null;
-    screen = 'play';
-    activeLevelId = null;
-    setActiveLevelId(null);
-    startMatch(true);
+    openRandomSetup(kind);
     return;
   }
   const maps = mapsForPick(kind);
@@ -1022,9 +1129,14 @@ function advancePlaylist() {
   startMatch(false);
 }
 
+function starsEarned(): number {
+  if (!playerTeamWon(state)) return 0;
+  return starKinds().filter((k) => k === 'on').length;
+}
+
 function maybeRecordLevelWin(): void {
   if (screen !== 'play' || !playerTeamWon(state) || !activeLevelId) return;
-  recordLevelWin(activeLevelId);
+  recordLevelWin(activeLevelId, starsEarned());
 }
 
 function canSkipPlayedLevel(): boolean {
@@ -1603,6 +1715,22 @@ function endStarsHtml(): string {
     .join('')}</ul>`;
 }
 
+function endBestStarsHtml(): string {
+  if (!activeLevelId) return '';
+  const best = bestStarsForLevel(activeLevelId);
+  if (best < 1) return '';
+  const glyphs = [1, 2, 3]
+    .map(
+      (n) =>
+        `<span class="end-star ${n <= best ? 'on' : 'off'}">${starGlyphSvg(
+          n <= best ? 'on' : 'off',
+          16,
+        )}</span>`,
+    )
+    .join('');
+  return `<p class="end-best">Best on this map <span class="end-best-stars" aria-label="${best} of 3">${glyphs}</span></p>`;
+}
+
 function readEditorStar(n: 2 | 3): StarRule {
   const fallback = n === 2 ? DEFAULT_STAR_2 : DEFAULT_STAR_3;
   const metric = app.querySelector<HTMLSelectElement>(
@@ -1722,6 +1850,8 @@ async function playAnimatedAction(action: Action): Promise<void> {
 
   if (action.kind === 'skip' || action.kind === 'rest' || action.kind === 'rotate') {
     state = applyAction(state, action);
+    applyHotseatTint();
+    updateChrome();
     await playPendingFx();
     animating = false;
     return;
@@ -1753,6 +1883,8 @@ async function playAnimatedAction(action: Action): Promise<void> {
   }
 
   state = applyAction(state, action);
+  applyHotseatTint();
+  updateChrome();
   await playPendingFx();
   animating = false;
 }
@@ -2027,7 +2159,7 @@ async function maybeAi() {
     ensureSoloTurnSelection();
     return;
   }
-  if (isPlayerControlled(state, state.turn)) {
+  if (mode === 'hotseat' || isPlayerControlled(state, state.turn)) {
     ensureSoloTurnSelection();
     render();
     return;
@@ -2916,6 +3048,7 @@ function renderEndOverlay(): string {
         </svg>
         <h2 class="end-title">${title}</h2>
         ${endStarsHtml()}
+        ${endBestStarsHtml()}
         <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? escapeHtml(custom) : sub}</p>
         <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
@@ -2963,6 +3096,7 @@ function turnsLeftHtml(): string {
 }
 
 function updateChrome() {
+  applyHotseatTint();
   const banner = app.querySelector('.turn-banner');
   if (banner) banner.innerHTML = turnLabel();
   const goals = app.querySelector('.star-goals');
@@ -3400,7 +3534,7 @@ function renderMapPickScreen(kind: MapPickKind): string {
   const randomOpt = skirmishPick(kind) ? renderRandomMapPickOpt(kind) : '';
   const body =
     randomOpt || maps.length
-      ? `<div class="map-pick-list">${randomOpt}${maps.map((l, i) => renderMapPickOpt(l, kind, i, maps)).join('')}</div>`
+      ? `<div class="map-pick-list">${maps.map((l, i) => renderMapPickOpt(l, kind, i, maps)).join('')}${randomOpt}</div>`
       : `<p class="editor-empty">No ${emptyCat} maps for ${era.toLowerCase()}. Mark saved levels as ${LEVEL_CATEGORY_LABEL[emptyCat]} in the Editor.</p>`;
   return `
     <div class="board-wrap start-wrap">
@@ -3412,6 +3546,67 @@ function renderMapPickScreen(kind: MapPickKind): string {
         <h2 class="start-title">${escapeHtml(title)}</h2>
         <p class="start-tag">${escapeHtml(tag)}</p>
         ${body}
+      </div>
+      ${renderRandomSetupOverlay()}
+    </div>`;
+}
+
+function renderRandomSetupOverlay(): string {
+  if (!randomSetup) return '';
+  const picks = randomArmyChoices();
+  const hotseat = randomSetup.kind === 'hotseat';
+  const yoursLabel = hotseat ? 'Red army' : 'Your army';
+  const theirsLabel = hotseat ? 'Blue army' : 'Enemy army';
+  const yoursOpts = picks
+    .map(
+      (p) =>
+        `<option value="${p.id}"${p.id === randomSetup!.yoursId ? ' selected' : ''}>${escapeHtml(p.name)} — ${escapeHtml(p.meta)}</option>`,
+    )
+    .join('');
+  const theirsOpts = picks
+    .map(
+      (p) =>
+        `<option value="${p.id}"${p.id === randomSetup!.theirsId ? ' selected' : ''}>${escapeHtml(p.name)} — ${escapeHtml(p.meta)}</option>`,
+    )
+    .join('');
+  const aiOpts = AI_STYLES.map(
+    (st) =>
+      `<option value="${st}"${st === randomSetup!.aiStyle ? ' selected' : ''}>${AI_STYLE_LABEL[st]}</option>`,
+  ).join('');
+  const empty = !picks.length;
+  const sub = empty
+    ? `No armies for ${PERIOD_LABEL[selectedPeriod].toLowerCase()}. Save one in the Editor.`
+    : hotseat
+      ? 'Pick two armies for this device.'
+      : 'Pick two armies. The enemy uses the AI you choose.';
+  return `
+    <div class="end-overlay briefing random-setup-overlay" id="random-setup-overlay" role="dialog" aria-modal="true" aria-label="Randomised battle">
+      <div class="end-card briefing random-setup">
+        <h2 class="end-title">Randomised battle</h2>
+        <p class="end-sub">${escapeHtml(sub)}</p>
+        ${
+          empty
+            ? ''
+            : `<div class="random-setup-fields">
+          <label>${yoursLabel}
+            <select id="random-setup-yours">${yoursOpts}</select>
+          </label>
+          <label>${theirsLabel}
+            <select id="random-setup-theirs">${theirsOpts}</select>
+          </label>
+          ${
+            hotseat
+              ? ''
+              : `<label>Enemy AI
+            <select id="random-setup-ai">${aiOpts}</select>
+          </label>`
+          }
+        </div>`
+        }
+        <div class="end-actions">
+          ${empty ? '' : '<button type="button" id="random-setup-go">To war</button>'}
+          <button type="button" id="random-setup-cancel" class="ghost">Cancel</button>
+        </div>
       </div>
     </div>`;
 }
@@ -3455,6 +3650,11 @@ function renderStartScreen(): string {
             <span class="start-opt-name">Skirmish vs AI</span>
             <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'Randomised map · vs AI'}</span>
           </button>
+          <button type="button" class="start-opt" data-start="random"
+            title="Generated map vs AI. Pick two armies and the enemy AI.">
+            <span class="start-opt-name">Randomised Battle</span>
+            <span class="start-opt-meta">Generated map · vs AI</span>
+          </button>
           <button type="button" class="start-opt" data-start="hotseat"
             title="Pick a skirmish map, two players on one device">
             <span class="start-opt-name">Hotseat</span>
@@ -3467,6 +3667,7 @@ function renderStartScreen(): string {
         </div>
         <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
       </div>
+      ${renderRandomSetupOverlay()}
     </div>`;
 }
 
@@ -3493,6 +3694,7 @@ function bindToolbarEvents() {
       else if (kind === 'campaign') showMapPick('campaign');
       else if (kind === 'tutorial') showMapPick('tutorial');
       else if (kind === 'ai') showMapPick('ai');
+      else if (kind === 'random') openRandomSetup('ai');
       else if (kind === 'hotseat') showMapPick('hotseat');
       else if (kind === 'editor') enterLevels(true);
     });
@@ -3512,6 +3714,28 @@ function bindToolbarEvents() {
       if (!id || !mapPick) return;
       startPickedMap(id, mapPick);
     });
+  });
+  app.querySelector('#random-setup-yours')?.addEventListener('change', (e) => {
+    if (!randomSetup) return;
+    randomSetup.yoursId = (e.target as HTMLSelectElement).value;
+  });
+  app.querySelector('#random-setup-theirs')?.addEventListener('change', (e) => {
+    if (!randomSetup) return;
+    randomSetup.theirsId = (e.target as HTMLSelectElement).value;
+  });
+  app.querySelector('#random-setup-ai')?.addEventListener('change', (e) => {
+    if (!randomSetup) return;
+    const v = (e.target as HTMLSelectElement).value;
+    if (isAiStyle(v)) randomSetup.aiStyle = v;
+  });
+  app.querySelector('#random-setup-go')?.addEventListener('click', () => confirmRandomSetup());
+  const closeRandomSetup = () => {
+    randomSetup = null;
+    render();
+  };
+  app.querySelector('#random-setup-cancel')?.addEventListener('click', closeRandomSetup);
+  app.querySelector('#random-setup-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeRandomSetup();
   });
   app.querySelector('#editor-nav-levels')?.addEventListener('click', () => {
     if (screen === 'levels') return;
@@ -4398,10 +4622,10 @@ function renderAiChecklist(): string {
       <div class="ai-editor-head">
         <h2>AI checklist</h2>
         <p class="editor-label" id="ai-status">${
-          aiChecklistAreStock() ? 'Stock rules · all on' : 'Custom rules · saved in this browser'
+          aiChecklistAreStock() ? 'Stock rules' : 'Custom rules · saved in this browser'
         }</p>
       </div>
-      <p class="muted ai-editor-lead">Two personalities. Check a box to run that rule when the army’s AI is set to that style (level editor, next to player / AI). Default is <strong>aggressive</strong>. Stock = everything on — the current AI.</p>
+      <p class="muted ai-editor-lead">Three personalities. Check a box to run that rule when the army’s AI is set to that style (level editor, next to player / AI). Default is <strong>aggressive</strong>. <strong>Advance</strong> walks the army toward the far edge together — rear first, nobody left behind. Stock = the defaults below.</p>
       <div class="ai-check-wrap">
         <table class="ai-check">
           <thead>
@@ -4427,7 +4651,7 @@ function syncAiStatus() {
   const status = app.querySelector('#ai-status');
   if (status) {
     status.textContent = aiChecklistAreStock()
-      ? 'Stock rules · all on'
+      ? 'Stock rules'
       : 'Custom rules · saved in this browser';
   }
 }
@@ -4443,7 +4667,7 @@ function bindAiChecklistEvents() {
     });
   });
   app.querySelector('#ai-reset')?.addEventListener('click', () => {
-    if (!aiChecklistAreStock() && !confirm('Reset both AI personalities to stock (all rules on)?')) {
+    if (!aiChecklistAreStock() && !confirm('Reset all AI personalities to stock?')) {
       return;
     }
     resetAiChecklist();
@@ -5010,6 +5234,8 @@ function bindEvents() {
       animating = true;
       const actingId = selectedId;
       state = passTurn(state);
+      applyHotseatTint();
+      updateChrome();
       await playPendingFx();
       animating = false;
       if (actingId) retainSelection(actingId);
@@ -5046,6 +5272,7 @@ function render() {
   maybeRecordLevelWin();
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
+  applyHotseatTint();
   app.classList.toggle(
     'start-screen',
     screen === 'start' || screen === 'levels' || screen === 'units' || screen === 'ai',
@@ -5105,7 +5332,7 @@ function render() {
       <aside class="sidebar">
         <h2>${escapeHtml(editorName.trim() || 'New level')}</h2>
         <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels / Units / AI in the header switches library, roster, and the AI checklist. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> and <strong>Tutorial</strong> pick a map (win one to unlock the next). <strong>Historical</strong> playlists on Start follow the drag order in Levels. <strong>Skirmish</strong> pick a map. AI armies pick aggressive or defensive next to the controller.</p>
+        <p class="muted">Levels / Units / AI in the header switches library, roster, and the AI checklist. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> and <strong>Tutorial</strong> pick a map (win one to unlock the next). <strong>Historical</strong> playlists on Start follow the drag order in Levels. <strong>Skirmish</strong> pick a map. AI armies pick aggressive, defensive, or advance next to the controller.</p>
       </aside>
     `;
     bindEvents();

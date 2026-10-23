@@ -37,6 +37,21 @@ function blueHoplite(s: GameState) {
 resetAiChecklist();
 
 {
+  const s = board([]);
+  const hunt = { col: 0, row: 9 };
+  const a = pickAiAction(s);
+  assert(a?.kind === 'move', 'Attack on: hold does not freeze the army');
+  const before = distance(origin, hunt, s.orientation);
+  assert(
+    a.kind === 'move' && distance(a.to, hunt, s.orientation) < before,
+    'closes on the enemy general',
+  );
+}
+
+setAiRule('aggressive', 'hunt-enemy-general', false);
+setAiRule('aggressive', 'guard-owned-flags', false);
+
+{
   const far = neighborInDir(neighborInDir(origin, 0, 'pointy'), 0, 'pointy');
   const s = board([{ type: 'soldier', col: far.col, row: far.row, side: 'red' }]);
   const h = blueHoplite(s);
@@ -132,6 +147,7 @@ resetAiChecklist();
   );
 }
 
+setAiRule('aggressive', 'hunt-enemy-general', true);
 setAiRule('aggressive', 'hold-position', false);
 {
   const far = neighborInDir(neighborInDir(origin, 0, 'pointy'), 0, 'pointy');

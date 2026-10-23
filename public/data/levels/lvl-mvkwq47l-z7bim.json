@@ -230,13 +230,13 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "aggressive",
-        "yellow": "aggressive",
-        "purple": "aggressive"
+        "blue": "defensive",
+        "yellow": "advance",
+        "purple": "defensive"
     },
     "tokens": [],
     "sort": 0,
-    "updatedAt": 1792758799991,
+    "updatedAt": 1792761712647,
     "armies": [
         {
             "type": "archer",
@@ -257,30 +257,6 @@
             "side": "purple"
         },
         {
-            "type": "archer",
-            "col": 3,
-            "row": 2,
-            "side": "purple"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 1,
-            "row": 2,
-            "side": "purple"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 1,
-            "row": 3,
-            "side": "purple"
-        },
-        {
-            "type": "u-mvf8ty84rdk3",
-            "col": 2,
-            "row": 3,
-            "side": "purple"
-        },
-        {
             "type": "hoplite",
             "col": 6,
             "row": 3,
@@ -290,18 +266,6 @@
             "type": "hoplite",
             "col": 8,
             "row": 3,
-            "side": "purple"
-        },
-        {
-            "type": "hoplite",
-            "col": 4,
-            "row": 3,
-            "side": "purple"
-        },
-        {
-            "type": "archer",
-            "col": 2,
-            "row": 2,
             "side": "purple"
         },
         {
@@ -411,6 +375,42 @@
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 1,
+            "row": 2,
+            "side": "yellow"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 1,
+            "row": 3,
+            "side": "yellow"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 2,
+            "row": 3,
+            "side": "yellow"
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 2,
+            "side": "yellow"
+        },
+        {
+            "type": "archer",
+            "col": 3,
+            "row": 2,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 4,
+            "row": 1,
+            "side": "purple"
         }
     ]
 }

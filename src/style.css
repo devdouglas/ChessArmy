@@ -1,5 +1,6 @@
 :root {
-  --bg: #1a1f1c;
+  --bg-base: #1a1f1c;
+  --bg: var(--bg-base);
   --panel: #242b27;
   --ink: #e8ebe6;
   --muted: #8a9488;
@@ -74,7 +75,8 @@
 }
 
 html[data-period='ancient'] {
-  --bg: #1c1610;
+  --bg-base: #1c1610;
+  --bg: var(--bg-base);
   --panel: #2a2218;
   --ink: #efe4d0;
   --muted: #a89478;
@@ -135,7 +137,8 @@ html[data-period='ancient'] {
 }
 
 html[data-period='futuristic'] {
-  --bg: #0c1018;
+  --bg-base: #0c1018;
+  --bg: var(--bg-base);
   --panel: #141c28;
   --ink: #d8e8f8;
   --muted: #6a8498;
@@ -203,6 +206,33 @@ body {
   min-height: 100%;
   min-height: 100dvh;
   overscroll-behavior: none;
+  transition: background-color 0.45s ease;
+}
+
+@property --bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1a1f1c;
+}
+
+html {
+  transition: --bg 0.45s ease, background-color 0.45s ease;
+}
+
+html[data-hotseat='red'] {
+  --bg: color-mix(in srgb, var(--piece-red) 38%, var(--bg-base));
+}
+
+html[data-hotseat='blue'] {
+  --bg: color-mix(in srgb, var(--piece-blue) 42%, var(--bg-base));
+}
+
+html[data-hotseat='yellow'] {
+  --bg: color-mix(in srgb, var(--piece-yellow) 38%, var(--bg-base));
+}
+
+html[data-hotseat='purple'] {
+  --bg: color-mix(in srgb, var(--piece-purple) 38%, var(--bg-base));
 }
 
 #app {
@@ -347,6 +377,7 @@ button.primary:focus-visible {
 }
 
 .start-wrap {
+  position: relative;
   justify-content: flex-start;
   width: 100%;
 }
@@ -1271,6 +1302,10 @@ button.primary:focus-visible {
   color: #9ab8e0;
 }
 
+.ai-check-col.advance {
+  color: #d4c078;
+}
+
 .ai-check-col-name {
   display: flex;
   flex-direction: column;
@@ -1333,6 +1368,10 @@ button.primary:focus-visible {
 
 .ai-check-cell.defensive {
   background: color-mix(in srgb, #4a7ec8 9%, transparent);
+}
+
+.ai-check-cell.advance {
+  background: color-mix(in srgb, #c9a227 9%, transparent);
 }
 
 .ai-check-box {
@@ -2638,6 +2677,23 @@ svg.board .hex {
   opacity: 0.42;
 }
 
+.end-best {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0.2rem 0 0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.end-best-stars {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
 .end-card.defeat .end-star.on .star-glyph path {
   fill: #c8b070;
 }
@@ -2665,6 +2721,50 @@ svg.board .hex {
 
 .end-card.briefing {
   min-width: 260px;
+}
+
+.random-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.end-card.random-setup {
+  min-width: min(22rem, 92vw);
+  text-align: left;
+}
+
+.end-card.random-setup .end-sub {
+  text-align: left;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.random-setup-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0.35rem 0 1.15rem;
+}
+
+.random-setup-fields label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.28rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.random-setup-fields select {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a453c;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  font-size: 0.9rem;
+  min-height: var(--touch);
 }
 
 .end-card.briefing .end-title {

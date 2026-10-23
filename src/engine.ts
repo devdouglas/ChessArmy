@@ -134,15 +134,16 @@ export function sanitizeArmyControls(raw: unknown): Record<Side, ArmyControl> {
 }
 
 /** How an AI army plays. Default is aggressive (current ruleset). */
-export type AiStyle = 'aggressive' | 'defensive';
-export const AI_STYLES: AiStyle[] = ['aggressive', 'defensive'];
+export type AiStyle = 'aggressive' | 'defensive' | 'advance';
+export const AI_STYLES: AiStyle[] = ['aggressive', 'defensive', 'advance'];
 export const AI_STYLE_LABEL: Record<AiStyle, string> = {
   aggressive: 'aggressive',
   defensive: 'defensive',
+  advance: 'advance',
 };
 
 export function isAiStyle(v: unknown): v is AiStyle {
-  return v === 'aggressive' || v === 'defensive';
+  return v === 'aggressive' || v === 'defensive' || v === 'advance';
 }
 
 export function defaultAiStyles(): Record<Side, AiStyle> {
@@ -444,7 +445,7 @@ export type GameState = {
   log: string[];
   /** Who drives each color. */
   controls: Record<Side, ArmyControl>;
-  /** Aggressive / defensive checklist for each color. Missing → aggressive. */
+  /** Aggressive / defensive / advance checklist for each color. Missing → aggressive. */
   aiStyles: Record<Side, AiStyle>;
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
   hadKing: Record<Side, boolean>;

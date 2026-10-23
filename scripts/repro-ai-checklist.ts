@@ -267,4 +267,43 @@ try {
   }
 }
 
+{
+  const from = { col: 4, row: 5 };
+  const land = neighborInDir(from, 0, 'pointy');
+  const hill = neighborInDir(from, 1, 'pointy');
+  const via = neighborInDir(land, 1, 'pointy');
+  const huntAt = neighborInDir(via, 0, 'pointy');
+  const t = emptyTerrain(8, 10);
+  t[hill.row][hill.col] = 'high';
+  const savedShoot = UNIT_STATS.soldier.shoot;
+  UNIT_STATS.soldier.shoot = 0;
+  resetAiChecklist();
+  setAiRule('aggressive', 'hold-position', false);
+  try {
+    const s = createStateFromTerrain(
+      t,
+      'ai-high-ridge',
+      'pointy',
+      [
+        { type: 'soldier', col: from.col, row: from.row, side: 'blue' },
+        { type: 'general', col: huntAt.col, row: huntAt.row, side: 'red' },
+        { type: 'general', col: 1, row: 9, side: 'blue' },
+      ],
+      { blue: 'ai-enemy', red: 'player' },
+      [],
+      { blue: 'aggressive', red: 'aggressive' },
+    );
+    s.turn = 'blue';
+    const a = pickAiAction(s);
+    assert(a?.kind === 'move', 'hunting still moves when a ridge is available');
+    assert(
+      a?.kind === 'move' && a.to.col === hill.col && a.to.row === hill.row,
+      'prefer-high-ground takes the higher route to the hunt, not the flat one',
+    );
+  } finally {
+    UNIT_STATS.soldier.shoot = savedShoot;
+    resetAiChecklist();
+  }
+}
+
 console.log('repro-ai-checklist ok');
