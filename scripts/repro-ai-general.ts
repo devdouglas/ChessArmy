@@ -1,6 +1,7 @@
 import { allLegalActions, type Action, type GameState } from '../src/engine';
 import { neighborInDir } from '../src/hex';
 import { pickAiAction } from '../src/ai';
+import { resetAiChecklist, setAiRule } from '../src/ai-config';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
 function assert(cond: unknown, msg: string) {
@@ -40,6 +41,9 @@ function hitsHex(a: Action | null, hex: { col: number; row: number }) {
 function blueGeneralId(s: GameState) {
   return s.pieces.find((p) => p.side === 'blue' && p.type === 'general')!.id;
 }
+
+resetAiChecklist();
+setAiRule('aggressive', 'hold-position', false);
 
 {
   const s = board([{ type: 'soldier', col: far.col, row: far.row, side: 'red' }]);
@@ -101,5 +105,7 @@ function blueGeneralId(s: GameState) {
   assert(a.pieceId === grunt.id, 'general waits; army moves first');
   assert(a.pieceId !== gid, 'general is not first activation');
 }
+
+resetAiChecklist();
 
 console.log('repro-ai-general ok');

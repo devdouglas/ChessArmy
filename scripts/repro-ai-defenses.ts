@@ -70,6 +70,7 @@ try {
   UNIT_STATS.soldier.shoot = 0;
   UNIT_STATS.soldier.stamina = 0;
   resetAiChecklist();
+  setAiRule('aggressive', 'hold-position', false);
 
   {
     const s = rocketBoard();
@@ -83,6 +84,7 @@ try {
   }
 
   resetAiChecklist();
+  setAiRule('aggressive', 'hold-position', false);
   {
     const s = palisadeBoard();
     assert(

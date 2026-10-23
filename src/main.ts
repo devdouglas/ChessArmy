@@ -7,6 +7,7 @@ import {
   applyAction,
   clampMaxTurns,
   clampUnitsPerTurn,
+  combatValue,
   defeatKind,
   flagsHeldBy,
   mapFlags,
@@ -116,6 +117,7 @@ import {
   hexGridExtent,
   hexToPixel,
   key,
+  parseKey,
   neighborInDir,
   pixelToHex,
   type Hex,
@@ -190,7 +192,7 @@ import {
   deleteFormation,
   getDefaultFormationId,
   getFormation,
-  listFormations,
+  listFormationsInPeriod,
   saveFormation,
   setDefaultFormationId,
   slotsEqual,
@@ -202,18 +204,11 @@ import {
   AI_RULE_CATEGORIES,
   AI_RULE_CATEGORY_LABEL,
   aiChecklistAreStock,
-  categoryAllOn,
-  categoryAnyOn,
   categoryRules,
   isAiRuleId,
   isAiRuleOn,
   resetAiChecklist,
-  setAiCategory,
   setAiRule,
-  setAiStyleColumn,
-  styleAllOn,
-  styleAnyOn,
-  type AiRuleCategory,
 } from './ai-config';
 import {
   actedBadgeSvg,
@@ -455,7 +450,7 @@ function clipStamps(pieces: ArmyStamp[], cols: number, rows: number): ArmyStamp[
 }
 
 function seedArmies(cols: number, rows: number): ArmyStamp[] {
-  return defaultArmyStamps(cols, rows) ?? bothStockStamps(cols, rows);
+  return defaultArmyStamps(cols, rows, editorPeriod) ?? bothStockStamps(cols, rows);
 }
 
 function playArmies(
@@ -464,7 +459,7 @@ function playArmies(
   level?: SavedLevel | null,
 ): ArmyStamp[] | null {
   if (level && Array.isArray(level.armies)) return level.armies;
-  return defaultArmyStamps(cols, rows);
+  return defaultArmyStamps(cols, rows, level?.period ?? selectedPeriod);
 }
 
 function matchControls(lvl?: SavedLevel | null): Record<Side, ArmyControl> {
@@ -504,7 +499,7 @@ function bootState(): GameState {
   }
   return createInitialState(
     mapOpts,
-    defaultArmyStamps(COLS, ROWS),
+    defaultArmyStamps(COLS, ROWS, selectedPeriod),
     matchControls(),
     matchAiStyles(),
   );
@@ -545,7 +540,7 @@ function startMatch(reshuffleRandom = true) {
     state = withLevelRules(
       createInitialState(
         mapOpts,
-        defaultArmyStamps(COLS, ROWS),
+        defaultArmyStamps(COLS, ROWS, selectedPeriod),
         matchControls(),
         matchAiStyles(),
       ),
@@ -557,7 +552,7 @@ function startMatch(reshuffleRandom = true) {
         state.terrain,
         undefined,
         state.orientation,
-        defaultArmyStamps(state.cols, state.rows),
+        defaultArmyStamps(state.cols, state.rows, selectedPeriod),
         matchControls(),
         state.tokens,
         matchAiStyles(),
@@ -948,8 +943,12 @@ function nextUnlockedSequential(): SavedLevel | null {
   return maps[i + 1];
 }
 
+function skirmishPick(kind: MapPickKind): boolean {
+  return kind === 'ai' || kind === 'hotseat';
+}
+
 function showMapPick(kind: MapPickKind) {
-  if (!mapsForPick(kind).length) return;
+  if (!mapsForPick(kind).length && !skirmishPick(kind)) return;
   editorPainting = false;
   briefingOpen = false;
   mapPick = kind;
@@ -962,6 +961,17 @@ function showMapPick(kind: MapPickKind) {
 }
 
 function startPickedMap(id: string, kind: MapPickKind) {
+  if (id === 'random') {
+    if (!skirmishPick(kind)) return;
+    mapPick = null;
+    mode = kind === 'hotseat' ? 'hotseat' : 'ai';
+    playlist = null;
+    screen = 'play';
+    activeLevelId = null;
+    setActiveLevelId(null);
+    startMatch(true);
+    return;
+  }
   const maps = mapsForPick(kind);
   const index = maps.findIndex((l) => l.id === id);
   if (index < 0) return;
@@ -1628,7 +1638,7 @@ function hexActions(
   hex: Hex,
 ): { canMove: boolean; canShoot: boolean } {
   const legal = legalHighlights(state, pieceId).filter(
-    (h) => eq(h.hex, hex) && h.kind !== 'shoot-range',
+    (h) => eq(h.hex, hex) && h.kind !== 'shoot-range' && h.kind !== 'rest',
   );
   return {
     canMove: legal.some((h) => h.kind === 'move' || h.kind === 'stamina'),
@@ -2085,11 +2095,13 @@ function renderBoard(): string {
   // Full ranges while selected: move tint + shoot marks together
   const allHl = !editing && selectedId ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina'>();
+  const restSet = new Set<string>();
   const shootRange = new Set<string>();
   const shootTarget = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
     if (hl.kind === 'move' || hl.kind === 'stamina') moveMap.set(k, hl.kind);
+    else if (hl.kind === 'rest') restSet.add(k);
     else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
   }
@@ -2150,6 +2162,7 @@ function renderBoard(): string {
       const mv = moveMap.get(k);
       if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+      else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
 
       if (pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
@@ -2186,6 +2199,14 @@ function renderBoard(): string {
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += staminaHexMarkSvg(x, y + dy, r);
+  }
+  for (const k of restSet) {
+    const hex = parseKey(k);
+    const { x, y } = pixelOf(hex);
+    const occ = !!pieceAt(state, hex);
+    const r = HEX_SIZE * (occ ? 0.22 : 0.26);
+    const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
+    staminaMarks += `<g class="need-rest-mark">${staminaEmptyMarkSvg(x, y + dy, r)}</g>`;
   }
 
   let tokensSvg = '';
@@ -2659,7 +2680,7 @@ function renderSidebar(): string {
           </svg>
           <div>
             <h3>${s.name}</h3>
-            <p class="ability-sub">${piece.side.toUpperCase()} · ${escapeHtml(s.chess)} · val ${s.value}${
+            <p class="ability-sub">${piece.side.toUpperCase()} · ${escapeHtml(s.chess)} · val ${combatValue(piece)}${
               previewOnly ? ' · preview' : ''
             }</p>
           </div>
@@ -2701,6 +2722,7 @@ function renderSidebar(): string {
           <div class="legend">
             <span class="l-move">Move</span>
             <span class="l-stamina">Stamina (climb / extra move)</span>
+            <span class="l-rest">Need rest</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
           </div>
@@ -2715,7 +2737,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal move or turn (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits</dd></div>
             <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining) and the General ability — killing that piece can win the match</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 value, and the General ability — killing that piece can win the match</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action, leftover stamina still buys the extra move)</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -3289,6 +3311,51 @@ function mapPickMetaLine(l: SavedLevel, kind: MapPickKind, index: number, maps: 
   return hasWonLevel(l.id) ? `Cleared · ${size}` : size;
 }
 
+let randomMapThumb: {
+  period: Period;
+  cols: number;
+  rows: number;
+  orientation: HexOrientation;
+  terrain: SavedLevel['terrain'];
+  tokens: SavedLevel['tokens'];
+  armies: SavedLevel['armies'];
+} | null = null;
+
+function randomMapThumbSrc() {
+  if (randomMapThumb?.period === selectedPeriod) return randomMapThumb;
+  const s = createInitialState(
+    DEFAULT_MAP,
+    defaultArmyStamps(COLS, ROWS, selectedPeriod),
+  );
+  randomMapThumb = {
+    period: selectedPeriod,
+    cols: s.cols,
+    rows: s.rows,
+    orientation: s.orientation,
+    terrain: s.terrain,
+    tokens: s.tokens,
+    armies: s.pieces.map((p) => ({
+      type: p.type,
+      col: p.col,
+      row: p.row,
+      side: p.side,
+    })),
+  };
+  return randomMapThumb;
+}
+
+function renderRandomMapPickOpt(kind: MapPickKind): string {
+  const meta =
+    kind === 'hotseat' ? 'Generated · two players' : 'Generated · vs AI';
+  return `<button type="button" class="start-opt map-pick-opt map-pick-opt-random" data-pick-map="random" title="Play Randomised map" aria-label="Randomised map">
+    ${renderLevelThumb(randomMapThumbSrc())}
+    <span class="map-pick-copy">
+      <span class="start-opt-name">Randomised map</span>
+      <span class="start-opt-meta">${meta}</span>
+    </span>
+  </button>`;
+}
+
 function renderMapPickOpt(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
   const locked = pickLocks(kind) && !sequenceUnlocked(maps, index);
   const name = escapeHtml(levelLabel(l));
@@ -3317,9 +3384,11 @@ function renderMapPickScreen(kind: MapPickKind): string {
         ? `Pick a map · ${era} · two players, one device.`
         : `Pick a map · ${era} · vs AI.`;
   const emptyCat = kind === 'hotseat' || kind === 'ai' ? 'skirmish' : kind;
-  const body = maps.length
-    ? `<div class="map-pick-list">${maps.map((l, i) => renderMapPickOpt(l, kind, i, maps)).join('')}</div>`
-    : `<p class="editor-empty">No ${emptyCat} maps for ${era.toLowerCase()}. Mark saved levels as ${LEVEL_CATEGORY_LABEL[emptyCat]} in the Editor.</p>`;
+  const randomOpt = skirmishPick(kind) ? renderRandomMapPickOpt(kind) : '';
+  const body =
+    randomOpt || maps.length
+      ? `<div class="map-pick-list">${randomOpt}${maps.map((l, i) => renderMapPickOpt(l, kind, i, maps)).join('')}</div>`
+      : `<p class="editor-empty">No ${emptyCat} maps for ${era.toLowerCase()}. Mark saved levels as ${LEVEL_CATEGORY_LABEL[emptyCat]} in the Editor.</p>`;
   return `
     <div class="board-wrap start-wrap">
       <div class="start-screen start-pick">
@@ -3368,15 +3437,15 @@ function renderStartScreen(): string {
             <span class="start-opt-name">Historical Battle</span>
             <span class="start-opt-meta">${historicalN ? `${mapWord(historicalN)} · vs AI` : 'No historical maps'}</span>
           </button>
-          <button type="button" class="start-opt" data-start="ai"${skirmishN ? '' : ' disabled'}
-            title="${skirmishN ? 'Pick a skirmish map vs AI' : 'Mark saved levels as Skirmish in the Editor'}">
+          <button type="button" class="start-opt" data-start="ai"
+            title="Pick a skirmish map vs AI, or a randomised map">
             <span class="start-opt-name">Skirmish vs AI</span>
-            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'No skirmish maps'}</span>
+            <span class="start-opt-meta">${skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'Randomised map · vs AI'}</span>
           </button>
-          <button type="button" class="start-opt" data-start="hotseat"${skirmishN ? '' : ' disabled'}
-            title="${skirmishN ? 'Pick a skirmish map, two players on one device' : 'Mark saved levels as Skirmish in the Editor'}">
+          <button type="button" class="start-opt" data-start="hotseat"
+            title="Pick a skirmish map, two players on one device">
             <span class="start-opt-name">Hotseat</span>
-            <span class="start-opt-meta">${skirmishN ? 'Two players, one device' : 'No skirmish maps'}</span>
+            <span class="start-opt-meta">Two players, one device</span>
           </button>
           <button type="button" class="start-opt" data-start="editor">
             <span class="start-opt-name">Level editor</span>
@@ -3694,7 +3763,14 @@ function renderArmySelectPanel(): string {
     </div>`;
 }
 
-function renderLevelThumb(lvl: SavedLevel): string {
+function renderLevelThumb(lvl: {
+  cols: number;
+  rows: number;
+  orientation: HexOrientation;
+  terrain: SavedLevel['terrain'];
+  tokens?: SavedLevel['tokens'];
+  armies?: SavedLevel['armies'];
+}): string {
   const ori = lvl.orientation;
   const cols = lvl.cols;
   const rows = lvl.rows;
@@ -3826,26 +3902,35 @@ function renderLevelsOverview(): string {
 }
 
 function renderEditorBar(): string {
-  const forms = listFormations();
+  const era = editorUnitCategory;
+  const forms = listFormationsInPeriod(era);
   const grid = currentGrid();
-
-  const stockDefault = !defaultFormationId;
-  const formList = `<ul class="editor-levels editor-formations">
-    <li class="${editorFormationId === STOCK_FORMATION_ID ? 'active' : ''}">
+  const eraDefault =
+    defaultFormationId && forms.some((f) => f.id === defaultFormationId)
+      ? defaultFormationId
+      : null;
+  const stockDefault = era === 'modern' && !eraDefault;
+  const stockRow =
+    era === 'modern'
+      ? `<li class="${editorFormationId === STOCK_FORMATION_ID ? 'active' : ''}">
       <button type="button" data-load-form="${STOCK_FORMATION_ID}">Standard <span class="lvl-meta">${grid.cols} wide${stockDefault ? ' · default' : ''}</span></button>
-    </li>
-    ${forms
-      .map(
-        (f) => `<li class="${f.id === editorFormationId ? 'active' : ''}">
-          <button type="button" data-load-form="${f.id}">${escapeHtml(f.name)} <span class="lvl-meta">${f.slots.length} pcs · ${f.cols} wide${f.id === defaultFormationId ? ' · default' : ''}</span></button>
+    </li>`
+      : '';
+  const formRows = forms
+    .map(
+      (f) => `<li class="${f.id === editorFormationId ? 'active' : ''}">
+          <button type="button" data-load-form="${f.id}">${escapeHtml(f.name)} <span class="lvl-meta">${f.slots.length} pcs · ${f.cols} wide${f.id === eraDefault ? ' · default' : ''}</span></button>
           <button type="button" class="ghost danger" data-del-form="${f.id}" title="Delete">×</button>
         </li>`,
-      )
-      .join('')}
-  </ul>`;
+    )
+    .join('');
+  const formList =
+    stockRow || formRows
+      ? `<ul class="editor-levels editor-formations">${stockRow}${formRows}</ul>`
+      : `<p class="editor-empty">No ${UNIT_CATEGORY_LABEL[era]} armies.</p>`;
 
   const namedForm = editorFormationId && editorFormationId !== STOCK_FORMATION_ID;
-  const isDefaultForm = namedForm && editorFormationId === defaultFormationId;
+  const isDefaultForm = namedForm && editorFormationId === eraDefault;
   const armyHint = namedForm ? editorFormationName : 'Standard';
   const armyOnto = SIDE_LABEL[editorArmySide];
   const armyFlipped = editorArmySide !== 'red';
@@ -3867,7 +3952,7 @@ function renderEditorBar(): string {
               <button type="button" id="army-clear" class="ghost">Clear</button>
             </div>
             <div class="editor-library editor-army-library">
-              <span class="editor-label">Load onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''}</span>
+              <span class="editor-label">Load onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''} · ${UNIT_CATEGORY_LABEL[era]}</span>
               ${formList}
             </div>
           </div>
@@ -4220,7 +4305,7 @@ function renderUnitEditor(): string {
           <dd><strong>HP</strong> default 1</dd>
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets)</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
-          <dd><strong>Value/weight</strong> scoring / AI</dd>
+          <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
@@ -4248,16 +4333,10 @@ function renderUnitEditor(): string {
     </div>`;
 }
 
-function aiCheckCell(style: AiStyle, id: string, on: boolean, kind: 'rule' | 'cat' | 'all'): string {
-  const data =
-    kind === 'rule'
-      ? `data-ai-rule="${id}"`
-      : kind === 'cat'
-        ? `data-ai-cat="${id}"`
-        : 'data-ai-all';
+function aiCheckCell(style: AiStyle, id: string, on: boolean): string {
   return `<td class="ai-check-cell ${style}">
     <label class="ai-check-box">
-      <input type="checkbox" ${data} data-ai-style="${style}"${on ? ' checked' : ''} />
+      <input type="checkbox" data-ai-rule="${id}" data-ai-style="${style}"${on ? ' checked' : ''} />
       <span class="sr-only">${AI_STYLE_LABEL[style]}</span>
     </label>
   </td>`;
@@ -4268,10 +4347,6 @@ function renderAiChecklist(): string {
     (st) =>
       `<th class="ai-check-col ${st}" scope="col">
         <span class="ai-check-col-name">${AI_STYLE_LABEL[st]}${st === 'aggressive' ? '<span class="ai-check-default">default</span>' : ''}</span>
-        <label class="ai-check-box ai-check-master">
-          <input type="checkbox" data-ai-all data-ai-style="${st}"${styleAllOn(st) ? ' checked' : ''} />
-          <span class="sr-only">All ${AI_STYLE_LABEL[st]} rules</span>
-        </label>
       </th>`,
   ).join('');
   const groups = AI_RULE_CATEGORIES.map((cat) => {
@@ -4282,14 +4357,14 @@ function renderAiChecklist(): string {
             <span class="ai-rule-name">${escapeHtml(rule.label)}</span>
             <span class="ai-rule-blurb">${escapeHtml(rule.blurb)}</span>
           </th>
-          ${AI_STYLES.map((st) => aiCheckCell(st, rule.id, isAiRuleOn(st, rule.id), 'rule')).join('')}
+          ${AI_STYLES.map((st) => aiCheckCell(st, rule.id, isAiRuleOn(st, rule.id))).join('')}
         </tr>`,
       )
       .join('');
     return `<tbody>
       <tr class="ai-check-group">
         <th scope="colgroup">${AI_RULE_CATEGORY_LABEL[cat]}</th>
-        ${AI_STYLES.map((st) => aiCheckCell(st, cat, categoryAllOn(st, cat), 'cat')).join('')}
+        ${AI_STYLES.map((st) => `<td class="ai-check-cell ${st}"></td>`).join('')}
       </tr>
       ${rules}
     </tbody>`;
@@ -4320,25 +4395,12 @@ function renderAiChecklist(): string {
       </div>
       <details class="units-help">
         <summary>Help</summary>
-        <p class="muted">Category headers toggle every rule in that group for that column. Column headers toggle the whole personality. Unchecked rules are skipped — the AI falls through to whatever is still on. Per-army style is stored on the level.</p>
+        <p class="muted">Unchecked rules are skipped — the AI falls through to whatever is still on. Per-army style is stored on the level.</p>
       </details>
     </div>`;
 }
 
-function syncAiHeaderChecks() {
-  app.querySelectorAll<HTMLInputElement>('input[data-ai-all][data-ai-style]').forEach((el) => {
-    const st = el.dataset.aiStyle;
-    if (!isAiStyle(st)) return;
-    el.checked = styleAllOn(st);
-    el.indeterminate = !el.checked && styleAnyOn(st);
-  });
-  app.querySelectorAll<HTMLInputElement>('input[data-ai-cat][data-ai-style]').forEach((el) => {
-    const st = el.dataset.aiStyle;
-    const cat = el.dataset.aiCat;
-    if (!isAiStyle(st) || !isAiRuleCategory(cat)) return;
-    el.checked = categoryAllOn(st, cat);
-    el.indeterminate = !el.checked && categoryAnyOn(st, cat);
-  });
+function syncAiStatus() {
   const status = app.querySelector('#ai-status');
   if (status) {
     status.textContent = aiChecklistAreStock()
@@ -4347,44 +4409,14 @@ function syncAiHeaderChecks() {
   }
 }
 
-function isAiRuleCategory(v: unknown): v is AiRuleCategory {
-  return AI_RULE_CATEGORIES.includes(v as AiRuleCategory);
-}
-
 function bindAiChecklistEvents() {
-  const refresh = () => {
-    app.querySelectorAll<HTMLInputElement>('input[data-ai-rule][data-ai-style]').forEach((el) => {
-      const st = el.dataset.aiStyle;
-      const id = el.dataset.aiRule;
-      if (!isAiStyle(st) || !isAiRuleId(id)) return;
-      el.checked = isAiRuleOn(st, id);
-    });
-    syncAiHeaderChecks();
-  };
   app.querySelectorAll<HTMLInputElement>('input[data-ai-rule]').forEach((el) => {
     el.addEventListener('change', () => {
       const st = el.dataset.aiStyle;
       const id = el.dataset.aiRule;
       if (!isAiStyle(st) || !isAiRuleId(id)) return;
       setAiRule(st, id, el.checked);
-      syncAiHeaderChecks();
-    });
-  });
-  app.querySelectorAll<HTMLInputElement>('input[data-ai-cat]').forEach((el) => {
-    el.addEventListener('change', () => {
-      const st = el.dataset.aiStyle;
-      const cat = el.dataset.aiCat;
-      if (!isAiStyle(st) || !isAiRuleCategory(cat)) return;
-      setAiCategory(st, cat, el.checked);
-      refresh();
-    });
-  });
-  app.querySelectorAll<HTMLInputElement>('input[data-ai-all]').forEach((el) => {
-    el.addEventListener('change', () => {
-      const st = el.dataset.aiStyle;
-      if (!isAiStyle(st)) return;
-      setAiStyleColumn(st, el.checked);
-      refresh();
+      syncAiStatus();
     });
   });
   app.querySelector('#ai-reset')?.addEventListener('click', () => {
@@ -4394,7 +4426,7 @@ function bindAiChecklistEvents() {
     resetAiChecklist();
     render();
   });
-  syncAiHeaderChecks();
+  syncAiStatus();
 }
 
 function bindUnitEditorEvents() {
@@ -4693,7 +4725,13 @@ function bindEditorEvents() {
       asNew || !editorFormationId || editorFormationId === STOCK_FORMATION_ID
         ? null
         : editorFormationId;
-    const saved = saveFormation(editorFormationName, slots, cols, existing);
+    const saved = saveFormation(
+      editorFormationName,
+      slots,
+      cols,
+      existing,
+      editorUnitCategory,
+    );
     editorFormationId = saved.id;
     editorFormationName = saved.name;
     if (asDefault) {

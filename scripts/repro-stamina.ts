@@ -1,4 +1,5 @@
 import {
+  allLegalActions,
   applyAction,
   getPiece,
   hasActed,
@@ -126,6 +127,43 @@ function assert(cond: unknown, msg: string): void {
   s = applyAction(s, { kind: 'move', pieceId: id, to: step!.hex });
   const afterMove = restPiece(s, id);
   assert(afterMove === s, 'rest is illegal after a move');
+}
+
+{
+  const { s, id } = make(3, 'soldier');
+  const from = { col: 3, row: 2 };
+  const high = neighborInDir(from, 0, 'pointy');
+  const two = neighborInDir(neighborInDir(from, 1, 'pointy'), 1, 'pointy');
+  const p = getPiece(s, id)!;
+  p.stamina = 0;
+  const hl = legalHighlights(s, id);
+  assert(
+    !hl.some(
+      (h) =>
+        (h.kind === 'move' || h.kind === 'stamina') &&
+        h.hex.col === high.col &&
+        h.hex.row === high.row,
+    ),
+    'cannot climb with empty stamina',
+  );
+  assert(
+    hl.some((h) => h.kind === 'rest' && h.hex.col === high.col && h.hex.row === high.row),
+    'hill that needs stamina is marked need-rest',
+  );
+  assert(
+    hl.some((h) => h.kind === 'rest' && h.hex.col === two.col && h.hex.row === two.row),
+    'extra-move hex is marked need-rest',
+  );
+  assert(
+    !allLegalActions(s).some(
+      (a) =>
+        a.kind === 'move' &&
+        a.pieceId === id &&
+        a.to.col === high.col &&
+        a.to.row === high.row,
+    ),
+    'need-rest hex is not a legal move',
+  );
 }
 
 console.log('stamina regen ok');

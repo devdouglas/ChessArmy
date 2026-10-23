@@ -1,4 +1,4 @@
-import { isKnownUnit, sanitizeUnitTokens, type Side, type UnitType } from './engine';
+import { isKnownUnit, sanitizeUnitTokens, UNIT_STATS, type Side, type UnitType } from './engine';
 import {
   COLS,
   ROWS,
@@ -9,6 +9,7 @@ import {
   type ArmyStamp,
 } from './map';
 import { notifyPersist } from './persist-hook';
+import { PERIODS, sanitizePeriod, type Period } from './period';
 
 const STORAGE_KEY = 'chessarmy-formations-v1';
 const DELETED_KEY = 'chessarmy-formations-deleted-v1';
@@ -21,8 +22,33 @@ export type SavedFormation = {
   name: string;
   cols: number;
   slots: ArmySlot[];
+  /** Missing on old saves → inferred from unit categories, else modern. */
+  period: Period;
   updatedAt: number;
 };
+
+function inferPeriod(slots: ArmySlot[]): Period {
+  const counts: Record<Period, number> = {
+    ancient: 0,
+    modern: 0,
+    futuristic: 0,
+  };
+  for (const s of slots) {
+    const cat = UNIT_STATS[s.type]?.category;
+    if (cat === 'ancient' || cat === 'modern' || cat === 'futuristic') {
+      counts[cat] += 1;
+    }
+  }
+  let best: Period = 'modern';
+  let n = 0;
+  for (const p of PERIODS) {
+    if (counts[p] > n) {
+      n = counts[p];
+      best = p;
+    }
+  }
+  return n > 0 ? best : 'modern';
+}
 
 function uid(): string {
   return `frm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -52,11 +78,18 @@ function sanitizeSlot(raw: unknown): ArmySlot | null {
 function normalize(list: SavedFormation[]): SavedFormation[] {
   return list
     .filter((f) => f && f.id && f.id !== STOCK_FORMATION_ID && f.name && Array.isArray(f.slots))
-    .map((f) => ({
-      ...f,
-      cols: Math.max(1, Math.min(32, Math.floor(f.cols) || COLS)),
-      slots: f.slots.map(sanitizeSlot).filter((s): s is ArmySlot => !!s).slice(0, 48),
-    }))
+    .map((f) => {
+      const slots = f.slots.map(sanitizeSlot).filter((s): s is ArmySlot => !!s).slice(0, 48);
+      return {
+        ...f,
+        cols: Math.max(1, Math.min(32, Math.floor(f.cols) || COLS)),
+        slots,
+        period:
+          f.period === 'ancient' || f.period === 'modern' || f.period === 'futuristic'
+            ? f.period
+            : inferPeriod(slots),
+      };
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -119,6 +152,11 @@ export function listFormations(): SavedFormation[] {
   }
 }
 
+export function listFormationsInPeriod(period: Period): SavedFormation[] {
+  const p = sanitizePeriod(period);
+  return listFormations().filter((f) => f.period === p);
+}
+
 export function replaceFormations(list: SavedFormation[]): void {
   write(normalize(list));
 }
@@ -134,6 +172,7 @@ export function stockFormation(cols: number, rows: number): SavedFormation {
     name: 'Standard',
     cols,
     slots: stockSlots(cols, rows),
+    period: 'modern',
     updatedAt: 0,
   };
 }
@@ -143,12 +182,14 @@ export function saveFormation(
   slots: ArmySlot[],
   cols: number,
   existingId?: string | null,
+  period?: Period,
 ): SavedFormation {
   const list = listFormations();
   const trimmed = name.trim() || 'Untitled army';
   const now = Date.now();
   const cleanSlots = slots.map(sanitizeSlot).filter((s): s is ArmySlot => !!s).slice(0, 48);
   const width = Math.max(1, Math.min(32, Math.floor(cols) || COLS));
+  const era = period ? sanitizePeriod(period) : inferPeriod(cleanSlots);
   if (existingId && existingId !== STOCK_FORMATION_ID) {
     const idx = list.findIndex((f) => f.id === existingId);
     if (idx >= 0) {
@@ -157,6 +198,7 @@ export function saveFormation(
         name: trimmed,
         cols: width,
         slots: cleanSlots,
+        period: era,
         updatedAt: now,
       };
       list[idx] = updated;
@@ -170,6 +212,7 @@ export function saveFormation(
     name: trimmed,
     cols: width,
     slots: cleanSlots,
+    period: era,
     updatedAt: now,
   };
   list.unshift(created);
@@ -218,10 +261,15 @@ export function stampFormation(
   return placeSlots(form.slots, side, cols, rows, form.cols);
 }
 
-export function defaultArmyStamps(cols: number, rows: number): ArmyStamp[] | null {
+export function defaultArmyStamps(
+  cols: number,
+  rows: number,
+  period?: Period,
+): ArmyStamp[] | null {
   const id = getDefaultFormationId();
   const saved = id ? getFormation(id) : null;
   if (!saved) return null;
+  if (period && saved.period !== sanitizePeriod(period)) return null;
   return [
     ...stampFormation(saved, 'red', cols, rows),
     ...stampFormation(saved, 'blue', cols, rows),

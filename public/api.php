@@ -324,6 +324,14 @@ function sanitize_ai_checklist(mixed $raw): ?array {
             }
             $clean[$id] = (bool) $on;
         }
+        if (!array_key_exists('shoot-first', $clean) && array_key_exists('prefer-attacks', $clean)) {
+            $clean['shoot-first'] = $clean['prefer-attacks'];
+        }
+        unset($clean['prefer-attacks']);
+        if (!array_key_exists('strongest-first', $clean) && array_key_exists('prefer-general-kills', $clean)) {
+            $clean['strongest-first'] = $clean['prefer-general-kills'];
+        }
+        unset($clean['prefer-general-kills']);
         $out[$style] = $clean;
     }
     return $out;
@@ -382,13 +390,18 @@ function sanitize_formation(mixed $form): ?array {
     $updated = isset($form['updatedAt']) && is_numeric($form['updatedAt'])
         ? (int) $form['updatedAt']
         : time() * 1000;
-    return [
+    $out = [
         'id' => $id,
         'name' => $name,
         'cols' => $cols,
         'slots' => $slots,
         'updatedAt' => $updated,
     ];
+    $period = $form['period'] ?? '';
+    if ($period === 'ancient' || $period === 'modern' || $period === 'futuristic') {
+        $out['period'] = $period;
+    }
+    return $out;
 }
 
 function sanitize_star_rule(mixed $raw, array $fallback): array {

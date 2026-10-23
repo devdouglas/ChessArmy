@@ -75,7 +75,7 @@
     "maxTurns": 16,
     "startText": "Here is a horse. Give it a name. Its yours till you die. It can charge through enemies. Enjoy!",
     "winText": "Good job. There is general material in you.",
-    "loseText": "Time is up! \nTry to run through multiple units as once.(with stamina you can go through 3!). \nYou can not move backwards but you can turn while staying on the same spot.",
+    "loseText": "Time is up! \nTry to run through multiple units as once.(with stamina you can go through 3!). \nYou can not move backwards but you can rotate while staying on the same spot.",
     "star2": {
         "metric": "turns",
         "op": "lte",

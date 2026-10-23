@@ -1,0 +1,225 @@
+{
+    "id": "lvl-mvks8hhs-d4o6z",
+    "name": "Your first battle",
+    "cols": 9,
+    "rows": 10,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "campaign",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "startText": "Time to show your general skills",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [],
+    "sort": 0,
+    "updatedAt": 1792753272683,
+    "armies": [
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "hoplite",
+            "col": 2,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "hoplite",
+            "col": 4,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "hoplite",
+            "col": 6,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 3,
+            "row": 1,
+            "side": "blue",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 4,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 3,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 4,
+            "row": 9,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        }
+    ]
+}

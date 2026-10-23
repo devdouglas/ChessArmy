@@ -153,7 +153,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "startText": "",
+    "startText": "Hold your ground. Peasants are looking for payback",
     "winText": "",
     "loseText": "",
     "star2": {
@@ -180,7 +180,7 @@
     },
     "tokens": [],
     "sort": 0,
-    "updatedAt": 1792657087141,
+    "updatedAt": 1792753966788,
     "armies": [
         {
             "type": "cohort",
@@ -190,20 +190,8 @@
         },
         {
             "type": "cohort",
-            "col": 5,
-            "row": 9,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
             "col": 7,
             "row": 9,
-            "side": "red"
-        },
-        {
-            "type": "u-mvf8vjffgpkd",
-            "col": 6,
-            "row": 10,
             "side": "red"
         },
         {
@@ -361,6 +349,21 @@
             "col": 10,
             "row": 2,
             "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 10,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         }
     ]
 }

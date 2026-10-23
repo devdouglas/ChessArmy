@@ -40,84 +40,151 @@
                 "fromBack": 0
             }
         ],
-        "updatedAt": 1792322014700
+        "updatedAt": 1792322014700,
+        "period": "modern"
     },
     {
         "id": "frm-mvdhx8st-xjpm1",
-        "name": "Standard",
+        "name": "Roman army",
         "cols": 11,
         "slots": [
             {
-                "type": "sniper",
-                "col": 1,
-                "fromBack": 0
-            },
-            {
-                "type": "scout",
+                "type": "archer",
                 "col": 2,
                 "fromBack": 0
             },
             {
-                "type": "bazooka",
-                "col": 3,
-                "fromBack": 0
-            },
-            {
-                "type": "tank",
-                "col": 4,
-                "fromBack": 0
-            },
-            {
-                "type": "soldier",
-                "col": 1,
-                "fromBack": 1
-            },
-            {
-                "type": "soldier",
-                "col": 2,
-                "fromBack": 1
-            },
-            {
-                "type": "soldier",
-                "col": 3,
-                "fromBack": 1
-            },
-            {
-                "type": "soldier",
+                "type": "archer",
                 "col": 7,
-                "fromBack": 1
+                "fromBack": 0
             },
             {
-                "type": "soldier",
+                "type": "javelin",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
                 "col": 8,
-                "fromBack": 1
+                "fromBack": 0
             },
             {
-                "type": "general",
+                "type": "u-mvf8ty84rdk3",
                 "col": 5,
-                "fromBack": 1
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
             },
             {
-                "type": "soldier",
-                "col": 9,
-                "fromBack": 1
+                "type": "u-mvf8ty84rdk3",
+                "col": 1,
+                "fromBack": 0
             },
             {
-                "type": "sniper",
+                "type": "u-mvf8ty84rdk3",
                 "col": 9,
                 "fromBack": 0
             },
             {
-                "type": "scout",
-                "col": 8,
-                "fromBack": 0
+                "type": "cohort",
+                "col": 2,
+                "fromBack": 1
             },
             {
-                "type": "bazooka",
+                "type": "cohort",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "cohort",
+                "col": 6,
+                "fromBack": 1
+            },
+            {
+                "type": "cohort",
                 "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "catapult",
+                "col": 6,
                 "fromBack": 0
             }
         ],
-        "updatedAt": 1792308027341
+        "updatedAt": 1792754602060,
+        "period": "ancient"
+    },
+    {
+        "id": "frm-mvkw0rvg-nz059",
+        "name": "Greek army",
+        "cols": 11,
+        "slots": [
+            {
+                "type": "archer",
+                "col": 2,
+                "fromBack": 0
+            },
+            {
+                "type": "archer",
+                "col": 7,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 3,
+                "fromBack": 0
+            },
+            {
+                "type": "javelin",
+                "col": 8,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 5,
+                "fromBack": 0,
+                "unitTokens": [
+                    "general"
+                ]
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 1,
+                "fromBack": 0
+            },
+            {
+                "type": "u-mvf8ty84rdk3",
+                "col": 9,
+                "fromBack": 0
+            },
+            {
+                "type": "cohort",
+                "col": 2,
+                "fromBack": 1
+            },
+            {
+                "type": "cohort",
+                "col": 3,
+                "fromBack": 1
+            },
+            {
+                "type": "cohort",
+                "col": 6,
+                "fromBack": 1
+            },
+            {
+                "type": "cohort",
+                "col": 7,
+                "fromBack": 1
+            },
+            {
+                "type": "catapult",
+                "col": 6,
+                "fromBack": 0
+            }
+        ],
+        "updatedAt": 1792754969884,
+        "period": "ancient"
     }
 ]

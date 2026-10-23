@@ -390,6 +390,9 @@ export type Piece = {
   type: UnitType;
   col: number;
   row: number;
+  /** Kickoff hex. AI return-to-start. Missing → current hex. */
+  startCol?: number;
+  startRow?: number;
   /** Turns of shoot cooldown remaining (can't shoot while > 0). */
   shootCooldown?: number;
   /** Fired this turn — cooldown won't tick until the following end-turn. */
@@ -475,6 +478,8 @@ export type Highlight =
   | { kind: 'move'; hex: Hex; cost: number }
   /** Walk that spends 1 stamina (climb, or the extra straight-line action). */
   | { kind: 'stamina'; hex: Hex; cost: number }
+  /** Would be a stamina walk if the pool weren't empty — display only. */
+  | { kind: 'rest'; hex: Hex; cost: number }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
@@ -698,6 +703,11 @@ function ammoLog(piece: Piece, stats: UnitStats): string {
 
 export function hpMax(piece: Piece): number {
   return statsOf(piece.type).hp + (hasUnitToken(piece, 'general') ? 1 : 0);
+}
+
+/** Scoring / AI weight. General token +1. */
+export function combatValue(piece: Piece): number {
+  return statsOf(piece.type).value + (hasUnitToken(piece, 'general') ? 1 : 0);
 }
 
 export function hpLeft(piece: Piece): number {
@@ -2007,6 +2017,18 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     }
   }
 
+  if (staminaMax(piece) > 0 && staminaLeft(piece) <= 0) {
+    const fresh: Piece = {
+      ...piece,
+      stamina: Math.max(1, staminaMax(piece)),
+      staminaUsedThisTurn: false,
+    };
+    for (const [k, { dist }] of allMoveStops(state, fresh)) {
+      if (reach.has(k)) continue;
+      out.push({ kind: 'rest', hex: parseKey(k), cost: dist });
+    }
+  }
+
   // Shoot — show full LOS range; only enemy (or splash aim) is actionable
   if (
     stats.shoot <= 0 ||
@@ -2363,7 +2385,7 @@ export function allLegalActions(state: GameState): Action[] {
       } else if (h.kind === 'shoot') {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });
       }
-      // shoot-range is display-only
+      // shoot-range / rest are display-only
     }
     if (statsOf(p.type).hexArmor) {
       const cur = facingOf(p);

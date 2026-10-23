@@ -4,11 +4,13 @@
     "deletedLevels": {
         "lvl-mvibxmxv-u21c1": 1792739155119
     },
-    "deletedFormations": {},
+    "deletedFormations": {
+        "frm-mvkvt0lv-35xou": 1792754946498
+    },
     "aiChecklist": {
         "aggressive": {
-            "prefer-attacks": true,
-            "prefer-general-kills": true,
+            "shoot-first": false,
+            "strongest-first": true,
             "hunt-enemy-general": true,
             "guard-owned-flags": true,
             "value-scoring": true,
@@ -16,32 +18,32 @@
             "no-flee": true,
             "avoid-pikes": true,
             "avoid-notouch": true,
-            "prefer-high-ground": true,
+            "prefer-high-ground": false,
+            "return-to-start": true,
             "targets-defenses": true,
             "general-restraint": true,
             "never-capture-flags": true,
-            "hoplite-hold": true,
-            "hoplite-advance-on-hit": true,
+            "hold-position": true,
             "general-last": true,
             "avoid-skip": true,
             "break-palisades": true
         },
         "defensive": {
-            "prefer-attacks": true,
-            "prefer-general-kills": true,
-            "hunt-enemy-general": true,
+            "shoot-first": true,
+            "strongest-first": false,
+            "hunt-enemy-general": false,
             "guard-owned-flags": true,
             "value-scoring": true,
-            "close-on-hunt": true,
+            "close-on-hunt": false,
             "no-flee": true,
             "avoid-pikes": true,
             "avoid-notouch": true,
             "prefer-high-ground": true,
+            "return-to-start": true,
             "targets-defenses": true,
             "general-restraint": true,
             "never-capture-flags": true,
-            "hoplite-hold": true,
-            "hoplite-advance-on-hit": true,
+            "hold-position": true,
             "general-last": true,
             "avoid-skip": true,
             "break-palisades": true

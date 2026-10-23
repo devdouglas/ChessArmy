@@ -573,6 +573,15 @@ button.primary:focus-visible {
   padding: 0.55rem 0.75rem 0.55rem 0.45rem;
 }
 
+.map-pick-opt-random {
+  background: color-mix(in srgb, var(--panel) 84%, var(--sel) 16%);
+  border-color: color-mix(in srgb, var(--line) 62%, var(--sel) 38%);
+}
+
+.map-pick-opt-random:not(:last-child) {
+  margin-bottom: 0.85rem;
+}
+
 .map-pick-opt .level-thumb {
   width: 132px;
   height: 82px;
@@ -1253,7 +1262,6 @@ button.primary:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  margin-bottom: 0.35rem;
 }
 
 .ai-check-default {
@@ -2862,6 +2870,11 @@ svg.board .hex {
   animation: stamina-hex-in 0.12s ease-out;
 }
 
+.need-rest-mark {
+  pointer-events: none;
+  opacity: 0.82;
+}
+
 @keyframes stamina-hex-in {
   from {
     opacity: 0;
@@ -2882,6 +2895,10 @@ svg.board .hex {
 
 .hl-tint.stamina {
   fill: var(--stamina);
+}
+
+.hl-tint.rest {
+  fill: rgba(180, 140, 70, 0.16);
 }
 
 .hl-tint.shoot {
@@ -3796,6 +3813,9 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 }
 .legend .l-stamina::before {
   background: #dcaa32;
+}
+.legend .l-rest::before {
+  background: rgba(180, 140, 70, 0.55);
 }
 .legend .l-shoot::before,
 .legend .l-shoot-range::before {

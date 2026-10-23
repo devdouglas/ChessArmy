@@ -351,6 +351,8 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
       type: p.type,
       col: p.col,
       row: p.row,
+      startCol: p.col,
+      startRow: p.row,
       facing: defaultFacing(p.side),
       ...spawnExtras(p.type),
       unitTokens: tokens,
@@ -376,6 +378,8 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
       type: BACK[i],
       col,
       row: backRow,
+      startCol: col,
+      startRow: backRow,
       facing: defaultFacing(side),
       ...spawnExtras(BACK[i]),
     });
@@ -391,6 +395,8 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
       type: 'soldier',
       col,
       row: pawnRow,
+      startCol: col,
+      startRow: pawnRow,
       facing: defaultFacing(side),
       ...spawnExtras('soldier'),
     });
@@ -407,6 +413,8 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
         type: 'soldier',
         col: flankCol,
         row: pawnRow,
+        startCol: flankCol,
+        startRow: pawnRow,
         facing: defaultFacing(side),
         ...spawnExtras('soldier'),
       });

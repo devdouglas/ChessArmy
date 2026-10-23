@@ -2,8 +2,8 @@
  * AI picker. Every behaviour is a checklist rule (ai-config) on aggressive /
  * defensive. Default style is aggressive; stock checklist has every rule on,
  * which is this original ruleset:
- * If anyone can shoot or melee, they do.
- * Otherwise close on the enemy general (else nearest enemy). No fleeing.
+ * If anyone can shoot or melee, they do. Dual choice: shoot first (checklist).
+ * Otherwise Attack: close on the enemy general (else nearest enemy). Unchecked: other pathfinding. No fleeing.
  * Pikes: don't walk onto them unless that move attacks the enemy general.
  * Do-not-touch tokens: never walk that hex (invalid path).
  * Own general: never attacks the army except the enemy general, or a unit
@@ -11,14 +11,16 @@
  * Activate the general last — other pieces act first unless only the king can.
  * Flags: never capture. Guard owned flags like the king (close on them);
  * enemy / free flags mean nothing.
- * Hoplites: hold and rotate toward the nearest enemy. A ranged hit makes them
- * step forward and try to attack; then they go back to holding.
+ * Hold position: stay put and turn toward the nearest enemy. A ranged hit
+ * makes them move and try to attack the nearest unit; then they hold again.
  * Targets defenses: rocket or melee a wall/palisade on the path to the hunt.
+ * Not hunting: prefer high ground in 3, return to start hex.
  */
 
 import {
   allLegalActions,
   applyAction,
+  combatValue,
   facingOf,
   getPiece,
   hasAbility,
@@ -28,7 +30,6 @@ import {
   pathForMove,
   pieceAt,
   previewMove,
-  roleOf,
   sameTeam,
   splashBlast,
   splashHitsEnemy,
@@ -58,10 +59,6 @@ function rulesFor(state: GameState): RuleOn {
 
 function dist(state: GameState, a: Hex, b: Hex): number {
   return distance(a, b, state.orientation);
-}
-
-function isHoplite(piece: Piece): boolean {
-  return roleOf(piece.type) === 'hoplite';
 }
 
 function nearestEnemy(state: GameState, from: Hex, me: Side): Piece | null {
@@ -127,10 +124,9 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
       return { col: best.col, row: best.row };
     }
   }
-  if (on('hunt-enemy-general')) {
-    const gen = enemyGeneral(state, me, from);
-    if (gen) return { col: gen.col, row: gen.row };
-  }
+  if (!on('hunt-enemy-general')) return null;
+  const gen = enemyGeneral(state, me, from);
+  if (gen) return { col: gen.col, row: gen.row };
   let best: Hex | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
@@ -147,6 +143,35 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
 
 function inBoard(state: GameState, h: Hex): boolean {
   return h.col >= 0 && h.row >= 0 && h.col < state.cols && h.row < state.rows;
+}
+
+const HIGH_SEEK = 3;
+
+/** Highest walkable hex in 3 of `from` that this piece can occupy. */
+function highGroundSeek(state: GameState, piece: Piece, from: Hex): Hex | null {
+  const here = terrainHeight(terrainAt(state, from));
+  const maxClimb = UNIT_STATS[piece.type].climbLevel;
+  let best: Hex | null = null;
+  let bestH = here;
+  let bestD = Infinity;
+  for (let row = 0; row < state.rows; row++) {
+    for (let col = 0; col < state.cols; col++) {
+      const h = { col, row };
+      const d = dist(state, from, h);
+      if (d < 1 || d > HIGH_SEEK) continue;
+      if (isBlockedWalk(state, h) || isNoTouch(state, h)) continue;
+      const occ = pieceAt(state, h);
+      if (occ && occ.id !== piece.id) continue;
+      const ht = terrainHeight(terrainAt(state, h));
+      if (ht <= here || ht > maxClimb) continue;
+      if (ht > bestH || (ht === bestH && d < bestD)) {
+        bestH = ht;
+        bestD = d;
+        best = h;
+      }
+    }
+  }
+  return best;
 }
 
 /** Walk to hunt as if walls/palisades were open. Those hexes are the blocking defenses. */
@@ -313,10 +338,27 @@ function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
     }
     return out;
   }
+  if (action.kind === 'rotate') {
+    for (const t of hexDamagePushHits(state, piece, {
+      col: piece.col,
+      row: piece.row,
+      facing: action.dir,
+    })) {
+      add(t);
+    }
+    return out;
+  }
   if (action.kind !== 'move') return out;
   const plan = previewMove(state, piece, action.to);
   for (const h of plan.hits) add(getPiece(state, h.id));
   add(pieceAt(state, plan.stop));
+  for (const t of hexDamagePushHits(state, piece, {
+    col: plan.stop.col,
+    row: plan.stop.row,
+    facing: plan.facing,
+  })) {
+    add(t);
+  }
   return out;
 }
 
@@ -365,22 +407,15 @@ function moveTouchesNoTouch(state: GameState, action: Action): boolean {
   return false;
 }
 
-/** Unprovoked hoplite walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
-function isHopliteHoldWalk(state: GameState, action: Action, me: Side): boolean {
+/** Unprovoked hold walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
+function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
   if (action.kind !== 'move') return false;
   const piece = getPiece(state, action.pieceId);
-  if (!piece || !isHoplite(piece) || piece.rangedHit) return false;
+  if (!piece || piece.rangedHit) return false;
   const from: Hex = { col: piece.col, row: piece.row };
   const occ = pieceAt(state, action.to);
   if (occ && isHostile(state, occ.side, me) && dist(state, from, action.to) === 1) return false;
   return true;
-}
-
-function isHopliteForwardWalk(state: GameState, action: Action, piece: Piece): boolean {
-  if (action.kind !== 'move') return false;
-  const from: Hex = { col: piece.col, row: piece.row };
-  const front = neighborInDir(from, facingOf(piece), state.orientation);
-  return eq(action.to, front);
 }
 
 function moveCapturesFlag(state: GameState, action: Action, me: Side): boolean {
@@ -402,13 +437,11 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
   let score = 0;
   const removed = state.pieces.filter((p) => !after.pieces.some((q) => q.id === p.id));
   for (const k of removed) {
-    const v = UNIT_STATS[k.type].value * 24;
+    const v = combatValue(k) * 24;
     if (isHostile(state, k.side, me)) {
       score += v;
-      if (hasAbility(k, 'general')) score += 10_000;
     } else {
       score -= v * 0.5;
-      if (hasAbility(k, 'general')) score -= 10_000;
     }
   }
   for (const p of state.pieces) {
@@ -416,7 +449,7 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
     if (!q) continue;
     const dmg = hpLeft(p) - hpLeft(q);
     if (dmg <= 0) continue;
-    const v = UNIT_STATS[p.type].value * 10 * dmg;
+    const v = combatValue(p) * 10 * dmg;
     score += isHostile(state, p.side, me) ? v : -v * 0.5;
   }
   if (after.winner && sameTeam(after, after.winner, me)) score += 50_000;
@@ -434,11 +467,13 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
 
   if (action.kind === 'rest') {
-    score += isHoplite(piece) && !piece.rangedHit && on('hoplite-hold') ? 400 : 20;
+    score += on('hold-position') && !piece.rangedHit ? 400 : 20;
     return score;
   }
 
   const hunt = huntHex(state, from, me, on);
+  const foe =
+    on('hold-position') && piece.rangedHit ? nearestEnemy(state, from, me) : null;
   const blocking = hunt ? blockingDefenses(state, from, hunt) : [];
   const hitsBlocking = blocking.some((h) => actionHitsDefenseHex(state, action, h));
   if (on('targets-defenses') && hitsBlocking) {
@@ -447,18 +482,18 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     score -= 600;
   }
 
-  if (isAttackAction(state, action, me) && on('prefer-attacks')) {
+  if (isAttackAction(state, action, me)) {
     score += 4_000;
     if (action.kind === 'shoot') {
       const t = pieceAt(state, action.at);
-      if (t && isHostile(state, t.side, me)) score += UNIT_STATS[t.type].value * 22;
+      if (t && isHostile(state, t.side, me)) score += combatValue(t) * 22;
     }
     score += Math.random() * 0.3;
     return score;
   }
 
   if (action.kind === 'rotate') {
-    if (!isHoplite(piece) || piece.rangedHit || !on('hoplite-hold')) {
+    if (!on('hold-position') || piece.rangedHit) {
       score -= 600;
       return score;
     }
@@ -480,21 +515,11 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     }
   }
 
-  if (
-    on('hoplite-advance-on-hit') &&
-    isHoplite(piece) &&
-    piece.rangedHit &&
-    isHopliteForwardWalk(state, action, piece)
-  ) {
-    score += 800;
-  }
-
   const stop = palPlan.stop;
-  const foe = isHoplite(piece) ? nearestEnemy(state, from, me) : null;
   const closeHunt = foe ? { col: foe.col, row: foe.row } : hunt;
-  if (closeHunt && (on('close-on-hunt') || on('no-flee'))) {
+  if (closeHunt && (on('close-on-hunt') || on('no-flee') || foe)) {
     const closer = dist(state, from, closeHunt) - dist(state, stop, closeHunt);
-    if (on('close-on-hunt')) {
+    if (on('close-on-hunt') || foe) {
       score += closer * 80;
       if (closer > 0) score += 300;
     }
@@ -506,14 +531,38 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     const toH = terrainHeight(terrainAt(state, stop));
     if (toH > fromH) score += 40 * (toH - fromH);
     if (toH < fromH) score -= 20 * (fromH - toH);
+    if (!hunt && !foe) {
+      const high = highGroundSeek(state, piece, from);
+      if (high) {
+        const closer = dist(state, from, high) - dist(state, stop, high);
+        score += closer * 90;
+        if (closer > 0) score += 320;
+        if (eq(stop, high)) score += 80;
+      }
+    }
   }
 
-  if (on('value-scoring')) score += UNIT_STATS[piece.type].value * 0.05;
+  if (on('return-to-start') && !hunt && !foe) {
+    const home: Hex = {
+      col: piece.startCol ?? piece.col,
+      row: piece.startRow ?? piece.row,
+    };
+    if (eq(from, home)) {
+      if (!eq(stop, home)) score -= 400;
+    } else {
+      const closer = dist(state, from, home) - dist(state, stop, home);
+      score += closer * 90;
+      if (closer > 0) score += 320;
+      if (eq(stop, home)) score += 80;
+    }
+  }
+
+  if (on('value-scoring')) score += combatValue(piece) * 0.05;
   score += Math.random() * 0.3;
   return score;
 }
 
-function hopliteHoldAction(
+function holdAction(
   state: GameState,
   me: Side,
   pool: Action[],
@@ -523,7 +572,7 @@ function hopliteHoldAction(
   for (const a of pool) {
     if (a.kind === 'skip') continue;
     const p = getPiece(state, a.pieceId);
-    if (!p || !isHoplite(p) || p.rangedHit) continue;
+    if (!p || p.rangedHit) continue;
     ids.add(p.id);
   }
   const holds: Action[] = [];
@@ -555,7 +604,6 @@ function isMobileAction(state: GameState, action: Action): boolean {
   if (action.kind === 'skip') return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
-  if (!isHoplite(piece)) return true;
   return !!piece.rangedHit;
 }
 
@@ -564,6 +612,73 @@ function othersFirst(state: GameState, pool: Action[], on: RuleOn): Action[] {
   if (!on('general-last') || state.scoutPieceId || !pool.length) return pool;
   const rest = pool.filter((a) => !isOwnGeneralAction(state, a));
   return rest.length ? rest : pool;
+}
+
+/** Same piece can shoot and melee: keep shots if shoot-first, else melee. */
+function resolveShootMelee(
+  state: GameState,
+  attacks: Action[],
+  me: Side,
+  on: RuleOn,
+): Action[] {
+  const byPiece = new Map<string, Action[]>();
+  const other: Action[] = [];
+  for (const a of attacks) {
+    if (
+      (a.kind === 'shoot' || a.kind === 'move') &&
+      isAttackAction(state, a, me)
+    ) {
+      const list = byPiece.get(a.pieceId) ?? [];
+      list.push(a);
+      byPiece.set(a.pieceId, list);
+    } else {
+      other.push(a);
+    }
+  }
+  const shootFirst = on('shoot-first');
+  const out = [...other];
+  for (const list of byPiece.values()) {
+    const shots = list.filter((a) => a.kind === 'shoot');
+    const melees = list.filter((a) => a.kind === 'move');
+    if (shots.length && melees.length) {
+      out.push(...(shootFirst ? shots : melees));
+    } else {
+      out.push(...list);
+    }
+  }
+  return out.length ? out : attacks;
+}
+
+function attackFocus(state: GameState, action: Action, me: Side): { value: number; dist: number } {
+  if (action.kind === 'skip') return { value: -Infinity, dist: Infinity };
+  const piece = getPiece(state, action.pieceId);
+  const vs = victimsOf(state, action, me);
+  if (!piece || !vs.length) return { value: -Infinity, dist: Infinity };
+  const from: Hex = { col: piece.col, row: piece.row };
+  let value = -Infinity;
+  let d = Infinity;
+  for (const v of vs) {
+    value = Math.max(value, combatValue(v));
+    d = Math.min(d, dist(state, from, { col: v.col, row: v.row }));
+  }
+  return { value, dist: d };
+}
+
+/** Strongest first: highest-value victim. Unchecked: closest victim. */
+function preferTargets(
+  state: GameState,
+  attacks: Action[],
+  me: Side,
+  on: RuleOn,
+): Action[] {
+  if (attacks.length <= 1) return attacks;
+  const scored = attacks.map((a) => ({ a, ...attackFocus(state, a, me) }));
+  if (on('strongest-first')) {
+    const best = Math.max(...scored.map((s) => s.value));
+    return scored.filter((s) => s.value === best).map((s) => s.a);
+  }
+  const best = Math.min(...scored.map((s) => s.dist));
+  return scored.filter((s) => s.dist === best).map((s) => s.a);
 }
 
 function pickBest(actions: Action[], state: GameState, me: Side, on: RuleOn): Action {
@@ -612,34 +727,39 @@ export function pickAiAction(state: GameState): Action | null {
   });
   if (!actions.length) return null;
 
-  if (on('prefer-general-kills')) {
-    const generalHits = othersFirst(
-      state,
-      actions.filter((a) => attacksEnemyGeneral(state, a, me)),
-      on,
-    );
-    if (generalHits.length) return pickBest(generalHits, state, me, on);
-  }
-
   const pool = othersFirst(state, actions, on);
   const safe = pool.filter((a) => {
-    if (on('avoid-pikes') && isPikeWalk(state, a)) return false;
-    if (on('hoplite-hold') && isHopliteHoldWalk(state, a, me)) return false;
+    if (
+      on('avoid-pikes') &&
+      isPikeWalk(state, a) &&
+      !attacksEnemyGeneral(state, a, me)
+    ) {
+      return false;
+    }
+    if (on('hold-position') && isHoldWalk(state, a, me)) return false;
     return true;
   });
-  if (on('prefer-attacks')) {
-    const attacks = safe.filter((a) => isAttackAction(state, a, me));
-    if (attacks.length) return pickBest(attacks, state, me, on);
-  }
+  const attacks = preferTargets(
+    state,
+    resolveShootMelee(
+      state,
+      safe.filter((a) => isAttackAction(state, a, me)),
+      me,
+      on,
+    ),
+    me,
+    on,
+  );
+  if (attacks.length) return pickBest(attacks, state, me, on);
 
   const mobile = safe.filter((a) => {
-    if (on('hoplite-hold')) return isMobileAction(state, a);
+    if (on('hold-position')) return isMobileAction(state, a);
     return a.kind !== 'skip';
   });
   if (mobile.length) return pickBest(mobile, state, me, on);
 
-  if (on('hoplite-hold')) {
-    const hold = hopliteHoldAction(state, me, pool, on);
+  if (on('hold-position')) {
+    const hold = holdAction(state, me, pool, on);
     if (hold) return hold;
   }
 

@@ -2,6 +2,7 @@ import { allLegalActions, type GameState } from '../src/engine';
 import { neighborInDir } from '../src/hex';
 import { UNIT_STATS } from '../src/roster';
 import { pickAiAction } from '../src/ai';
+import { resetAiChecklist, setAiRule } from '../src/ai-config';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
 function assert(cond: unknown, msg: string) {
@@ -50,6 +51,8 @@ try {
   UNIT_STATS.soldier.shoot = 0;
   UNIT_STATS.soldier.stamina = 0;
   UNIT_STATS.soldier.actions = 1;
+  resetAiChecklist();
+  setAiRule('aggressive', 'hold-position', false);
 
   {
     const s = board([
@@ -98,6 +101,7 @@ try {
   UNIT_STATS.soldier.shoot = saved.shoot;
   UNIT_STATS.soldier.stamina = saved.stamina;
   UNIT_STATS.soldier.actions = saved.actions;
+  resetAiChecklist();
 }
 
 console.log('repro-ai-pikes ok');

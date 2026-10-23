@@ -28,22 +28,22 @@ export const AI_RULE_CATEGORY_LABEL: Record<AiRuleCategory, string> = {
 
 export const AI_RULES = [
   {
-    id: 'prefer-attacks',
+    id: 'shoot-first',
     category: 'targeting',
-    label: 'Take any shot or melee',
-    blurb: 'If anyone can shoot or melee, they do.',
+    label: 'Shoot first',
+    blurb: 'If a unit can shoot or melee, it shoots. Unchecked: melee instead. Attacking when possible is always on.',
   },
   {
-    id: 'prefer-general-kills',
+    id: 'strongest-first',
     category: 'targeting',
-    label: 'Prioritize the enemy general',
-    blurb: 'Attacks that hit the enemy general go first.',
+    label: 'Strongest first',
+    blurb: 'Attack the highest-value enemy. Unchecked: the closest. General token +1 value.',
   },
   {
     id: 'hunt-enemy-general',
     category: 'targeting',
-    label: 'Hunt the enemy general',
-    blurb: 'Close on the enemy general, else the nearest enemy.',
+    label: 'Attack',
+    blurb: 'Close on the enemy general, else the nearest enemy. Unchecked: other pathfinding rules apply.',
   },
   {
     id: 'guard-owned-flags',
@@ -85,7 +85,13 @@ export const AI_RULES = [
     id: 'prefer-high-ground',
     category: 'pathfinding',
     label: 'Prefer high ground',
-    blurb: 'Climbing scores up; dropping scores down.',
+    blurb: 'When not hunting, move onto higher ground within 3 hexes. Climbing still scores up while hunting.',
+  },
+  {
+    id: 'return-to-start',
+    category: 'pathfinding',
+    label: 'Return to start position',
+    blurb: 'When not hunting, walk back to the hex this unit spawned on.',
   },
   {
     id: 'targets-defenses',
@@ -106,16 +112,10 @@ export const AI_RULES = [
     blurb: 'Do not walk onto enemy or free flags, unless that move hits the enemy general.',
   },
   {
-    id: 'hoplite-hold',
+    id: 'hold-position',
     category: 'engagement',
-    label: 'Hoplites hold',
-    blurb: 'Unprovoked hoplites stay put and turn toward the nearest enemy.',
-  },
-  {
-    id: 'hoplite-advance-on-hit',
-    category: 'engagement',
-    label: 'Hoplites advance after a ranged hit',
-    blurb: 'A ranged hit makes them step forward and try to attack, then hold again.',
+    label: 'Hold position',
+    blurb: 'Stay put and turn toward the nearest enemy. A ranged hit makes them move and try to attack the nearest unit.',
   },
   {
     id: 'general-last',
@@ -173,6 +173,25 @@ export function sanitizeAiChecklist(raw: unknown): AiChecklist {
     ) {
       out[style]['targets-defenses'] = map['no-waste-shots'];
     }
+    if (
+      typeof map['shoot-first'] !== 'boolean' &&
+      typeof map['prefer-attacks'] === 'boolean'
+    ) {
+      out[style]['shoot-first'] = map['prefer-attacks'];
+    }
+    if (
+      typeof map['strongest-first'] !== 'boolean' &&
+      typeof map['prefer-general-kills'] === 'boolean'
+    ) {
+      out[style]['strongest-first'] = map['prefer-general-kills'];
+    }
+    if (typeof map['hold-position'] !== 'boolean') {
+      if (typeof map['hoplite-hold'] === 'boolean') {
+        out[style]['hold-position'] = map['hoplite-hold'];
+      } else if (typeof map['hoplite-advance-on-hit'] === 'boolean') {
+        out[style]['hold-position'] = map['hoplite-advance-on-hit'];
+      }
+    }
   }
   return out;
 }
@@ -199,44 +218,8 @@ export function setAiRule(style: AiStyle, id: AiRuleId, on: boolean): void {
   persistAiChecklist();
 }
 
-export function setAiCategory(
-  style: AiStyle,
-  category: AiRuleCategory,
-  on: boolean,
-): void {
-  const col = { ...checklist[style] };
-  for (const rule of AI_RULES) {
-    if (rule.category === category) col[rule.id] = on;
-  }
-  checklist = { ...checklist, [style]: col };
-  persistAiChecklist();
-}
-
-export function setAiStyleColumn(style: AiStyle, on: boolean): void {
-  const col = { ...checklist[style] };
-  for (const id of RULE_IDS) col[id] = on;
-  checklist = { ...checklist, [style]: col };
-  persistAiChecklist();
-}
-
 export function categoryRules(category: AiRuleCategory): AiRule[] {
   return AI_RULES.filter((r) => r.category === category);
-}
-
-export function categoryAllOn(style: AiStyle, category: AiRuleCategory): boolean {
-  return categoryRules(category).every((r) => checklist[style][r.id]);
-}
-
-export function categoryAnyOn(style: AiStyle, category: AiRuleCategory): boolean {
-  return categoryRules(category).some((r) => checklist[style][r.id]);
-}
-
-export function styleAllOn(style: AiStyle): boolean {
-  return RULE_IDS.every((id) => checklist[style][id]);
-}
-
-export function styleAnyOn(style: AiStyle): boolean {
-  return RULE_IDS.some((id) => checklist[style][id]);
 }
 
 export function persistAiChecklist(): void {
