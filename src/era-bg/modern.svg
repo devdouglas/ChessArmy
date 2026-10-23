@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <circle cx="240" cy="80" r="220" fill="#8a9488" opacity="0.1"/>
+  <path fill="#c9a227" fill-opacity="0.08" d="M980 0l120 420-80 20Z"/>
+  <path fill="#c9a227" fill-opacity="0.06" d="M1180 0l40 380 70-10Z"/>
+  <g fill="#1a2018" fill-opacity="0.28">
+    <ellipse cx="360" cy="210" rx="100" ry="180"/>
+    <ellipse cx="480" cy="170" rx="80" ry="210"/>
+    <ellipse cx="900" cy="160" rx="120" ry="230"/>
+    <ellipse cx="1040" cy="130" rx="90" ry="250"/>
+    <ellipse cx="1260" cy="180" rx="110" ry="200"/>
+  </g>
+  <circle cx="1088" cy="268" r="36" fill="#c44" opacity="0.18"/>
+  <circle cx="1088" cy="268" r="14" fill="#e0c070" opacity="0.28"/>
+  <path fill="#1c241c" fill-opacity="0.55" d="M0 430c140-24 200-100 320-70 90 22 110 90 210 70 100-22 140-120 260-88 90 24 80 96 190 78 120-20 150-110 280-72 90 26 90 78 220 62 80-10 90-70 320-40v530H0Z"/>
+  <g fill="#0e120e" fill-opacity="0.7">
+    <path d="M980 430h54v70h-54Z"/>
+    <path d="M1034 390h28l18 40v70h-46Z"/>
+    <path d="M1080 360l22-40 18 40v150h-70l8-80 22-70Z"/>
+    <path d="M1148 420h80v40l-16 110h-80l10-70Z"/>
+    <path d="M1240 400h36v160h-50l4-90 10-70Z"/>
+    <path d="M1290 450h120l-20 130h-120Z"/>
+    <path d="M1420 380h40l12 50v150h-64l6-90Z"/>
+    <path d="M1480 430h90v40l-24 110h-80Z"/>
+  </g>
+  <g fill="#121612" fill-opacity="0.82">
+    <path d="M70 640h150l12-28H190l8-22H86Z"/>
+    <rect x="118" y="612" width="54" height="28"/>
+    <rect x="156" y="604" width="70" height="8"/>
+    <path d="M430 652h170l10-24H560l6-18H448Z"/>
+    <rect x="488" y="624" width="58" height="28"/>
+    <rect x="530" y="616" width="86" height="8"/>
+    <path d="M860 636h140l12-26H972l8-20H878Z"/>
+    <rect x="908" y="608" width="50" height="28"/>
+    <rect x="944" y="600" width="78" height="8"/>
+  </g>
+  <path fill="none" stroke="#3a453c" stroke-opacity="0.55" stroke-width="5" d="M0 700c70-40 120 30 190-8 80-44 130 36 210-6 90-48 140 40 230-4 100-50 160 38 250-8 110-52 170 42 280-2 90-40 140 28 440 8"/>
+  <path fill="none" stroke="#6a7468" stroke-opacity="0.3" stroke-width="2" stroke-dasharray="7 9" d="M0 718c90-16 160 20 250 2 120-24 190 22 300-2 140-30 220 26 360 0 160-28 240 18 690 8"/>
+  <path fill="#0a0c0a" fill-opacity="0.8" d="M0 760c180-20 300 18 500-6 240-28 380 24 620 2 200-18 300 16 480 4V900H0Z"/>
+  <g fill="none" stroke="#8a9488" stroke-opacity="0.22" stroke-width="1.4">
+    <path d="M80 780c20-18 40-18 60 0s40 18 60 0 40-18 60 0"/>
+    <path d="M520 788c20-16 40-16 60 0s40 16 60 0 40-16 60 0"/>
+    <path d="M1100 784c20-16 40-16 60 0s40 16 60 0 40-16 60 0"/>
+  </g>
+</svg>

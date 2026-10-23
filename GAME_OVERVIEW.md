@@ -17,8 +17,9 @@ Home screen, filtered by era (**Ancient** / **Modern** / **Futuristic**). Modern
 | **Historical Battle** | Historical maps in editor order, vs AI, no lock. |
 | **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. |
 | **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. |
-| **Hotseat** | Two players, one device. Same map list + randomised option. No AI — every army is human. Page background tints to the active colour on each turn switch. |
-| **Level editor** | Levels, units, AI checklist. |
+| **Editor** | Levels, units, AI checklist. |
+
+**Start hotseat** (in-match, next to Restart level): same map, both sides human, no AI. Page background tints to the active colour on each turn switch.
 
 **Reset progress** clears tutorial + campaign wins (and their best stars).
 

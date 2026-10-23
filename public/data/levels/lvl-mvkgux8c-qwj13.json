@@ -90,7 +90,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "",
+    "teaserText": "Javelin throwing",
     "startText": "Welcome peasant. I see you have trained well. With your extra stamina you can swim further and run more. Here is a javelin. An easy weapon. just throw the pointy side to the enemy.",
     "winText": "Good job. In the next training you will learn to work with your sword and shield.",
     "loseText": "You almost drowned you idiot. Maybe get to higher ground to reach further.",
@@ -118,7 +118,7 @@
     },
     "tokens": [],
     "sort": 1,
-    "updatedAt": 1792743540442,
+    "updatedAt": 1792762460052,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

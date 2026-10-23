@@ -1715,20 +1715,19 @@ function endStarsHtml(): string {
     .join('')}</ul>`;
 }
 
+function bestStarsHtml(id: string, size = 14): string {
+  const best = bestStarsForLevel(id);
+  const glyphs = [1, 2, 3]
+    .map((n) => starGlyphSvg(n <= best ? 'on' : 'off', size))
+    .join('');
+  return `<span class="level-stars" aria-label="${best} of 3 stars">${glyphs}</span>`;
+}
+
 function endBestStarsHtml(): string {
   if (!activeLevelId) return '';
   const best = bestStarsForLevel(activeLevelId);
   if (best < 1) return '';
-  const glyphs = [1, 2, 3]
-    .map(
-      (n) =>
-        `<span class="end-star ${n <= best ? 'on' : 'off'}">${starGlyphSvg(
-          n <= best ? 'on' : 'off',
-          16,
-        )}</span>`,
-    )
-    .join('');
-  return `<p class="end-best">Best on this map <span class="end-best-stars" aria-label="${best} of 3">${glyphs}</span></p>`;
+  return `<p class="end-best">Best on this map ${bestStarsHtml(activeLevelId, 16)}</p>`;
 }
 
 function readEditorStar(n: 2 | 3): StarRule {
@@ -3508,14 +3507,17 @@ function renderMapPickOpt(l: SavedLevel, kind: MapPickKind, index: number, maps:
   const lock = locked
     ? `<svg class="map-pick-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7.2" width="9.6" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.1 7.2V5.1a2.9 2.9 0 0 1 5.8 0v2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`
     : '';
+  const stars = bestStarsForLevel(l.id);
+  const starBit = stars ? ` · ${stars} star${stars === 1 ? '' : 's'}` : '';
   return `<button type="button" class="start-opt map-pick-opt${locked ? ' locked' : ''}" data-pick-map="${l.id}"${
     locked ? ' disabled' : ''
-  } title="${locked ? `${name} — locked` : `Play ${name}`}" aria-label="${locked ? `${name} (locked)` : name}">
+  } title="${locked ? `${name} — locked` : `Play ${name}`}" aria-label="${locked ? `${name} (locked)` : `${name}${starBit}`}">
     ${renderLevelThumb(l)}
     <span class="map-pick-copy">
       <span class="start-opt-name">${lock}${name}</span>
       ${levelTeaserHtml(l)}
       <span class="start-opt-meta">${mapPickMetaLine(l, kind, index, maps)}</span>
+      ${bestStarsHtml(l.id)}
     </span>
   </button>`;
 }
@@ -3655,17 +3657,11 @@ function renderStartScreen(): string {
             <span class="start-opt-name">Randomised Battle</span>
             <span class="start-opt-meta">Generated map · vs AI</span>
           </button>
-          <button type="button" class="start-opt" data-start="hotseat"
-            title="Pick a skirmish map, two players on one device">
-            <span class="start-opt-name">Hotseat</span>
-            <span class="start-opt-meta">Two players, one device</span>
-          </button>
-          <button type="button" class="start-opt" data-start="editor">
-            <span class="start-opt-name">Level editor</span>
-            <span class="start-opt-meta">Levels, units, and AI</span>
-          </button>
         </div>
-        <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
+        <div class="start-tools">
+          <button type="button" class="start-reset" data-start="editor">Editor</button>
+          <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
+        </div>
       </div>
       ${renderRandomSetupOverlay()}
     </div>`;
@@ -3695,7 +3691,6 @@ function bindToolbarEvents() {
       else if (kind === 'tutorial') showMapPick('tutorial');
       else if (kind === 'ai') showMapPick('ai');
       else if (kind === 'random') openRandomSetup('ai');
-      else if (kind === 'hotseat') showMapPick('hotseat');
       else if (kind === 'editor') enterLevels(true);
     });
   });
@@ -4094,7 +4089,10 @@ function renderLevelRow(l: SavedLevel): string {
       <span class="level-name">${escapeHtml(levelLabel(l))}</span>
       ${levelTeaserHtml(l)}
       ${renderLevelThumb(l)}
-      <span class="lvl-meta">${levelMetaLine(l)}</span>
+      <span class="level-details">
+        <span class="lvl-meta">${levelMetaLine(l)}</span>
+        ${bestStarsHtml(l.id)}
+      </span>
     </button>
     <button type="button" class="level-play" data-play-level="${l.id}" title="Play ${escapeHtml(levelLabel(l))}">
       <svg viewBox="0 0 12 12" width="14" height="14" aria-hidden="true"><path d="M2.2 1.1v9.8L11 6Z" fill="currentColor"/></svg>
@@ -5201,6 +5199,11 @@ function bindEvents() {
     if (activeLevelId) startMatch(false);
     else reset(true);
   });
+  app.querySelector('#start-hotseat')?.addEventListener('click', () => {
+    mode = 'hotseat';
+    playlist = null;
+    startMatch(false);
+  });
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
   app.querySelector('#end-next')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
@@ -5341,54 +5344,57 @@ function render() {
 
   const pl = playlist;
   const plLvl = playlistLevel();
-  const randomParams = pl
+  const hotseatBtn =
+    mode === 'hotseat'
+      ? ''
+      : `<button type="button" id="start-hotseat">Start hotseat</button>`;
+  const modeHint = matchHasEnemies(state)
+    ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
+      ? 'vs AI + allies'
+      : 'vs AI'
+    : participatingSides(state).filter((s) => isPlayerControlled(state, s))
+          .length > 1
+      ? 'Hotseat'
+      : mode === 'hotseat'
+        ? 'Hotseat'
+        : 'vs AI';
+  const levelSelect = pl
+    ? ''
+    : `<label>Level
+          <select id="level-select">${levelSelectOptions(activeLevelId)}</select>
+        </label>
+        <span class="map-hint">${modeHint}</span>`;
+  const mapParams = pl
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>
+        ${hotseatBtn}
         <button type="button" id="edit-this-level">Edit level</button>
         <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`
     : !activeLevelId
     ? `<div class="map-params">
+        ${levelSelect}
+        <button type="button" id="new-map">New map</button>
+        ${hotseatBtn}
+        <button type="button" id="edit-current-map">Edit this map</button>
         <label>Water <input type="number" id="map-water" min="0" max="${maxT}" value="${mapOpts.waterCount}" /></label>
         <label>Hill <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
         <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
         <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
-        <button type="button" id="new-map">New map</button>
-        <button type="button" id="edit-current-map">Edit this map</button>
         <span class="map-hint">mid belt · climb costs stamina · water 1 hex/action, turn-start stamina penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
+        ${levelSelect}
         <button type="button" id="new-map">Restart level</button>
+        ${hotseatBtn}
         <button type="button" id="edit-this-level">Edit level</button>
-        <span class="map-hint">Playing saved level</span>
-      </div>`;
-
-  const levelRow = pl
-    ? ''
-    : `<div class="map-params level-row">
-        <label>Level
-          <select id="level-select">${levelSelectOptions(activeLevelId)}</select>
-        </label>
-        <span class="map-hint">${
-          matchHasEnemies(state)
-            ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
-              ? 'vs AI + allies'
-              : 'vs AI'
-            : participatingSides(state).filter((s) => isPlayerControlled(state, s))
-                  .length > 1
-              ? 'Hotseat'
-              : mode === 'hotseat'
-                ? 'Hotseat'
-                : 'vs AI'
-        }</span>
       </div>`;
 
   app.innerHTML = `
     <div class="board-wrap ${gameOverClass()}">
       ${renderToolbar()}
-      ${levelRow}
-      ${randomParams}
+      ${mapParams}
       <div class="turn-banner">${turnLabel()}</div>
       ${starGoalsHtml()}
       <div class="board-stage">
