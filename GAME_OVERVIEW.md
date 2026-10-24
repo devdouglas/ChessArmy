@@ -81,6 +81,12 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets). Facing is a first-class action for these units.
 
+**Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Triggers when:
+- hit on a **−2 (red)** face and the opposite hex is an enemy, a wall/palisade, or **higher** ground
+- hit from the **front** and an enemy is standing on a **−2 (red / back)** hex
+
+Friendly units never pin.
+
 **Hex damage:** per-face 0–2. Each live face is facing pikes on the **adjacent** hex only: enemies take that damage when they **enter**. Standing there does not pulse again.
 
 **Pass through pieces** (scout / horse archer / some flyers): walk through units. **Infantry** can be overrun by kits that allow it (tank).
@@ -100,7 +106,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 | Mountain | 3 | climb if climb level allows | blocks |
 | Wall | 0 | no | blocks; splash can demolish |
 
-Editor paints the whole grid. Random maps scatter features on the **mid belt** (not the army ranks).
+Editor paints the whole grid. Click a placed unit to turn it one hex face (saved on the stamp). Random maps scatter features on the **mid belt** (not the army ranks).
 
 ---
 
@@ -110,8 +116,11 @@ Editor paints the whole grid. Random maps scatter features on the **mid belt** (
 |-------|--------|
 | **Pikes** | 1 damage to enemies that **enter** the hex. |
 | **Wall** | Impassable, blocks LOS, splash-breakable. |
+| **House** | Same as wall, house graphic. |
 | **Palisade** | Fence, **3 HP**. Melee/charge/splash chip it. Random maps use these instead of walls. |
+| **Tree** | Same as palisade, tree graphic. |
 | **Flag** | Capture by standing on it. All flags held = win. Seeded owner if a piece starts on it. |
+| **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
 **Unit token — General:** stamp on a piece so it counts as a command piece (star). All generals on a side must fall to lose by command.

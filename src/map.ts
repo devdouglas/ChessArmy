@@ -25,7 +25,7 @@ import {
   type UnitType,
   sanitizeUnitTokens,
 } from './engine';
-import { defaultFacing, neighbors, type HexOrientation } from './hex';
+import { defaultFacing, isHexDir, neighbors, type HexDir, type HexOrientation } from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
@@ -392,6 +392,8 @@ export type ArmySlot = {
   col: number;
   fromBack: number;
   unitTokens?: UnitTokenType[];
+  /** Cube facing as if this slot were Red. Missing → defaultFacing('red'). */
+  facing?: HexDir;
 };
 
 export type ArmyStamp = {
@@ -400,7 +402,23 @@ export type ArmyStamp = {
   row: number;
   side: Side;
   unitTokens?: UnitTokenType[];
+  /** Cube facing. Missing → defaultFacing(side). */
+  facing?: HexDir;
 };
+
+export function facingFromStamp(p: Pick<ArmyStamp, 'side' | 'facing'>): HexDir {
+  return isHexDir(p.facing) ? p.facing : defaultFacing(p.side);
+}
+
+/** Persist only when it differs from the side's default. */
+export function sanitizeStampFacing(side: Side, raw: unknown): HexDir | undefined {
+  if (!isHexDir(raw)) return undefined;
+  return raw === defaultFacing(side) ? undefined : raw;
+}
+
+function flipFacing(dir: HexDir): HexDir {
+  return ((dir + 3) % 6) as HexDir;
+}
 
 function stampTokens(raw: unknown): UnitTokenType[] | undefined {
   const tokens = sanitizeUnitTokens(raw);
@@ -415,12 +433,17 @@ export function slotsFromSide(
 ): ArmySlot[] {
   return pieces
     .filter((p) => p.side === side)
-    .map((p) => ({
-      type: p.type,
-      col: side === 'red' ? p.col : cols - 1 - p.col,
-      fromBack: side === 'red' ? rows - 1 - p.row : p.row,
-      unitTokens: stampTokens(p.unitTokens),
-    }))
+    .map((p) => {
+      const abs = facingFromStamp(p);
+      const asRed = side === 'red' ? abs : flipFacing(abs);
+      return {
+        type: p.type,
+        col: side === 'red' ? p.col : cols - 1 - p.col,
+        fromBack: side === 'red' ? rows - 1 - p.row : p.row,
+        unitTokens: stampTokens(p.unitTokens),
+        facing: sanitizeStampFacing('red', asRed),
+      };
+    })
     .filter((s) => s.col >= 0 && s.fromBack >= 0);
 }
 
@@ -441,7 +464,16 @@ export function placeSlots(
     const k = `${col},${row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ type: s.type, col, row, side, unitTokens: stampTokens(s.unitTokens) });
+    const asRed = facingFromStamp({ side: 'red', facing: s.facing });
+    const facing = side === 'red' ? asRed : flipFacing(asRed);
+    out.push({
+      type: s.type,
+      col,
+      row,
+      side,
+      unitTokens: stampTokens(s.unitTokens),
+      facing: sanitizeStampFacing(side, facing),
+    });
   }
   return out;
 }
@@ -462,7 +494,7 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
       row: p.row,
       startCol: p.col,
       startRow: p.row,
-      facing: defaultFacing(p.side),
+      facing: facingFromStamp(p),
       ...spawnExtras(p.type),
       unitTokens: tokens,
     };

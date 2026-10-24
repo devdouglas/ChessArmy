@@ -21,6 +21,7 @@ import {
   DEFAULT_ORIENTATION,
   cloneTerrain,
   emptyTerrain,
+  sanitizeStampFacing,
   type ArmyStamp,
 } from './map';
 import { notifyPersist } from './persist-hook';
@@ -231,6 +232,7 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
       row,
       side,
       unitTokens: unitTokens.length ? unitTokens : undefined,
+      facing: sanitizeStampFacing(side, (p as { facing?: unknown }).facing),
     });
     if (out.length >= 128) break;
   }

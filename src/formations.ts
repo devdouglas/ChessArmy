@@ -3,6 +3,7 @@ import {
   COLS,
   ROWS,
   placeSlots,
+  sanitizeStampFacing,
   slotsFromSide,
   stockSlots,
   type ArmySlot,
@@ -72,6 +73,7 @@ function sanitizeSlot(raw: unknown): ArmySlot | null {
     col,
     fromBack,
     unitTokens: unitTokens.length ? unitTokens : undefined,
+    facing: sanitizeStampFacing('red', s.facing),
   };
 }
 
@@ -289,7 +291,7 @@ export function formationCombatValue(slots: ArmySlot[]): number {
 export function slotsEqual(a: ArmySlot[], b: ArmySlot[]): boolean {
   if (a.length !== b.length) return false;
   const key = (s: ArmySlot) =>
-    `${s.type}:${s.col}:${s.fromBack}:${(s.unitTokens ?? []).join(',')}`;
+    `${s.type}:${s.col}:${s.fromBack}:${s.facing ?? ''}:${(s.unitTokens ?? []).join(',')}`;
   const left = a.map(key).sort();
   const right = b.map(key).sort();
   return left.every((k, i) => k === right[i]);

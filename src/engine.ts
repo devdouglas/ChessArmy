@@ -179,7 +179,16 @@ export function emptyHadKing(): Record<Side, boolean> {
 
 export type Terrain = 'land' | 'water' | 'rock' | 'wall' | 'high' | 'plateau';
 
-export const TOKEN_TYPES = ['pikes', 'wall', 'palisade', 'flag', 'notouch'] as const;
+export const TOKEN_TYPES = [
+  'pikes',
+  'wall',
+  'house',
+  'palisade',
+  'tree',
+  'flag',
+  'board',
+  'notouch',
+] as const;
 export type TokenType = (typeof TOKEN_TYPES)[number];
 export type TileToken = {
   type: TokenType;
@@ -190,15 +199,32 @@ export type TileToken = {
   hp?: number;
   /** AI will not walk this hex (standalone token, or painted onto another). */
   noTouch?: boolean;
+  /** Message board copy. */
+  text?: string;
+  /** A friendly has walked on this board — click to reread. Match-only, not saved. */
+  read?: boolean;
 };
 
 export const TOKEN_LABEL: Record<TokenType, string> = {
   pikes: 'Pikes',
   wall: 'Wall',
+  house: 'House',
   palisade: 'Palisade',
+  tree: 'Tree',
   flag: 'Flag',
+  board: 'Board',
   notouch: 'Do not touch',
 };
+export const BOARD_TEXT_MAX = 280;
+
+export function sanitizeBoardText(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .trim()
+    .slice(0, BOARD_TEXT_MAX);
+}
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
@@ -287,7 +313,11 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
     const tok: TileToken = { type: t.type, col, row };
     if (t.type === 'flag' && isSide(t.owner)) tok.owner = t.owner;
     if (t.noTouch === true) tok.noTouch = true;
-    if (t.type === 'palisade') {
+    if (t.type === 'board') {
+      const text = sanitizeBoardText(t.text);
+      if (text) tok.text = text;
+    }
+    if (isPalisadeToken(t.type)) {
       const hp = Math.floor(Number(t.hp));
       // Old cap was 2 and we always wrote hp:2 for fresh tokens → treat as full.
       if (Number.isFinite(hp) && hp === 1) tok.hp = 1;
@@ -322,12 +352,20 @@ export function isSolidTerrain(t: Terrain): boolean {
   return t === 'wall';
 }
 
-/** Wall token (or leftover wall terrain) — blocks walk / LOS; rockets demolish. */
+export function isWallToken(type: TokenType | undefined): boolean {
+  return type === 'wall' || type === 'house';
+}
+
+export function isPalisadeToken(type: TokenType | undefined): boolean {
+  return type === 'palisade' || type === 'tree';
+}
+
+/** Wall / house token (or leftover wall terrain) — blocks walk / LOS; rockets demolish. */
 export function isWall(
   state: { tokens: TileToken[]; terrain: Terrain[][] },
   h: Hex,
 ): boolean {
-  if (tokenAt(state.tokens, h)?.type === 'wall') return true;
+  if (isWallToken(tokenAt(state.tokens, h)?.type)) return true;
   return state.terrain[h.row]?.[h.col] === 'wall';
 }
 
@@ -335,7 +373,7 @@ export function isPalisade(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return tokenAt(state.tokens, h)?.type === 'palisade';
+  return isPalisadeToken(tokenAt(state.tokens, h)?.type);
 }
 
 export function tokenIsNoTouch(t: TileToken | undefined): boolean {
@@ -358,7 +396,7 @@ export function isBlockedWalk(
 }
 
 function palisadeHp(tok: TileToken | undefined): number {
-  if (!tok || tok.type !== 'palisade') return 0;
+  if (!tok || !isPalisadeToken(tok.type)) return 0;
   return tok.hp ?? PALISADE_HP;
 }
 
@@ -422,8 +460,9 @@ export type Piece = {
   unitTokens?: UnitTokenType[];
 };
 
-export type FxHit = { id: string; fatal: boolean; dealt: number };
+export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
 export type FxStamina = { id: string; kind: 'gain' | 'spend' };
+export type FxBoard = { col: number; row: number; text: string };
 
 export type GameState = {
   cols: number;
@@ -465,6 +504,8 @@ export type GameState = {
   fxHits?: FxHit[];
   /** Stamina grants (gold) / water-penalty spends (blue). Played at that side's turn start. */
   fxStamina?: FxStamina[];
+  /** Friendly walked a message board. UI pops this then clears. */
+  fxBoard?: FxBoard;
   pendingStaminaFx?: Partial<Record<Side, string[]>>;
 };
 
@@ -630,12 +671,17 @@ function applyHexDamagePush(state: GameState, attacker: Piece, prevCovered: Set<
     const before = hpLeft(victim);
     const dmg = applyDamage(state, victim, f.amount, 1, from, true, false);
     const dealt = before - dmg.remaining;
-    if (dealt <= 0) continue;
-    state.fxHits = [...(state.fxHits ?? []), { id: victim.id, fatal: dmg.fatal, dealt }];
+    if (dealt <= 0 && !dmg.routed) continue;
+    state.fxHits = [
+      ...(state.fxHits ?? []),
+      { id: victim.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
+    ];
     state.log.push(
-      dmg.fatal
-        ? `${unitLog(victim)} dies on facing pikes`
-        : `${unitLog(victim)} is caught by facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
+      dmg.routed
+        ? `${unitLog(victim)} routs on facing pikes`
+        : dmg.fatal
+          ? `${unitLog(victim)} dies on facing pikes`
+          : `${unitLog(victim)} is caught by facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
     );
   }
 }
@@ -772,20 +818,84 @@ function applyDamage(
   from?: Hex,
   ranged = false,
   markShot = ranged,
-): { fatal: boolean; remaining: number } {
-  const remaining = Math.max(
-    0,
-    hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
-  );
+): { fatal: boolean; remaining: number; routed: boolean } {
+  const routed = wouldRout(state, victim, from);
+  const remaining = routed
+    ? 0
+    : Math.max(
+        0,
+        hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
+      );
   victim.hp = remaining;
   if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
     const lost = state.casualties[victim.side] ?? 0;
     state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
-    return { fatal: true, remaining: 0 };
+    return { fatal: true, remaining: 0, routed };
   }
-  return { fatal: false, remaining };
+  return { fatal: false, remaining, routed: false };
+}
+
+/**
+ * Generals hold. Otherwise:
+ * — hit on a −2 (red) face, opposite hex pinned (enemy / wall / palisade / higher ground / edge)
+ * — hit from the front, enemy standing on a −2 (red / back) hex
+ * Friendly occupants never pin.
+ */
+export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean {
+  if (!from) return false;
+  if (hasAbility(victim, 'general')) return false;
+  const at: Hex = { col: victim.col, row: victim.row };
+  const incoming = incomingDir(from, at, state.orientation);
+  if (incoming === null) return false;
+  if (armorOf(victim, from, state.orientation) <= -2) {
+    const escape = neighborInDir(
+      at,
+      (((incoming + 3) % 6) + 6) % 6 as HexDir,
+      state.orientation,
+    );
+    if (routEscapeBlocked(state, victim, escape)) return true;
+  }
+  return isFrontHit(victim, from, state.orientation) && hostileOnRedFace(state, victim);
+}
+
+function isFrontHit(piece: Piece, from: Hex, orientation: HexOrientation): boolean {
+  const side = armorSideHit(piece, from, orientation);
+  if (side) return side === 'armorFront';
+  const incoming = incomingDir(from, { col: piece.col, row: piece.row }, orientation);
+  return incoming !== null && incoming === facingOf(piece);
+}
+
+function hostileOnRedFace(state: GameState, victim: Piece): boolean {
+  const at: Hex = { col: victim.col, row: victim.row };
+  const facing = facingOf(victim);
+  const s = statsOf(victim.type);
+  const dirs: HexDir[] = [];
+  if (s.hexArmor) {
+    for (let rel = 0; rel < 6; rel++) {
+      if (s[HEX_ARMOR_SIDES[rel]] > -2) continue;
+      dirs.push((((facing + rel) % 6) + 6) % 6 as HexDir);
+    }
+  } else if (s.armor <= -2) {
+    dirs.push((((facing + 3) % 6) + 6) % 6 as HexDir);
+  }
+  for (const dir of dirs) {
+    const hex = neighborInDir(at, dir, state.orientation);
+    const occ = pieceAt(state, hex);
+    if (occ && occ.id !== victim.id && isHostile(state, occ.side, victim.side)) return true;
+  }
+  return false;
+}
+
+function routEscapeBlocked(state: GameState, victim: Piece, hex: Hex): boolean {
+  if (!inBounds(state, hex)) return true;
+  if (isBlockedWalk(state, hex)) return true;
+  if (hexHeight(state, hex) > hexHeight(state, { col: victim.col, row: victim.row })) {
+    return true;
+  }
+  const occ = pieceAt(state, hex);
+  return !!occ && isHostile(state, occ.side, victim.side);
 }
 
 function escLog(s: string): string {
@@ -827,14 +937,29 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
   const before = hpLeft(piece);
   const dmg = applyDamage(state, piece, hit.amount, 1, hit.from, true, false);
   const dealt = before - dmg.remaining;
-  if (dealt <= 0) return false;
-  state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+  if (dealt <= 0 && !dmg.routed) return false;
+  state.fxHits = [
+    ...(state.fxHits ?? []),
+    { id: piece.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
+  ];
   state.log.push(
-    dmg.fatal
-      ? `${unitLog(piece)} dies on facing pikes`
-      : `${unitLog(piece)} steps into facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
+    dmg.routed
+      ? `${unitLog(piece)} routs on facing pikes`
+      : dmg.fatal
+        ? `${unitLog(piece)} dies on facing pikes`
+        : `${unitLog(piece)} steps into facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
   );
   return dmg.fatal;
+}
+
+function readBoard(state: GameState, piece: Piece, tok: TileToken): void {
+  if (tok.type !== 'board') return;
+  if (!isPlayerControlled(state, piece.side)) return;
+  if (tok.read) return;
+  tok.read = true;
+  const text = sanitizeBoardText(tok.text);
+  if (text) state.fxBoard = { col: tok.col, row: tok.row, text };
+  state.log.push(`${unitLog(piece)} reads a message board`);
 }
 
 function applyWalkTokens(
@@ -847,6 +972,7 @@ function applyWalkTokens(
   for (const h of walkedHexes(from, path, stop)) {
     const tok = tokenAt(state.tokens, h);
     if (tok?.type === 'flag') claimFlag(state, piece, tok);
+    if (tok?.type === 'board') readBoard(state, piece, tok);
     if (tok?.type === 'pikes') {
       const before = hpLeft(piece);
       const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
@@ -869,7 +995,8 @@ function sideLog(side: Side, label: string): string {
   return `<span class="log-side ${side}">${escLog(label)}</span>`;
 }
 
-function hpBit(victim: Piece, fatal: boolean, remaining: number): string {
+function hpBit(victim: Piece, fatal: boolean, remaining: number, routed = false): string {
+  if (routed) return `${unitLog(victim)} routed`;
   return fatal ? `${unitLog(victim)} killed` : `${unitLog(victim)} (${remaining} HP)`;
 }
 
@@ -896,6 +1023,7 @@ export type MoveHit = {
   fatal: boolean;
   remaining: number;
   from: Hex;
+  routed?: boolean;
 };
 
 export type PalisadeHit = {
@@ -946,7 +1074,7 @@ function activationMoveRange(state: GameState, piece: Piece): number {
 function destLandsBeyond(state: GameState, piece: Piece, dest: Hex): boolean {
   const occ = pieceAt(state, dest);
   if (occ && occ.id !== piece.id) return false;
-  if (tokenAt(state.tokens, dest)?.type === 'palisade') return false;
+  if (isPalisadeToken(tokenAt(state.tokens, dest)?.type)) return false;
   return true;
 }
 
@@ -985,15 +1113,18 @@ export function previewMove(
     if (amount <= 0) return false;
     const nextHp =
       hpOf(victim, hpMap) - netDamage(victim, amount, 1, atkFrom, state.orientation);
-    hpMap.set(victim.id, nextHp);
+    const routed = wouldRout(state, victim, atkFrom);
+    const dead = routed || nextHp <= 0;
+    hpMap.set(victim.id, dead ? 0 : nextHp);
     hits.push({
       id: victim.id,
       amount,
-      fatal: nextHp <= 0,
-      remaining: Math.max(0, nextHp),
+      fatal: dead,
+      remaining: dead ? 0 : Math.max(0, nextHp),
       from: atkFrom,
+      routed,
     });
-    return nextHp <= 0;
+    return dead;
   };
 
   for (let i = 0; i < path.length; i++) {
@@ -1003,7 +1134,7 @@ export function previewMove(
     const occ = pieceAt(state, h);
     if (!occ || occ.id === piece.id) {
       const pal = tokenAt(state.tokens, h);
-      if (pal?.type === 'palisade') {
+      if (isPalisadeToken(pal?.type)) {
         if (melee <= 0) break;
         const remaining = Math.max(0, palisadeHp(pal) - 1);
         palisadeHits.push({ hex: h, remaining, destroyed: remaining <= 0 });
@@ -1357,6 +1488,7 @@ function cloneState(state: GameState): GameState {
     hadKing: { ...emptyHadKing(), ...state.hadKing },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
     fxStamina: state.fxStamina?.map((h) => ({ ...h })),
+    fxBoard: state.fxBoard ? { ...state.fxBoard } : undefined,
     pendingStaminaFx: state.pendingStaminaFx
       ? {
           red: state.pendingStaminaFx.red ? [...state.pendingStaminaFx.red] : undefined,
@@ -2109,6 +2241,7 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   const next = cloneState(state);
   next.fxHits = [];
   next.fxStamina = [];
+  next.fxBoard = undefined;
   const piece = getPiece(next, pieceId);
   if (!piece || piece.side !== next.turn) return state;
   if (!statsOf(piece.type).hexArmor) return state;
@@ -2131,6 +2264,7 @@ export function restPiece(state: GameState, pieceId: string): GameState {
   const next = cloneState(state);
   next.fxHits = [];
   next.fxStamina = [];
+  next.fxBoard = undefined;
   const piece = getPiece(next, pieceId);
   if (!piece || piece.side !== next.turn) return state;
   if (piece.movedThisTurn) return state;
@@ -2147,6 +2281,7 @@ export function passTurn(state: GameState, keepFx = false): GameState {
   if (!keepFx) {
     next.fxHits = [];
     next.fxStamina = [];
+    next.fxBoard = undefined;
   }
   if (next.winner) return next;
   next.log.push(sideLog(next.turn, 'End turn'));
@@ -2185,6 +2320,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
   const next = cloneState(state);
   next.fxHits = [];
   next.fxStamina = [];
+  next.fxBoard = undefined;
   if (next.winner) return next;
 
   if (action.kind === 'skip') {
@@ -2224,22 +2360,22 @@ function applyActionInner(state: GameState, action: Action): GameState {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
       applyDamage(next, victim, mh.amount, 1, mh.from);
-      hitBits.push(hpBit(victim, mh.fatal, mh.remaining));
+      hitBits.push(hpBit(victim, mh.fatal, mh.remaining, mh.routed));
       dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
     }
 
     for (const ph of plan.palisadeHits) {
       const tok = tokenAt(next.tokens, ph.hex);
-      if (!tok || tok.type !== 'palisade') continue;
+      if (!tok || !isPalisadeToken(tok.type)) continue;
       if (ph.destroyed) {
         next.tokens = next.tokens.filter(
           (t) =>
-            !(t.type === 'palisade' && t.col === ph.hex.col && t.row === ph.hex.row),
+            !(isPalisadeToken(t.type) && t.col === ph.hex.col && t.row === ph.hex.row),
         );
-        hitBits.push('palisade');
+        hitBits.push(tok.type);
       } else {
         tok.hp = ph.remaining;
-        hitBits.push(`palisade (${ph.remaining} left)`);
+        hitBits.push(`${tok.type} (${ph.remaining} left)`);
       }
     }
 
@@ -2254,11 +2390,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
             ? 'strikes'
             : brokePal
               ? 'breaks'
-              : plan.hits.some((h) => h.fatal)
-                ? 'captures'
-                : statsOf(piece.type).charge > 0
-                  ? 'charges'
-                  : 'hits'
+              : plan.hits.some((h) => h.routed)
+                ? 'routs'
+                : plan.hits.some((h) => h.fatal)
+                  ? 'captures'
+                  : statsOf(piece.type).charge > 0
+                    ? 'charges'
+                    : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
@@ -2283,7 +2421,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
     );
-    const palStanding = tokenAt(next.tokens, plan.stop)?.type === 'palisade';
+    const palStanding = isPalisadeToken(tokenAt(next.tokens, plan.stop)?.type);
     if (!taken && !palStanding) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
@@ -2325,18 +2463,21 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if (t && stats.splashDamage > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
         const dmg = applyDamage(next, t, stats.splashDamage, 0, origin, true);
-        hitBits.push(hpBit(t, dmg.fatal, dmg.remaining));
+        hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
         dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin, true));
       }
       // Concrete walls and palisades crumble under rockets; the tile underneath stays
       if (isBlockedWalk(next, h)) {
-        const kind = isPalisade(next, h) ? 'palisade' : 'wall';
+        const tok = tokenAt(next.tokens, h);
+        const kind = tok?.type ?? (isPalisade(next, h) ? 'palisade' : 'wall');
         if (terrainAt(next, h) === 'wall') next.terrain[h.row][h.col] = 'land';
         next.tokens = next.tokens.filter(
-          (tok) =>
-            !((tok.type === 'wall' || tok.type === 'palisade') &&
-              tok.col === h.col &&
-              tok.row === h.row),
+          (item) =>
+            !(
+              (isWallToken(item.type) || isPalisadeToken(item.type)) &&
+              item.col === h.col &&
+              item.row === h.row
+            ),
         );
         hitBits.push(kind);
       }
@@ -2355,7 +2496,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
-        (dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
+        (dmg.routed ? ' — routed' : dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
         ammoLog(piece, stats) +
         dmgLine(next, t, stats.shootDamage, 0, fromHex, true),

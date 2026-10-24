@@ -40,6 +40,7 @@ import {
   HEX_ARMOR_LABEL,
   HEX_ARMOR_SIDES,
   netDamage,
+  wouldRout,
   splashBlast,
   staminaLeft,
   staminaMax,
@@ -69,6 +70,9 @@ import {
   SIDE_LABEL,
   TOKEN_LABEL,
   TOKEN_TYPES,
+  BOARD_TEXT_MAX,
+  sanitizeBoardText,
+  tokenAt,
   tokenIsNoTouch,
   UNIT_TOKEN_LABEL,
   UNIT_TOKEN_TYPES,
@@ -110,7 +114,6 @@ import {
   isBlockedFaceRay,
 } from './engine';
 import {
-  defaultFacing,
   dirBetween,
   eq,
   hexCorners,
@@ -139,6 +142,8 @@ import {
   emptyTerrain,
   maxTerrainCells,
   resizeTerrain,
+  facingFromStamp,
+  sanitizeStampFacing,
   type ArmyStamp,
   type MapOptions,
 } from './map';
@@ -232,6 +237,7 @@ import {
   unitQuotaPipsHtml,
   starGlyphSvg,
 } from './icons';
+import { copyGlyphGroups, formatCopyHtml } from './copy';
 import {
   CLAMP,
   copyUnit,
@@ -326,6 +332,10 @@ let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
 const RANDOM_UNITS_PER_TURN = 6;
 let state: GameState = bootState();
 let briefingOpen = false;
+/** Play: reread / walk-on message board. */
+let boardPopup: { text: string } | null = null;
+/** Editor: hex whose board text is being edited. */
+let editorBoardHex: Hex | null = null;
 let playlist: Playlist | null = null;
 let mapPick: MapPickKind | null = null;
 let unitEditorCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
@@ -368,6 +378,9 @@ let editorUnitCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
 let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
 let editorArmiesOpen = false;
+let editorGlyphsOpen = false;
+/** Last copy textarea focused — glyph chips insert here. */
+let editorCopyFieldId: string | null = null;
 let editorPainting = false;
 let editorDirty = false;
 let editorPointerAbort: AbortController | null = null;
@@ -433,6 +446,7 @@ const MOVE_MS = 300;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;
 const HIT_FLASH_MS = 110;
+const ROUT_MS = 560;
 
 function applyLayout(next = computeLayout(), rerender = true): boolean {
   const changed =
@@ -463,6 +477,7 @@ function clipStamps(pieces: ArmyStamp[], cols: number, rows: number): ArmyStamp[
       row: p.row,
       side: p.side,
       unitTokens: unitTokens.length ? unitTokens : undefined,
+      facing: sanitizeStampFacing(p.side, p.facing),
     });
   }
   return out;
@@ -624,6 +639,7 @@ function startMatch(reshuffleRandom = true) {
   aiThinking = false;
   animating = false;
   briefingOpen = false;
+  boardPopup = null;
   if (activeLevelId) {
     const lvl = getLevel(activeLevelId);
     if (lvl) {
@@ -726,45 +742,56 @@ function wait(ms: number): Promise<void> {
 async function playPendingFx(): Promise<void> {
   const hits = state.fxHits;
   const stam = state.fxStamina ?? [];
+  const board = state.fxBoard;
   const gains = stam.filter((x) => x.kind === 'gain');
   const spends = stam.filter((x) => x.kind === 'spend');
-  if (!hits?.length && !gains.length && !spends.length) {
-    if (state.fxHits || state.fxStamina) {
-      state = { ...state, fxHits: undefined, fxStamina: undefined };
+  if (!hits?.length && !gains.length && !spends.length && !board) {
+    if (state.fxHits || state.fxStamina || state.fxBoard) {
+      state = { ...state, fxHits: undefined, fxStamina: undefined, fxBoard: undefined };
     }
     return;
   }
-  state = { ...state, fxHits: undefined, fxStamina: undefined };
+  state = { ...state, fxHits: undefined, fxStamina: undefined, fxBoard: undefined };
   if (hits?.length) await flashDamaged(hits);
   if (gains.length || spends.length) {
     render();
     if (gains.length) await flashStamina(gains, 'stam-gain');
     if (spends.length) await flashStamina(spends, 'stam-spend');
   }
+  if (board?.text) boardPopup = { text: board.text };
 }
 
 function flashDamaged(
-  hits: readonly { id: string; fatal?: boolean; dealt: number }[],
+  hits: readonly { id: string; fatal?: boolean; routed?: boolean; dealt: number }[],
 ): Promise<void> {
   if (!hits.length) return Promise.resolve();
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let dying = false;
+  let routing = false;
   let maxN = 0;
   for (const hit of hits) {
+    const routed = !!hit.routed;
     const n = Math.max(0, Math.floor(hit.dealt));
-    if (n <= 0) continue;
+    if (n <= 0 && !routed) continue;
     const el = document.querySelector(`g.piece-unit[data-id="${CSS.escape(hit.id)}"]`);
     if (!el) continue;
-    el.classList.remove('hit', 'dying');
+    el.classList.remove('hit', 'dying', 'routing');
     void (el as SVGElement).getBoundingClientRect();
-    (el as SVGElement).style.setProperty('--hit-n', String(n));
-    el.classList.add(hit.fatal ? 'dying' : 'hit');
-    if (hit.fatal) dying = true;
+    (el as SVGElement).style.setProperty('--hit-n', String(Math.max(1, n)));
+    if (routed) {
+      el.classList.add('routing');
+      routing = true;
+    } else {
+      el.classList.add(hit.fatal ? 'dying' : 'hit');
+      if (hit.fatal) dying = true;
+    }
     if (n > maxN) maxN = n;
   }
-  if (maxN <= 0) return Promise.resolve();
-  const blink = reduce ? 140 : HIT_FLASH_MS * maxN;
-  return wait(dying && !reduce ? blink + 140 : blink);
+  if (maxN <= 0 && !routing) return Promise.resolve();
+  if (reduce) return wait(140);
+  if (routing) return wait(Math.max(ROUT_MS, dying ? HIT_FLASH_MS * Math.max(1, maxN) + 140 : 0));
+  const blink = HIT_FLASH_MS * Math.max(1, maxN);
+  return wait(dying ? blink + 140 : blink);
 }
 
 function flashStamina(
@@ -852,6 +879,7 @@ async function animateMoveAlong(
   path: Hex[],
   stop: Hex,
   dest: Hex,
+  beforeStep?: (hex: Hex) => Promise<void>,
 ): Promise<void> {
   const from = { col: piece.col, row: piece.row };
   const destPx = pixelOf(dest);
@@ -887,6 +915,7 @@ async function animateMoveAlong(
 
   void g.getBoundingClientRect();
   for (const h of walked) {
+    if (beforeStep) await beforeStep(h);
     const step = dirBetween(prev, h, ori);
     const px = pixelOf(h);
     g.style.transition = `transform ${stepMs}ms linear`;
@@ -1011,6 +1040,8 @@ function reset(reshuffle = true) {
 function showStart() {
   editorPainting = false;
   briefingOpen = false;
+  boardPopup = null;
+  editorBoardHex = null;
   randomSetup = null;
   screen = 'start';
   playlist = null;
@@ -1216,6 +1247,8 @@ function beginEditorSession(): void {
   editorPainting = false;
   editorPointerAbort?.abort();
   briefingOpen = false;
+  boardPopup = null;
+  editorBoardHex = null;
   screen = 'editor';
   clearSelection();
   aiThinking = false;
@@ -1303,6 +1336,7 @@ function enterEditorFromMatch() {
       row: p.row,
       side: p.side,
       unitTokens: p.unitTokens,
+      facing: p.facing,
     })),
     editorTerrain[0]?.length ?? COLS,
     editorTerrain.length || ROWS,
@@ -1359,6 +1393,17 @@ function markEditorDirty() {
   if (dirtyHint) dirtyHint.hidden = false;
 }
 
+function rotateEditorUnit(idx: number) {
+  const p = editorPieces[idx];
+  const next = ((facingFromStamp(p) + 1) % 6) as HexDir;
+  editorPieces[idx] = {
+    ...p,
+    facing: sanitizeStampFacing(p.side, next),
+  };
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
 function paintEditorUnit(col: number, row: number) {
   if (!isUnitBrush(editorBrush)) return;
   const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
@@ -1367,6 +1412,7 @@ function paintEditorUnit(col: number, row: number) {
     editorPieces[idx].type === editorBrush &&
     editorPieces[idx].side === editorArmySide
   ) {
+    rotateEditorUnit(idx);
     return;
   }
   if (idx >= 0) editorPieces.splice(idx, 1);
@@ -1447,7 +1493,14 @@ function paintEditorErase(col: number, row: number) {
   refreshEditorBoard();
 }
 
-function paintEditorHex(col: number, row: number) {
+function openEditorBoard(col: number, row: number) {
+  editorBoardHex = { col, row };
+  editorPainting = false;
+  editorPaintKey = null;
+  render();
+}
+
+function paintEditorHex(col: number, row: number, first = true) {
   if (row < 0 || row >= editorTerrain.length) return;
   if (col < 0 || col >= editorTerrain[0].length) return;
   if (editorBrush === 'erase') {
@@ -1462,12 +1515,25 @@ function paintEditorHex(col: number, row: number) {
     paintEditorUnitToken(col, row);
     return;
   }
+  const boardTok = editorTokens.find(
+    (t) => t.type === 'board' && t.col === col && t.row === row,
+  );
+  if (boardTok) {
+    if (first) openEditorBoard(col, row);
+    return;
+  }
+  const unitIdx = editorPieces.findIndex((p) => p.col === col && p.row === row);
+  if (unitIdx >= 0) {
+    rotateEditorUnit(unitIdx);
+    return;
+  }
   if (isNoTouchBrush(editorBrush)) {
     paintEditorNoTouch(col, row);
     return;
   }
   if (isTokenBrush(editorBrush)) {
     paintEditorToken(col, row);
+    if (editorBrush === 'board') openEditorBoard(col, row);
     return;
   }
   if (!isTerrainBrush(editorBrush)) return;
@@ -1773,8 +1839,12 @@ function briefingBlocks(): boolean {
   return briefingOpen && !state.winner && (!!levelCopy('start') || canSkipPlayedLevel());
 }
 
+function boardBlocks(): boolean {
+  return !!boardPopup && !state.winner;
+}
+
 function canControl(): boolean {
-  if (briefingBlocks() || state.winner || aiThinking || animating) return false;
+  if (briefingBlocks() || boardBlocks() || state.winner || aiThinking || animating) return false;
   return isPlayerControlled(state, state.turn);
 }
 
@@ -1876,15 +1946,33 @@ async function playAnimatedAction(action: Action): Promise<void> {
     const g = document.querySelector<SVGGElement>(
       `g.piece-unit[data-id="${CSS.escape(piece.id)}"]`,
     );
-    if (g) await animateMoveAlong(g, piece, path, plan.stop, action.to);
-    else await wait(MOVE_MS);
-    await flashDamaged(
-      plan.hits.map((h) => {
-        const victim = getPiece(state, h.id);
-        const dealt = victim ? Math.max(0, hpLeft(victim) - h.remaining) : 0;
-        return { id: h.id, fatal: h.fatal, dealt };
-      }),
-    );
+    const flashHit = (h: (typeof plan.hits)[number]) => {
+      const victim = getPiece(state, h.id);
+      const dealt = victim ? Math.max(0, hpLeft(victim) - h.remaining) : 0;
+      return {
+        id: h.id,
+        fatal: h.fatal,
+        routed: h.routed,
+        dealt: Math.max(dealt, h.routed ? 1 : 0),
+      };
+    };
+    const routByHex = new Map<string, (typeof plan.hits)[number]>();
+    for (const h of plan.hits) {
+      if (!h.routed) continue;
+      const v = getPiece(state, h.id);
+      if (v) routByHex.set(key(v), h);
+    }
+    const flashed = new Set<string>();
+    if (g) {
+      await animateMoveAlong(g, piece, path, plan.stop, action.to, async (hex) => {
+        const hit = routByHex.get(key(hex));
+        if (!hit || flashed.has(hit.id)) return;
+        flashed.add(hit.id);
+        await flashDamaged([flashHit(hit)]);
+      });
+    } else await wait(MOVE_MS);
+    const rest = plan.hits.filter((h) => !flashed.has(h.id));
+    if (rest.length) await flashDamaged(rest.map(flashHit));
   } else {
     await animateShot(piece, action.at);
   }
@@ -1997,7 +2085,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
 
   const fromHex = { col: piece.col, row: piece.row };
   const blast = hasSplash(stats) ? splashBlast(state, at, fromHex) : [at];
-  const shotHits: { id: string; fatal: boolean; dealt: number }[] = [];
+  const shotHits: { id: string; fatal: boolean; routed?: boolean; dealt: number }[] = [];
   for (const h of blast) {
     const { x, y } = pixelOf(h);
     layer.appendChild(
@@ -2016,10 +2104,16 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     if (dmgAmt <= 0) continue;
     const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
     const net = netDamage(t, dmgAmt, 0, origin, state.orientation, true);
+    const routed = wouldRout(state, t, origin);
     const dealt = Math.min(hpLeft(t), net);
-    if (dealt <= 0) continue;
-    const fatal = hpLeft(t) <= net;
-    shotHits.push({ id: t.id, fatal, dealt });
+    if (dealt <= 0 && !routed) continue;
+    const fatal = routed || hpLeft(t) <= net;
+    shotHits.push({
+      id: t.id,
+      fatal,
+      routed,
+      dealt: Math.max(dealt, routed ? 1 : 0),
+    });
   }
 
   // center boom ring
@@ -2162,7 +2256,7 @@ async function skipScout(nextId?: string) {
 }
 
 async function maybeAi() {
-  if (briefingBlocks() || state.winner) {
+  if (briefingBlocks() || boardBlocks() || state.winner) {
     ensureSoloTurnSelection();
     return;
   }
@@ -2367,17 +2461,16 @@ function renderBoard(): string {
     const { x, y } = pixelOf({ col: t.col, row: t.row });
     const owner = flagOwnerForDraw(t);
     const mark =
-      t.type === 'wall'
-        ? tokenGlyphSvg('wall', HEX_SIZE * 0.8, ori)
-        : t.type === 'palisade'
-          ? tokenGlyphSvg('palisade', HEX_SIZE * 0.8, ori, null, t.hp)
-          : t.type === 'flag'
-            ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
-            : t.type === 'notouch'
-              ? ''
-              : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
+      t.type === 'wall' || t.type === 'house' || t.type === 'palisade' || t.type === 'tree'
+        ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp)
+        : t.type === 'flag'
+          ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
+          : t.type === 'notouch'
+            ? ''
+            : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
-    tokensSvg += `<g class="tile-token ${t.type}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
+    const read = t.type === 'board' && t.read ? ' read' : '';
+    tokensSvg += `<g class="tile-token ${t.type}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
   }
 
   let piecesSvg = '';
@@ -2388,7 +2481,7 @@ function renderBoard(): string {
         type: p.type,
         col: p.col,
         row: p.row,
-        facing: defaultFacing(p.side),
+        facing: facingFromStamp(p),
         unitTokens: p.unitTokens,
       }))
     : state.pieces;
@@ -2882,13 +2975,13 @@ function renderSidebar(): string {
             <div><dt>Arch</dt><dd>over units and palisades; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
-            <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays</dd></div>
-            <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it</dd></div>
+            <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same, house graphic</dd></div>
+            <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal move or turn (leftover steps don't carry)</dd></div>
-            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits</dd></div>
-            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): hit a −2 (red) face while the opposite hex is an enemy, wall/palisade, or higher ground; or hit from the front while an enemy stands on a red/back hex. Friends never pin. Generals never rout</dd></div>
+            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Wall: impassable, blocks LOS, rockets smash. House: same as wall, house graphic. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
             <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 value, and the General ability — killing that piece can win the match</dd></div>
-            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 face cannot be walked or shot</dd></div>
+            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot. Rout: red-face hit with the other side pinned (enemy / wall / high), or front hit with an enemy on the red/back hex. Friends never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action, leftover stamina still buys the extra move)</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
@@ -3056,7 +3149,7 @@ function renderEndOverlay(): string {
         <h2 class="end-title">${title}</h2>
         ${endStarsHtml()}
         ${endBestStarsHtml()}
-        <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? escapeHtml(custom) : sub}</p>
+        <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? formatCopyHtml(custom) : sub}</p>
         <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
           ${nextBtn}
@@ -3075,7 +3168,7 @@ function renderStartOverlay(): string {
     <div class="end-overlay briefing" role="dialog" aria-label="${escapeHtml(title)}">
       <div class="end-card briefing">
         <h2 class="end-title">${escapeHtml(title)}</h2>
-        ${text ? `<p class="end-sub level-copy">${escapeHtml(text)}</p>` : ''}
+        ${text ? `<p class="end-sub level-copy">${formatCopyHtml(text)}</p>` : ''}
         <div class="end-actions">
           <button type="button" id="briefing-go">Begin</button>
           ${
@@ -3086,6 +3179,99 @@ function renderStartOverlay(): string {
         </div>
       </div>
     </div>`;
+}
+
+function renderBoardPopup(): string {
+  if (!boardPopup) return '';
+  return `
+    <div class="end-overlay briefing board-overlay" role="dialog" aria-modal="true" aria-label="Message board">
+      <div class="end-card briefing board-card">
+        <h2 class="end-title">Message board</h2>
+        <p class="end-sub level-copy board-copy">${formatCopyHtml(boardPopup.text)}</p>
+        <div class="end-actions">
+          <button type="button" id="board-close">Close</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderEditorBoardPopup(): string {
+  if (!editorBoardHex) return '';
+  const tok = editorTokens.find(
+    (t) =>
+      t.type === 'board' &&
+      t.col === editorBoardHex!.col &&
+      t.row === editorBoardHex!.row,
+  );
+  if (!tok) return '';
+  return `
+    <div class="end-overlay briefing board-overlay" role="dialog" aria-modal="true" aria-label="Edit message board">
+      <div class="end-card briefing board-card">
+        <h2 class="end-title">Message board</h2>
+        <label class="board-edit">
+          <span class="sr-only">Message</span>
+          <textarea id="board-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(tok.text ?? '')}</textarea>
+          <p class="muted board-hint">Wrap a unit or tile-token name in [brackets] to show its icon.</p>
+        </label>
+        <div class="end-actions">
+          <button type="button" id="board-save">Save</button>
+          <button type="button" id="board-cancel" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function closeBoardPopup() {
+  boardPopup = null;
+  render();
+  void maybeAi();
+}
+
+function bindBoardPopup() {
+  app.querySelector('#board-close')?.addEventListener('click', () => closeBoardPopup());
+}
+
+function editorBoardIndex(hex: Hex): number {
+  return editorTokens.findIndex(
+    (t) => t.type === 'board' && t.col === hex.col && t.row === hex.row,
+  );
+}
+
+function removeEditorBoard(hex: Hex) {
+  const idx = editorBoardIndex(hex);
+  if (idx < 0) return;
+  editorTokens.splice(idx, 1);
+  markEditorDirty();
+}
+
+function closeEditorBoard() {
+  editorBoardHex = null;
+  render();
+}
+
+function bindEditorBoardPopup() {
+  const box = app.querySelector<HTMLTextAreaElement>('#board-text');
+  const hex = editorBoardHex;
+  if (!hex) return;
+  const idx = editorBoardIndex(hex);
+  const hadText = idx >= 0 && !!sanitizeBoardText(editorTokens[idx].text);
+  app.querySelector('#board-cancel')?.addEventListener('click', () => {
+    if (!hadText) removeEditorBoard(hex);
+    closeEditorBoard();
+  });
+  app.querySelector('#board-save')?.addEventListener('click', () => {
+    const text = sanitizeBoardText(box?.value ?? '');
+    if (!text) removeEditorBoard(hex);
+    else if (idx >= 0) {
+      editorTokens[idx] = { ...editorTokens[idx], text };
+      markEditorDirty();
+    }
+    closeEditorBoard();
+  });
+  box?.addEventListener('focus', () => {
+    editorCopyFieldId = 'board-text';
+  });
+  box?.focus();
 }
 
 function turnsLeft(): number | null {
@@ -3163,7 +3349,7 @@ function bindHexChoice() {
 }
 
 function onHexClick(col: number, row: number) {
-  if (briefingBlocks() || animating || aiThinking) return;
+  if (briefingBlocks() || boardBlocks() || animating || aiThinking) return;
   const hex = { col, row };
   const occ = state.pieces.find((p) => p.col === col && p.row === row);
 
@@ -3216,6 +3402,13 @@ function onHexClick(col: number, row: number) {
     return;
   }
 
+  const board = tokenAt(state.tokens, hex);
+  if (board?.type === 'board' && board.read && board.text) {
+    boardPopup = { text: board.text };
+    render();
+    return;
+  }
+
   // Shoot-range / preview tints are not actions — keep the piece selected
   if (selectedId && highlights.some((h) => eq(h.hex, hex))) {
     return;
@@ -3244,8 +3437,9 @@ function bindEditorBoard() {
     if (!hex) return;
     const k = `${hex.col},${hex.row}`;
     if (k === editorPaintKey) return;
+    const first = editorPaintKey === null;
     editorPaintKey = k;
-    paintEditorHex(hex.col, hex.row);
+    paintEditorHex(hex.col, hex.row, first);
   };
 
   const stopPaint = () => {
@@ -3867,13 +4061,11 @@ function tokenSwatchSvg(type: TokenType): string {
   return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
     <polygon points="${pts}" fill="var(--land)" stroke="var(--hex-stroke)" stroke-width="1.4" stroke-linejoin="miter"/>
     ${
-      type === 'wall'
-        ? tokenGlyphSvg('wall', size * 0.8, o)
-        : type === 'palisade'
-          ? tokenGlyphSvg('palisade', size * 0.8, o)
-          : type === 'flag'
-            ? tokenGlyphSvg('flag', 13, o)
-            : tokenGlyphSvg(type, 13)
+      type === 'wall' || type === 'house' || type === 'palisade' || type === 'tree'
+        ? tokenGlyphSvg(type, size * 0.8, o)
+        : type === 'flag'
+          ? tokenGlyphSvg('flag', 13, o)
+          : tokenGlyphSvg(type, 13)
     }
   </svg>`;
 }
@@ -4067,13 +4259,11 @@ function renderLevelThumb(lvl: {
   for (const t of lvl.tokens ?? []) {
     const { x, y } = hexToPixel({ col: t.col, row: t.row }, size, ori);
     hexes += `<g transform="translate(${x + pad}, ${y + pad})">${
-      t.type === 'wall'
-        ? tokenGlyphSvg('wall', size * 0.8, ori)
-        : t.type === 'palisade'
-          ? tokenGlyphSvg('palisade', size * 0.8, ori, null, t.hp)
-          : t.type === 'flag'
-            ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
-            : tokenGlyphSvg(t.type, size * 1.2)
+      t.type === 'wall' || t.type === 'house' || t.type === 'palisade' || t.type === 'tree'
+        ? tokenGlyphSvg(t.type, size * 0.8, ori, null, t.hp)
+        : t.type === 'flag'
+          ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
+          : tokenGlyphSvg(t.type, size * 1.2)
     }${tokenIsNoTouch(t) ? noTouchMarkSvg(size * 0.55) : ''}</g>`;
   }
   let dots = '';
@@ -4086,7 +4276,7 @@ function renderLevelThumb(lvl: {
 
 function levelTeaserHtml(l: SavedLevel): string {
   const t = sanitizeTeaserText(l.teaserText);
-  return t ? `<span class="level-teaser">${escapeHtml(t)}</span>` : '';
+  return t ? `<span class="level-teaser">${formatCopyHtml(t)}</span>` : '';
 }
 
 function levelMetaLine(l: SavedLevel): string {
@@ -4272,6 +4462,7 @@ function renderEditorBar(): string {
           <label class="editor-cat level-copy-field">Losing text
             <textarea id="editor-lose-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown when you lose">${escapeHtml(editorLoseText)}</textarea>
           </label>
+          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [hp], [arrow]… — name in brackets becomes that item's icon.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
             <p class="muted star-turns-hint">Turns = full rounds, counted when the starting player begins again (after everyone else has played).</p>
@@ -4291,7 +4482,37 @@ function renderEditorBar(): string {
           </div>
         </div>
       </section>
+      ${renderGlyphPanel()}
     </div>`;
+}
+
+function renderGlyphPanel(): string {
+  const groups = copyGlyphGroups()
+    .map((g) => {
+      const chips = g.glyphs
+        .map(
+          (item) =>
+            `<button type="button" class="glyph-chip" data-copy-tag="${escapeHtml(item.tag)}" title="Insert [${escapeHtml(item.tag)}]" aria-label="Insert [${escapeHtml(item.tag)}]">${item.icon}<span class="glyph-tag">[${escapeHtml(item.tag)}]</span></button>`,
+        )
+        .join('');
+      return `<div class="glyph-group">
+        <h4 class="glyph-group-label">${escapeHtml(g.label)}</h4>
+        <div class="glyph-grid">${chips}</div>
+      </div>`;
+    })
+    .join('');
+  return `
+    <section class="editor-panel editor-panel-glyphs">
+      <details data-editor-glyphs${editorGlyphsOpen ? ' open' : ''}>
+        <summary>
+          <h3>Glyphs</h3>
+          <span class="lvl-meta">[name] in texts — click to insert</span>
+        </summary>
+        <div class="editor-fold-body">
+          ${groups}
+        </div>
+      </details>
+    </section>`;
 }
 
 function gameOverClass(): string {
@@ -4460,7 +4681,7 @@ function renderUnitEditor(): string {
           <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
         </svg>
         <span class="unit-card-title">${escapeHtml(s.name)}</span>
-        <span class="lvl-meta">${s.hp} hp · ${s.value}</span>
+        <span class="lvl-meta unit-card-meta">${hpPipsHtml(s.hp, s.hp, 'catalog')} · ${s.value}</span>
       </summary>
       <div class="unit-card-body">
       <header>
@@ -4571,7 +4792,7 @@ function renderUnitEditor(): string {
         <dl class="help-list">
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets)</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets). Rout: hit on a red face with the opposite hex pinned (enemy / wall / high), or hit from the front with an enemy on a red/back hex. Friends never pin. Generals immune</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> activations per turn</dd>
@@ -4842,7 +5063,27 @@ function bindUnitEditorEvents() {
   });
 }
 
+function insertCopyTag(tag: string, setters: Record<string, (v: string) => void>) {
+  const token = `[${tag}]`;
+  const id = editorCopyFieldId;
+  const el = id ? app.querySelector<HTMLTextAreaElement>(`#${CSS.escape(id)}`) : null;
+  if (!id || !el) {
+    void navigator.clipboard?.writeText(token);
+    return;
+  }
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? start;
+  const next = el.value.slice(0, start) + token + el.value.slice(end);
+  el.value = next;
+  const caret = start + token.length;
+  el.setSelectionRange(caret, caret);
+  el.focus();
+  setters[id]?.(next);
+  if (id !== 'board-text') markEditorDirty();
+}
+
 function bindEditorEvents() {
+  bindEditorBoardPopup();
   app.querySelectorAll<HTMLButtonElement>('[data-brush]').forEach((btn) => {
     btn.addEventListener('click', () => {
       editorBrush = btn.dataset.brush as EditorBrush;
@@ -4945,6 +5186,38 @@ function bindEditorEvents() {
   });
   app.querySelector<HTMLDetailsElement>('[data-editor-armies]')?.addEventListener('toggle', (e) => {
     editorArmiesOpen = (e.currentTarget as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('[data-editor-glyphs]')?.addEventListener('toggle', (e) => {
+    editorGlyphsOpen = (e.currentTarget as HTMLDetailsElement).open;
+  });
+  const COPY_FIELDS: Record<string, (v: string) => void> = {
+    'editor-teaser-text': (v) => {
+      editorTeaserText = v;
+    },
+    'editor-start-text': (v) => {
+      editorStartText = v;
+    },
+    'editor-win-text': (v) => {
+      editorWinText = v;
+    },
+    'editor-lose-text': (v) => {
+      editorLoseText = v;
+    },
+    'board-text': () => {},
+  };
+  for (const id of Object.keys(COPY_FIELDS)) {
+    app.querySelector<HTMLTextAreaElement>(`#${id}`)?.addEventListener('focus', () => {
+      editorCopyFieldId = id;
+    });
+  }
+  app.querySelectorAll<HTMLButtonElement>('[data-copy-tag]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.copyTag;
+      if (!tag) return;
+      insertCopyTag(tag, COPY_FIELDS);
+      btn.classList.add('copied');
+      window.setTimeout(() => btn.classList.remove('copied'), 700);
+    });
   });
   app.querySelector('#army-name')?.addEventListener('change', (e) => {
     editorFormationName = (e.target as HTMLInputElement).value;
@@ -5230,6 +5503,7 @@ function bindEvents() {
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
   app.querySelector('#end-next')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
+  bindBoardPopup();
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
     briefingOpen = false;
     render();
@@ -5355,9 +5629,10 @@ function render() {
         </div>
         ${renderEditorBar()}
       </div>
+      ${renderEditorBoardPopup()}
       <aside class="sidebar">
         <h2>${escapeHtml(editorName.trim() || 'New level')}</h2>
-        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
+        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Click a placed unit to turn it one hex face. Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
         <p class="muted">Levels / Units / AI in the header switches library, roster, and the AI checklist. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> and <strong>Tutorial</strong> pick a map (win one to unlock the next). <strong>Historical</strong> playlists on Start follow the drag order in Levels. <strong>Skirmish</strong> pick a map. AI armies pick aggressive, defensive, or advance next to the controller.</p>
       </aside>
     `;
@@ -5426,6 +5701,7 @@ function render() {
         ${renderHexChoice()}
         ${endTurnButton()}
         ${state.winner ? renderEndOverlay() : renderStartOverlay()}
+        ${renderBoardPopup()}
       </div>
       ${renderActionBar()}
     </div>

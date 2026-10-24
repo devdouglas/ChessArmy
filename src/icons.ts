@@ -373,6 +373,50 @@ export function tokenGlyphSvg(
       </g>
     </g>`;
   }
+  if (type === 'house') {
+    const r = size;
+    const sw = Math.max(1.2, r * 0.09);
+    const ink = Math.max(0.7, r * 0.045);
+    const gs = r / 10;
+    return `<g class="token-house">
+      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.35" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>
+      <g transform="scale(${gs.toFixed(3)})">
+        <ellipse cx="0" cy="6.25" rx="5.5" ry="1.3" fill="#1a1410" opacity="0.32"/>
+        <path d="M-5.55 0.2 L0 -6.7 L5.55 0.2 Z" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.48" stroke-linejoin="round"/>
+        <rect x="-4.2" y="0.05" width="8.4" height="6.45" rx="0.3" fill="var(--wall-lo)" stroke="var(--wall-ink)" stroke-width="0.45"/>
+        <rect x="-1.05" y="3.05" width="2.1" height="3.45" rx="0.18" fill="var(--wall-ink)"/>
+        <rect x="-3.45" y="1.25" width="1.85" height="1.5" rx="0.12" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.28"/>
+        <rect x="1.6" y="1.25" width="1.85" height="1.5" rx="0.12" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.28"/>
+      </g>
+    </g>`;
+  }
+  if (type === 'tree') {
+    const r = size;
+    const sw = Math.max(1.1, r * 0.08);
+    const gs = r / 10;
+    const left = hp ?? PALISADE_HP;
+    const chips = Math.max(0, PALISADE_HP - left);
+    const canopy =
+      chips >= 2
+        ? `<ellipse cx="-0.35" cy="-1.25" rx="2.05" ry="1.75" fill="var(--tree-lo)"/>
+           <path d="M1.45 1.05 L4.55 3.25 L3.85 3.75 L0.85 1.5 Z" fill="var(--tree-hi)"/>`
+        : chips >= 1
+          ? `<ellipse cx="-1.55" cy="-2.2" rx="3.05" ry="2.75" fill="var(--tree)"/>
+             <ellipse cx="1.6" cy="-1.05" rx="2.45" ry="2.2" fill="var(--tree-hi)"/>
+             <path d="M2.35 0.35 L5.05 2.85 L4.35 3.35 L1.65 0.8 Z" fill="var(--tree-lo)"/>`
+          : `<ellipse cx="0" cy="-2.7" rx="4.55" ry="4.05" fill="var(--tree)"/>
+             <ellipse cx="-2.2" cy="-1.05" rx="2.85" ry="2.45" fill="var(--tree-hi)"/>
+             <ellipse cx="2.3" cy="-0.75" rx="2.55" ry="2.2" fill="var(--tree-lo)"/>`;
+    return `<g class="token-tree${chips ? ' damaged' : ''}">
+      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--palisade)" stroke="var(--palisade-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+      <g transform="scale(${gs.toFixed(3)})">
+        <ellipse cx="0" cy="6.35" rx="3.4" ry="1.15" fill="#1a1410" opacity="0.32"/>
+        <path d="M-1.05 5.9 L-0.55 1.05 H0.55 L1.05 5.9 Z" fill="var(--palisade-lo)" stroke="var(--palisade-ink)" stroke-width="0.35"/>
+        ${canopy}
+      </g>
+    </g>`;
+  }
   if (type === 'flag') {
     const side = owner ? ` ${owner}` : '';
     return `<g class="token-flag${side}" transform="scale(${s})">
@@ -380,6 +424,16 @@ export function tokenGlyphSvg(
       <path d="M-0.35 6.5 V-7.1" fill="none" stroke="#3a3228" stroke-width="1.35" stroke-linecap="round"/>
       <rect x="-0.85" y="-7.35" width="1.05" height="1.35" rx="0.25" fill="#c8b070"/>
       <path class="flag-cloth" d="M0.35 -6.85 L7.4 -4.15 L0.35 -1.15 Z"/>
+    </g>`;
+  }
+  if (type === 'board') {
+    return `<g class="token-board" transform="scale(${s})">
+      <ellipse cx="0" cy="6.35" rx="3.1" ry="1.05" fill="#1a1410" opacity="0.32"/>
+      <rect x="-0.55" y="-0.4" width="1.1" height="6.6" rx="0.25" fill="#5a3a22" stroke="#2a1810" stroke-width="0.35"/>
+      <rect x="-5.35" y="-7.55" width="10.7" height="7.45" rx="0.6" fill="#c4a06a" stroke="#3a2818" stroke-width="0.55"/>
+      <rect x="-4.55" y="-6.7" width="9.1" height="5.7" rx="0.28" fill="#d8b57c" stroke="#6a4a2a" stroke-width="0.28"/>
+      <path d="M-3.35 -5.45 H3.25 M-3.35 -3.65 H2.45 M-3.35 -1.85 H2.95" fill="none" stroke="#5a4030" stroke-width="0.48" stroke-linecap="round"/>
+      <circle class="board-seal" cx="3.55" cy="-6.55" r="0.95" fill="#a82828" stroke="#6a1818" stroke-width="0.28"/>
     </g>`;
   }
   return '';
@@ -454,7 +508,7 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
 }
 
 /** Lightning bolt, viewBox roughly -5..5 × -7..7. */
-const STAMINA_BOLT =
+export const STAMINA_BOLT =
   'M1.5 -5.6 L-2.7 0.15 H0.55 L-2.3 5.6 L2.9 -0.15 H-0.45 Z';
 
 /** Gold stamina bolt on a hex that will spend stamina if you move there. */
@@ -481,6 +535,23 @@ export function staminaEmptyMarkSvg(cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
+/** Inline stamina bolt for copy / glyph catalog. */
+export function hudEnergyIconSvg(em = '1.2em'): string {
+  return `<svg class="copy-icon hud energy" viewBox="-5 -7 10 14" width="${em}" height="${em}" role="img" aria-label="Energy"><path fill="#f0d060" d="${STAMINA_BOLT}"/></svg>`;
+}
+
+/** Inline HP / units pip for copy / glyph catalog. */
+export function hudPipIconSvg(kind: 'hp' | 'units', em = '1.2em'): string {
+  const fill = kind === 'hp' ? 'var(--piece-red)' : 'var(--piece-blue)';
+  const label = kind === 'hp' ? 'HP' : 'Units';
+  return `<svg class="copy-icon hud pip" viewBox="0 0 8 12" width="0.58em" height="${em}" role="img" aria-label="${label}"><rect x="0.4" y="0.4" width="7.2" height="11.2" rx="1" fill="${fill}"/></svg>`;
+}
+
+/** Inline shot arrow for copy / glyph catalog. */
+export function hudArrowIconSvg(em = '1.2em'): string {
+  return `<svg class="copy-icon hud arrow" viewBox="-4 -7 8 14" width="${em}" height="${em}" role="img" aria-label="Arrow"><path fill="#f0d060" d="${SHOT_ARROW}"/></svg>`;
+}
+
 /** Remaining/max stamina as gold / grey lightning pips. */
 export function staminaPipsHtml(left: number, max: number): string {
   if (max <= 0) return '';
@@ -493,7 +564,7 @@ export function staminaPipsHtml(left: number, max: number): string {
 }
 
 /** Arrowhead + shaft, viewBox roughly -4..4 × -7..7. */
-const SHOT_ARROW =
+export const SHOT_ARROW =
   'M0 -6.5 L3.6 -1.15 H1.35 V3.35 H2.55 L1.15 6.5 H-1.15 L-2.55 3.35 H-1.35 V-1.15 H-3.6 Z';
 
 /** Shot pips — gold ready, orange reloading, grey spent. */
@@ -524,7 +595,7 @@ function factionBlockPips(
   kind: 'hp' | 'units',
   left: number,
   max: number,
-  side: Side,
+  side: Side | 'catalog',
   label: string,
   generalFirst = false,
 ): string {
@@ -543,7 +614,7 @@ function factionBlockPips(
 export function hpPipsHtml(
   left: number,
   max: number,
-  side: Side,
+  side: Side | 'catalog',
   generalFirst = false,
 ): string {
   return factionBlockPips('hp', left, max, side, 'HP', generalFirst);
