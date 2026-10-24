@@ -3264,6 +3264,10 @@ svg.board .hex {
   opacity: 0.82;
 }
 
+.need-rest-mark.ghost {
+  opacity: 1;
+}
+
 @keyframes stamina-hex-in {
   from {
     opacity: 0;

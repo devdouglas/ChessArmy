@@ -521,17 +521,25 @@ export function staminaHexMarkSvg(cx: number, cy: number, r = 8): string {
 }
 
 /** Empty stamina — bolt pip, top-left, with a red prohibition ring + slash. */
-export function staminaEmptyMarkSvg(cx: number, cy: number, r = 7): string {
+export function staminaEmptyMarkSvg(
+  cx: number,
+  cy: number,
+  r = 7,
+  ghost = false,
+): string {
   const ring = Math.max(1.35, r * 0.24);
   const slash = Math.max(1.55, r * 0.28);
   const inset = r * 0.64;
   const s = (r * 0.78) / 5.6;
+  const fill = ghost ? 'rgba(255,255,255,0.14)' : '#1a1f1c';
+  const stroke = ghost ? 'rgba(255,255,255,0.55)' : '#e04030';
+  const bolt = ghost ? 'rgba(255,255,255,0.7)' : '#e8b840';
   return `
-    <g class="stamina-empty-mark" transform="translate(${cx}, ${cy})">
-      <circle cx="0" cy="0" r="${r.toFixed(2)}" fill="#1a1f1c" stroke="#e04030" stroke-width="${ring.toFixed(2)}"/>
-      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#e8b840"/>
+    <g class="stamina-empty-mark${ghost ? ' ghost' : ''}" transform="translate(${cx}, ${cy})">
+      <circle cx="0" cy="0" r="${r.toFixed(2)}" fill="${fill}" stroke="${stroke}" stroke-width="${ring.toFixed(2)}"/>
+      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="${bolt}"/>
       <path d="M ${(-inset).toFixed(2)} ${inset.toFixed(2)} L ${inset.toFixed(2)} ${(-inset).toFixed(2)}"
-        fill="none" stroke="#e04030" stroke-width="${slash.toFixed(2)}" stroke-linecap="round"/>
+        fill="none" stroke="${stroke}" stroke-width="${slash.toFixed(2)}" stroke-linecap="round"/>
     </g>`;
 }
 

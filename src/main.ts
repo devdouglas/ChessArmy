@@ -2448,9 +2448,12 @@ function renderBoard(): string {
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
     const occ = !!pieceAt(state, hex);
+    const terrain = state.terrain[hex.row]?.[hex.col] ?? 'land';
+    const busy =
+      occ || terrain !== 'land' || isWall(state, hex) || isPalisade(state, hex);
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
-    staminaMarks += `<g class="need-rest-mark">${staminaEmptyMarkSvg(x, y + dy, r)}</g>`;
+    staminaMarks += `<g class="need-rest-mark${busy ? '' : ' ghost'}">${staminaEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
   }
 
   let tokensSvg = '';
