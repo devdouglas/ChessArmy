@@ -31,6 +31,7 @@ import {
   type UnitType,
 } from './roster';
 import { type AbilityId } from './abilities';
+import { isExperimentalOn } from './experimental';
 
 export {
   ABILITY_BLURB,
@@ -560,8 +561,8 @@ export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation):
   return s.armor;
 }
 
-/** Cube dirs a hex-armor piece cannot walk or shoot (faces at −2). Empty if hex armor is off. */
-function blockedWalkDirs(piece: Piece): Set<HexDir> {
+/** Cube dirs of −2 hex-armor faces. Empty if hex armor is off. */
+function redFaceDirs(piece: Piece): Set<HexDir> {
   const s = statsOf(piece.type);
   const blocked = new Set<HexDir>();
   if (!s.hexArmor) return blocked;
@@ -573,10 +574,34 @@ function blockedWalkDirs(piece: Piece): Set<HexDir> {
   return blocked;
 }
 
+/** Cube dirs a hex-armor piece cannot walk (faces at −2). */
+function blockedWalkDirs(piece: Piece): Set<HexDir> {
+  if (!isExperimentalOn('block-red-move')) return new Set();
+  return redFaceDirs(piece);
+}
+
+/** Cube dirs a hex-armor piece cannot shoot (faces at −2). */
+function blockedShootDirs(piece: Piece): Set<HexDir> {
+  if (!isExperimentalOn('block-red-shoot')) return new Set();
+  return redFaceDirs(piece);
+}
+
 /** True when `to` sits on a −2 hex-armor ray from `from`. */
+export function isRedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
+  const dir = axisDir(from, to, o);
+  return dir !== null && redFaceDirs(piece).has(dir);
+}
+
+/** True when walking `from`→`to` is banned by a red face. */
 export function isBlockedFaceRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
   const dir = axisDir(from, to, o);
   return dir !== null && blockedWalkDirs(piece).has(dir);
+}
+
+/** True when shooting `from`→`to` is banned by a red face. */
+export function isBlockedShootRay(piece: Piece, from: Hex, to: Hex, o: HexOrientation): boolean {
+  const dir = axisDir(from, to, o);
+  return dir !== null && blockedShootDirs(piece).has(dir);
 }
 
 function hexDamageFaceAmount(piece: Piece, dir: HexDir): number {
@@ -762,7 +787,7 @@ export function hpLeft(piece: Piece): number {
 }
 
 export function staminaMax(piece: Piece): number {
-  return statsOf(piece.type).stamina;
+  return statsOf(piece.type).stamina + (hasUnitToken(piece, 'general') ? 1 : 0);
 }
 
 export function staminaLeft(piece: Piece): number {
@@ -838,10 +863,8 @@ function applyDamage(
 }
 
 /**
- * Generals hold. Otherwise:
- * — hit on a −2 (red) face, opposite hex pinned (enemy / wall / palisade / higher ground / edge)
- * — hit from the front, enemy standing on a −2 (red / back) hex
- * Friendly occupants never pin.
+ * Generals hold. Otherwise: a hostile on the exact opposite hex, and
+ * one of those two faces is −2 (red). Friends never pin. Terrain does not.
  */
 export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean {
   if (!from) return false;
@@ -849,53 +872,20 @@ export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean 
   const at: Hex = { col: victim.col, row: victim.row };
   const incoming = incomingDir(from, at, state.orientation);
   if (incoming === null) return false;
-  if (armorOf(victim, from, state.orientation) <= -2) {
-    const escape = neighborInDir(
-      at,
-      (((incoming + 3) % 6) + 6) % 6 as HexDir,
-      state.orientation,
-    );
-    if (routEscapeBlocked(state, victim, escape)) return true;
+  const oppDir = (((incoming + 3) % 6) + 6) % 6 as HexDir;
+  const opp = neighborInDir(at, oppDir, state.orientation);
+  const occ = pieceAt(state, opp);
+  if (!occ || occ.id === victim.id || !isHostile(state, occ.side, victim.side)) {
+    return false;
   }
-  return isFrontHit(victim, from, state.orientation) && hostileOnRedFace(state, victim);
+  return armorOnDir(victim, incoming) <= -2 || armorOnDir(victim, oppDir) <= -2;
 }
 
-function isFrontHit(piece: Piece, from: Hex, orientation: HexOrientation): boolean {
-  const side = armorSideHit(piece, from, orientation);
-  if (side) return side === 'armorFront';
-  const incoming = incomingDir(from, { col: piece.col, row: piece.row }, orientation);
-  return incoming !== null && incoming === facingOf(piece);
-}
-
-function hostileOnRedFace(state: GameState, victim: Piece): boolean {
-  const at: Hex = { col: victim.col, row: victim.row };
-  const facing = facingOf(victim);
-  const s = statsOf(victim.type);
-  const dirs: HexDir[] = [];
-  if (s.hexArmor) {
-    for (let rel = 0; rel < 6; rel++) {
-      if (s[HEX_ARMOR_SIDES[rel]] > -2) continue;
-      dirs.push((((facing + rel) % 6) + 6) % 6 as HexDir);
-    }
-  } else if (s.armor <= -2) {
-    dirs.push((((facing + 3) % 6) + 6) % 6 as HexDir);
-  }
-  for (const dir of dirs) {
-    const hex = neighborInDir(at, dir, state.orientation);
-    const occ = pieceAt(state, hex);
-    if (occ && occ.id !== victim.id && isHostile(state, occ.side, victim.side)) return true;
-  }
-  return false;
-}
-
-function routEscapeBlocked(state: GameState, victim: Piece, hex: Hex): boolean {
-  if (!inBounds(state, hex)) return true;
-  if (isBlockedWalk(state, hex)) return true;
-  if (hexHeight(state, hex) > hexHeight(state, { col: victim.col, row: victim.row })) {
-    return true;
-  }
-  const occ = pieceAt(state, hex);
-  return !!occ && isHostile(state, occ.side, victim.side);
+function armorOnDir(piece: Piece, dir: HexDir): number {
+  const s = statsOf(piece.type);
+  if (!s.hexArmor) return s.armor;
+  const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
+  return s[HEX_ARMOR_SIDES[rel]];
 }
 
 function escLog(s: string): string {
@@ -1821,7 +1811,6 @@ function afterAction(
   enteredWater = false,
 ): void {
   markActed(piece);
-  const stats = statsOf(piece.type);
 
   // Stepping into water from land ends momentum. Already-wet is a normal activation
   // — the turn-start swim cost is a pool penalty, not staminaUsedThisTurn.
@@ -1836,7 +1825,16 @@ function afterAction(
     return;
   }
 
-  // Unused stamina after a normal move or rotate buys one extra action.
+  const leftover = leftoverActionPoints(state, piece);
+  if (leftover > 0) {
+    state.scoutPieceId = piece.id;
+    state.scoutActionsLeft = leftover;
+    state.staminaBonus = false;
+    checkWin(state);
+    return;
+  }
+
+  // Unused stamina after every action point is spent buys one extra action.
   if (
     (kind === 'move' || kind === 'rotate') &&
     !piece.staminaUsedThisTurn &&
@@ -1849,24 +1847,6 @@ function afterAction(
     return;
   }
 
-  // Stamina spend burns leftover actions (scout second action, etc.).
-  if (piece.staminaUsedThisTurn && stats.actions > 1) {
-    finishActivation(state, piece);
-    return;
-  }
-  if (stats.actions > 1 && state.scoutPieceId === piece.id) {
-    state.scoutActionsLeft = (state.scoutActionsLeft ?? stats.actions) - 1;
-    if (state.scoutActionsLeft <= 0) finishActivation(state, piece);
-    else checkWin(state);
-    return;
-  }
-  if (stats.actions > 1 && state.scoutPieceId === null) {
-    state.scoutPieceId = piece.id;
-    state.scoutActionsLeft = stats.actions - 1;
-    if (state.scoutActionsLeft <= 0) finishActivation(state, piece);
-    else checkWin(state);
-    return;
-  }
   finishActivation(state, piece);
 }
 
@@ -1974,8 +1954,25 @@ function pathHaltsExtra(state: GameState, from: Hex, dest: Hex, path: Hex[]): bo
   return pathSpendsStamina(state, from, dest, path) || pathEntersWater(state, from, dest, path);
 }
 
+/** Action points still available this activation, including the one about to be spent. */
+function remainingActionPoints(state: GameState, piece: Piece): number {
+  const stats = statsOf(piece.type);
+  if (state.staminaBonus && state.scoutPieceId === piece.id) return 0;
+  if (state.scoutPieceId === piece.id) return Math.max(1, state.scoutActionsLeft ?? 1);
+  return Math.max(1, stats.actions);
+}
+
+/** Action points left after the action about to resolve. */
+function leftoverActionPoints(state: GameState, piece: Piece): number {
+  return Math.max(0, remainingActionPoints(state, piece) - 1);
+}
+
 function extraMoveAction(state: GameState, piece: Piece): boolean {
-  return canSpendStamina(piece) && !state.staminaBonus;
+  return (
+    canSpendStamina(piece) &&
+    !state.staminaBonus &&
+    remainingActionPoints(state, piece) <= 1
+  );
 }
 
 type StraightStop = { dist: number; path: Hex[]; via: Hex | null; firstDist: number };
@@ -2180,7 +2177,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     for (let col = 0; col < state.cols; col++) {
       const h = { col, row };
       if (eq(h, from)) continue;
-      if (isBlockedFaceRay(piece, from, h, state.orientation)) continue;
+      if (isBlockedShootRay(piece, from, h, state.orientation)) continue;
       const d = hexDist(state, from, h);
       if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);

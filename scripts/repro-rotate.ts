@@ -93,8 +93,11 @@ try {
   assert(first.scoutPieceId === hexed.id, 'lock after first rotate');
   assert((first.scoutActionsLeft ?? 0) === 1, 'one action left');
   const second = rotatePiece(first, hexed.id, 1);
-  assert(hasActed(second, hexed.id), 'second rotate finishes');
+  assert(!hasActed(second, hexed.id), 'second rotate spends the last action point');
+  assert(second.staminaBonus, 'last AP buys the stamina extra');
   assert(facingOf(second.pieces.find((p) => p.id === hexed.id)!) === 1, 'second rotate facing');
+  const third = rotatePiece(second, hexed.id, 0);
+  assert(hasActed(third, hexed.id), 'stamina rotate finishes');
 } finally {
   UNIT_STATS.cohort.actions = savedActions;
 }

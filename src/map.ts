@@ -14,6 +14,7 @@ import {
   seedFlagOwners,
   statsOf,
   hpMax,
+  staminaMax,
   type ArmyControl,
   type AiStyle,
   type GameState,
@@ -500,6 +501,8 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
     };
     const max = hpMax(piece);
     piece.hp = max > 1 ? max : undefined;
+    const stam = staminaMax(piece);
+    piece.stamina = stam > 0 ? stam : undefined;
     return piece;
   });
 }

@@ -59,7 +59,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Stamina** (pool):
 
-- Spend 1 to **climb**, to **stay in water** at turn start, or after a normal move/turn take a **second straight-line** action (new direction OK). Unused steps of an action are lost.
+- Spend 1 to **climb**, to **stay in water** at turn start, or after **every action point** is spent take a **second straight-line** action (new direction OK). Unused steps of an action are lost. Units with extra actions (scout) use those first; stamina extra is last.
 - Climbing or entering water ends momentum (no chained extra action through that hex).
 - Empty pool: bolt badge on the piece.
 - **Regen**: consecutive own turns per point. Any action resets the countdown (that End still counts). The point only lands if the unit did **nothing** that turn (**Rest** counts as idle), **on land** — never in water. 0 = never.
@@ -79,19 +79,15 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Armor** −2…+2, subtracted from incoming damage (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank/dreadnought +2, general/elephant/cruiser +1.
 
-**Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets). Facing is a first-class action for these units.
+**Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets) — Experimental features, two toggles, both on by default. Facing is a first-class action for these units.
 
-**Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Triggers when:
-- hit on a **−2 (red)** face and the opposite hex is an enemy, a wall/palisade, or **higher** ground
-- hit from the **front** and an enemy is standing on a **−2 (red / back)** hex
-
-Friendly units never pin.
+**Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Triggers when an **enemy stands on the exact opposite hex** and **one of those two faces is −2 (red)**. Friends and terrain never pin.
 
 **Hex damage:** per-face 0–2. Each live face is facing pikes on the **adjacent** hex only: enemies take that damage when they **enter**. Standing there does not pulse again.
 
 **Pass through pieces** (scout / horse archer / some flyers): walk through units. **Infantry** can be overrun by kits that allow it (tank).
 
-**Value/weight** is AI scoring. A General token on a piece is **+1** value.
+**Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** stamina, and **+1** value.
 
 ---
 
@@ -123,7 +119,7 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
-**Unit token — General:** stamp on a piece so it counts as a command piece (star). All generals on a side must fall to lose by command.
+**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 stamina**, **+1** value. All generals on a side must fall to lose by command.
 
 ---
 

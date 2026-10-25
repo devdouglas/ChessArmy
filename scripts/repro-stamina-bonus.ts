@@ -125,61 +125,96 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
     'green dests never include leftover-carry steps',
   );
   const four = step(from, 5, 4);
-  const fourHl = first.find(
-    (h) => h.kind === 'stamina' && h.hex.col === four.col && h.hex.row === four.row,
-  );
-  assert(fourHl, '2+2 along the same axis is a stamina option');
-  const fourPath = pathForMove(s, p, four);
-  assert(fourPath.length === 4, '2+2 path is four hexes');
-  const via = step(from, 5, 2);
   assert(
-    fourPath[1].col === via.col && fourPath[1].row === via.row,
-    '2+2 splits after the first action of 2',
+    !first.some((h) => h.hex.col === four.col && h.hex.row === four.row),
+    'first action cannot spend stamina: 2+2 is not on the first click',
   );
-  const bent = step(step(from, 5, 1), 0, 2);
-  const bentPath = pathForMove(s, p, bent);
-  assert(bentPath.length === 3, '1 then 2 is allowed (leftover of action 1 is dead)');
-  assert(
-    !pathForMove(s, p, step(from, 5, 5)).length,
-    'no 5th hex: leftover does not stack onto the extra action',
-  );
-  const sticky = stickyMovePlan(s, p, step(via, 0, 2), fourPath);
-  assert(sticky.via, 'hover keeps the first-action waypoint');
-  assert(
-    sticky.path[1].col === via.col && sticky.path[1].row === via.row,
-    'turning for the extra action keeps the first 2',
-  );
-  const three = step(from, 5, 3);
-  const drawn12 = [step(from, 5, 1), step(from, 5, 2), three];
-  const kept = resolveMovePath(s, p, three, drawn12);
-  assert(
-    kept.length === 3 && kept[0].col === drawn12[0].col && kept[0].row === drawn12[0].row,
-    'move follows the drawn 1+2, not a replanned 2+1',
-  );
-  const walked = applyAction(s, { kind: 'move', pieceId: p.id, to: three, path: drawn12 });
-  const w = red(walked, 'scout');
-  assert(w.col === three.col && w.row === three.row, 'drawn path dest is occupied');
-  assert(staminaLeft(w) === 0, 'following the 2-leg path spends stamina');
 
   const two = step(from, 5, 2);
   const afterTwo = applyAction(s, { kind: 'move', pieceId: p.id, to: two });
   const q = red(afterTwo, 'scout');
-  assert(afterTwo.staminaBonus, '2-hex move still buys the extra action');
+  assert(!afterTwo.staminaBonus, 'first scout action does not buy the stamina extra');
+  assert(afterTwo.scoutPieceId === q.id, 'stays the active piece');
+  assert(afterTwo.scoutActionsLeft === 1, 'one action point left');
+  assert(staminaLeft(q) === staminaLeft(p), 'stamina unused until action points are gone');
+  const at = { col: q.col, row: q.row };
   const second = walk(afterTwo, q.id);
-  assert(maxCost(second) === 2, 'second action is a fresh range 2');
-  const turn = step({ col: q.col, row: q.row }, 0, 2);
+  const greenSecond = second.filter((h) => h.kind === 'move');
+  assert(maxCost(greenSecond) === 1, 'move cap leftover after 2 is 1');
+  const oneMore = step(at, 5, 1);
+  assert(
+    second.some((h) => h.kind === 'move' && h.hex.col === oneMore.col && h.hex.row === oneMore.row),
+    'last action point can walk the leftover hex without stamina',
+  );
+  const turn = step(at, 0, 1);
   assert(
     second.some((h) => h.hex.col === turn.col && h.hex.row === turn.row),
     'second action may change direction',
   );
+  const threeMore = step(at, 5, 3);
+  assert(
+    second.some(
+      (h) => h.kind === 'stamina' && h.hex.col === threeMore.col && h.hex.row === threeMore.row,
+    ),
+    'last action + stamina is a 1+2 option',
+  );
+  assert(
+    !second.some((h) => {
+      const far = step(at, 5, 4);
+      return h.hex.col === far.col && h.hex.row === far.row;
+    }),
+    'no 4th hex from here: last AP is 1, extra is 2',
+  );
+  const stamPath = pathForMove(afterTwo, q, threeMore);
+  assert(stamPath.length === 3, '1+2 path is three hexes');
+  const via = oneMore;
+  assert(
+    stamPath[0].col === via.col && stamPath[0].row === via.row,
+    '1+2 splits after the last action of 1',
+  );
+  const bent = step(oneMore, 0, 2);
+  const bentPath = pathForMove(afterTwo, q, bent);
+  assert(bentPath.length === 3, '1 then 2 is allowed');
+  assert(
+    !pathForMove(afterTwo, q, step(at, 5, 4)).length,
+    'no 4th hex: leftover does not stack onto the extra action',
+  );
+  const sticky = stickyMovePlan(afterTwo, q, step(via, 0, 2), stamPath);
+  assert(sticky.via, 'hover keeps the last-action waypoint');
+  assert(
+    sticky.path[0].col === via.col && sticky.path[0].row === via.row,
+    'turning for the extra action keeps the last 1',
+  );
+  const drawn12 = [oneMore, step(at, 5, 2), threeMore];
+  const kept = resolveMovePath(afterTwo, q, threeMore, drawn12);
+  assert(
+    kept.length === 3 && kept[0].col === drawn12[0].col && kept[0].row === drawn12[0].row,
+    'move follows the drawn 1+2',
+  );
+  const walked = applyAction(afterTwo, {
+    kind: 'move',
+    pieceId: q.id,
+    to: threeMore,
+    path: drawn12,
+  });
+  const w = red(walked, 'scout');
+  assert(w.col === threeMore.col && w.row === threeMore.row, 'drawn path dest is occupied');
+  assert(staminaLeft(w) === 0, 'following the 2-leg path spends stamina');
+  assert(hasActed(walked, w.id), 'last action + stamina finishes the unit');
+
+  const lastGreen = applyAction(afterTwo, { kind: 'move', pieceId: q.id, to: oneMore });
+  const last = red(lastGreen, 'scout');
+  assert(lastGreen.staminaBonus, 'spending the last action point buys the stamina extra');
+  assert(staminaLeft(last) === staminaLeft(q), 'stamina not spent until the extra is taken');
 
   const one = step(from, 5, 1);
   const afterOne = applyAction(s, { kind: 'move', pieceId: p.id, to: one });
   const r = red(afterOne, 'scout');
+  assert(!afterOne.staminaBonus, 'short first action still leaves an action point');
   const leftover = walk(afterOne, r.id);
-  assert(maxCost(leftover) === 2, 'stop after 1: leftover step is dead, extra action is still 2');
+  assert(maxCost(leftover.filter((h) => h.kind === 'move')) === 2, 'stop after 1: leftover step is dead, next action is still 2');
   assert(
-    leftover.every((h) => h.cost <= 2),
+    leftover.filter((h) => h.kind === 'move').every((h) => h.cost <= 2),
     'no 3rd/4th hex from the first action leftover',
   );
 }
@@ -198,10 +233,12 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   s.turn = 'red';
   s.unitsPerTurn = 2;
   const p = s.pieces.find((x) => x.type === 'scout')!;
+  s.scoutPieceId = p.id;
+  s.scoutActionsLeft = 1;
   const dest = step(from, 5, 4);
   assert(
     walk(s, p.id).some((h) => h.hex.col === dest.col && h.hex.row === dest.row),
-    'range 2 stamina run reaches the 4th hex through 3 units',
+    'last action + stamina run reaches the 4th hex through 3 units',
   );
   const path = pathForMove(s, p, dest);
   assert(path.length === 4, 'straight run path is 2+2 through the line');

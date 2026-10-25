@@ -111,7 +111,7 @@ import {
   liftWallTerrain,
   sanitizeTokens,
   hexDamageMarks,
-  isBlockedFaceRay,
+  isRedFaceRay,
 } from './engine';
 import {
   dirBetween,
@@ -219,6 +219,14 @@ import {
   setAiRule,
 } from './ai-config';
 import {
+  EXPERIMENTAL_RULES,
+  experimentalAreStock,
+  isExperimentalOn,
+  isExperimentalRuleId,
+  resetExperimental,
+  setExperimental,
+} from './experimental';
+import {
   actedBadgeSvg,
   ammoBadgeSvg,
   hpBadgeSvg,
@@ -274,7 +282,7 @@ document.title = `${APP_NAME} — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot';
-type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai';
+type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai' | 'experimental';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
 type MapPickKind = 'ai' | 'hotseat' | 'tutorial' | 'campaign';
@@ -1375,6 +1383,17 @@ function enterAi() {
   render();
 }
 
+function enterExperimental() {
+  editorPainting = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
+  screen = 'experimental';
+  clearSelection();
+  aiThinking = false;
+  animating = false;
+  render();
+}
+
 function refreshEditorBoard() {
   const painting = editorPainting;
   const svg = app.querySelector('svg.board');
@@ -2202,7 +2221,7 @@ function redZoneDir(piece: Piece, hex: Hex): HexDir | null {
   const dir = dirBetween(from, hex, state.orientation);
   if (dir === null || dir === facingOf(piece)) return null;
   const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
-  if (rel !== 3 && !isBlockedFaceRay(piece, from, hex, state.orientation)) return null;
+  if (rel !== 3 && !isRedFaceRay(piece, from, hex, state.orientation)) return null;
   return dir;
 }
 
@@ -2717,7 +2736,7 @@ function renderActionBar(): string {
     hint = 'Range preview';
   } else {
     hint = s.actions > 1
-      ? 'Green = move · gold = climb (ends the activation) · click enemy to shoot'
+      ? 'Green = move · gold = climb · action points first, stamina extra last · click enemy to shoot'
       : 'Green = move · gold = climb, or the extra straight-line action · click enemy to shoot';
   }
 
@@ -2888,7 +2907,16 @@ function renderSidebar(): string {
               return `${tag}${n > 0 ? '+' : ''}${n}`;
             }).join(' ')
           : `${s.armor > 0 ? '+' : ''}${s.armor}`,
-        s.hexArmor ? 'hex · front follows last move · −2 face blocks walk and shoot' : '',
+        s.hexArmor
+          ? (() => {
+              const walk = isExperimentalOn('block-red-move');
+              const shoot = isExperimentalOn('block-red-shoot');
+              if (walk && shoot) return 'hex · front follows last move · −2 face blocks walk and shoot';
+              if (walk) return 'hex · front follows last move · −2 face blocks walk';
+              if (shoot) return 'hex · front follows last move · −2 face blocks shoot';
+              return 'hex · front follows last move';
+            })()
+          : '',
       ),
     ];
     if (s.shoot > 0) {
@@ -2980,12 +3008,12 @@ function renderSidebar(): string {
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same, house graphic</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
-            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after a normal move or turn (leftover steps don't carry)</dd></div>
-            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): hit a −2 (red) face while the opposite hex is an enemy, wall/palisade, or higher ground; or hit from the front while an enemy stands on a red/back hex. Friends never pin. Generals never rout</dd></div>
+            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
+            <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Wall: impassable, blocks LOS, rockets smash. House: same as wall, house graphic. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 value, and the General ability — killing that piece can win the match</dd></div>
-            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot. Rout: red-face hit with the other side pinned (enemy / wall / high), or front hit with an enemy on the red/back hex. Friends never pin. Generals immune</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action, leftover stamina still buys the extra move)</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match</dd></div>
+            <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
         </details>
@@ -3652,12 +3680,8 @@ function mapPickTitle(kind: MapPickKind): string {
 }
 
 function mapPickMetaLine(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
-  const armyN = Array.isArray(l.armies) ? l.armies.length : null;
-  const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
-  const size = `${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'} · ${army}`;
-  if (!pickLocks(kind)) return size;
-  if (!sequenceUnlocked(maps, index)) return 'Locked · win the previous map';
-  return hasWonLevel(l.id) ? `Cleared · ${size}` : size;
+  if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return 'Locked · win the previous map';
+  return `${l.cols}×${l.rows}`;
 }
 
 let randomMapThumb: {
@@ -3871,6 +3895,7 @@ function renderStartScreen(): string {
         </div>
         <div class="start-tools">
           <button type="button" class="start-reset" data-start="editor">Editor</button>
+          <button type="button" class="start-reset" data-start="experimental">Experimental features</button>
           <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
         </div>
       </div>
@@ -3912,6 +3937,7 @@ function bindToolbarEvents() {
       else if (kind === 'ai') showMapPick('ai');
       else if (kind === 'random') openRandomSetup('ai');
       else if (kind === 'editor') enterLevels(true);
+      else if (kind === 'experimental') enterExperimental();
     });
   });
   app.querySelector('#reset-progress')?.addEventListener('click', () => {
@@ -4795,10 +4821,10 @@ function renderUnitEditor(): string {
         <dl class="help-list">
           <dt>Piece</dt>
           <dd><strong>HP</strong> default 1</dd>
-          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (those hexes are not legal move dests or fire targets). Rout: hit on a red face with the opposite hex pinned (enemy / wall / high), or hit from the front with an enemy on a red/back hex. Friends never pin. Generals immune</dd>
+          <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
-          <dd><strong>Actions</strong> activations per turn</dd>
+          <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
@@ -4806,7 +4832,7 @@ function renderUnitEditor(): string {
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
           <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after a normal move or turn take a second straight-line action of the same range (new direction OK). Unused steps of an action are lost</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK). Extra actions (scout) come first. Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
@@ -4919,6 +4945,64 @@ function bindAiChecklistEvents() {
     render();
   });
   syncAiStatus();
+}
+
+function renderExperimental(): string {
+  const rows = EXPERIMENTAL_RULES.map(
+    (rule) => `<li>
+      <label class="exp-rule">
+        <input type="checkbox" data-exp-rule="${rule.id}"${
+          isExperimentalOn(rule.id) ? ' checked' : ''
+        } />
+        <span class="exp-rule-copy">
+          <span class="ai-rule-name">${escapeHtml(rule.label)}</span>
+          <span class="ai-rule-blurb">${escapeHtml(rule.blurb)}</span>
+        </span>
+      </label>
+    </li>`,
+  ).join('');
+  return `
+    <div class="ai-editor exp-editor">
+      <div class="ai-editor-head">
+        <h2>Experimental features</h2>
+        <p class="editor-label" id="exp-status">${
+          experimentalAreStock() ? 'Stock rules' : 'Custom rules · saved in this browser'
+        }</p>
+      </div>
+      <p class="muted ai-editor-lead">Gameplay rules still in playtest. Stock = the defaults (on). Saved in this browser. Takes effect on the next move.</p>
+      <ul class="exp-rules">${rows}</ul>
+      <div class="editor-save">
+        <button type="button" id="exp-reset" class="ghost">Reset to stock</button>
+      </div>
+    </div>`;
+}
+
+function syncExpStatus() {
+  const status = app.querySelector('#exp-status');
+  if (status) {
+    status.textContent = experimentalAreStock()
+      ? 'Stock rules'
+      : 'Custom rules · saved in this browser';
+  }
+}
+
+function bindExperimentalEvents() {
+  app.querySelectorAll<HTMLInputElement>('input[data-exp-rule]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const id = el.dataset.expRule;
+      if (!isExperimentalRuleId(id)) return;
+      setExperimental(id, el.checked);
+      syncExpStatus();
+    });
+  });
+  app.querySelector('#exp-reset')?.addEventListener('click', () => {
+    if (!experimentalAreStock() && !confirm('Reset experimental features to stock?')) {
+      return;
+    }
+    resetExperimental();
+    render();
+  });
+  syncExpStatus();
 }
 
 function bindUnitEditorEvents() {
@@ -5493,6 +5577,10 @@ function bindEvents() {
     bindAiChecklistEvents();
     return;
   }
+  if (screen === 'experimental') {
+    bindExperimentalEvents();
+    return;
+  }
 
   app.querySelector('#new-map')?.addEventListener('click', () => {
     if (activeLevelId) startMatch(false);
@@ -5578,7 +5666,11 @@ function render() {
   applyHotseatTint();
   app.classList.toggle(
     'start-screen',
-    screen === 'start' || screen === 'levels' || screen === 'units' || screen === 'ai',
+    screen === 'start' ||
+      screen === 'levels' ||
+      screen === 'units' ||
+      screen === 'ai' ||
+      screen === 'experimental',
   );
 
   if (screen === 'start') {
@@ -5609,6 +5701,17 @@ function render() {
       <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
         ${renderAiChecklist()}
+      </div>
+    `;
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'experimental') {
+    app.innerHTML = `
+      <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
+        ${renderToolbar()}
+        ${renderExperimental()}
       </div>
     `;
     bindEvents();

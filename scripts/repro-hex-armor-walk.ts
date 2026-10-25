@@ -3,6 +3,7 @@ import {
   legalHighlights,
   type GameState,
 } from '../src/engine';
+import { isExperimentalOn, resetExperimental, setExperimental } from '../src/experimental';
 import { defaultFacing, neighborInDir, type HexDir } from '../src/hex';
 import { UNIT_STATS } from '../src/roster';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
@@ -103,8 +104,65 @@ try {
     moveOnto(off, pOff.id, backOff.col, backOff.row),
     'hex armor off: rear −2 does not block walk',
   );
+
+  UNIT_STATS.soldier.hexArmor = true;
+  assert(isExperimentalOn('block-red-move'), 'stock: block-red-move on');
+  assert(isExperimentalOn('block-red-shoot'), 'stock: block-red-shoot on');
+
+  setExperimental('block-red-move', false);
+  const walkOpen = board();
+  const pWalk = walkOpen.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
+  const backWalk = neighborInDir(
+    { col: pWalk.col, row: pWalk.row },
+    rear,
+    'pointy',
+  );
+  assert(
+    moveOnto(walkOpen, pWalk.id, backWalk.col, backWalk.row),
+    'move off: −2 rear is walkable',
+  );
+  assert(
+    !shootAt(walkOpen, pWalk.id, backWalk.col, backWalk.row),
+    'move off: −2 rear still not shootable',
+  );
+
+  setExperimental('block-red-move', true);
+  setExperimental('block-red-shoot', false);
+  const shootOpen = board();
+  const pShoot = shootOpen.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
+  const backShoot = neighborInDir(
+    { col: pShoot.col, row: pShoot.row },
+    rear,
+    'pointy',
+  );
+  assert(
+    !moveOnto(shootOpen, pShoot.id, backShoot.col, backShoot.row),
+    'shoot off: −2 rear still not walkable',
+  );
+  assert(
+    shootAt(shootOpen, pShoot.id, backShoot.col, backShoot.row),
+    'shoot off: −2 rear is shootable',
+  );
+
+  setExperimental('block-red-move', false);
+  const bothOpen = board();
+  const pBoth = bothOpen.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
+  const backBoth = neighborInDir(
+    { col: pBoth.col, row: pBoth.row },
+    rear,
+    'pointy',
+  );
+  assert(
+    moveOnto(bothOpen, pBoth.id, backBoth.col, backBoth.row),
+    'both off: −2 rear is walkable',
+  );
+  assert(
+    shootAt(bothOpen, pBoth.id, backBoth.col, backBoth.row),
+    'both off: −2 rear is shootable',
+  );
 } finally {
   Object.assign(UNIT_STATS.soldier, saved);
+  resetExperimental();
 }
 
 console.log('hex armor −2 face: walk and shoot ray omitted');

@@ -131,17 +131,16 @@ try {
     const s = board({ pin: null, tokens: [{ type: 'wall', col: front.col, row: front.row }] });
     const v = victim(s)!;
     const a = attacker(s);
-    assert(wouldRout(s, v, { col: a.col, row: a.row }), 'wall on opposite → rout');
-    const after = bump(s);
-    assert(!after.pieces.some((p) => p.id === v.id), 'wall pin routed');
+    assert(!wouldRout(s, v, { col: a.col, row: a.row }), 'wall on opposite does not rout');
+    assert(bump(s).pieces.some((p) => p.id === v.id), 'wall pin survives');
   }
 
   {
     const s = board({ pin: null, tokens: [{ type: 'palisade', col: front.col, row: front.row }] });
     const v = victim(s)!;
     const a = attacker(s);
-    assert(wouldRout(s, v, { col: a.col, row: a.row }), 'palisade on opposite → rout');
-    assert(bump(s).pieces.every((p) => p.id !== v.id), 'palisade pin routed');
+    assert(!wouldRout(s, v, { col: a.col, row: a.row }), 'palisade on opposite does not rout');
+    assert(bump(s).pieces.some((p) => p.id === v.id), 'palisade pin survives');
   }
 
   {
@@ -153,8 +152,8 @@ try {
     });
     const v = victim(s)!;
     const a = attacker(s);
-    assert(wouldRout(s, v, { col: a.col, row: a.row }), 'higher ground on opposite → rout');
-    assert(!bump(s).pieces.some((p) => p.id === v.id), 'hill pin routed');
+    assert(!wouldRout(s, v, { col: a.col, row: a.row }), 'higher ground on opposite does not rout');
+    assert(bump(s).pieces.some((p) => p.id === v.id), 'hill pin survives');
   }
 
   {
@@ -252,7 +251,7 @@ try {
     assert(!wouldRout(s, v, { col: a.col, row: a.row }), 'general unit never routs from front sandwich');
   }
 
-  console.log('rout: red-face pin, front+back sandwich, wall/high, generals hold');
+  console.log('rout: opposite-unit sandwich with a red face; terrain does not pin; generals hold');
 } finally {
   UNIT_STATS.soldier.hexArmor = saved.hexArmor;
   UNIT_STATS.soldier.armorFront = saved.armorFront;

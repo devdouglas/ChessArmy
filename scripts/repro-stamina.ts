@@ -7,9 +7,11 @@ import {
   passTurn,
   restPiece,
   staminaLeft,
+  staminaMax,
   type Action,
   type GameState,
 } from '../src/engine';
+import { UNIT_STATS } from '../src/roster';
 import { neighborInDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
@@ -164,6 +166,25 @@ function assert(cond: unknown, msg: string): void {
     ),
     'need-rest hex is not a legal move',
   );
+}
+
+{
+  const t = emptyTerrain(8, 10);
+  const s = createStateFromTerrain(t, 'gen-stam', 'pointy', [
+    { type: 'soldier', col: 3, row: 2, side: 'red', unitTokens: ['general'] },
+    { type: 'soldier', col: 4, row: 2, side: 'red' },
+    { type: 'general', col: 1, row: 1, side: 'red' },
+    { type: 'soldier', col: 3, row: 8, side: 'blue' },
+    { type: 'general', col: 1, row: 9, side: 'blue' },
+  ]);
+  const starred = s.pieces.find((p) => p.side === 'red' && p.col === 3)!;
+  const plain = s.pieces.find((p) => p.side === 'red' && p.col === 4)!;
+  assert(
+    staminaMax(starred) === UNIT_STATS.soldier.stamina + 1,
+    'general token +1 stamina',
+  );
+  assert(staminaLeft(starred) === staminaMax(starred), 'spawns full with the extra pip');
+  assert(staminaMax(plain) === UNIT_STATS.soldier.stamina, 'unstamped soldier unchanged');
 }
 
 console.log('stamina regen ok');

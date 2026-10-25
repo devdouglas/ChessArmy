@@ -357,6 +357,11 @@ html[data-hotseat='purple'] {
   max-width: var(--page-max);
 }
 
+.levels-wrap .toolbar,
+.editor-mode .toolbar {
+  max-width: none;
+}
+
 .toolbar h1 {
   font-size: 1rem;
   font-weight: 600;
@@ -993,7 +998,7 @@ button.primary:focus-visible {
 
 .editor-top {
   grid-template-columns: 1fr 1fr;
-  max-width: var(--page-max);
+  max-width: none;
   margin-bottom: 0.55rem;
   align-items: stretch;
 }
@@ -1014,7 +1019,7 @@ button.primary:focus-visible {
 
 .editor-bar {
   grid-template-columns: 1fr;
-  max-width: var(--page-max);
+  max-width: none;
   margin-top: 0.75rem;
 }
 
@@ -1406,7 +1411,7 @@ button.primary:focus-visible {
 
 .unit-editor {
   width: 100%;
-  max-width: var(--page-max);
+  max-width: none;
   margin: 0 auto;
   padding: 0 0.25rem 2rem;
 }
@@ -1429,7 +1434,7 @@ button.primary:focus-visible {
 
 .ai-editor {
   width: 100%;
-  max-width: var(--page-max);
+  max-width: none;
   margin: 0 auto;
   padding: 0 0.25rem 2rem;
 }
@@ -1572,6 +1577,50 @@ button.primary:focus-visible {
   width: 1.15rem;
   height: 1.15rem;
   cursor: pointer;
+}
+
+.exp-rules {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.exp-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.exp-rule:hover {
+  border-color: var(--muted);
+}
+
+.exp-rule:has(input:checked) {
+  border-color: color-mix(in srgb, var(--sel) 55%, var(--line));
+}
+
+.exp-rule input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0.2rem 0 0;
+  accent-color: var(--sel);
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+}
+
+.exp-rule-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
 }
 
 .sr-only {
@@ -2284,7 +2333,7 @@ button.primary:focus-visible {
 
 .levels-overview {
   width: 100%;
-  max-width: var(--page-max);
+  max-width: none;
   margin: 0 auto;
   padding: 0 0.25rem 2rem;
 }
