@@ -40,6 +40,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "scout": {
@@ -83,6 +84,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "bazooka": {
@@ -126,6 +128,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "sniper": {
@@ -169,6 +172,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "archer": {
@@ -212,6 +216,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "javelin": {
@@ -255,6 +260,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "horsearcher": {
@@ -266,10 +272,10 @@
         "shoot": 3,
         "shootMin": 1,
         "shootArc": "arch",
-        "actions": 1,
+        "actions": 2,
         "shootCooldown": 0,
         "value": 4,
-        "moveBudget": 0,
+        "moveBudget": 3,
         "stamina": 1,
         "staminaRegen": 1,
         "ammo": 0,
@@ -283,8 +289,8 @@
         "armorFront": -1,
         "armorFrontLeft": -1,
         "armorFrontRight": -1,
-        "armorFlankLeft": -2,
-        "armorFlankRight": -2,
+        "armorFlankLeft": -1,
+        "armorFlankRight": -1,
         "armorRear": -2,
         "hexDamage": false,
         "damageFront": 0,
@@ -298,6 +304,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "chariotarcher": {
@@ -341,6 +348,7 @@
         "king": false,
         "passWater": false,
         "climbLevel": 1,
+        "canHide": false,
         "abilities": []
     },
     "cohort": {
@@ -384,6 +392,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "hoplite": {
@@ -427,6 +436,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "elephant": {
@@ -470,6 +480,7 @@
         "king": false,
         "passWater": false,
         "climbLevel": 0,
+        "canHide": false,
         "abilities": []
     },
     "barbarian": {
@@ -513,6 +524,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": true,
         "abilities": []
     },
     "catapult": {
@@ -556,6 +568,7 @@
         "king": false,
         "passWater": false,
         "climbLevel": 0,
+        "canHide": false,
         "abilities": []
     },
     "tank": {
@@ -599,6 +612,7 @@
         "king": false,
         "passWater": false,
         "climbLevel": 0,
+        "canHide": false,
         "abilities": []
     },
     "general": {
@@ -642,6 +656,7 @@
         "king": true,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": [
             "general"
         ]
@@ -687,6 +702,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "dummy": {
@@ -730,6 +746,7 @@
         "king": false,
         "passWater": false,
         "climbLevel": 0,
+        "canHide": false,
         "abilities": []
     },
     "peasant": {
@@ -753,7 +770,7 @@
         "charge": 0,
         "shootDamage": 1,
         "splashDamage": 0,
-        "armor": 0,
+        "armor": -1,
         "hexArmor": false,
         "armorFront": 0,
         "armorFrontLeft": 0,
@@ -773,6 +790,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "fighter": {
@@ -816,6 +834,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "gunship": {
@@ -859,6 +878,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "bomber": {
@@ -902,6 +922,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "frigate": {
@@ -945,6 +966,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "cruiser": {
@@ -988,6 +1010,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "dreadnought": {
@@ -1031,6 +1054,7 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
+        "canHide": false,
         "abilities": []
     },
     "u-mvf8ty84rdk3": {
@@ -1039,6 +1063,7 @@
         "category": "ancient",
         "role": "scout",
         "passWater": true,
+        "canHide": false,
         "climbLevel": 1,
         "passUnits": true,
         "infantry": false,
@@ -1082,6 +1107,7 @@
         "category": "ancient",
         "role": "general",
         "passWater": true,
+        "canHide": false,
         "climbLevel": 2,
         "passUnits": false,
         "infantry": false,
@@ -1127,6 +1153,7 @@
         "category": "ancient",
         "role": "dummy",
         "passWater": false,
+        "canHide": false,
         "climbLevel": 0,
         "passUnits": false,
         "infantry": false,
@@ -1170,6 +1197,7 @@
         "category": "ancient",
         "role": "tower",
         "passWater": true,
+        "canHide": false,
         "climbLevel": 2,
         "passUnits": false,
         "infantry": false,
@@ -1199,6 +1227,50 @@
         "armorFlankLeft": 1,
         "armorFlankRight": 1,
         "armorRear": 1,
+        "hexDamage": false,
+        "damageFront": 0,
+        "damageFrontLeft": 0,
+        "damageFrontRight": 0,
+        "damageFlankLeft": 0,
+        "damageFlankRight": 0,
+        "damageRear": 0
+    },
+    "u-mvlx87f1kk67": {
+        "name": "Strong peasant",
+        "chess": "Levy",
+        "category": "ancient",
+        "role": "peasant",
+        "passWater": true,
+        "canHide": false,
+        "climbLevel": 2,
+        "passUnits": false,
+        "infantry": true,
+        "king": false,
+        "abilities": [],
+        "move": 1,
+        "shoot": 0,
+        "shootMin": 0,
+        "shootArc": "straight",
+        "actions": 1,
+        "shootCooldown": 0,
+        "value": 1,
+        "moveBudget": 0,
+        "stamina": 3,
+        "staminaRegen": 1,
+        "ammo": 0,
+        "hp": 1,
+        "meleeDamage": 1,
+        "charge": 0,
+        "shootDamage": 1,
+        "splashDamage": 0,
+        "armor": 0,
+        "hexArmor": false,
+        "armorFront": 0,
+        "armorFrontLeft": 0,
+        "armorFrontRight": 0,
+        "armorFlankLeft": 0,
+        "armorFlankRight": 0,
+        "armorRear": 0,
         "hexDamage": false,
         "damageFront": 0,
         "damageFrontLeft": 0,

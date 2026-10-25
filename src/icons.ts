@@ -303,6 +303,23 @@ export function pieceIconSvg(type: UnitType, size = 16): string {
   return `<g class="piece-icon" transform="scale(${s})">${ICONS[roleOf(type)]}</g>`;
 }
 
+function treeMarkSvg(chips: number): string {
+  const canopy =
+    chips >= 2
+      ? `<ellipse cx="-0.35" cy="-1.25" rx="2.05" ry="1.75" fill="var(--tree-lo)"/>
+           <path d="M1.45 1.05 L4.55 3.25 L3.85 3.75 L0.85 1.5 Z" fill="var(--tree-hi)"/>`
+      : chips >= 1
+        ? `<ellipse cx="-1.55" cy="-2.2" rx="3.05" ry="2.75" fill="var(--tree)"/>
+             <ellipse cx="1.6" cy="-1.05" rx="2.45" ry="2.2" fill="var(--tree-hi)"/>
+             <path d="M2.35 0.35 L5.05 2.85 L4.35 3.35 L1.65 0.8 Z" fill="var(--tree-lo)"/>`
+        : `<ellipse cx="0" cy="-2.7" rx="4.55" ry="4.05" fill="var(--tree)"/>
+             <ellipse cx="-2.2" cy="-1.05" rx="2.85" ry="2.45" fill="var(--tree-hi)"/>
+             <ellipse cx="2.3" cy="-0.75" rx="2.55" ry="2.2" fill="var(--tree-lo)"/>`;
+  return `<ellipse cx="0" cy="6.35" rx="3.4" ry="1.15" fill="#1a1410" opacity="0.32"/>
+        <path d="M-1.05 5.9 L-0.55 1.05 H0.55 L1.05 5.9 Z" fill="var(--palisade-lo)" stroke="var(--palisade-ink)" stroke-width="0.35"/>
+        ${canopy}`;
+}
+
 /**
  * Overlay stamp centered at 0,0.
  * Pikes: `size` scales the -8..8 glyph (16 → native).
@@ -314,6 +331,7 @@ export function tokenGlyphSvg(
   o: HexOrientation = 'pointy',
   owner?: Side | null,
   hp?: number,
+  occupied = false,
 ): string {
   const s = size / 16;
   if (type === 'pikes') {
@@ -378,9 +396,12 @@ export function tokenGlyphSvg(
     const sw = Math.max(1.2, r * 0.09);
     const ink = Math.max(0.7, r * 0.045);
     const gs = r / 10;
-    return `<g class="token-house">
-      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
-      <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.35" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>
+    const hex = occupied
+      ? ''
+      : `<polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+      <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.35" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>`;
+    return `<g class="token-house${occupied ? ' occupied' : ''}">
+      ${hex}
       <g transform="scale(${gs.toFixed(3)})">
         <ellipse cx="0" cy="6.25" rx="5.5" ry="1.3" fill="#1a1410" opacity="0.32"/>
         <path d="M-5.55 0.2 L0 -6.7 L5.55 0.2 Z" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.48" stroke-linejoin="round"/>
@@ -397,24 +418,29 @@ export function tokenGlyphSvg(
     const gs = r / 10;
     const left = hp ?? PALISADE_HP;
     const chips = Math.max(0, PALISADE_HP - left);
-    const canopy =
-      chips >= 2
-        ? `<ellipse cx="-0.35" cy="-1.25" rx="2.05" ry="1.75" fill="var(--tree-lo)"/>
-           <path d="M1.45 1.05 L4.55 3.25 L3.85 3.75 L0.85 1.5 Z" fill="var(--tree-hi)"/>`
-        : chips >= 1
-          ? `<ellipse cx="-1.55" cy="-2.2" rx="3.05" ry="2.75" fill="var(--tree)"/>
-             <ellipse cx="1.6" cy="-1.05" rx="2.45" ry="2.2" fill="var(--tree-hi)"/>
-             <path d="M2.35 0.35 L5.05 2.85 L4.35 3.35 L1.65 0.8 Z" fill="var(--tree-lo)"/>`
-          : `<ellipse cx="0" cy="-2.7" rx="4.55" ry="4.05" fill="var(--tree)"/>
-             <ellipse cx="-2.2" cy="-1.05" rx="2.85" ry="2.45" fill="var(--tree-hi)"/>
-             <ellipse cx="2.3" cy="-0.75" rx="2.55" ry="2.2" fill="var(--tree-lo)"/>`;
     return `<g class="token-tree${chips ? ' damaged' : ''}">
       <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--palisade)" stroke="var(--palisade-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
       <g transform="scale(${gs.toFixed(3)})">
-        <ellipse cx="0" cy="6.35" rx="3.4" ry="1.15" fill="#1a1410" opacity="0.32"/>
-        <path d="M-1.05 5.9 L-0.55 1.05 H0.55 L1.05 5.9 Z" fill="var(--palisade-lo)" stroke="var(--palisade-ink)" stroke-width="0.35"/>
-        ${canopy}
+        ${treeMarkSvg(chips)}
       </g>
+    </g>`;
+  }
+  if (type === 'forest') {
+    const r = size;
+    const gs = r / 10;
+    const left = hp ?? PALISADE_HP;
+    const chips = Math.max(0, PALISADE_HP - left);
+    const spots = [
+      { t: 'translate(-3.25,-2.05) scale(0.56)', hideAt: 2 },
+      { t: 'translate(3.4,-1.55) scale(0.52)', hideAt: 1 },
+      { t: 'translate(0.1,1.75) scale(0.74)', hideAt: 3 },
+    ];
+    const marks = spots
+      .filter((tr) => chips < tr.hideAt)
+      .map((tr) => `<g transform="${tr.t}">${treeMarkSvg(0)}</g>`)
+      .join('');
+    return `<g class="token-forest${chips ? ' damaged' : ''}">
+      <g transform="scale(${gs.toFixed(3)})">${marks}</g>
     </g>`;
   }
   if (type === 'flag') {
@@ -674,10 +700,24 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
   return '';
 }
 
+export function hiddenBadgeSvg(cx: number, cy: number, r = 7): string {
+  const sw = Math.max(0.75, r * 0.14);
+  const eyeRx = r * 0.46;
+  const eyeRy = r * 0.28;
+  return `
+      <g class="ability-badge hidden" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#14201c" stroke="#6a9a88" stroke-width="1.3"/>
+        <ellipse cx="0" cy="-0.15" rx="${eyeRx.toFixed(2)}" ry="${eyeRy.toFixed(2)}" fill="none" stroke="#c8e8d8" stroke-width="${sw.toFixed(2)}"/>
+        <circle cx="0" cy="-0.15" r="${(r * 0.13).toFixed(2)}" fill="#c8e8d8"/>
+        <path d="M ${(-r * 0.46).toFixed(2)} ${(r * 0.42).toFixed(2)} L ${(r * 0.46).toFixed(2)} ${(-r * 0.46).toFixed(2)}" fill="none" stroke="#e0c070" stroke-width="${(sw * 1.15).toFixed(2)}" stroke-linecap="round"/>
+      </g>`;
+}
+
 /** Editor swatch for a unit token. */
 export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   const r = size * 0.42;
   if (id === 'general') return abilityBadgeSvg('general', 0, 0, r);
+  if (id === 'hidden') return hiddenBadgeSvg(0, 0, r);
   return '';
 }
 

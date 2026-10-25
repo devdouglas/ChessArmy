@@ -186,6 +186,7 @@ export const TOKEN_TYPES = [
   'house',
   'palisade',
   'tree',
+  'forest',
   'flag',
   'board',
   'notouch',
@@ -196,7 +197,7 @@ export type TileToken = {
   col: number;
   row: number;
   owner?: Side;
-  /** Palisade hits left. Missing → full (`PALISADE_HP`). */
+  /** Palisade / tree / forest hits left. Missing → full (`PALISADE_HP`). */
   hp?: number;
   /** AI will not walk this hex (standalone token, or painted onto another). */
   noTouch?: boolean;
@@ -212,6 +213,7 @@ export const TOKEN_LABEL: Record<TokenType, string> = {
   house: 'House',
   palisade: 'Palisade',
   tree: 'Tree',
+  forest: 'Forest',
   flag: 'Flag',
   board: 'Board',
   notouch: 'Do not touch',
@@ -230,10 +232,11 @@ export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
 /** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
-export const UNIT_TOKEN_TYPES = ['general'] as const;
+export const UNIT_TOKEN_TYPES = ['general', 'hidden'] as const;
 export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
 export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   general: 'General',
+  hidden: 'Hidden',
 };
 
 export function isUnitTokenType(v: unknown): v is UnitTokenType {
@@ -318,7 +321,7 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
       const text = sanitizeBoardText(t.text);
       if (text) tok.text = text;
     }
-    if (isPalisadeToken(t.type)) {
+    if (isWoodHpToken(t.type)) {
       const hp = Math.floor(Number(t.hp));
       // Old cap was 2 and we always wrote hp:2 for fresh tokens → treat as full.
       if (Number.isFinite(hp) && hp === 1) tok.hp = 1;
@@ -357,8 +360,20 @@ export function isWallToken(type: TokenType | undefined): boolean {
   return type === 'wall' || type === 'house';
 }
 
+export function isHouseToken(type: TokenType | undefined): boolean {
+  return type === 'house';
+}
+
 export function isPalisadeToken(type: TokenType | undefined): boolean {
   return type === 'palisade' || type === 'tree';
+}
+
+export function isForestToken(type: TokenType | undefined): boolean {
+  return type === 'forest';
+}
+
+export function isWoodHpToken(type: TokenType | undefined): boolean {
+  return isPalisadeToken(type) || isForestToken(type);
 }
 
 /** Wall / house token (or leftover wall terrain) — blocks walk / LOS; rockets demolish. */
@@ -370,11 +385,99 @@ export function isWall(
   return state.terrain[h.row]?.[h.col] === 'wall';
 }
 
+export function isHouse(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return isHouseToken(tokenAt(state.tokens, h)?.type);
+}
+
 export function isPalisade(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
   return isPalisadeToken(tokenAt(state.tokens, h)?.type);
+}
+
+export function isForest(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return isForestToken(tokenAt(state.tokens, h)?.type);
+}
+
+export function isHideToken(type: TokenType | undefined): boolean {
+  return isForestToken(type);
+}
+
+export function isHideCover(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return isHideToken(tokenAt(state.tokens, h)?.type);
+}
+
+export function hasHide(piece: Piece): boolean {
+  if (piece.revealed) return false;
+  return statsOf(piece.type).canHide || hasUnitToken(piece, 'hidden');
+}
+
+export function isConcealed(state: GameState, piece: Piece): boolean {
+  if (!hasHide(piece)) return false;
+  if (hasUnitToken(piece, 'hidden')) return true;
+  return isHideCover(state, { col: piece.col, row: piece.row });
+}
+
+export function isConcealedFrom(state: GameState, piece: Piece, viewer: Side): boolean {
+  if (!isConcealed(state, piece)) return false;
+  return isHostile(state, piece.side, viewer);
+}
+
+export function pieceVisibleTo(state: GameState, piece: Piece, viewer: Side): boolean {
+  return !isConcealedFrom(state, piece, viewer);
+}
+
+export function pieceVisible(state: GameState, piece: Piece, viewers: Side[]): boolean {
+  return viewers.some((v) => pieceVisibleTo(state, piece, v));
+}
+
+function reveal(piece: Piece): void {
+  if (statsOf(piece.type).canHide || hasUnitToken(piece, 'hidden')) {
+    piece.revealed = true;
+  }
+}
+
+/**
+ * Last hidden army: if a side's remaining pieces are all still concealed, they
+ * break cover. AI sides also snap to aggressive. If every living piece on the
+ * board is concealed, everyone unhides (so a human last-stand cannot stall).
+ */
+export function flushLastHiddenArmies(state: GameState): void {
+  if (state.winner) return;
+  const living = state.pieces;
+  if (!living.length) return;
+
+  const unhide = (mine: Piece[]) => {
+    for (const p of mine) reveal(p);
+  };
+  const goAggressive = (side: Side) => {
+    if (!isAiControlled(state, side)) return;
+    if (aiStyleOf(state, side) === 'aggressive') return;
+    state.aiStyles = { ...state.aiStyles, [side]: 'aggressive' };
+  };
+
+  if (living.every((p) => isConcealed(state, p))) {
+    unhide(living);
+    for (const side of new Set(living.map((p) => p.side))) goAggressive(side);
+    return;
+  }
+
+  for (const side of participatingSides(state)) {
+    const mine = living.filter((p) => p.side === side);
+    if (!mine.length || !mine.every((p) => isConcealed(state, p))) continue;
+    unhide(mine);
+    goAggressive(side);
+  }
 }
 
 export function tokenIsNoTouch(t: TileToken | undefined): boolean {
@@ -406,6 +509,25 @@ function palisadeHpAt(
   h: Hex,
 ): number {
   return palisadeHp(tokenAt(state.tokens, h));
+}
+
+function forestHp(tok: TileToken | undefined): number {
+  if (!tok || !isForestToken(tok.type)) return 0;
+  return tok.hp ?? PALISADE_HP;
+}
+
+function chipForestAt(state: GameState, h: Hex): { remaining: number } | null {
+  const tok = tokenAt(state.tokens, h);
+  if (!tok || !isForestToken(tok.type)) return null;
+  const remaining = Math.max(0, forestHp(tok) - 1);
+  if (remaining <= 0) {
+    state.tokens = state.tokens.filter(
+      (t) => !(isForestToken(t.type) && t.col === h.col && t.row === h.row),
+    );
+  } else {
+    tok.hp = remaining;
+  }
+  return { remaining };
 }
 
 export function isWalkableTerrain(t: Terrain): boolean {
@@ -459,6 +581,8 @@ export type Piece = {
   abilities?: AbilityId[];
   /** Attachments (General, …). Missing → none. */
   unitTokens?: UnitTokenType[];
+  /** Hide broken this match (moved, attacked, or was hit). */
+  revealed?: boolean;
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
@@ -852,6 +976,7 @@ function applyDamage(
         hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
       );
   victim.hp = remaining;
+  reveal(victim);
   if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
@@ -1342,19 +1467,34 @@ function highTargetTax(state: GameState, to: Hex): number {
   return hexHeight(state, to);
 }
 
-function losClear(state: GameState, from: Hex, to: Hex, overUnits: boolean): boolean {
+function losClear(
+  state: GameState,
+  from: Hex,
+  to: Hex,
+  overUnits: boolean,
+  viewer: Side,
+): boolean {
   const cells = line(from, to, state.orientation);
   const fromH = hexHeight(state, from);
   // Wall always blocks. Intermediate terrain higher than the shooter blocks.
   // Same/lower elevation is clear (ridge / plateau). Pieces block only from height 0.
   // Arch: fire over units even from low. Terrain LOS unchanged.
   // Destination may be elevated / occupied / wall — you can shoot *onto* it.
+  // Hidden enemies do not block — you cannot see them.
   for (let i = 0; i < cells.length - 1; i++) {
     const h = cells[i];
     if (isWall(state, h)) return false;
-    if (isPalisade(state, h) && !overUnits) return false;
+    if ((isPalisade(state, h) || isForest(state, h)) && !overUnits) return false;
     if (hexHeight(state, h) > fromH) return false;
-    if (fromH === 0 && !overUnits && pieceAt(state, h)) return false;
+    const blocker = pieceAt(state, h);
+    if (
+      fromH === 0 &&
+      !overUnits &&
+      blocker &&
+      !isConcealedFrom(state, blocker, viewer)
+    ) {
+      return false;
+    }
   }
   return true;
 }
@@ -1416,7 +1556,13 @@ export function splashHitsEnemy(
 ): boolean {
   for (const h of splashBlast(state, at, from)) {
     const t = pieceAt(state, h);
-    if (t && isHostile(state, t.side, shooterSide)) return true;
+    if (
+      t &&
+      isHostile(state, t.side, shooterSide) &&
+      !isConcealedFrom(state, t, shooterSide)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -1572,6 +1718,14 @@ export function isHostile(state: GameState, a: Side, b: Side): boolean {
 
 export function playerSides(state: GameState): Side[] {
   return participatingSides(state).filter((s) => isPlayerControlled(state, s));
+}
+
+/** Whose eyes the board is drawn for. Hotseat: current player. Vs AI: the human team. */
+export function viewingSides(state: GameState): Side[] {
+  if (state.winner) return participatingSides(state);
+  const players = playerSides(state);
+  const eyes = players.length <= 1 ? (players[0] ?? state.turn) : state.turn;
+  return participatingSides(state).filter((s) => sameTeam(state, s, eyes));
 }
 
 export function playerCasualties(state: GameState): number {
@@ -1786,6 +1940,7 @@ export function defeatKind(
 }
 
 function checkWin(state: GameState): void {
+  flushLastHiddenArmies(state);
   const parts = participatingSides(state);
   if (parts.length < 2) return;
   const teams = new Set(parts.map((s) => coalition(state, s)));
@@ -1860,6 +2015,7 @@ function occupantAt(
   if (eq(h, from)) return undefined;
   const occ = pieceAt(state, h);
   if (!occ || occ.id === piece.id) return undefined;
+  if (isConcealedFrom(state, occ, piece.side)) return undefined;
   return occ;
 }
 
@@ -1898,6 +2054,7 @@ function movePathOpts(
       if (isPalisade(state, h)) {
         return stats.meleeDamage > 0 && palisadeHpAt(state, h) <= 1;
       }
+      if (isForest(state, h) && stats.charge > 0) return false;
       if (t === 'water') return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
@@ -2186,9 +2343,13 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       if (isBlockedWalk(state, h) && !splash) continue;
       // Splash (bazooka/tank) can't impact on water — except cover sitting on it
       if (splash && terrain === 'water' && !isBlockedWalk(state, h)) continue;
-      if (!losClear(state, from, h, stats.shootArc === 'arch')) continue;
+      if (!losClear(state, from, h, stats.shootArc === 'arch', piece.side)) continue;
 
-      const target = pieceAt(state, h);
+      const rawTarget = pieceAt(state, h);
+      const target =
+        rawTarget && isConcealedFrom(state, rawTarget, piece.side)
+          ? undefined
+          : rawTarget;
       // Never highlight friendly-occupied tiles as shoot range
       if (target && sameTeam(state, target.side, piece.side)) continue;
 
@@ -2350,6 +2511,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     );
     if (!hit || (hit.kind !== 'move' && hit.kind !== 'stamina')) return state;
 
+    reveal(piece);
     const plan = previewMove(next, piece, action.to, action.path);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
@@ -2441,6 +2603,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
   if (!shootOk) return state;
 
   const stats = statsOf(piece.type);
+  reveal(piece);
   if (stats.ammo > 0) {
     piece.ammo = Math.max(0, (piece.ammo ?? stats.ammo) - 1);
   }
@@ -2455,6 +2618,15 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
     for (const h of blast) {
+      if (isForest(next, h)) {
+        const chip = chipForestAt(next, h);
+        if (chip) {
+          hitBits.push(
+            chip.remaining > 0 ? `forest (${chip.remaining} left)` : 'forest',
+          );
+        }
+        continue;
+      }
       const t = pieceAt(next, h);
       // Splash hits everyone in the blast — friendlies included
       if (t && stats.splashDamage > 0) {
@@ -2490,6 +2662,21 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const t = pieceAt(next, action.at);
     if (!t || sameTeam(next, t.side, piece.side)) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
+    if (isForest(next, action.at)) {
+      const chip = chipForestAt(next, action.at);
+      const cover =
+        chip && chip.remaining > 0
+          ? `forest (${chip.remaining} left)`
+          : 'forest felled';
+      next.log.push(
+        `${unitLog(piece)} shoots into ${cover} at ${action.at.col},${action.at.row}` +
+          ` — ${unitLog(t)} unharmed` +
+          (stats.shootCooldown > 0 ? ' — reloading' : '') +
+          ammoLog(piece, stats),
+      );
+      afterAction(next, piece, 'shoot');
+      return next;
+    }
     const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +

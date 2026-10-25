@@ -237,6 +237,8 @@ export type UnitStats = UnitTraits & {
   role: UnitRole;
   /** Stop on / enter water. From water: 1 hex. Turn-start: 1 stamina or 2 HP. No regen in water. */
   passWater: boolean;
+  /** Hide from enemies while on a hide token (forest). Breaks after move, attack, or being hit. */
+  canHide: boolean;
   /** Max occupiable height: 0 land, 1 hill, 2 plateau, 3 mountain. */
   climbLevel: number;
   move: number;
@@ -401,6 +403,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.soldier,
     ...stockMobility('soldier'),
+    canHide: false,
     abilities: [],
   },
   scout: {
@@ -429,6 +432,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.scout,
     ...stockMobility('scout'),
+    canHide: false,
     abilities: [],
   },
   bazooka: {
@@ -457,6 +461,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.bazooka,
     ...stockMobility('bazooka'),
+    canHide: false,
     abilities: [],
   },
   sniper: {
@@ -485,6 +490,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.sniper,
     ...stockMobility('sniper'),
+    canHide: false,
     abilities: [],
   },
   archer: {
@@ -513,6 +519,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.archer,
     ...stockMobility('archer'),
+    canHide: false,
     abilities: [],
   },
   javelin: {
@@ -541,6 +548,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.javelin,
     ...stockMobility('javelin'),
+    canHide: false,
     abilities: [],
   },
   horsearcher: {
@@ -569,6 +577,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.horsearcher,
     ...stockMobility('horsearcher'),
+    canHide: false,
     abilities: [],
   },
   chariotarcher: {
@@ -599,6 +608,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...stockMobility('chariotarcher'),
     passWater: false,
     climbLevel: 1,
+    canHide: false,
     abilities: [],
   },
   cohort: {
@@ -628,6 +638,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     hexArmor: true,
     ...KIT_TRAITS.cohort,
     ...stockMobility('cohort'),
+    canHide: false,
     abilities: [],
   },
   hoplite: {
@@ -657,6 +668,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     hexArmor: true,
     ...KIT_TRAITS.hoplite,
     ...stockMobility('hoplite'),
+    canHide: false,
     abilities: [],
   },
   elephant: {
@@ -685,6 +697,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.elephant,
     ...stockMobility('elephant'),
+    canHide: false,
     abilities: [],
   },
   barbarian: {
@@ -713,6 +726,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.barbarian,
     ...stockMobility('barbarian'),
+    canHide: true,
     abilities: [],
   },
   catapult: {
@@ -741,6 +755,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.catapult,
     ...stockMobility('catapult'),
+    canHide: false,
     abilities: [],
   },
   tank: {
@@ -769,6 +784,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.tank,
     ...stockMobility('tank'),
+    canHide: false,
     abilities: [],
   },
   general: {
@@ -797,6 +813,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.general,
     ...stockMobility('general'),
+    canHide: false,
     abilities: ['general'],
   },
   tower: {
@@ -825,6 +842,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.tower,
     ...stockMobility('tower'),
+    canHide: false,
     abilities: [],
   },
   dummy: {
@@ -853,6 +871,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.dummy,
     ...stockMobility('dummy'),
+    canHide: false,
     abilities: [],
   },
   peasant: {
@@ -881,6 +900,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.peasant,
     ...stockMobility('peasant'),
+    canHide: false,
     abilities: [],
   },
   fighter: {
@@ -909,6 +929,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.fighter,
     ...stockMobility('fighter'),
+    canHide: false,
     abilities: [],
   },
   gunship: {
@@ -937,6 +958,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.gunship,
     ...stockMobility('gunship'),
+    canHide: false,
     abilities: [],
   },
   bomber: {
@@ -965,6 +987,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.bomber,
     ...stockMobility('bomber'),
+    canHide: false,
     abilities: [],
   },
   frigate: {
@@ -993,6 +1016,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.frigate,
     ...stockMobility('frigate'),
+    canHide: false,
     abilities: [],
   },
   cruiser: {
@@ -1021,6 +1045,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.cruiser,
     ...stockMobility('cruiser'),
+    canHide: false,
     abilities: [],
   },
   dreadnought: {
@@ -1049,6 +1074,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     ...hexDamageDefaults(),
     ...KIT_TRAITS.dreadnought,
     ...stockMobility('dreadnought'),
+    canHide: false,
     abilities: [],
   },
 };

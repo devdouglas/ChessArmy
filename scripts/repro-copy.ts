@@ -30,11 +30,12 @@ function assert(cond: unknown, msg: string) {
 }
 
 {
-  const html = formatCopyHtml('[ palisade ] [Flag] [house] [tree]');
+  const html = formatCopyHtml('[ palisade ] [Flag] [house] [tree] [forest]');
   assert(html.includes('token-palisade'), 'trimmed palisade');
   assert(html.includes('token-flag'), 'flag label');
   assert(html.includes('token-house'), 'house glyph');
   assert(html.includes('token-tree'), 'tree glyph');
+  assert(html.includes('token-forest'), 'forest glyph');
 }
 
 {
@@ -59,6 +60,7 @@ function assert(cond: unknown, msg: string) {
   assert(tags.includes('Pikes'), 'pikes in catalog');
   assert(tags.includes('House'), 'house in catalog');
   assert(tags.includes('Tree'), 'tree in catalog');
+  assert(tags.includes('Forest'), 'forest in catalog');
   assert(tags.includes('Board'), 'board in catalog');
 }
 

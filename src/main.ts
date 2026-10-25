@@ -29,8 +29,12 @@ import {
   legalHighlights,
   stickyMovePlan,
   pieceAt,
+  isForest,
+  isHouse,
   isPalisade,
   isWall,
+  pieceVisible,
+  viewingSides,
   previewMove,
   rangeHighlights,
   resolveMovePath,
@@ -104,6 +108,7 @@ import {
   type UnitTokenType,
   type UnitType,
   hasUnitToken,
+  unitTokensOf,
   isTokenType,
   isUnitTokenType,
   sanitizeUnitTokens,
@@ -231,6 +236,7 @@ import {
   ammoBadgeSvg,
   hpBadgeSvg,
   abilityBadgeSvg,
+  hiddenBadgeSvg,
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
@@ -1543,6 +1549,10 @@ function paintEditorHex(col: number, row: number, first = true) {
   }
   const unitIdx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   if (unitIdx >= 0) {
+    if (editorBrush === 'house') {
+      paintEditorToken(col, row);
+      return;
+    }
     rotateEditorUnit(unitIdx);
     return;
   }
@@ -2354,6 +2364,13 @@ function renderBoard(): string {
   const w = PAD * 2 + extent.w;
   const h = PAD * 2 + extent.h;
   const editing = screen === 'editor';
+  const viewers = viewingSides(state);
+  const seenOcc = (hex: Hex): boolean => {
+    const p = pieceAt(state, hex);
+    if (!p) return false;
+    if (editing) return true;
+    return pieceVisible(state, p, viewers);
+  };
 
   // Full ranges while selected: move tint + shoot marks together
   const allHl = !editing && selectedId ? highlights : [];
@@ -2449,7 +2466,10 @@ function renderBoard(): string {
 
       if (shootTarget.has(k) || shootRange.has(k)) {
         const under =
-          !!pieceAt(state, hex) || isWall(state, hex) || isPalisade(state, hex);
+          seenOcc(hex) ||
+          isWall(state, hex) ||
+          isPalisade(state, hex) ||
+          isForest(state, hex);
         shootMarks += shootMarkSvg(x, y, shootTarget.has(k) && under);
       }
     }
@@ -2458,7 +2478,7 @@ function renderBoard(): string {
   let staminaMarks = '';
   if (pathKind === 'stamina' && hoverHex) {
     const { x, y } = pixelOf(hoverHex);
-    const occ = !!pieceAt(state, hoverHex);
+    const occ = seenOcc(hoverHex);
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += staminaHexMarkSvg(x, y + dy, r);
@@ -2466,25 +2486,40 @@ function renderBoard(): string {
   for (const k of restSet) {
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
-    const occ = !!pieceAt(state, hex);
+    const occ = seenOcc(hex);
     const terrain = state.terrain[hex.row]?.[hex.col] ?? 'land';
     const busy =
-      occ || terrain !== 'land' || isWall(state, hex) || isPalisade(state, hex);
+      occ ||
+      terrain !== 'land' ||
+      isWall(state, hex) ||
+      isPalisade(state, hex) ||
+      isForest(state, hex);
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += `<g class="need-rest-mark${busy ? '' : ' ghost'}">${staminaEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
   }
 
   let tokensSvg = '';
+  let forestSvg = '';
+  let houseSvg = '';
   const drawTokens = editing ? editorTokens : state.tokens;
+  const occupiedHouse = (col: number, row: number) =>
+    editing
+      ? editorPieces.some((p) => p.col === col && p.row === row)
+      : !!pieceAt(state, { col, row });
   for (const t of drawTokens) {
     const banned = tokenIsNoTouch(t);
     if (!editing && t.type === 'notouch') continue;
     const { x, y } = pixelOf({ col: t.col, row: t.row });
     const owner = flagOwnerForDraw(t);
+    const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
     const mark =
-      t.type === 'wall' || t.type === 'house' || t.type === 'palisade' || t.type === 'tree'
-        ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp)
+      t.type === 'wall' ||
+      t.type === 'house' ||
+      t.type === 'palisade' ||
+      t.type === 'tree' ||
+      t.type === 'forest'
+        ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp, garrison)
         : t.type === 'flag'
           ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
           : t.type === 'notouch'
@@ -2492,7 +2527,10 @@ function renderBoard(): string {
             : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
     const read = t.type === 'board' && t.read ? ' read' : '';
-    tokensSvg += `<g class="tile-token ${t.type}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
+    const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
+    if (t.type === 'forest') forestSvg += g;
+    else if (garrison) houseSvg += g;
+    else tokensSvg += g;
   }
 
   let piecesSvg = '';
@@ -2506,7 +2544,7 @@ function renderBoard(): string {
         facing: facingFromStamp(p),
         unitTokens: p.unitTokens,
       }))
-    : state.pieces;
+    : state.pieces.filter((p) => pieceVisible(state, p, viewers));
   const dmgBoard: GameState = editing
     ? {
         ...state,
@@ -2517,7 +2555,7 @@ function renderBoard(): string {
         tokens: editorTokens,
         pieces: drawPieces,
       }
-    : { ...state, pieces: state.pieces.map(aimedPiece) };
+    : { ...state, pieces: drawPieces.map(aimedPiece) };
   let hexDmgSvg = '';
   for (const m of hexDamageMarks(dmgBoard)) {
     const back = ((m.dir + 3) % 6) as HexDir;
@@ -2561,6 +2599,16 @@ function renderBoard(): string {
         abilityBadgeSvg(id, -pr * 0.65 + i * badgeR * 1.65, pr * 0.7, badgeR),
       )
       .join('');
+    const hideIcons = unitTokensOf(p)
+      .filter((id) => id === 'hidden')
+      .map((_, i) =>
+        hiddenBadgeSvg(
+          -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65,
+          pr * 0.7,
+          badgeR,
+        ),
+      )
+      .join('');
     const maxHp = hpMax(p);
     const hpIcon =
       maxHp > 1
@@ -2597,6 +2645,7 @@ function renderBoard(): string {
         ${ammoIcon}
         ${actedIcon}
         ${abilityIcons}
+        ${hideIcons}
       </g>`;
   }
 
@@ -2662,6 +2711,8 @@ function renderBoard(): string {
     <g class="token-layer">${tokensSvg}</g>
     <g class="hl-tint-layer">${hlOverlays}</g>
     <g class="piece-layer">${piecesSvg}</g>
+    <g class="house-layer">${houseSvg}</g>
+    <g class="forest-layer">${forestSvg}</g>
     <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
     <g class="stamina-mark-layer">${staminaMarks}</g>
@@ -2940,6 +2991,18 @@ function renderSidebar(): string {
     if (s.charge > 0) extraNotes.push(
       `Charge through ${s.charge} dmg (armor applies). Like palisade: a living blocker stops you unless that hit kills it, or you land empty beyond`,
     );
+    if (isHouse(state, { col: piece.col, row: piece.row })) {
+      extraNotes.push('In a house — after leaving, nobody can enter it again');
+    }
+    if (s.canHide || hasUnitToken(piece, 'hidden')) {
+      extraNotes.push(
+        piece.revealed
+          ? 'Hide broken (moved, attacked, or was hit)'
+          : hasUnitToken(piece, 'hidden')
+            ? 'Hidden — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range'
+            : 'Can hide in forest — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range',
+      );
+    }
     extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
     if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
@@ -3002,16 +3065,17 @@ function renderSidebar(): string {
           </div>
           <dl class="rules">
             <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
-            <div><dt>LOS low</dt><dd>wall always blocks; palisade blocks straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
-            <div><dt>Arch</dt><dd>over units and palisades; walls / higher ground still block</dd></div>
+            <div><dt>LOS low</dt><dd>wall always blocks; palisade and forest block straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
+            <div><dt>Arch</dt><dd>over units, palisades and forest; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
-            <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same, house graphic</dd></div>
+            <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same wall rules, house graphic — paint onto a unit in the editor to garrison them. That unit can leave; afterwards nobody can enter</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
+            <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Wall: impassable, blocks LOS, rockets smash. House: same as wall, house graphic. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match</dd></div>
+            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked; if that army's remaining pieces are all still hidden they all break cover and that AI goes aggressive</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -3382,7 +3446,9 @@ function bindHexChoice() {
 function onHexClick(col: number, row: number) {
   if (briefingBlocks() || boardBlocks() || animating || aiThinking) return;
   const hex = { col, row };
-  const occ = state.pieces.find((p) => p.col === col && p.row === row);
+  const rawOcc = state.pieces.find((p) => p.col === col && p.row === row);
+  const occ =
+    rawOcc && pieceVisible(state, rawOcc, viewingSides(state)) ? rawOcc : undefined;
 
   // Own piece selected + can act → resolve by what that hex allows
   if (canActWithSelected() && selectedId) {
@@ -4090,7 +4156,11 @@ function tokenSwatchSvg(type: TokenType): string {
   return `<svg class="tile-swatch" viewBox="${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" width="22" height="22" aria-hidden="true">
     <polygon points="${pts}" fill="var(--land)" stroke="var(--hex-stroke)" stroke-width="1.4" stroke-linejoin="miter"/>
     ${
-      type === 'wall' || type === 'house' || type === 'palisade' || type === 'tree'
+      type === 'wall' ||
+      type === 'house' ||
+      type === 'palisade' ||
+      type === 'tree' ||
+      type === 'forest'
         ? tokenGlyphSvg(type, size * 0.8, o)
         : type === 'flag'
           ? tokenGlyphSvg('flag', 13, o)
@@ -4285,22 +4355,34 @@ function renderLevelThumb(lvl: {
       }
     }
   }
+  let forest = '';
+  let houses = '';
   for (const t of lvl.tokens ?? []) {
     const { x, y } = hexToPixel({ col: t.col, row: t.row }, size, ori);
-    hexes += `<g transform="translate(${x + pad}, ${y + pad})">${
-      t.type === 'wall' || t.type === 'house' || t.type === 'palisade' || t.type === 'tree'
-        ? tokenGlyphSvg(t.type, size * 0.8, ori, null, t.hp)
+    const garrison =
+      t.type === 'house' &&
+      (lvl.armies ?? []).some((p) => p.col === t.col && p.row === t.row);
+    const g = `<g transform="translate(${x + pad}, ${y + pad})">${
+      t.type === 'wall' ||
+      t.type === 'house' ||
+      t.type === 'palisade' ||
+      t.type === 'tree' ||
+      t.type === 'forest'
+        ? tokenGlyphSvg(t.type, size * 0.8, ori, null, t.hp, garrison)
         : t.type === 'flag'
           ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
           : tokenGlyphSvg(t.type, size * 1.2)
     }${tokenIsNoTouch(t) ? noTouchMarkSvg(size * 0.55) : ''}</g>`;
+    if (t.type === 'forest') forest += g;
+    else if (garrison) houses += g;
+    else hexes += g;
   }
   let dots = '';
   for (const p of lvl.armies ?? []) {
     const { x, y } = hexToPixel({ col: p.col, row: p.row }, size, ori);
     dots += `<circle class="thumb-piece ${p.side}" cx="${x + pad}" cy="${y + pad}" r="${(size * 0.34).toFixed(1)}" />`;
   }
-  return `<svg class="level-thumb" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${hexes}${dots}</svg>`;
+  return `<svg class="level-thumb" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${hexes}${dots}${houses}${forest}</svg>`;
 }
 
 function levelTeaserHtml(l: SavedLevel): string {
@@ -4734,6 +4816,10 @@ function renderUnitEditor(): string {
           ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value/weight')}
           ${unitNumField(type, 'actions', 'Actions')}
+          <label class="chk">
+            <input type="checkbox" data-unit="${type}" data-field="canHide"${s.canHide ? ' checked' : ''} />
+            Can hide
+          </label>
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Move</span>
@@ -4825,6 +4911,7 @@ function renderUnitEditor(): string {
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
+          <dd><strong>Can hide</strong> invisible to enemies while on forest (and later hide tokens). Breaks for the rest of the match after the unit moves, attacks, or is hit. Owner still sees them</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
@@ -4837,13 +4924,13 @@ function renderUnitEditor(): string {
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage on every unit you walk through (armor applies, including negative). Same as palisade: a living blocker stops you — click the 2nd unit and the 1st still takes the hit; you only continue if that charge would kill them (like a palisade on its last hit). Empty dest beyond: pass through the line and damage them even if they survive. Palisades: you do not pass unless that melee hit breaks them</dd>
+          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage on every unit you walk through (armor applies, including negative). Same as palisade: a living blocker stops you — click the 2nd unit and the 1st still takes the hit; you only continue if that charge would kill them (like a palisade on its last hit). Empty dest beyond: pass through the line and damage them even if they survive. Palisades: you do not pass unless that melee hit breaks them. Forest: walk onto or through; charge cannot pass through</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
           <dd><strong>Reload time</strong> own turns you can't shoot after firing</dd>
           <dd><strong>Ammo limit</strong> shots this match (0 = unlimited)</dd>
-          <dd><strong>Arc</strong> Straight: units and palisades block from low. Arch: fire over units and palisades. Walls / higher ground still block</dd>
+          <dd><strong>Arc</strong> Straight: units, palisades and forest block from low. Arch: fire over units, palisades and forest. Walls / higher ground still block</dd>
           <dd><strong>Min range</strong> closest hex you can fire</dd>
           <dd><strong>Splash DMG</strong> 0 = bullets; &gt;0 = rocket blast (bazooka/tank stock 1)</dd>
         </dl>

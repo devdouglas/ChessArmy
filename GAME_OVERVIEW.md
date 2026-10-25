@@ -71,9 +71,9 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Melee:** bump an occupied hex. A kill takes the spot; otherwise stop on the hex before. **0 melee** cannot bump. Melee damage floors at **1** even if armor would soak it.
 
-**Charge** (1+): damage every unit you walk through (armor applies, including negative). A living blocker stops you unless that hit would kill them (same as palisade). Empty dest beyond: pass through and damage survivors. Palisades: you do not pass unless the melee hit **breaks** them.
+**Charge** (1+): damage every unit you walk through (armor applies, including negative). A living blocker stops you unless that hit would kill them (same as palisade). Empty dest beyond: pass through and damage survivors. Palisades: you do not pass unless the melee hit **breaks** them. Forest: walk through; **cannot charge through**.
 
-**Shoot:** range 0 = cannot shoot. Shooter elevation **+range**; a high **target** costs that much extra. **Min range**. **Straight** = pieces (and palisades) block from low. **Arch** = fire over units and palisades; rock / wall / higher ground still block. **Reload** = own turns you cannot shoot after firing. **Ammo** 0 = unlimited.
+**Shoot:** range 0 = cannot shoot. Shooter elevation **+range**; a high **target** costs that much extra. **Min range**. **Straight** = pieces (and palisades / forest) block from low. **Arch** = fire over units, palisades and forest; rock / wall / higher ground still block. **Reload** = own turns you cannot shoot after firing. **Ammo** 0 = unlimited. Shots into forest chip the trees (3 HP); the occupant is unharmed until the wood is gone. Occupants can still shoot out.
 
 **Splash** (bazooka / tank / catapult / bomber / dreadnought stock): rocket blast, friendly fire. Cannot impact on open water.
 
@@ -86,6 +86,8 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 **Hex damage:** per-face 0–2. Each live face is facing pikes on the **adjacent** hex only: enemies take that damage when they **enter**. Standing there does not pulse again.
 
 **Pass through pieces** (scout / horse archer / some flyers): walk through units. **Infantry** can be overrun by kits that allow it (tank).
+
+**Can hide:** invisible to enemies while on a hide token (forest). Owner still sees them. Moving, attacking, or taking a hit breaks hide for the rest of the match. Stock **Barbarian** has this on.
 
 **Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** stamina, and **+1** value.
 
@@ -112,14 +114,17 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 |-------|--------|
 | **Pikes** | 1 damage to enemies that **enter** the hex. |
 | **Wall** | Impassable, blocks LOS, splash-breakable. |
-| **House** | Same as wall, house graphic. |
+| **House** | Same as wall, house graphic. Paint onto a unit in the editor to garrison them at kickoff. Occupant can shoot out and leave; after they exit, nobody can enter. |
 | **Palisade** | Fence, **3 HP**. Melee/charge/splash chip it. Random maps use these instead of walls. |
 | **Tree** | Same as palisade, tree graphic. |
+| **Forest** | Three trees, no hex fill/stroke. Walkable cover — units render behind the trees. Incoming shots chip the wood (3 HP, same as palisade); occupant unharmed until felled. Shoot out OK. Charge cannot pass through. **Can hide** units are invisible to enemies here until they move, attack, or are hit. |
 | **Flag** | Capture by standing on it. All flags held = win. Seeded owner if a piece starts on it. |
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
 **Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 stamina**, **+1** value. All generals on a side must fall to lose by command.
+
+**Unit token — Hidden:** starts the match invisible to enemies (any hex). Same reveal rules as **Can hide**: moving, attacking, or taking a hit breaks it for the rest of the match. Owner still sees them. AI always camps while concealed — no walking until they can shoot/melee, or until they are provoked (hit → revealed). If a side's remaining pieces are all still hidden, they all break cover; an AI side then switches to **aggressive**. If every living piece on the board is hidden, everyone unhides.
 
 ---
 
@@ -138,7 +143,7 @@ Live in **Units**. Kit sets icon + pathing through pieces / infantry; **water** 
 | Cohort | 1 | 1 arch | HP 2, hex armor | 2 |
 | Hoplite | 1 | — | HP 2, hex armor | 2 |
 | Elephant | 2 | — | HP 3, melee 2, charge 1, armor 1, no climb | 8 |
-| Barbarian | 2 | — | HP 2, melee 2, charge 1, stamina 2 | 3 |
+| Barbarian | 2 | — | HP 2, melee 2, charge 1, stamina 2, can hide | 3 |
 | Peasant | 1 | — | | 0 |
 | Catapult | 1 | 5 arch, min 2 | melee 0, splash, CD 2, no climb | 6 |
 
@@ -237,6 +242,8 @@ Rules (short):
 
 Stuck units (move 0 / no legal step) do not freeze an Advance line.
 
+**Hidden camp** is not a checklist toggle. Concealed AI pieces ignore personality until they can attack or lose hide. Last-hidden-army flush (above) then plays aggressive.
+
 ---
 
 ## Armies and formations
@@ -251,7 +258,7 @@ Controllers: **player**, **ai enemy**, **ai ally**.
 
 ## Level editor
 
-Paint terrain, walls/palisades/pikes/flags/do-not-touch, stamp units and General tokens, erase.
+Paint terrain, walls/palisades/trees/forest/pikes/flags/do-not-touch, stamp units and General tokens, erase.
 
 Per level:
 

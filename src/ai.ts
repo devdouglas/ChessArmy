@@ -18,6 +18,8 @@
  * Prefer high ground: cover ridges on the path to the hunt; else a hill in 3.
  * Not hunting: return to start hex.
  * Advance: walk the far edge, rear first, nobody more than one hex ahead of the line.
+ * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
+ * Last remaining pieces all concealed → unhide + that AI goes aggressive.
  */
 
 import {
@@ -44,6 +46,9 @@ import {
   hexDamageOn,
   hexDamagePushHits,
   isBlockedWalk,
+  flushLastHiddenArmies,
+  isConcealed,
+  isConcealedFrom,
   type Action,
   aiStyleOf,
   type GameState,
@@ -68,7 +73,7 @@ function nearestEnemy(state: GameState, from: Hex, me: Side): Piece | null {
   let best: Piece | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (!isHostile(state, p.side, me)) continue;
+    if (!isHostile(state, p.side, me) || isConcealedFrom(state, p, me)) continue;
     const d = dist(state, from, { col: p.col, row: p.row });
     if (d < bestD) {
       bestD = d;
@@ -99,7 +104,13 @@ function enemyGeneral(state: GameState, me: Side, from: Hex) {
   let best: (typeof state.pieces)[number] | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (!isHostile(state, p.side, me) || !hasAbility(p, 'general')) continue;
+    if (
+      !isHostile(state, p.side, me) ||
+      !hasAbility(p, 'general') ||
+      isConcealedFrom(state, p, me)
+    ) {
+      continue;
+    }
     const d = dist(state, from, { col: p.col, row: p.row });
     if (d < bestD) {
       bestD = d;
@@ -137,7 +148,7 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
   let best: Hex | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (!isHostile(state, p.side, me)) continue;
+    if (!isHostile(state, p.side, me) || isConcealedFrom(state, p, me)) continue;
     const h = { col: p.col, row: p.row };
     const d = dist(state, from, h);
     if (d < bestD) {
@@ -851,10 +862,20 @@ function pickBest(actions: Action[], state: GameState, me: Side, on: RuleOn): Ac
   return best;
 }
 
+/** Concealed AI: only shoot / melee / hex-damage. Walks wait until provoked (revealed). */
+function hiddenCamperOk(state: GameState, a: Action, me: Side): boolean {
+  if (a.kind === 'skip' || a.kind === 'rest') return true;
+  const piece = getPiece(state, a.pieceId);
+  if (!piece || !isConcealed(state, piece)) return true;
+  return isAttackAction(state, a, me);
+}
+
 export function pickAiAction(state: GameState): Action | null {
+  flushLastHiddenArmies(state);
   const me = state.turn;
   const on = rulesFor(state);
   const actions = allLegalActions(state).filter((a) => {
+    if (!hiddenCamperOk(state, a, me)) return false;
     if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
     if (
       on('never-capture-flags') &&

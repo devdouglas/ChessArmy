@@ -166,6 +166,7 @@ export function sanitizeUnitStats(
     category: sanitizeUnitCategory(s.category ?? d.category),
     role: dRole,
     passWater: mobility.passWater,
+    canHide: bool(s.canHide, d.canHide),
     climbLevel: mobility.climbLevel,
     passUnits: bool(s.passUnits, traits.passUnits),
     infantry: bool(s.infantry, traits.infantry),
@@ -364,6 +365,7 @@ export function unitStatsAreStock(): boolean {
       INT_FIELDS.every((k) => a[k] === b[k]) &&
       TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
       a.passWater === b.passWater &&
+      a.canHide === b.canHide &&
       a.shootArc === b.shootArc &&
       a.hexArmor === b.hexArmor &&
       a.hexDamage === b.hexDamage &&

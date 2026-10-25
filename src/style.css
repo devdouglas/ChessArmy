@@ -2103,6 +2103,11 @@ button.primary:focus-visible {
   pointer-events: none;
 }
 
+.editor-brushes .brush.unit-token.hidden.active {
+  border-color: #6a9a88;
+  color: #b8ddd0;
+}
+
 .editor-label {
   color: var(--muted);
   margin-right: 0.25rem;
@@ -2162,7 +2167,8 @@ button.primary:focus-visible {
   border-color: #c4a060;
   color: #e8c888;
 }
-.editor-brushes .brush.tree.active {
+.editor-brushes .brush.tree.active,
+.editor-brushes .brush.forest.active {
   border-color: #5a8a48;
   color: #8aba70;
 }
@@ -2188,6 +2194,8 @@ button.primary:focus-visible {
 }
 
 .token-layer,
+.forest-layer,
+.house-layer,
 .tile-token {
   pointer-events: none;
 }
