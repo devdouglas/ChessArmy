@@ -1,7 +1,7 @@
 {
     "id": "lvl-mvj4iz0c-2wdez",
     "name": "Fare well peasant life",
-    "cols": 5,
+    "cols": 7,
     "rows": 6,
     "orientation": "flat",
     "terrain": [
@@ -10,30 +10,22 @@
             "high",
             "high",
             "water",
-            "water"
+            "water",
+            "land",
+            "land"
         ],
         [
             "high",
             "high",
             "land",
+            "land",
+            "water",
             "water",
             "land"
         ],
         [
             "land",
             "land",
-            "land",
-            "water",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "water",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -41,6 +33,26 @@
             "water"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -80,7 +92,7 @@
     },
     "tokens": [],
     "sort": 0,
-    "updatedAt": 1792743511092,
+    "updatedAt": 1792817403617,
     "armies": [
         {
             "type": "peasant",
@@ -90,7 +102,13 @@
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 1,
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 0,
             "row": 0,
             "side": "blue"
         },
@@ -98,12 +116,6 @@
             "type": "u-mvgpbg68f593",
             "col": 0,
             "row": 3,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 4,
-            "row": 2,
             "side": "blue"
         }
     ]

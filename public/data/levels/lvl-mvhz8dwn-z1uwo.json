@@ -6,21 +6,21 @@
     "orientation": "flat",
     "terrain": [
         [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "plateau",
             "water",
             "high",
-            "land"
+            "high"
         ],
         [
             "high",
             "high",
             "high",
             "high",
-            "water",
+            "plateau",
             "water",
             "high",
             "high"
@@ -109,20 +109,20 @@
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
-    "maxTurns": 0,
-    "teaserText": "",
-    "startText": "",
-    "winText": "",
-    "loseText": "",
+    "maxTurns": 18,
+    "teaserText": "Playing and coordinating multiple units",
+    "startText": "Try to coordinate the two units to destroy the scarecrows before time runs out. Both have different [energy] so make sure they don't drown in the rusn.",
+    "winText": "Good job. There is a tactician in you.",
+    "loseText": "Try again. Rushing is seldom a good way to win any battle.",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 6
-    },
-    "star3": {
         "metric": "casualties",
         "op": "eq",
         "value": 0
+    },
+    "star3": {
+        "metric": "turns",
+        "op": "lte",
+        "value": 11
     },
     "armyControls": {
         "red": "player",
@@ -137,21 +137,9 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 5,
-    "updatedAt": 1792743634034,
+    "sort": 6,
+    "updatedAt": 1792820776446,
     "armies": [
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 3,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "archer",
-            "col": 3,
-            "row": 9,
-            "side": "red"
-        },
         {
             "type": "u-mvgpbg68f593",
             "col": 6,
@@ -163,6 +151,18 @@
             "col": 5,
             "row": 9,
             "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
         }
     ]
 }

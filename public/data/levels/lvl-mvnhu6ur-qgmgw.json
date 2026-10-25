@@ -1,0 +1,247 @@
+{
+    "id": "lvl-mvnhu6ur-qgmgw",
+    "name": "Ambush",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "skirmish",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [],
+    "sort": 7,
+    "updatedAt": 1792912737223,
+    "armies": [
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 1,
+            "row": 5,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 2,
+            "row": 5,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 2,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 4,
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 5,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 7,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 8,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 5,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "archer",
+            "col": 5,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 5,
+            "row": 2,
+            "side": "blue"
+        }
+    ]
+}

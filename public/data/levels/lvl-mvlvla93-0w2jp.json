@@ -1,0 +1,225 @@
+{
+    "id": "lvl-mvlvla93-0w2jp",
+    "name": "Routing: The pinch",
+    "cols": 9,
+    "rows": 9,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 8
+        }
+    ],
+    "sort": 9,
+    "updatedAt": 1792862414404,
+    "armies": [
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 1,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 8,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 6,
+            "row": 7,
+            "side": "red"
+        }
+    ]
+}

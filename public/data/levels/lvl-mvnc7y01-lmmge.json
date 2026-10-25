@@ -1,0 +1,338 @@
+{
+    "id": "lvl-mvnc7y01-lmmge",
+    "name": "Unit sandbox",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "high",
+            "high",
+            "plateau",
+            "plateau",
+            "rock",
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "plateau",
+            "plateau",
+            "rock",
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "plateau",
+            "plateau",
+            "rock",
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "skirmish",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 9,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 10,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 2
+        }
+    ],
+    "sort": 6,
+    "updatedAt": 1792912028184,
+    "armies": [
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 5,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 7,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 7,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 9,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 9,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "archer",
+            "col": 1,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 3,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "horsearcher",
+            "col": 5,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "chariotarcher",
+            "col": 7,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 9,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "elephant",
+            "col": 3,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "barbarian",
+            "col": 5,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "catapult",
+            "col": 7,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 9,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 5,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 3,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 3,
+            "row": 3,
+            "side": "blue"
+        }
+    ]
+}

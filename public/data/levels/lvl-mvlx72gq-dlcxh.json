@@ -1,0 +1,176 @@
+{
+    "id": "lvl-mvlx72gq-dlcxh",
+    "name": "Peasant brawl",
+    "cols": 7,
+    "rows": 6,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "high",
+            "high",
+            "high",
+            "water",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "maxTurns": 0,
+    "teaserText": "Melee combat",
+    "startText": "Welcome peasant. Let me see what you got. \nMove and hit those scarecrows to the ground. \nManage your energy to climb to higher ground or swim. \nRest when needed because you are out of shape!",
+    "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
+    "loseText": "You almost drowned you idiot! Take a rest before you swim. You need your energy. And also, its not a good idea to fight from the water.",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "notouch",
+            "col": 1,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 4
+        }
+    ],
+    "sort": 1,
+    "updatedAt": 1792820138566,
+    "armies": [
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 6,
+            "row": 5,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        }
+    ]
+}

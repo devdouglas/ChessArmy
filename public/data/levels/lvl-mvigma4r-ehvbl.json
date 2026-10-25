@@ -112,13 +112,13 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "aggressive",
+        "blue": "defensive",
         "yellow": "aggressive",
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 9,
-    "updatedAt": 1792743725618,
+    "sort": 10,
+    "updatedAt": 1792862405031,
     "armies": [
         {
             "type": "cohort",
@@ -176,6 +176,12 @@
             "col": 4,
             "row": 3,
             "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 0,
+            "row": 0,
+            "side": "red"
         }
     ]
 }

@@ -1,0 +1,10 @@
+---
+description: Always commit local maps and ship them when pushing to live
+alwaysApply: true
+---
+
+# Local maps go live
+
+`public/data/levels/*.json` is part of the game. When committing or pushing to live, include every local map change (modified and new). Do not leave level JSON unstaged.
+
+Live deploy: `git push origin HEAD`, `npm run build`, rsync `dist/` to Pressable `htdocs/warchess/`, purge edge cache on site 1739399 (fictionindustries-oneshots).

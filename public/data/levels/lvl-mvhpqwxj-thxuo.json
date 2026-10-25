@@ -154,13 +154,13 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "",
-    "startText": "You will learn how to use terrain in your advantage",
-    "winText": "good job",
-    "loseText": "try to find high ground before the enemy arrives.",
+    "startText": "Rebels are in their hideout. Position yourself. Its finally time to prove yourself a a true leader.",
+    "winText": "Rebels are no more. you have proven yourself. Welcome general, rome needs you.",
+    "loseText": "Don't charge head on. Position yourself and rest before your final assault.",
     "star2": {
         "metric": "turns",
         "op": "lt",
-        "value": 6
+        "value": 10
     },
     "star3": {
         "metric": "casualties",
@@ -175,7 +175,7 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "aggressive",
+        "blue": "defensive",
         "yellow": "aggressive",
         "purple": "aggressive"
     },
@@ -204,8 +204,8 @@
             "row": 3
         }
     ],
-    "sort": 6,
-    "updatedAt": 1792743650833,
+    "sort": 11,
+    "updatedAt": 1792901299581,
     "armies": [
         {
             "type": "archer",
