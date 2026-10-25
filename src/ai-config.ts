@@ -11,46 +11,87 @@ import { notifyPersist } from './persist-hook';
 
 const STORAGE_KEY = 'chessarmy-ai-checklist-v1';
 
+/** Checklist groups, in pickAiAction order. */
 export const AI_RULE_CATEGORIES = [
+  'walking',
+  'melee',
   'targeting',
-  'pathfinding',
-  'engagement',
-  'general',
+  'chasing',
+  'defending',
+  'retreating',
 ] as const;
 
 export type AiRuleCategory = (typeof AI_RULE_CATEGORIES)[number];
 
 export const AI_RULE_CATEGORY_LABEL: Record<AiRuleCategory, string> = {
-  targeting: 'Targeting',
-  pathfinding: 'Pathfinding',
-  engagement: 'Rules of engagement',
-  general: 'General decisions',
+  walking: '1. Walking',
+  melee: '2. Melee or shooting',
+  targeting: '3. Targeting',
+  chasing: '4. Chasing',
+  defending: '5. Defending',
+  retreating: '6. Retreating',
 };
 
 export const AI_RULES = [
   {
+    id: 'avoid-notouch',
+    category: 'walking',
+    label: 'Never walk Do-not-touch',
+    blurb: 'Paths that step on a Do-not-touch token are illegal for the AI.',
+  },
+  {
+    id: 'never-capture-flags',
+    category: 'walking',
+    label: 'Never capture flags',
+    blurb: 'Do not walk onto enemy or free flags, unless that move hits the enemy general.',
+  },
+  {
+    id: 'avoid-pikes',
+    category: 'walking',
+    label: 'Avoid pikes',
+    blurb: 'Do not walk onto pikes or hex-damage unless that move attacks the enemy general.',
+  },
+  {
+    id: 'break-palisades',
+    category: 'walking',
+    label: 'Break palisades',
+    blurb: 'Walking through palisades scores extra, more if the fence falls.',
+  },
+  {
+    id: 'keep-line',
+    category: 'walking',
+    label: 'Keep the line',
+    blurb: 'Rear units step first. Nobody outruns the slowest mover by more than one hex. Attacks still happen.',
+  },
+  {
+    id: 'general-last',
+    category: 'walking',
+    label: 'Activate the general last',
+    blurb: 'Other pieces act first unless only the king can.',
+  },
+  {
     id: 'shoot-first',
-    category: 'targeting',
+    category: 'melee',
     label: 'Shoot first',
     blurb: 'If a unit can shoot or melee, it shoots. Unchecked: melee instead. Attacking when possible is always on.',
   },
   {
     id: 'strongest-first',
-    category: 'targeting',
+    category: 'melee',
     label: 'Strongest first',
     blurb: 'Attack the highest-value enemy. Unchecked: the closest. General token +1 value.',
   },
   {
-    id: 'hunt-enemy-general',
-    category: 'targeting',
-    label: 'Attack',
-    blurb: 'Close on the enemy general, else the nearest enemy. Unchecked: other pathfinding rules apply.',
+    id: 'value-scoring',
+    category: 'melee',
+    label: 'Value / weight scoring',
+    blurb: 'Prefer high-value kills and damage.',
   },
   {
-    id: 'advance-front',
-    category: 'targeting',
-    label: 'Advance the front',
-    blurb: 'Walk toward the far edge of the board in this army’s file. Unchecked: Attack / other hunts.',
+    id: 'general-restraint',
+    category: 'melee',
+    label: 'General does not dump into the army',
+    blurb: 'Own general only attacks the enemy general, or a unit already in melee with him.',
   },
   {
     id: 'guard-owned-flags',
@@ -59,94 +100,58 @@ export const AI_RULES = [
     blurb: 'Treat flags you already hold like the king. Enemy and free flags mean nothing.',
   },
   {
-    id: 'value-scoring',
+    id: 'advance-front',
     category: 'targeting',
-    label: 'Value / weight scoring',
-    blurb: 'Prefer high-value kills and damage.',
+    label: 'Advance the front',
+    blurb: 'Walk toward the far edge of the board in this army’s file. Unchecked: Attack / other hunts.',
+  },
+  {
+    id: 'hunt-enemy-general',
+    category: 'targeting',
+    label: 'Attack',
+    blurb: 'Close on the enemy general, else the nearest enemy. Unchecked: other hunts apply.',
   },
   {
     id: 'close-on-hunt',
-    category: 'pathfinding',
+    category: 'chasing',
     label: 'Close on the hunt',
     blurb: 'Moves that get closer to the hunt target score higher.',
   },
   {
-    id: 'keep-line',
-    category: 'pathfinding',
-    label: 'Keep the line',
-    blurb: 'Rear units step first. Nobody outruns the slowest mover by more than one hex. Attacks still happen.',
-  },
-  {
-    id: 'no-flee',
-    category: 'pathfinding',
-    label: 'Do not flee',
-    blurb: 'Heavily penalize walking away from the hunt.',
-  },
-  {
-    id: 'avoid-pikes',
-    category: 'pathfinding',
-    label: 'Avoid pikes',
-    blurb: 'Do not walk onto pikes or hex-damage unless that move attacks the enemy general.',
-  },
-  {
-    id: 'avoid-notouch',
-    category: 'pathfinding',
-    label: 'Never walk Do-not-touch',
-    blurb: 'Paths that step on a Do-not-touch token are illegal for the AI.',
-  },
-  {
     id: 'prefer-high-ground',
-    category: 'pathfinding',
+    category: 'chasing',
     label: 'Prefer high ground',
     blurb: 'Take the higher route to the hunt. When not attacking, walk onto higher ground within 3 hexes.',
   },
   {
-    id: 'return-to-start',
-    category: 'pathfinding',
-    label: 'Return to start position',
-    blurb: 'When not hunting, walk back to the hex this unit spawned on.',
-  },
-  {
     id: 'targets-defenses',
-    category: 'pathfinding',
+    category: 'defending',
     label: 'Targets defenses',
     blurb: 'Shoot or melee a wall or palisade that sits on the path to the hunt.',
   },
   {
-    id: 'general-restraint',
-    category: 'engagement',
-    label: 'General does not dump into the army',
-    blurb: 'Own general only attacks the enemy general, or a unit already in melee with him.',
-  },
-  {
-    id: 'never-capture-flags',
-    category: 'engagement',
-    label: 'Never capture flags',
-    blurb: 'Do not walk onto enemy or free flags, unless that move hits the enemy general.',
-  },
-  {
     id: 'hold-position',
-    category: 'engagement',
+    category: 'defending',
     label: 'Hold position',
     blurb: 'When Attack is off: stay put and turn toward the nearest enemy. A ranged hit makes them move and try to attack the nearest unit.',
   },
   {
-    id: 'general-last',
-    category: 'general',
-    label: 'Activate the general last',
-    blurb: 'Other pieces act first unless only the king can.',
+    id: 'no-flee',
+    category: 'retreating',
+    label: 'Do not flee',
+    blurb: 'Heavily penalize walking away from the hunt.',
+  },
+  {
+    id: 'return-to-start',
+    category: 'retreating',
+    label: 'Return to start position',
+    blurb: 'When not hunting, walk back to the hex this unit spawned on.',
   },
   {
     id: 'avoid-skip',
-    category: 'general',
+    category: 'retreating',
     label: 'Avoid skipping',
     blurb: 'Skipping leftover actions is heavily penalized.',
-  },
-  {
-    id: 'break-palisades',
-    category: 'general',
-    label: 'Break palisades',
-    blurb: 'Walking through palisades scores extra, more if the fence falls.',
   },
 ] as const;
 
@@ -230,7 +235,10 @@ export function getAiChecklist(): AiChecklist {
 }
 
 export function aiChecklistAreStock(): boolean {
-  return AI_STYLES.every((style) => RULE_IDS.every((id) => checklist[style][id]));
+  const stock = defaultAiChecklist();
+  return AI_STYLES.every((style) =>
+    RULE_IDS.every((id) => checklist[style][id] === stock[style][id]),
+  );
 }
 
 export function isAiRuleOn(style: AiStyle, id: AiRuleId): boolean {

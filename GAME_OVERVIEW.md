@@ -197,11 +197,11 @@ Teaser on the map tile: *Choose your army and your opponent. Now go to war!*
 
 ## Stars and progress
 
-Star 1 = win. Stars 2 and 3 are per-map rules (editor): **turns** or **casualties**, with `<` / `≤` / `=`, value 0–99.
+Star 1 = win. Stars 2 and 3 are per-map rules (editor): **turns**, **HP lost** (casualties), **units killed** (complete enemy pieces), **flags captured**, **signs read**. Ops: `<` `≤` `=` `≥` `>`. Value 0–99.
 
-Stock defaults: star 2 = turns **< 6**, star 3 = **0 casualties**.
+Stock defaults: star 2 = turns **< 6**, star 3 = **0 HP lost**. Old “casualties” saves now mean HP lost, not unit deaths.
 
-Finish screen: this run (big stars) and **Best on this map**. Best is stored in the browser, only goes up. Old clears migrate as 1★. Randomised battles have no saved map, so no best.
+Finish screen: this run (big stars, packed left so a miss on star 2 still shows ★★☆, popping 1 then 2 then 3) and **Best on this map**. Best is stored in the browser, only goes up. Old clears migrate as 1★. Randomised battles have no saved map, so no best.
 
 Campaign / tutorial unlock is still win/not-win.
 

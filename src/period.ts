@@ -43,6 +43,7 @@ export function setSelectedPeriod(period: unknown): Period {
 }
 
 export function applyPeriodTheme(period: Period): void {
+  if (typeof document === 'undefined') return;
   document.documentElement.dataset.period = sanitizePeriod(period);
 }
 

@@ -1,23 +1,11 @@
 /**
- * AI picker. Every behaviour is a checklist rule (ai-config) on aggressive /
- * defensive / advance. Default style is aggressive; stock checklist has every rule on,
- * which is this original ruleset:
- * If anyone can shoot or melee, they do. Dual choice: shoot first (checklist).
- * Otherwise Attack: close on the enemy general (else nearest enemy). Unchecked: other pathfinding. No fleeing.
- * Hold position only when Attack is not hunting (and no owned-flag hunt).
- * Pikes: don't walk onto them unless that move attacks the enemy general.
- * Do-not-touch tokens: never walk that hex (invalid path).
- * Own general: never attacks the army except the enemy general, or a unit
- * already in melee with him (adjacent, meleeDamage > 0).
- * Activate the general last — other pieces act first unless only the king can.
- * Flags: never capture. Guard owned flags like the king (close on them);
- * enemy / free flags mean nothing.
- * Hold position: stay put and turn toward the nearest enemy. A ranged hit
- * makes them move and try to attack the nearest unit; then they hold again.
- * Targets defenses: rocket or melee a wall/palisade on the path to the hunt.
- * Prefer high ground: cover ridges on the path to the hunt; else a hill in 3.
- * Not hunting: return to start hex.
- * Advance: walk the far edge, rear first, nobody more than one hex ahead of the line.
+ * AI picker. Checklist sections match this order:
+ * 1 Walking — do-not-touch / flags / pikes / palisades / keep-line / general last.
+ * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
+ * 3 Targeting — hunt: enemy general else nearest; or advance the front; or guard owned flags.
+ * 4 Chasing — close on that hunt, prefer high ground.
+ * 5 Defending — smash walls on the path; hold and face the nearest enemy.
+ * 6 Retreating — do not flee the hunt; if not hunting, walk home; avoid skip.
  * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
  * Last remaining pieces all concealed → unhide + that AI goes aggressive.
  */

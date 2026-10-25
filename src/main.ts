@@ -89,7 +89,12 @@ import {
   isAiStyle,
   matchHasEnemies,
   participatingSides,
-  playerCasualties,
+  playerFlagCaptures,
+  playerHpLost,
+  playerKills,
+  livingHostiles,
+  signsOnMap,
+  signsRead,
   playerTeamWon,
   sameTeam,
   sanitizeArmyControls,
@@ -133,7 +138,10 @@ import {
   type HexOrientation,
 } from './hex';
 import {
+  ARMY_EDGES,
+  ARMY_EDGE_LABEL,
   COLS,
+  DEFAULT_ARMY_EDGE,
   RANDOM_COLS,
   MAX_COLS,
   MAX_ROWS,
@@ -145,10 +153,13 @@ import {
   createStateFromTerrain,
   DEFAULT_MAP,
   emptyTerrain,
+  inferEdgeOwners,
+  isArmyEdge,
   maxTerrainCells,
   resizeTerrain,
   facingFromStamp,
   sanitizeStampFacing,
+  type ArmyEdge,
   type ArmyStamp,
   type MapOptions,
 } from './map';
@@ -170,7 +181,11 @@ import {
   sanitizeCategory,
   sanitizeLevelText,
   sanitizeTeaserText,
+  sanitizeStarMetric,
   sanitizeStarRule,
+  starMetricIsLoss,
+  STAR_METRIC_LABEL,
+  STAR_METRICS,
   setActiveLevelId,
   setDefaultLevelId,
   starRuleLabel,
@@ -184,6 +199,7 @@ import {
   type LevelCategory,
   type SavedLevel,
   type StarRule,
+  type StarStats,
 } from './levels';
 import {
   PERIODS,
@@ -386,6 +402,14 @@ let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
 let editorTokens: TileToken[] = [];
 let editorArmySide: Side = 'red';
+/** Where the next army load stamps. One color per edge. */
+let editorLoadEdge: ArmyEdge = 'bottom';
+let editorEdgeOwner: Record<ArmyEdge, Side | null> = {
+  bottom: 'red',
+  top: 'blue',
+  left: 'yellow',
+  right: 'purple',
+};
 let editorControls: Record<Side, ArmyControl> = defaultArmyControls();
 let editorAiStyles: Record<Side, AiStyle> = defaultAiStyles();
 let editorUnitCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
@@ -1252,10 +1276,37 @@ function unitCategoryForPeriod(period: Period): UnitCategory {
   return sanitizeUnitCategory(period);
 }
 
+function ownedEditorEdge(side: Side): ArmyEdge {
+  return (
+    ARMY_EDGES.find((e) => editorEdgeOwner[e] === side) ?? DEFAULT_ARMY_EDGE[side]
+  );
+}
+
+function syncEditorEdgesFromPieces(): void {
+  const { cols, rows } = currentGrid();
+  editorEdgeOwner = inferEdgeOwners(editorPieces, cols, rows);
+  for (const s of SIDES) {
+    if (ARMY_EDGES.some((e) => editorEdgeOwner[e] === s)) continue;
+    const d = DEFAULT_ARMY_EDGE[s];
+    if (editorEdgeOwner[d] === null) editorEdgeOwner[d] = s;
+  }
+  editorLoadEdge = ownedEditorEdge(editorArmySide);
+}
+
+function claimEditorEdge(side: Side, edge: ArmyEdge): Side | null {
+  const prev = editorEdgeOwner[edge];
+  for (const e of ARMY_EDGES) {
+    if (editorEdgeOwner[e] === side) editorEdgeOwner[e] = null;
+  }
+  editorEdgeOwner[edge] = side;
+  return prev && prev !== side ? prev : null;
+}
+
 function beginEditorSession(): void {
   editorUnitCategory = unitCategoryForPeriod(editorPeriod);
   editorBrush = 'land';
   editorArmySide = 'red';
+  syncEditorEdgesFromPieces();
   editorFormationId = STOCK_FORMATION_ID;
   editorFormationName = 'New army';
   editorPainting = false;
@@ -1749,10 +1800,23 @@ function levelStars(): { star2: StarRule; star3: StarRule } {
   };
 }
 
+function matchStarStats(): StarStats {
+  const kills = playerKills(state);
+  return {
+    turns: state.turnNumber,
+    casualties: playerHpLost(state),
+    kills,
+    flags: playerFlagCaptures(state),
+    signs: signsRead(state),
+    flagMax: mapFlags(state).length,
+    killMax: kills + livingHostiles(state),
+    signMax: signsOnMap(state),
+  };
+}
+
 function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' | 'pending' | 'off'] {
   const { star2, star3 } = levelStars();
-  const turns = state.turnNumber;
-  const cas = playerCasualties(state);
+  const stats = matchStarStats();
   const won = playerTeamWon(state);
   const lost = !!state.winner && !won;
   const live = (
@@ -1765,8 +1829,8 @@ function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' 
   };
   return [
     live(won, true),
-    live(starRuleMet(star2, turns, cas), starRulePossible(star2, turns, cas)),
-    live(starRuleMet(star3, turns, cas), starRulePossible(star3, turns, cas)),
+    live(starRuleMet(star2, stats), starRulePossible(star2, stats)),
+    live(starRuleMet(star3, stats), starRulePossible(star3, stats)),
   ];
 }
 
@@ -1806,14 +1870,26 @@ function starGoalsHtml(): string {
     .join('')}</ul>`;
 }
 
-function endStarsHtml(): string {
+function packedEndStars(): { kind: 'on' | 'off'; label: string }[] {
   const { star2, star3 } = levelStars();
   const kinds = starKinds();
   const labels = [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
-  return `<ul class="end-stars" aria-label="Stars earned">${labels
+  const earned: { kind: 'on'; label: string }[] = [];
+  const missed: { kind: 'off'; label: string }[] = [];
+  kinds.forEach((kind, i) => {
+    if (kind === 'on') earned.push({ kind: 'on', label: labels[i] });
+    else missed.push({ kind: 'off', label: labels[i] });
+  });
+  return [...earned, ...missed];
+}
+
+function endStarsHtml(): string {
+  const packed = packedEndStars();
+  const n = packed.filter((s) => s.kind === 'on').length;
+  return `<ul class="end-stars" aria-label="${n} of 3 stars">${packed
     .map(
-      (label, i) =>
-        `<li class="end-star ${kinds[i]}" title="${escapeHtml(label)}">${starGlyphSvg(kinds[i], 32)}</li>`,
+      (s) =>
+        `<li class="end-star ${s.kind}" title="${escapeHtml(s.label)}">${starGlyphSvg(s.kind, 32)}</li>`,
     )
     .join('')}</ul>`;
 }
@@ -1848,17 +1924,22 @@ function readEditorStar(n: 2 | 3): StarRule {
 }
 
 function starRuleEditorRow(n: 2 | 3, rule: StarRule): string {
+  const metrics = STAR_METRICS.map(
+    (m) =>
+      `<option value="${m}"${rule.metric === m ? ' selected' : ''}>${STAR_METRIC_LABEL[m]}</option>`,
+  ).join('');
   return `<div class="star-rule-row">
     <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
     <span class="star-rule-n">${n}</span>
     <select data-star="${n}" data-star-field="metric">
-      <option value="turns"${rule.metric === 'turns' ? ' selected' : ''}>Turns</option>
-      <option value="casualties"${rule.metric === 'casualties' ? ' selected' : ''}>Casualties</option>
+      ${metrics}
     </select>
     <select data-star="${n}" data-star-field="op">
       <option value="lt"${rule.op === 'lt' ? ' selected' : ''}>&lt;</option>
       <option value="lte"${rule.op === 'lte' ? ' selected' : ''}>≤</option>
       <option value="eq"${rule.op === 'eq' ? ' selected' : ''}>=</option>
+      <option value="gte"${rule.op === 'gte' ? ' selected' : ''}>≥</option>
+      <option value="gt"${rule.op === 'gt' ? ' selected' : ''}>&gt;</option>
     </select>
     <input type="number" min="0" max="${STAR_VALUE_MAX}" value="${rule.value}" data-star="${n}" data-star-field="value" />
   </div>`;
@@ -4498,7 +4579,16 @@ function renderEditorBar(): string {
   const isDefaultForm = namedForm && editorFormationId === eraDefault;
   const armyHint = namedForm ? editorFormationName : 'Standard';
   const armyOnto = SIDE_LABEL[editorArmySide];
-  const armyFlipped = editorArmySide !== 'red';
+  const edgeLabel = ARMY_EDGE_LABEL[editorLoadEdge];
+  const sideBtns = SIDES.map(
+    (s) =>
+      `<button type="button" class="editor-side ${s}${editorArmySide === s ? ' active' : ''}" data-army-side="${s}">${SIDE_LABEL[s]}</button>`,
+  ).join('');
+  const edgeBtns = ARMY_EDGES.map((e) => {
+    const owner = editorEdgeOwner[e];
+    const taken = owner && owner !== editorArmySide;
+    return `<button type="button" class="army-edge ${e}${editorLoadEdge === e ? ' active' : ''}${owner ? ` ${owner}` : ''}" data-army-edge="${e}" title="${taken ? `Replaces ${SIDE_LABEL[owner]}` : `Load onto ${ARMY_EDGE_LABEL[e]}`}">${ARMY_EDGE_LABEL[e]}${owner ? `<span class="lvl-meta">${SIDE_LABEL[owner]}</span>` : ''}</button>`;
+  }).join('');
 
   return `
     <div class="editor-bar">
@@ -4506,7 +4596,7 @@ function renderEditorBar(): string {
         <details data-editor-armies${editorArmiesOpen ? ' open' : ''}>
           <summary>
             <h3>Armies</h3>
-            <span class="lvl-meta">${escapeHtml(armyHint)} · onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''}</span>
+            <span class="lvl-meta">${escapeHtml(armyHint)} · ${armyOnto} · ${edgeLabel}</span>
           </summary>
           <div class="editor-fold-body">
             <div class="editor-save editor-army-save">
@@ -4517,7 +4607,10 @@ function renderEditorBar(): string {
               <button type="button" id="army-clear" class="ghost">Clear</button>
             </div>
             <div class="editor-library editor-army-library">
-              <span class="editor-label">Load onto ${armyOnto}${armyFlipped ? ' (flipped)' : ''} · ${UNIT_CATEGORY_LABEL[era]}</span>
+              <span class="editor-label">Load ${armyOnto} onto</span>
+              <div class="army-load-sides" role="group" aria-label="Army color">${sideBtns}</div>
+              <div class="army-edges" role="group" aria-label="Load onto edge">${edgeBtns}</div>
+              <span class="editor-label">${UNIT_CATEGORY_LABEL[era]} armies</span>
               ${formList}
             </div>
           </div>
@@ -4576,7 +4669,7 @@ function renderEditorBar(): string {
           <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [hp], [arrow]… — name in brackets becomes that item's icon.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
-            <p class="muted star-turns-hint">Turns = full rounds, counted when the starting player begins again (after everyone else has played).</p>
+            <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken (not just kills). Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
             <div class="star-rule-row locked">
               <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
               <span class="star-rule-n">1</span>
@@ -4983,7 +5076,7 @@ function renderAiChecklist(): string {
           aiChecklistAreStock() ? 'Stock rules' : 'Custom rules · saved in this browser'
         }</p>
       </div>
-      <p class="muted ai-editor-lead">Three personalities. Check a box to run that rule when the army’s AI is set to that style (level editor, next to player / AI). Default is <strong>aggressive</strong>. <strong>Advance</strong> walks the army toward the far edge together — rear first, nobody left behind. Stock = the defaults below.</p>
+      <p class="muted ai-editor-lead">Same order the AI actually runs: walking filters, then melee/shooting if anyone can hit, then who to hunt, then chase, defend, retreat. Check a box to run that rule for that style (level editor, next to player / AI). Default is <strong>aggressive</strong>. <strong>Advance</strong> walks the army toward the far edge together. Stock = the defaults below.</p>
       <div class="ai-check-wrap">
         <table class="ai-check">
           <thead>
@@ -5000,7 +5093,7 @@ function renderAiChecklist(): string {
       </div>
       <details class="units-help">
         <summary>Help</summary>
-        <p class="muted">Unchecked rules are skipped — the AI falls through to whatever is still on. Per-army style is stored on the level.</p>
+        <p class="muted">Sections are pickAiAction order. Unchecked rules are skipped — the AI falls through to whatever is still on. Per-army style is stored on the level.</p>
       </details>
     </div>`;
 }
@@ -5351,6 +5444,18 @@ function bindEditorEvents() {
   });
   app.querySelectorAll<HTMLElement>('[data-star][data-star-field]').forEach((el) => {
     el.addEventListener('change', () => {
+      if (el instanceof HTMLSelectElement && el.dataset.starField === 'metric') {
+        const n = el.dataset.star === '3' ? 3 : 2;
+        const metric = sanitizeStarMetric(el.value);
+        const opEl = app.querySelector<HTMLSelectElement>(
+          `[data-star="${n}"][data-star-field="op"]`,
+        );
+        if (opEl) {
+          const loss = starMetricIsLoss(metric);
+          if (loss && (opEl.value === 'gte' || opEl.value === 'gt')) opEl.value = 'lt';
+          if (!loss && (opEl.value === 'lt' || opEl.value === 'lte')) opEl.value = 'gte';
+        }
+      }
       editorStar2 = readEditorStar(2);
       editorStar3 = readEditorStar(3);
       const valEl = el instanceof HTMLInputElement && el.dataset.starField === 'value' ? el : null;
@@ -5401,6 +5506,7 @@ function bindEditorEvents() {
       const side = btn.dataset.armySide;
       if (!isSide(side)) return;
       editorArmySide = side;
+      editorLoadEdge = ownedEditorEdge(side);
       render();
     });
   });
@@ -5430,7 +5536,13 @@ function bindEditorEvents() {
     const nameEl = app.querySelector<HTMLInputElement>('#army-name');
     if (nameEl) editorFormationName = nameEl.value;
     const { cols, rows } = currentGrid();
-    const { slots } = captureFormation(editorPieces, editorArmySide, cols, rows);
+    const { slots } = captureFormation(
+      editorPieces,
+      editorArmySide,
+      cols,
+      rows,
+      ownedEditorEdge(editorArmySide),
+    );
     if (asDefault && slotsEqual(slots, stockFormation(cols, rows).slots)) {
       defaultFormationId = null;
       setDefaultFormationId(null);
@@ -5466,19 +5578,34 @@ function bindEditorEvents() {
   );
   app.querySelector('#army-clear')?.addEventListener('click', () => {
     editorPieces = editorPieces.filter((p) => p.side !== editorArmySide);
+    for (const e of ARMY_EDGES) {
+      if (editorEdgeOwner[e] === editorArmySide) editorEdgeOwner[e] = null;
+    }
     markEditorDirty();
     render();
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-army-edge]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const edge = btn.dataset.armyEdge;
+      if (!isArmyEdge(edge)) return;
+      editorLoadEdge = edge;
+      render();
+    });
   });
   const applyFormation = (id: string) => {
     const { cols, rows } = currentGrid();
     const form =
       id === STOCK_FORMATION_ID ? stockFormation(cols, rows) : getFormation(id);
     if (!form) return;
-    const added = stampFormation(form, editorArmySide, cols, rows);
+    const evicted = claimEditorEdge(editorArmySide, editorLoadEdge);
+    const added = stampFormation(form, editorArmySide, cols, rows, editorLoadEdge);
     const taken = new Set(added.map((p) => `${p.col},${p.row}`));
     editorPieces = [
       ...editorPieces.filter(
-        (p) => p.side !== editorArmySide && !taken.has(`${p.col},${p.row}`),
+        (p) =>
+          p.side !== editorArmySide &&
+          p.side !== evicted &&
+          !taken.has(`${p.col},${p.row}`),
       ),
       ...added,
     ];

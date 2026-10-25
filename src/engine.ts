@@ -625,6 +625,10 @@ export type GameState = {
   turnNumber: number;
   /** Pieces removed per side this match. */
   casualties: Record<Side, number>;
+  /** HP chipped per side this match (kills included). Missing on old states → 0. */
+  hpLost: Record<Side, number>;
+  /** Player-team flag takes this match (not kickoff seeds). */
+  flagCaptures: number;
   /** One-shot drown (etc) hits for the UI to flash. Cleared after play. */
   fxHits?: FxHit[];
   /** Stamina grants (gold) / water-penalty spends (blue). Played at that side's turn start. */
@@ -969,13 +973,15 @@ function applyDamage(
   markShot = ranged,
 ): { fatal: boolean; remaining: number; routed: boolean } {
   const routed = wouldRout(state, victim, from);
+  const before = hpLeft(victim);
   const remaining = routed
     ? 0
     : Math.max(
         0,
-        hpLeft(victim) - netDamage(victim, amount, min, from, state.orientation, ranged),
+        before - netDamage(victim, amount, min, from, state.orientation, ranged),
       );
   victim.hp = remaining;
+  addHpLost(state, victim.side, before - remaining);
   reveal(victim);
   if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
@@ -985,6 +991,16 @@ function applyDamage(
     return { fatal: true, remaining: 0, routed };
   }
   return { fatal: false, remaining, routed: false };
+}
+
+function addHpLost(state: GameState, side: Side, dealt: number): void {
+  if (dealt <= 0) return;
+  const cur = state.hpLost ?? emptySideCounts();
+  state.hpLost = {
+    ...emptySideCounts(),
+    ...cur,
+    [side]: (cur[side] ?? 0) + dealt,
+  };
 }
 
 /**
@@ -1037,6 +1053,9 @@ function claimFlag(state: GameState, piece: Piece, tok: TileToken): void {
   if (tok.owner && sameTeam(state, tok.owner, piece.side)) return;
   const prev = tok.owner;
   tok.owner = piece.side;
+  if (playerSides(state).some((s) => sameTeam(state, s, piece.side))) {
+    state.flagCaptures = (state.flagCaptures ?? 0) + 1;
+  }
   const many = mapFlags(state).length > 1;
   const noun = many ? 'a flag' : 'the flag';
   state.log.push(
@@ -1621,6 +1640,8 @@ function cloneState(state: GameState): GameState {
     controls: { ...state.controls },
     aiStyles: { ...defaultAiStyles(), ...state.aiStyles },
     casualties: { ...emptySideCounts(), ...state.casualties },
+    hpLost: { ...emptySideCounts(), ...state.hpLost },
+    flagCaptures: state.flagCaptures ?? 0,
     hadKing: { ...emptyHadKing(), ...state.hadKing },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
     fxStamina: state.fxStamina?.map((h) => ({ ...h })),
@@ -1732,6 +1753,38 @@ export function playerCasualties(state: GameState): number {
   return playerSides(state).reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
 }
 
+export function playerHpLost(state: GameState): number {
+  const lost = state.hpLost ?? emptySideCounts();
+  return playerSides(state).reduce((n, s) => n + (lost[s] ?? 0), 0);
+}
+
+export function playerKills(state: GameState): number {
+  const us = playerSides(state);
+  if (!us.length) return 0;
+  return participatingSides(state)
+    .filter((s) => us.every((p) => isHostile(state, s, p)))
+    .reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
+}
+
+export function livingHostiles(state: GameState): number {
+  const us = playerSides(state);
+  if (!us.length) return 0;
+  return state.pieces.filter((p) => us.every((s) => isHostile(state, p.side, s)))
+    .length;
+}
+
+export function playerFlagCaptures(state: GameState): number {
+  return state.flagCaptures ?? 0;
+}
+
+export function signsRead(state: GameState): number {
+  return (state.tokens ?? []).filter((t) => t.type === 'board' && t.read).length;
+}
+
+export function signsOnMap(state: GameState): number {
+  return (state.tokens ?? []).filter((t) => t.type === 'board').length;
+}
+
 export function matchHasEnemies(state: GameState): boolean {
   return participatingSides(state).some((s) => controlOf(state, s) === 'ai-enemy');
 }
@@ -1833,6 +1886,7 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
     const dealt = before - remaining;
     p.hp = remaining;
     if (dealt > 0) {
+      addHpLost(state, p.side, dealt);
       state.fxHits = [...(state.fxHits ?? []), { id: p.id, fatal: remaining <= 0, dealt }];
     }
     if (remaining <= 0) {

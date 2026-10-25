@@ -1,11 +1,13 @@
 import { isKnownUnit, sanitizeUnitTokens, UNIT_STATS, type Side, type UnitType } from './engine';
 import {
   COLS,
+  DEFAULT_ARMY_EDGE,
   ROWS,
   placeSlots,
   sanitizeStampFacing,
   slotsFromSide,
   stockSlots,
+  type ArmyEdge,
   type ArmySlot,
   type ArmyStamp,
 } from './map';
@@ -250,8 +252,9 @@ export function captureFormation(
   side: Side,
   cols: number,
   rows: number,
+  edge: ArmyEdge = DEFAULT_ARMY_EDGE[side],
 ): { slots: ArmySlot[]; cols: number } {
-  return { slots: slotsFromSide(pieces, side, cols, rows), cols };
+  return { slots: slotsFromSide(pieces, side, cols, rows, edge), cols };
 }
 
 export function stampFormation(
@@ -259,8 +262,9 @@ export function stampFormation(
   side: Side,
   cols: number,
   rows: number,
+  edge: ArmyEdge = DEFAULT_ARMY_EDGE[side],
 ): ArmyStamp[] {
-  return placeSlots(form.slots, side, cols, rows, form.cols);
+  return placeSlots(form.slots, side, cols, rows, form.cols, edge);
 }
 
 export function defaultArmyStamps(

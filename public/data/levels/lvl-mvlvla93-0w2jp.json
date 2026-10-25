@@ -116,12 +116,12 @@
     "star2": {
         "metric": "turns",
         "op": "lt",
-        "value": 6
+        "value": 2
     },
     "star3": {
-        "metric": "casualties",
-        "op": "eq",
-        "value": 0
+        "metric": "turns",
+        "op": "lte",
+        "value": 3
     },
     "armyControls": {
         "red": "player",
@@ -183,7 +183,7 @@
         }
     ],
     "sort": 9,
-    "updatedAt": 1792862414404,
+    "updatedAt": 1792918918655,
     "armies": [
         {
             "type": "cohort",

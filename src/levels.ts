@@ -100,22 +100,50 @@ export type SavedLevel = {
   updatedAt: number;
 };
 
-export type StarMetric = 'turns' | 'casualties';
-export type StarOp = 'lt' | 'lte' | 'eq';
+export const STAR_METRICS = [
+  'turns',
+  'casualties',
+  'kills',
+  'flags',
+  'signs',
+] as const;
+export type StarMetric = (typeof STAR_METRICS)[number];
+export const STAR_OPS = ['lt', 'lte', 'eq', 'gte', 'gt'] as const;
+export type StarOp = (typeof STAR_OPS)[number];
 export type StarRule = { metric: StarMetric; op: StarOp; value: number };
+
+export const STAR_METRIC_LABEL: Record<StarMetric, string> = {
+  turns: 'Turns',
+  casualties: 'HP lost',
+  kills: 'Units killed',
+  flags: 'Flags captured',
+  signs: 'Signs read',
+};
 
 export const STAR_VALUE_MAX = 99;
 
 export const DEFAULT_STAR_2: StarRule = { metric: 'turns', op: 'lt', value: 6 };
 export const DEFAULT_STAR_3: StarRule = { metric: 'casualties', op: 'eq', value: 0 };
 
+export function isStarMetric(v: unknown): v is StarMetric {
+  return (STAR_METRICS as readonly string[]).includes(v as string);
+}
+
 export function sanitizeStarMetric(raw: unknown): StarMetric {
-  return raw === 'casualties' ? 'casualties' : 'turns';
+  return isStarMetric(raw) ? raw : 'turns';
+}
+
+export function isStarOp(v: unknown): v is StarOp {
+  return (STAR_OPS as readonly string[]).includes(v as string);
 }
 
 export function sanitizeStarOp(raw: unknown): StarOp {
-  if (raw === 'lte' || raw === 'eq') return raw;
-  return 'lt';
+  return isStarOp(raw) ? raw : 'lt';
+}
+
+/** Turns / HP lost: keep under. Kills / flags / signs: reach at least. */
+export function starMetricIsLoss(metric: StarMetric): boolean {
+  return metric === 'turns' || metric === 'casualties';
 }
 
 export function sanitizeStarRule(raw: unknown, fallback: StarRule): StarRule {
@@ -131,41 +159,72 @@ export function sanitizeStarRule(raw: unknown, fallback: StarRule): StarRule {
   };
 }
 
-export function starRuleMet(
-  rule: StarRule,
-  turns: number,
-  ownCasualties: number,
-): boolean {
-  const n = rule.metric === 'turns' ? turns : ownCasualties;
-  if (rule.op === 'lt') return n < rule.value;
-  if (rule.op === 'lte') return n <= rule.value;
-  return n === rule.value;
+export type StarStats = {
+  turns: number;
+  casualties: number;
+  kills: number;
+  flags: number;
+  signs: number;
+  flagMax: number;
+  killMax: number;
+  signMax: number;
+};
+
+function starStat(rule: StarRule, stats: StarStats): number {
+  return stats[rule.metric];
 }
 
-/** Both metrics only increase, so a failed rule stays failed. */
-export function starRulePossible(
-  rule: StarRule,
-  turns: number,
-  ownCasualties: number,
-): boolean {
-  const n = rule.metric === 'turns' ? turns : ownCasualties;
-  if (rule.op === 'lt') return n < rule.value;
-  if (rule.op === 'lte' || rule.op === 'eq') return n <= rule.value;
-  return false;
+function starCap(rule: StarRule, stats: StarStats): number | null {
+  if (rule.metric === 'kills') return stats.killMax;
+  if (rule.metric === 'flags') return stats.flagMax;
+  if (rule.metric === 'signs') return stats.signMax;
+  return null;
+}
+
+export function compareStar(op: StarOp, n: number, value: number): boolean {
+  if (op === 'lt') return n < value;
+  if (op === 'lte') return n <= value;
+  if (op === 'eq') return n === value;
+  if (op === 'gte') return n >= value;
+  return n > value;
+}
+
+export function starRuleMet(rule: StarRule, stats: StarStats): boolean {
+  return compareStar(rule.op, starStat(rule, stats), rule.value);
+}
+
+/**
+ * Still achievable this match. Loss metrics only rise (a miss stays a miss).
+ * Score metrics can still be reached unless the map does not have enough left.
+ */
+export function starRulePossible(rule: StarRule, stats: StarStats): boolean {
+  const n = starStat(rule, stats);
+  const v = rule.value;
+  const cap = starCap(rule, stats);
+  if (rule.op === 'lt') return n < v;
+  if (rule.op === 'lte') return n <= v;
+  if (rule.op === 'eq') {
+    if (n > v) return false;
+    if (cap != null && cap < v) return false;
+    return true;
+  }
+  if (rule.op === 'gte') return cap == null ? true : cap >= v;
+  return cap == null ? true : cap > v;
 }
 
 export function starOpLabel(op: StarOp): string {
   if (op === 'lte') return '≤';
   if (op === 'eq') return '=';
+  if (op === 'gte') return '≥';
+  if (op === 'gt') return '>';
   return '<';
 }
 
 export function starRuleLabel(rule: StarRule): string {
   if (rule.metric === 'casualties' && rule.op === 'eq' && rule.value === 0) {
-    return 'No casualties';
+    return 'No HP lost';
   }
-  const noun = rule.metric === 'turns' ? 'Turns' : 'Casualties';
-  return `${noun} ${starOpLabel(rule.op)} ${rule.value}`;
+  return `${STAR_METRIC_LABEL[rule.metric]} ${starOpLabel(rule.op)} ${rule.value}`;
 }
 
 export const LEVEL_TEXT_MAX = 280;

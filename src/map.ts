@@ -387,6 +387,82 @@ function spawnExtras(type: UnitType): Pick<Piece, 'ammo' | 'hp' | 'stamina'> {
   };
 }
 
+/** Map edge a formation is stamped onto. One army per edge. */
+export const ARMY_EDGES = ['bottom', 'top', 'left', 'right'] as const;
+export type ArmyEdge = (typeof ARMY_EDGES)[number];
+
+export const ARMY_EDGE_LABEL: Record<ArmyEdge, string> = {
+  bottom: 'Bottom',
+  top: 'Top',
+  left: 'Left',
+  right: 'Right',
+};
+
+export const DEFAULT_ARMY_EDGE: Record<Side, ArmyEdge> = {
+  red: 'bottom',
+  blue: 'top',
+  yellow: 'left',
+  purple: 'right',
+};
+
+export function isArmyEdge(v: unknown): v is ArmyEdge {
+  return v === 'bottom' || v === 'top' || v === 'left' || v === 'right';
+}
+
+/** Cube-dir steps so Red's forward (2) points inward from this edge. */
+const EDGE_ROT: Record<ArmyEdge, number> = {
+  bottom: 0,
+  right: 1,
+  top: 3,
+  left: 4,
+};
+
+function rotateDir(dir: HexDir, steps: number): HexDir {
+  return ((((dir + steps) % 6) + 6) % 6) as HexDir;
+}
+
+function alongExtent(edge: ArmyEdge, cols: number, rows: number): number {
+  return edge === 'left' || edge === 'right' ? rows : cols;
+}
+
+function slotToHex(
+  along: number,
+  depth: number,
+  edge: ArmyEdge,
+  cols: number,
+  rows: number,
+): { col: number; row: number } {
+  switch (edge) {
+    case 'bottom':
+      return { col: along, row: rows - 1 - depth };
+    case 'top':
+      return { col: cols - 1 - along, row: depth };
+    case 'left':
+      return { col: depth, row: along };
+    case 'right':
+      return { col: cols - 1 - depth, row: rows - 1 - along };
+  }
+}
+
+function hexToSlot(
+  col: number,
+  row: number,
+  edge: ArmyEdge,
+  cols: number,
+  rows: number,
+): { along: number; depth: number } {
+  switch (edge) {
+    case 'bottom':
+      return { along: col, depth: rows - 1 - row };
+    case 'top':
+      return { along: cols - 1 - col, depth: row };
+    case 'left':
+      return { along: row, depth: col };
+    case 'right':
+      return { along: rows - 1 - row, depth: cols - 1 - col };
+  }
+}
+
 /** One army, stored as if it were Red: col from own left, fromBack from own back rank. */
 export type ArmySlot = {
   type: UnitType;
@@ -417,10 +493,6 @@ export function sanitizeStampFacing(side: Side, raw: unknown): HexDir | undefine
   return raw === defaultFacing(side) ? undefined : raw;
 }
 
-function flipFacing(dir: HexDir): HexDir {
-  return ((dir + 3) % 6) as HexDir;
-}
-
 function stampTokens(raw: unknown): UnitTokenType[] | undefined {
   const tokens = sanitizeUnitTokens(raw);
   return tokens.length ? tokens : undefined;
@@ -431,16 +503,19 @@ export function slotsFromSide(
   side: Side,
   cols: number,
   rows: number,
+  edge: ArmyEdge = DEFAULT_ARMY_EDGE[side],
 ): ArmySlot[] {
+  const rot = EDGE_ROT[edge];
   return pieces
     .filter((p) => p.side === side)
     .map((p) => {
       const abs = facingFromStamp(p);
-      const asRed = side === 'red' ? abs : flipFacing(abs);
+      const asRed = rotateDir(abs, -rot);
+      const { along, depth } = hexToSlot(p.col, p.row, edge, cols, rows);
       return {
         type: p.type,
-        col: side === 'red' ? p.col : cols - 1 - p.col,
-        fromBack: side === 'red' ? rows - 1 - p.row : p.row,
+        col: along,
+        fromBack: depth,
         unitTokens: stampTokens(p.unitTokens),
         facing: sanitizeStampFacing('red', asRed),
       };
@@ -454,19 +529,21 @@ export function placeSlots(
   cols: number,
   rows: number,
   sourceCols: number,
+  edge: ArmyEdge = DEFAULT_ARMY_EDGE[side],
 ): ArmyStamp[] {
-  const off = Math.floor((cols - sourceCols) / 2);
+  const off = Math.floor((alongExtent(edge, cols, rows) - sourceCols) / 2);
+  const rot = EDGE_ROT[edge];
   const out: ArmyStamp[] = [];
   const seen = new Set<string>();
   for (const s of slots) {
-    const col = side === 'red' ? s.col + off : cols - 1 - (s.col + off);
-    const row = side === 'red' ? rows - 1 - s.fromBack : s.fromBack;
+    const along = s.col + off;
+    const { col, row } = slotToHex(along, s.fromBack, edge, cols, rows);
     if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
     const k = `${col},${row}`;
     if (seen.has(k)) continue;
     seen.add(k);
     const asRed = facingFromStamp({ side: 'red', facing: s.facing });
-    const facing = side === 'red' ? asRed : flipFacing(asRed);
+    const facing = rotateDir(asRed, rot);
     out.push({
       type: s.type,
       col,
@@ -477,6 +554,61 @@ export function placeSlots(
     });
   }
   return out;
+}
+
+/** Nearest map edge for a side's pieces. Empty → that side's default edge. */
+export function inferArmyEdge(
+  pieces: Array<{ col: number; row: number; side: Side }>,
+  side: Side,
+  cols: number,
+  rows: number,
+): ArmyEdge {
+  const mine = pieces.filter((p) => p.side === side);
+  if (!mine.length) return DEFAULT_ARMY_EDGE[side];
+  const avgCol = mine.reduce((n, p) => n + p.col, 0) / mine.length;
+  const avgRow = mine.reduce((n, p) => n + p.row, 0) / mine.length;
+  const scores: [ArmyEdge, number][] = [
+    ['bottom', rows - 1 - avgRow],
+    ['top', avgRow],
+    ['left', avgCol],
+    ['right', cols - 1 - avgCol],
+  ];
+  scores.sort((a, b) => a[1] - b[1]);
+  return scores[0]![0];
+}
+
+/** Unique edge occupancy from piece positions. Empty sides do not claim an edge. */
+export function inferEdgeOwners(
+  pieces: Array<{ col: number; row: number; side: Side }>,
+  cols: number,
+  rows: number,
+): Record<ArmyEdge, Side | null> {
+  const owner: Record<ArmyEdge, Side | null> = {
+    bottom: null,
+    top: null,
+    left: null,
+    right: null,
+  };
+  const ranked = SIDES.flatMap((side) => {
+    const mine = pieces.filter((p) => p.side === side);
+    if (!mine.length) return [];
+    const avgCol = mine.reduce((n, p) => n + p.col, 0) / mine.length;
+    const avgRow = mine.reduce((n, p) => n + p.row, 0) / mine.length;
+    const scores: [ArmyEdge, number][] = [
+      ['bottom', rows - 1 - avgRow],
+      ['top', avgRow],
+      ['left', avgCol],
+      ['right', cols - 1 - avgCol],
+    ];
+    scores.sort((a, b) => a[1] - b[1]);
+    return [{ side, scores }];
+  });
+  ranked.sort((a, b) => a.scores[0]![1] - b.scores[0]![1]);
+  for (const { side, scores } of ranked) {
+    const pick = scores.find(([e]) => owner[e] === null);
+    if (pick) owner[pick[0]] = side;
+  }
+  return owner;
 }
 
 /** Current stock Red layout, as formation slots. */
@@ -632,6 +764,8 @@ function freshGame(
     startingSide: start,
     turnNumber: 1,
     casualties,
+    hpLost: emptySideCounts(),
+    flagCaptures: 0,
     log: [log],
   };
   seedFlagOwners(state);
