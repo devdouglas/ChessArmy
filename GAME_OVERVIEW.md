@@ -145,6 +145,8 @@ Live in **Units**. Kit sets icon + pathing through pieces / infantry; **water** 
 | Elephant | 2 | — | HP 3, melee 2, charge 1, armor 1, no climb | 8 |
 | Barbarian | 2 | — | HP 2, melee 2, charge 1, stamina 2, can hide | 3 |
 | Peasant | 1 | — | | 0 |
+| Dude | 1 | — | peasant with a hat, glyph kit | 0 |
+| Wolf | 2 | — | through pieces, melee 2, charge 1, stamina 2, can hide, glyph kit | 3 |
 | Catapult | 1 | 5 arch, min 2 | melee 0, splash, CD 2, no climb | 6 |
 
 ### Modern

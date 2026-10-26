@@ -4040,15 +4040,18 @@ function renderToolbar(): string {
   </div>`;
 }
 
+/** Player-facing name for the tutorial playlist. Editor category stays Tutorial. */
+const TUTORIAL_PLAY_TITLE = "Anthony's Lessons";
+
 function mapPickTitle(kind: MapPickKind): string {
   if (kind === 'ai') return 'Skirmish vs AI';
   if (kind === 'hotseat') return 'Hotseat';
   if (kind === 'campaign') return 'Campaign';
-  return 'Tutorial';
+  return TUTORIAL_PLAY_TITLE;
 }
 
 function mapPickMetaLine(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
-  if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return 'Locked · win the previous map';
+  if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return 'Locked';
   return `${l.cols}×${l.rows}`;
 }
 
@@ -4124,11 +4127,13 @@ function renderMapPickScreen(kind: MapPickKind): string {
   const title = mapPickTitle(kind);
   const era = PERIOD_LABEL[selectedPeriod];
   const tag =
-    pickLocks(kind)
-      ? `Pick a map · ${era} · vs AI. Finish one to unlock the next.`
-      : kind === 'hotseat'
-        ? `Pick a map · ${era} · two players, one device.`
-        : `Pick a map · ${era} · vs AI.`;
+    kind === 'tutorial'
+      ? 'There was in those days a simple peasant called Anthony, a man of small account, who knew more of turnips than of spears. The thanes took him from the plough to see whether luck and a strong arm might make a warrior of him. He would not be sent on until he had done with the lesson before him.'
+      : kind === 'campaign'
+        ? `Pick a map · ${era} · vs AI. Finish one to unlock the next.`
+        : kind === 'hotseat'
+          ? `Pick a map · ${era} · two players, one device.`
+          : `Pick a map · ${era} · vs AI.`;
   const emptyCat = kind === 'hotseat' || kind === 'ai' ? 'skirmish' : kind;
   const randomOpt = skirmishPick(kind) ? renderRandomMapPickOpt(kind) : '';
   const body =
@@ -4224,20 +4229,20 @@ function renderStartScreen(): string {
     eraClosed
       ? ` disabled title="Under construction"`
       : !tutOpen || empty
-        ? ` disabled title="${!tutOpen ? 'Finish the Tutorial to unlock' : emptyTitle}"`
+        ? ` disabled title="${!tutOpen ? `Finish ${TUTORIAL_PLAY_TITLE} to unlock` : emptyTitle}"`
         : ` title="${openTitle}"`;
   const gateMeta = (empty: boolean, emptyMeta: string, openMeta: string) =>
     eraClosed
       ? 'Under construction'
       : !tutOpen
-        ? 'Locked · finish Tutorial'
+        ? `Locked · finish ${TUTORIAL_PLAY_TITLE}`
         : empty
           ? emptyMeta
           : openMeta;
   const tutorialTitle = eraClosed
     ? 'Under construction'
     : tutorialN
-      ? 'Pick a tutorial map vs AI. Finish one to unlock the next.'
+      ? `${TUTORIAL_PLAY_TITLE}. Finish one to go on.`
       : 'Mark saved levels as Tutorial in the Editor';
   const periodPicks = PERIODS.map(
     (p) =>
@@ -4251,14 +4256,14 @@ function renderStartScreen(): string {
         <p class="start-tag">Kill the enemy General — or the whole army.</p>
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
+          <button type="button" class="start-opt" data-start="tutorial"${eraClosed || !tutorialN ? ' disabled' : ''}
+            title="${tutorialTitle}">
+            <span class="start-opt-name">${eraClosed ? lockIconHtml() : ''}${TUTORIAL_PLAY_TITLE}</span>
+            <span class="start-opt-meta">${eraClosed ? 'Under construction' : tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
+          </button>
           <button type="button" class="start-opt" data-start="campaign"${gateAttr(!campaignN, 'Mark saved levels as Campaign in the Editor', 'Pick a campaign map vs AI. Finish one to unlock the next.')}>
             <span class="start-opt-name">${menuLock}Campaign</span>
             <span class="start-opt-meta">${gateMeta(!campaignN, 'No campaign maps', `${mapWord(campaignN)} · vs AI`)}</span>
-          </button>
-          <button type="button" class="start-opt" data-start="tutorial"${eraClosed || !tutorialN ? ' disabled' : ''}
-            title="${tutorialTitle}">
-            <span class="start-opt-name">${eraClosed ? lockIconHtml() : ''}Tutorial</span>
-            <span class="start-opt-meta">${eraClosed ? 'Under construction' : tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="historical"${gateAttr(!historicalN, 'Mark saved levels as Historical in the Editor', 'Historical battles in editor order, vs AI')}>
             <span class="start-opt-name">${menuLock}Historical Battle</span>
@@ -5249,8 +5254,8 @@ function renderUnitEditor(): string {
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
           <dd><strong>Can hide</strong> invisible to enemies while on forest (and later hide tokens). Breaks for the rest of the match after the unit moves, attacks, or is hit. Owner still sees them</dd>
-          <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
-          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer and the spaceship kits are glyph only</dd>
+          <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
+          <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>

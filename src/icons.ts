@@ -242,6 +242,27 @@ const ICONS: Record<UnitRole, string> = {
     <circle cx="0" cy="-3.15" r="1.95"/>
     <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
   `,
+  // Peasant + brim hat. Fork sits right of the brim, tines above it.
+  dude: `
+    <circle cx="0" cy="-2.55" r="1.95"/>
+    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
+    <ellipse cx="0" cy="-4.85" rx="3.05" ry="0.88"/>
+    <path d="M-2.05 -4.95 Q0 -8.45 2.05 -4.95 Z"/>
+    <rect x="5.25" y="-6.85" width="1.1" height="14.6" rx="0.35"/>
+    <path d="M3.45 -8.85 H8.15 V-7.4 H7.3 V-8.6 H6.4 V-6.9 H5.2 V-8.6 H4.3 V-7.4 H3.45 Z"/>
+  `,
+  // Wolf — side profile, snout right
+  wolf: `
+    <path d="M-6.35 1.25
+      C-8.85 -1.85 -8.15 3.55 -5.45 3.15
+      L-4.85 7.85 L-3.25 7.85
+      C-3.05 5.55 -2.15 3.75 -0.85 3.35
+      L-0.25 7.95 L1.35 7.95
+      C1.45 5.75 2.05 4.05 3.15 3.25
+      L5.05 2.55 L7.95 0.85 L8.55 -0.45 L6.65 -1.55 L5.05 -1.15
+      L4.55 -4.05 L3.25 -1.55 L2.35 -4.45 L1.55 -1.35
+      C-0.95 -1.95 -3.55 -0.75 -6.35 1.25 Z"/>
+  `,
   // Delta interceptor
   fighter: `
     <path d="M0 -8.4 L7.2 6.6 L0 3.4 L-7.2 6.6 Z"/>
@@ -756,6 +777,8 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   tower: 'keep',
   dummy: 'scarecrow',
   peasant: 'fork',
+  dude: 'hat',
+  wolf: 'wolf',
   fighter: 'delta fighter',
   gunship: 'gunship',
   bomber: 'flying wing',

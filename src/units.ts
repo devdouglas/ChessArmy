@@ -392,7 +392,7 @@ export function patchUnitShootArc(type: UnitType, shootArc: ShootArc): void {
   persistUnitStats();
 }
 
-/** Writes kit glyph + traits. Glyph-only kits (tower, javelin, horse archer, ships) leave numbers and flags. */
+/** Writes kit glyph + traits. Glyph-only kits (tower, javelin, horse archer, dude, wolf, ships) leave numbers and flags. */
 export function patchUnitKit(type: UnitType, role: UnitRole): void {
   if (!isUnitRole(role) || !UNIT_TYPES.includes(type)) return;
   const kit = DEFAULT_UNIT_STATS[role];
