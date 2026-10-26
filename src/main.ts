@@ -48,6 +48,7 @@ import {
   splashBlast,
   staminaLeft,
   staminaMax,
+  canBuyStaminaExtra,
   terrainHeight,
   isElevatedTerrain,
   STOCK_UNIT_TYPES,
@@ -296,6 +297,14 @@ import {
   hasWonLevel,
   recordLevelWin,
 } from './progress';
+import {
+  getAccountLoginUrl,
+  getAccountRegisterUrl,
+  getAccountStatus,
+  getAccountUser,
+  isEraAdmin,
+  syncAccountProgress,
+} from './account';
 import pkg from '../package.json';
 
 const APP_NAME = 'There Will Be Legions';
@@ -382,6 +391,27 @@ let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
 let rotatePreviewDir: HexDir | null = null;
+/** Player pref: gold extra dests on select. Off → Second action opt-in. Default off. */
+const DOUBLE_TIME_KEY = 'chessarmy-double-time-v1';
+let doubleTime = loadDoubleTime();
+/** This activation: player opted into extra dests while Double time is off. */
+let secondActionArmed = false;
+
+function loadDoubleTime(): boolean {
+  try {
+    return localStorage.getItem(DOUBLE_TIME_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistDoubleTime(): void {
+  try {
+    localStorage.setItem(DOUBLE_TIME_KEY, doubleTime ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
@@ -601,6 +631,7 @@ function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
 }
 
 function openRandomSetup(kind: MapPickKind) {
+  if (eraPlayLocked()) return;
   const picks = randomArmyChoices();
   const valid = (id: string | null | undefined) =>
     !!id && picks.some((p) => p.id === id);
@@ -620,6 +651,7 @@ function openRandomSetup(kind: MapPickKind) {
 
 function confirmRandomSetup() {
   if (!randomSetup) return;
+  if (eraPlayLocked()) return;
   if (!randomArmyChoices().length) return;
   randomArmies = {
     yoursId: randomSetup.yoursId,
@@ -1104,6 +1136,14 @@ function tutorialDone(): boolean {
   return maps.length === 0 || maps.every((l) => hasWonLevel(l.id));
 }
 
+function eraPlayLocked(period: Period = selectedPeriod): boolean {
+  return eraIsWip(period) && !isEraAdmin();
+}
+
+function lockIconHtml(): string {
+  return `<svg class="map-pick-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7.2" width="9.6" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.1 7.2V5.1a2.9 2.9 0 0 1 5.8 0v2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+}
+
 function mapsForPick(kind: MapPickKind): SavedLevel[] {
   if (kind === 'tutorial') return tutorialMaps();
   if (kind === 'campaign') return levelsInCategory('campaign', selectedPeriod);
@@ -1140,6 +1180,7 @@ function skirmishPick(kind: MapPickKind): boolean {
 }
 
 function showMapPick(kind: MapPickKind) {
+  if (eraPlayLocked()) return;
   if (kind !== 'tutorial' && !tutorialDone()) return;
   if (!mapsForPick(kind).length && !skirmishPick(kind)) return;
   editorPainting = false;
@@ -1154,6 +1195,7 @@ function showMapPick(kind: MapPickKind) {
 }
 
 function startPickedMap(id: string, kind: MapPickKind) {
+  if (eraPlayLocked()) return;
   if (id === 'random') {
     if (!skirmishPick(kind)) return;
     openRandomSetup(kind);
@@ -1173,6 +1215,7 @@ function startPickedMap(id: string, kind: MapPickKind) {
 }
 
 function startPlaylist(kind: PlaylistKind) {
+  if (eraPlayLocked()) return;
   if (kind !== 'tutorial' && !tutorialDone()) return;
   const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
@@ -1721,6 +1764,7 @@ function clearSelection() {
   hoverPath = [];
   commitPath = [];
   rotatePreviewDir = null;
+  secondActionArmed = false;
 }
 
 function livingOnSide(side: Side): { id: string }[] {
@@ -1958,12 +2002,50 @@ function canControl(): boolean {
   return isPlayerControlled(state, state.turn);
 }
 
+function extrasVisible(piece: Piece): boolean {
+  return doubleTime || (secondActionArmed && selectedId === piece.id);
+}
+
+/** Extra-action dests (second move / rest). Climb gold is this-action — never extra. */
+function isExtraStaminaDest(h: Highlight): boolean {
+  return (h.kind === 'stamina' && !!h.extra) || h.kind === 'rest';
+}
+
+/** Extra-move dests stay hidden unless Double time / Spend stamina. Climbs stay. */
+function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
+  if (extrasVisible(piece)) return list;
+  let out = list.filter((h) => !isExtraStaminaDest(h));
+  if (state.staminaBonus && state.scoutPieceId === piece.id) {
+    out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
+  }
+  return out;
+}
+
+/** Unfiltered rest dests for empty-stamina marks (busy icons still draw in normal time). */
+function restDestHighlights(pieceId: string): Highlight[] {
+  const piece = getPiece(state, pieceId);
+  if (!piece || hasActed(state, pieceId)) return [];
+  const list =
+    piece.side === state.turn &&
+    canControl() &&
+    (!state.scoutPieceId || state.scoutPieceId === pieceId)
+      ? legalHighlights(state, pieceId)
+      : rangeHighlights(state, pieceId);
+  return list.filter((h) => h.kind === 'rest');
+}
+
+function actingHighlights(pieceId: string): Highlight[] {
+  const piece = getPiece(state, pieceId);
+  if (!piece) return [];
+  return filterPlayerHighlights(piece, legalHighlights(state, pieceId));
+}
+
 /** Real options on one hex: move-onto and/or fire (not empty shoot-range). */
 function hexActions(
   pieceId: string,
   hex: Hex,
 ): { canMove: boolean; canShoot: boolean } {
-  const legal = legalHighlights(state, pieceId).filter(
+  const legal = actingHighlights(pieceId).filter(
     (h) => eq(h.hex, hex) && h.kind !== 'shoot-range' && h.kind !== 'rest',
   );
   return {
@@ -1992,9 +2074,11 @@ function highlightsFor(pieceId: string): Highlight[] {
     canControl() &&
     (!state.scoutPieceId || state.scoutPieceId === pieceId)
   ) {
-    return legalHighlights(state, pieceId);
+    return actingHighlights(pieceId);
   }
-  return rangeHighlights(state, pieceId);
+  // Preview / enemy turn: same extra-move filter so gold energy dests don't
+  // remount (and replay fade-in) on every AI step while you stay selected.
+  return filterPlayerHighlights(piece, rangeHighlights(state, pieceId));
 }
 
 function refreshHighlights() {
@@ -2003,6 +2087,7 @@ function refreshHighlights() {
 
 function selectPiece(id: string | null) {
   if (animating) return;
+  if (selectedId !== id) secondActionArmed = false;
   selectedId = id;
   pendingHex = null;
   hoverHex = null;
@@ -2034,9 +2119,11 @@ async function resolvePending(kind: ActionMode) {
 
 async function playAnimatedAction(action: Action): Promise<void> {
   animating = true;
+  const turnBefore = state.turn;
 
   if (action.kind === 'skip' || action.kind === 'rest' || action.kind === 'rotate') {
     state = applyAction(state, action);
+    if (state.turn !== turnBefore) secondActionArmed = false;
     applyHotseatTint();
     updateChrome();
     await playPendingFx();
@@ -2088,6 +2175,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
   }
 
   state = applyAction(state, action);
+  if (state.turn !== turnBefore) secondActionArmed = false;
   applyHotseatTint();
   updateChrome();
   await playPendingFx();
@@ -2267,6 +2355,7 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   const actingId = selectedId;
   pendingHex = null;
   await playAnimatedAction(action);
+  await settleUnarmedStaminaExtra(actingId);
 
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
@@ -2284,10 +2373,14 @@ async function tryAct(hex: Hex, kind: ActionMode) {
 
 async function restSelected() {
   if (!selectedId || !canRest(selectedId) || animating) return;
+  const resting = getPiece(state, selectedId);
+  if (!resting || energyFull(resting)) return;
   rotatePreviewDir = null;
   animating = true;
   const actingId = selectedId;
+  const turnBefore = state.turn;
   state = restPiece(state, actingId);
+  if (state.turn !== turnBefore) secondActionArmed = false;
   await playPendingFx();
   animating = false;
   retainSelection(actingId);
@@ -2302,6 +2395,9 @@ function canRotate(pieceId: string): boolean {
   if (!UNIT_STATS[piece.type].hexArmor) return false;
   if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible(piece)) {
+    return false;
+  }
   return true;
 }
 
@@ -2337,6 +2433,7 @@ async function commitRotate(dir: HexDir) {
   rotatePreviewDir = null;
   await playPendingFx();
   animating = false;
+  await settleUnarmedStaminaExtra(actingId);
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
     hoverHex = null;
@@ -2351,8 +2448,23 @@ async function commitRotate(dir: HexDir) {
   }
 }
 
+/** Off = first action ends the unit. On (Double time / Spend stamina) keeps the extra. */
+async function settleUnarmedStaminaExtra(actingId: string) {
+  if (!canControl()) return;
+  const piece = getPiece(state, actingId);
+  if (!piece) return;
+  if (
+    state.staminaBonus &&
+    state.scoutPieceId === actingId &&
+    !extrasVisible(piece)
+  ) {
+    await playAnimatedAction({ kind: 'skip' });
+  }
+}
+
 async function skipScout(nextId?: string) {
   if (!state.scoutPieceId || !canControl()) return;
+  secondActionArmed = false;
   const actingId = state.scoutPieceId;
   await playAnimatedAction({ kind: 'skip' });
   const next = nextId ? getPiece(state, nextId) : null;
@@ -2398,15 +2510,18 @@ async function maybeAi() {
       !state.winner
     ) {
       state = passTurn(state);
+      secondActionArmed = false;
       await playPendingFx();
       break;
     }
+    if (!isAiControlled(state, state.turn)) break;
     clearSelectionUnlessSolo();
     render();
     guard += 1;
   }
   if (isAiControlled(state, state.turn) && !state.winner) {
     state = passTurn(state);
+    secondActionArmed = false;
     await playPendingFx();
   }
 
@@ -2453,8 +2568,9 @@ function renderBoard(): string {
     return pieceVisible(state, p, viewers);
   };
 
-  // Full ranges while selected: move tint + shoot marks together
-  const allHl = !editing && selectedId ? highlights : [];
+  // Dest overlay is yours-to-act only. Rebuilding it on every AI step remounts
+  // energy bolts and they flash while the unit stays selected.
+  const allHl = !editing && selectedId && canControl() ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina'>();
   const restSet = new Set<string>();
   const shootRange = new Set<string>();
@@ -2462,9 +2578,24 @@ function renderBoard(): string {
   for (const hl of allHl) {
     const k = key(hl.hex);
     if (hl.kind === 'move' || hl.kind === 'stamina') moveMap.set(k, hl.kind);
-    else if (hl.kind === 'rest') restSet.add(k);
     else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
+  }
+  const restBusy = (hex: Hex) => {
+    const occ = seenOcc(hex);
+    const terrain = state.terrain[hex.row]?.[hex.col] ?? 'land';
+    return (
+      occ ||
+      (terrain !== 'land' && terrain !== 'water') ||
+      isWall(state, hex) ||
+      isPalisade(state, hex) ||
+      isForest(state, hex)
+    );
+  };
+  if (!editing && selectedId && canControl()) {
+    for (const hl of restDestHighlights(selectedId)) {
+      if (restBusy(hl.hex) || doubleTime) restSet.add(key(hl.hex));
+    }
   }
 
   const splashSet = new Set<string>();
@@ -2557,9 +2688,18 @@ function renderBoard(): string {
   }
 
   let staminaMarks = '';
-  if (pathKind === 'stamina' && hoverHex) {
-    const { x, y } = pixelOf(hoverHex);
-    const occ = seenOcc(hoverHex);
+  const staminaMarkHexes = new Set<string>();
+  if (canActWithSelected()) {
+    for (const hl of allHl) {
+      if (hl.kind !== 'stamina') continue;
+      staminaMarkHexes.add(key(hl.hex));
+    }
+    if (pathKind === 'stamina' && hoverHex) staminaMarkHexes.add(key(hoverHex));
+  }
+  for (const k of staminaMarkHexes) {
+    const hex = parseKey(k);
+    const { x, y } = pixelOf(hex);
+    const occ = seenOcc(hex);
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += staminaHexMarkSvg(x, y + dy, r);
@@ -2568,13 +2708,7 @@ function renderBoard(): string {
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
     const occ = seenOcc(hex);
-    const terrain = state.terrain[hex.row]?.[hex.col] ?? 'land';
-    const busy =
-      occ ||
-      terrain !== 'land' ||
-      isWall(state, hex) ||
-      isPalisade(state, hex) ||
-      isForest(state, hex);
+    const busy = restBusy(hex);
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += `<g class="need-rest-mark${busy ? '' : ' ghost'}">${staminaEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
@@ -2660,9 +2794,10 @@ function renderBoard(): string {
     const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
     const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
+    const showEmptyStamina = emptyStamina && doubleTime;
     const stamCx = -pr * 0.65;
     const stamCy = -pr * 0.7;
-    const staminaMark = emptyStamina ? staminaEmptyMarkSvg(stamCx, stamCy, badgeR) : '';
+    const staminaMark = showEmptyStamina ? staminaEmptyMarkSvg(stamCx, stamCy, badgeR) : '';
     const reloadIcon = isReloading(p)
       ? reloadBadgeSvg(pr * 0.65, -pr * 0.7, badgeR)
       : '';
@@ -2695,7 +2830,7 @@ function renderBoard(): string {
       maxHp > 1
         ? hpBadgeSvg(
             hpLeft(p),
-            emptyStamina ? stamCx + badgeR * 1.7 : stamCx,
+            showEmptyStamina ? stamCx + badgeR * 1.7 : stamCx,
             stamCy,
             badgeR,
           )
@@ -2801,9 +2936,23 @@ function renderBoard(): string {
   </svg>`;
 }
 
+function doubleTimeButton(): string {
+  if (!canControl()) return '';
+  return `<button type="button" id="double-time" class="${
+    doubleTime ? 'is-on' : ''
+  }" aria-pressed="${doubleTime ? 'true' : 'false'}" title="Stamina extras for every unit in your army">Double time</button>`;
+}
+
 function endTurnButton(): string {
   if (!canControl()) return '';
   return `<button type="button" id="end-turn" class="play-end-turn">End turn</button>`;
+}
+
+function playEndCluster(): string {
+  const extra = doubleTimeButton();
+  const end = endTurnButton();
+  if (!extra && !end) return '';
+  return `<div class="play-end-cluster">${extra}${end}</div>`;
 }
 
 function canRest(pieceId: string): boolean {
@@ -2813,6 +2962,39 @@ function canRest(pieceId: string): boolean {
   if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
   if (state.scoutPieceId) return false;
   return true;
+}
+
+/** Rest is regen. Full pool → button stays, disabled. No pool → park is still legal. */
+function energyFull(piece: Piece): boolean {
+  const max = staminaMax(piece);
+  return max > 0 && staminaLeft(piece) >= max;
+}
+
+function canOfferSecondAction(piece: Piece): boolean {
+  if (doubleTime) return false;
+  if (!canControl()) return false;
+  if (state.staminaBonus) return false;
+  return canBuyStaminaExtra(state, piece.id);
+}
+
+function setDoubleTime(on: boolean): void {
+  doubleTime = on;
+  if (on) secondActionArmed = false;
+  persistDoubleTime();
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
+  refreshHighlights();
+  render();
+}
+
+function setSecondActionArmed(on: boolean): void {
+  secondActionArmed = on;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
+  refreshHighlights();
+  render();
 }
 
 function renderActionBar(): string {
@@ -2852,8 +3034,7 @@ function renderActionBar(): string {
       ? 'Already acted this turn'
       : 'Resting this turn';
   } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    const n = staminaLeft(piece);
-    hint = `A second action costs 1 stamina. ${n} stamina left.`;
+    hint = '';
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
     hint = 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
@@ -2867,12 +3048,11 @@ function renderActionBar(): string {
   } else if (previewOnly) {
     hint = 'Range preview';
   } else {
-    hint = s.actions > 1
-      ? 'Green = move · gold = climb · action points first, stamina extra last · click enemy to shoot'
-      : 'Green = move · gold = climb, or the extra straight-line action · click enemy to shoot';
+    hint = '';
   }
 
   const left = state.scoutActionsLeft ?? 0;
+  const offerSecond = canOfferSecondAction(piece);
   const scoutUi =
     state.scoutPieceId && canControl()
       ? `<button type="button" id="skip-scout">${
@@ -2890,9 +3070,28 @@ function renderActionBar(): string {
         : '';
 
   const restUi =
-    canRest(piece.id)
+    canRest(piece.id) && !energyFull(piece)
       ? `<button type="button" id="rest-unit">Rest</button>`
       : '';
+  const restNote =
+    restUi &&
+    staminaMax(piece) > 0 &&
+    state.terrain[piece.row]?.[piece.col] !== 'water'
+      ? 'one idle turn = gain 1 stamina'
+      : '';
+  const restBlock = restUi
+    ? `<div class="action-rest">${restUi}${
+        restNote ? `<span class="action-bar-hint rest-note">${restNote}</span>` : ''
+      }</div>`
+    : '';
+
+  const secondActionUi = offerSecond
+    ? `<button type="button" id="second-action" class="${
+        secondActionArmed ? 'is-on' : ''
+      }" aria-pressed="${
+        secondActionArmed ? 'true' : 'false'
+      }" title="Spend 1 stamina for another action">${formatCopyHtml('[energy] Spend stamina')}</button>`
+    : '';
 
   return `
     <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}">
@@ -2905,11 +3104,12 @@ function renderActionBar(): string {
         ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side, hasUnitToken(piece, 'general'))}
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${pieceShotPipsHtml(piece)}
-        ${restUi}
       </div>
+      ${secondActionUi}
+      ${restBlock}
       ${scoutUi}
       ${extra}
-      <span class="action-bar-hint">${hint}</span>
+      ${hint ? `<span class="action-bar-hint">${hint}</span>` : ''}
     </div>`;
 }
 
@@ -2922,7 +3122,7 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is climb or the extra straight-line action, red is shoot. Dual hex: pick Move or Shoot.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb, red is shoot. Double time shows stamina extras. Dual hex: pick Move or Shoot.</p>';
   let moreStats = '';
 
   if (piece) {
@@ -3783,6 +3983,27 @@ function syncDotLabel(s: ServerStatus = getServerStatus()): string {
   return 'Offline';
 }
 
+function renderAccountLine(): string {
+  const signed = getAccountUser();
+  if (signed) {
+    const profile = signed.profileUrl
+      ? `<a href="${escapeHtml(signed.profileUrl)}">profile</a>`
+      : 'profile';
+    const logout = signed.logoutUrl
+      ? ` · <a href="${escapeHtml(signed.logoutUrl)}">log out</a>`
+      : '';
+    const err = getAccountStatus() === 'err' ? ' · could not reach WordPress' : '';
+    return `<p class="start-account">Signed in as ${escapeHtml(signed.name)} · progress on your ${profile}${logout}${err}</p>`;
+  }
+  const login = getAccountLoginUrl();
+  if (!login) return '';
+  const register = getAccountRegisterUrl();
+  const reg = register
+    ? ` or <a href="${escapeHtml(register)}">create an account</a>`
+    : '';
+  return `<p class="start-account">Progress is saved in this browser. <a href="${escapeHtml(login)}">Log in</a>${reg} to keep it on your profile.</p>`;
+}
+
 function appVerHtml(): string {
   const s = getServerStatus();
   const state = syncDotState(s);
@@ -3997,15 +4218,27 @@ function renderStartScreen(): string {
   const skirmishN = skirmishMaps().length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
   const tutOpen = tutorialDone();
-  const menuLock = tutOpen
-    ? ''
-    : `<svg class="map-pick-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7.2" width="9.6" height="7.4" rx="1.4" fill="currentColor"/><path d="M5.1 7.2V5.1a2.9 2.9 0 0 1 5.8 0v2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+  const eraClosed = eraPlayLocked();
+  const menuLock = eraClosed || !tutOpen ? lockIconHtml() : '';
   const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
-    !tutOpen || empty
-      ? ` disabled title="${!tutOpen ? 'Finish the Tutorial to unlock' : emptyTitle}"`
-      : ` title="${openTitle}"`;
+    eraClosed
+      ? ` disabled title="Under construction"`
+      : !tutOpen || empty
+        ? ` disabled title="${!tutOpen ? 'Finish the Tutorial to unlock' : emptyTitle}"`
+        : ` title="${openTitle}"`;
   const gateMeta = (empty: boolean, emptyMeta: string, openMeta: string) =>
-    !tutOpen ? 'Locked · finish Tutorial' : empty ? emptyMeta : openMeta;
+    eraClosed
+      ? 'Under construction'
+      : !tutOpen
+        ? 'Locked · finish Tutorial'
+        : empty
+          ? emptyMeta
+          : openMeta;
+  const tutorialTitle = eraClosed
+    ? 'Under construction'
+    : tutorialN
+      ? 'Pick a tutorial map vs AI. Finish one to unlock the next.'
+      : 'Mark saved levels as Tutorial in the Editor';
   const periodPicks = PERIODS.map(
     (p) =>
       `<button type="button" class="period-pick${selectedPeriod === p ? ' active' : ''}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
@@ -4022,10 +4255,10 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${menuLock}Campaign</span>
             <span class="start-opt-meta">${gateMeta(!campaignN, 'No campaign maps', `${mapWord(campaignN)} · vs AI`)}</span>
           </button>
-          <button type="button" class="start-opt" data-start="tutorial"${tutorialN ? '' : ' disabled'}
-            title="${tutorialN ? 'Pick a tutorial map vs AI. Finish one to unlock the next.' : 'Mark saved levels as Tutorial in the Editor'}">
-            <span class="start-opt-name">Tutorial</span>
-            <span class="start-opt-meta">${tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
+          <button type="button" class="start-opt" data-start="tutorial"${eraClosed || !tutorialN ? ' disabled' : ''}
+            title="${tutorialTitle}">
+            <span class="start-opt-name">${eraClosed ? lockIconHtml() : ''}Tutorial</span>
+            <span class="start-opt-meta">${eraClosed ? 'Under construction' : tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
           <button type="button" class="start-opt" data-start="historical"${gateAttr(!historicalN, 'Mark saved levels as Historical in the Editor', 'Historical battles in editor order, vs AI')}>
             <span class="start-opt-name">${menuLock}Historical Battle</span>
@@ -4045,6 +4278,7 @@ function renderStartScreen(): string {
           <button type="button" class="start-reset" data-start="experimental">Experimental features</button>
           <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
         </div>
+        ${renderAccountLine()}
       </div>
       ${renderRandomSetupOverlay()}
     </div>`;
@@ -4069,6 +4303,16 @@ function bindToolbarEvents() {
   app.querySelectorAll<HTMLButtonElement>('[data-start]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const kind = btn.dataset.start;
+      if (
+        eraPlayLocked() &&
+        (kind === 'campaign' ||
+          kind === 'tutorial' ||
+          kind === 'historical' ||
+          kind === 'ai' ||
+          kind === 'random')
+      ) {
+        return;
+      }
       if (
         !tutorialDone() &&
         (kind === 'campaign' ||
@@ -5833,12 +6077,20 @@ function bindEvents() {
   app.querySelector('#rest-unit')?.addEventListener('click', () => {
     void restSelected();
   });
+  app.querySelector('#double-time')?.addEventListener('click', () => {
+    setDoubleTime(!doubleTime);
+  });
+  app.querySelector('#second-action')?.addEventListener('click', () => {
+    setSecondActionArmed(!secondActionArmed);
+  });
   app.querySelector('#end-turn')?.addEventListener('click', () => {
     void (async () => {
       if (!canControl() || animating) return;
       animating = true;
       const actingId = selectedId;
+      const turnBefore = state.turn;
       state = passTurn(state);
+      if (state.turn !== turnBefore) secondActionArmed = false;
       applyHotseatTint();
       updateChrome();
       await playPendingFx();
@@ -6019,7 +6271,7 @@ function render() {
         <div class="turns-left-slot">${turnsLeftHtml()}</div>
         ${renderBoard()}
         ${renderHexChoice()}
-        ${endTurnButton()}
+        ${playEndCluster()}
         ${state.winner ? renderEndOverlay() : renderStartOverlay()}
         ${renderBoardPopup()}
       </div>
@@ -6042,6 +6294,7 @@ onServerStatus((s) => {
 
 async function initServerSync(): Promise<void> {
   const { applied } = await syncFromServer();
+  const account = await syncAccountProgress();
   defaultLevelId = getDefaultLevelId();
   if (applied && screen === 'play' && !playlist) {
     activeLevelId = defaultLevelId ?? getActiveLevelId();
@@ -6050,7 +6303,7 @@ async function initServerSync(): Promise<void> {
     render();
     return;
   }
-  if (applied) {
+  if (applied || account.applied || getAccountStatus() !== 'checking') {
     render();
     return;
   }

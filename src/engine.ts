@@ -648,9 +648,9 @@ export type Action =
 export type Highlight =
   | { kind: 'move'; hex: Hex; cost: number }
   /** Walk that spends 1 stamina (climb, or the extra straight-line action). */
-  | { kind: 'stamina'; hex: Hex; cost: number }
+  | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean }
   /** Would be a stamina walk if the pool weren't empty — display only. */
-  | { kind: 'rest'; hex: Hex; cost: number }
+  | { kind: 'rest'; hex: Hex; cost: number; extra?: boolean }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
@@ -1963,16 +1963,26 @@ function endSideTurn(state: GameState): void {
   beginSideTurn(state, newRound);
 }
 
+/** True if another unit can still activate after `piece` is parked. */
+function moreActivationsAfter(state: GameState, piece: Piece): boolean {
+  const cap = clampUnitsPerTurn(state.unitsPerTurn);
+  const n = state.actedIds.includes(piece.id)
+    ? state.actedIds.length
+    : state.actedIds.length + 1;
+  return (
+    n < cap &&
+    state.pieces.some(
+      (p) => p.side === state.turn && p.id !== piece.id && !state.actedIds.includes(p.id),
+    )
+  );
+}
+
 /** Finish this piece's activation; end the side-turn if the unit quota is spent. */
 function finishActivation(state: GameState, piece: Piece): void {
   piece.rangedHit = undefined;
   clearScoutLock(state);
   if (!state.actedIds.includes(piece.id)) state.actedIds.push(piece.id);
-  const cap = clampUnitsPerTurn(state.unitsPerTurn);
-  const more =
-    state.actedIds.length < cap &&
-    state.pieces.some((p) => p.side === state.turn && !state.actedIds.includes(p.id));
-  if (!more) endSideTurn(state);
+  if (!moreActivationsAfter(state, piece)) endSideTurn(state);
   checkWin(state);
 }
 
@@ -2186,6 +2196,23 @@ function extraMoveAction(state: GameState, piece: Piece): boolean {
   );
 }
 
+/** True if this piece can still spend stamina for an extra action this activation. */
+export function canBuyStaminaExtra(state: GameState, pieceId: string): boolean {
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn || state.winner) return false;
+  if (hasActed(state, pieceId)) return false;
+  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  if (
+    !state.scoutPieceId &&
+    state.actedIds.length >= clampUnitsPerTurn(state.unitsPerTurn)
+  ) {
+    return false;
+  }
+  if (!canSpendStamina(piece)) return false;
+  if (state.staminaBonus && state.scoutPieceId === piece.id) return true;
+  return extraMoveAction(state, piece);
+}
+
 type StraightStop = { dist: number; path: Hex[]; via: Hex | null; firstDist: number };
 
 /** Legal stop-hexes along the six hex axes, with the line walked to each. */
@@ -2351,8 +2378,9 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   for (const [k, { dist, path, via }] of reach) {
     const h = parseKey(k);
     const climbs = pathSpendsStamina(state, from, h, path);
-    if (climbs || stamAction || via) {
-      out.push({ kind: 'stamina', hex: h, cost: dist });
+    const extra = !!(via || stamAction);
+    if (climbs || extra) {
+      out.push({ kind: 'stamina', hex: h, cost: dist, extra });
     } else {
       out.push({ kind: 'move', hex: h, cost: dist });
     }
@@ -2364,9 +2392,9 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       stamina: Math.max(1, staminaMax(piece)),
       staminaUsedThisTurn: false,
     };
-    for (const [k, { dist }] of allMoveStops(state, fresh)) {
+    for (const [k, { dist, via }] of allMoveStops(state, fresh)) {
       if (reach.has(k)) continue;
-      out.push({ kind: 'rest', hex: parseKey(k), cost: dist });
+      out.push({ kind: 'rest', hex: parseKey(k), cost: dist, extra: !!via });
     }
   }
 

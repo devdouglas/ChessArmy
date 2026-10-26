@@ -62,13 +62,18 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
     'green dests are this action only (range 1)',
   );
   assert(
-    walk(s, p.id).some((h) => h.kind === 'stamina' && h.cost === 2),
+    walk(s, p.id).some((h) => h.kind === 'stamina' && h.extra && h.cost === 2),
     'stamina options are a second straight 1, not a doubled ray',
+  );
+  assert(
+    walk(s, p.id).filter((h) => h.kind === 'stamina').every((h) => h.extra),
+    'flat-board gold dests are extras',
   );
   const mid = applyAction(s, { kind: 'move', pieceId: p.id, to: green!.hex });
   const q = red(mid, 'soldier');
   assert(!hasActed(mid, q.id), 'no check after green move');
   assert(mid.staminaBonus, 'stamina bonus lock');
+  assert(mid.turn === 'red', 'quota 2: first unit still hangs for extra');
   assert(mid.scoutPieceId === q.id, 'stays the active piece');
   assert(staminaLeft(q) === 1, 'stamina not spent yet');
   assert(
@@ -79,6 +84,7 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   const next = walk(mid, q.id)[0];
   assert(next, 'bonus action has a move');
   assert(next.kind === 'stamina', 'bonus dests are stamina');
+  assert(next.extra, 'bonus dests are extra');
   const done = applyAction(mid, { kind: 'move', pieceId: q.id, to: next.hex });
   const r = red(done, 'soldier');
   assert(hasActed(done, r.id), 'check after second action');
@@ -95,6 +101,7 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
     (h) => h.kind === 'stamina' && h.hex.col === high.col && h.hex.row === high.row,
   );
   assert(gold, 'climb is a gold stamina move');
+  assert(!gold.extra, 'climb is this-action gold, not a second action');
   const after = applyAction(s, { kind: 'move', pieceId: p.id, to: gold!.hex });
   const q = red(after, 'soldier');
   assert(hasActed(after, q.id), 'gold first move ends the activation');
@@ -253,6 +260,17 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
     path.some((h) => h.col === step(from, 5, 2).col && h.row === step(from, 5, 2).row),
     'straight run passes the unit on the action-break hex',
   );
+}
+
+{
+  const s = boot();
+  s.unitsPerTurn = 1;
+  const p = red(s, 'soldier');
+  const green = walk(s, p.id).find((h) => h.kind === 'move')!;
+  const after = applyAction(s, { kind: 'move', pieceId: p.id, to: green.hex });
+  assert(after.turn === 'red', 'last unit green move stays the side');
+  assert(after.staminaBonus, 'last unit unused stamina hangs for Spend stamina');
+  assert(staminaLeft(red(after, 'soldier')) === 1, 'extra not spent until taken');
 }
 
 {

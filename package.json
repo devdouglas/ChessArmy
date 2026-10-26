@@ -1,11 +1,12 @@
 {
   "name": "chess-army-prototype",
   "private": true,
-  "version": "0.5.7",
+  "version": "0.5.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:plugin": "tsc && vite build && rm -rf wordpress/chessarmy-progress/game && cp -R dist wordpress/chessarmy-progress/game",
     "preview": "vite preview",
     "prepare": "sh scripts/install-git-hooks.sh"
   },

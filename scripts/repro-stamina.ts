@@ -77,6 +77,25 @@ function assert(cond: unknown, msg: string): void {
 }
 
 {
+  let { s, id } = make(1, 'soldier');
+  const green = legalHighlights(s, id).find((h) => h.kind === 'move');
+  assert(green, 'cap 1 green dest');
+  s = applyAction(s, { kind: 'move', pieceId: id, to: green!.hex });
+  assert(s.turn === 'red', 'cap 1 green move still offers the extra');
+  assert(s.staminaBonus, 'last unit unused stamina hangs for Spend stamina');
+  assert(staminaLeft(getPiece(s, id)!) === 1, 'extra not spent until taken');
+}
+
+{
+  let { s, id } = make(3, 'soldier');
+  const green = legalHighlights(s, id).find((h) => h.kind === 'move');
+  assert(green, 'mid-quota green dest');
+  s = applyAction(s, { kind: 'move', pieceId: id, to: green!.hex });
+  assert(s.turn === 'red', 'not last unit — still red');
+  assert(s.staminaBonus, 'mid-quota unused stamina still offers the extra');
+}
+
+{
   const t = emptyTerrain(8, 10);
   const from = { col: 3, row: 2 };
   const tgt = neighborInDir(from, 1, 'pointy');
