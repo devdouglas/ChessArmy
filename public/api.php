@@ -188,11 +188,22 @@ function allowed_unit(mixed $type): bool {
     return (bool) preg_match('/^u-[a-z0-9]+$/', $type);
 }
 
+function sanitize_facing(mixed $raw): ?int {
+    if (!is_numeric($raw)) {
+        return null;
+    }
+    $n = (int) $raw;
+    if ($n < 0 || $n > 5) {
+        return null;
+    }
+    return $n;
+}
+
 function sanitize_unit_tokens(mixed $raw): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['general' => true];
+    $ok = ['general' => true, 'hidden' => true];
     $out = [];
     $seen = [];
     foreach ($raw as $item) {
@@ -239,6 +250,10 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
         if ($unitTokens) {
             $rowOut['unitTokens'] = $unitTokens;
         }
+        $facing = sanitize_facing($piece['facing'] ?? null);
+        if ($facing !== null) {
+            $rowOut['facing'] = $facing;
+        }
         $out[] = $rowOut;
     }
     return $out;
@@ -248,7 +263,18 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['pikes' => true, 'wall' => true, 'palisade' => true, 'flag' => true, 'notouch' => true];
+    $ok = [
+        'pikes' => true,
+        'wall' => true,
+        'house' => true,
+        'palisade' => true,
+        'tree' => true,
+        'forest' => true,
+        'flag' => true,
+        'board' => true,
+        'notouch' => true,
+    ];
+    $woodHp = ['palisade' => true, 'tree' => true, 'forest' => true];
     $out = [];
     $seen = [];
     $cap = max(0, $cols * $rows);
@@ -281,7 +307,13 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
                 $rowOut['owner'] = $owner;
             }
         }
-        if ($type === 'palisade') {
+        if ($type === 'board') {
+            $text = sanitize_level_text($token['text'] ?? '', 280);
+            if ($text !== '') {
+                $rowOut['text'] = $text;
+            }
+        }
+        if (isset($woodHp[$type])) {
             $hp = isset($token['hp']) && is_numeric($token['hp']) ? (int) $token['hp'] : 3;
             // Old cap was 2 (always written for fresh tokens). Keep 1 as damaged.
             if ($hp === 1) {
@@ -388,6 +420,10 @@ function sanitize_formation(mixed $form): ?array {
         if ($unitTokens) {
             $slotOut['unitTokens'] = $unitTokens;
         }
+        $facing = sanitize_facing($slot['facing'] ?? null);
+        if ($facing !== null) {
+            $slotOut['facing'] = $facing;
+        }
         $slots[] = $slotOut;
     }
     $updated = isset($form['updatedAt']) && is_numeric($form['updatedAt'])
@@ -432,7 +468,7 @@ function sanitize_star_rule(mixed $raw, array $fallback): array {
     return ['metric' => $metric, 'op' => $op, 'value' => $value];
 }
 
-function sanitize_level_text(mixed $raw, int $max = 280): string {
+function sanitize_level_text(mixed $raw, int $max = 2500): string {
     if (!is_string($raw)) {
         return '';
     }
@@ -441,7 +477,7 @@ function sanitize_level_text(mixed $raw, int $max = 280): string {
         return '';
     }
     if ($max < 1) {
-        $max = 280;
+        $max = 2500;
     }
     return substr(trim($text), 0, $max);
 }

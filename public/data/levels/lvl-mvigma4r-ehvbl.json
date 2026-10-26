@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvigma4r-ehvbl",
-    "name": "Hoplite wall",
+    "name": "The Greek Question",
     "cols": 8,
     "rows": 8,
     "orientation": "flat",
@@ -90,10 +90,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "",
-    "startText": "",
-    "winText": "",
-    "loseText": "",
+    "teaserText": "A sword is a fine weapon. A spear is a fine reason to keep your distance.",
+    "startText": "News arrived that Rome would soon face Greek forces. Anthony had heard of the famous hoplites: disciplined soldiers who fought behind great shields and carried long spears.\n\nHis instructor gathered the recruits and gave them the first sensible warning of their military careers.\n\n\"Never bring a sword to a spear fight unless you have a very good plan for getting close.\"\n\nAnthony examined his gladius in his big hand.\n\n\"Could I run?\"\n\n\"You could,\" said the instructor. \"But then you would be a Roman with a sword running away from a Greek with a spear, which is a poor opening to any story.\"\n\nThe recruits were shown how to approach an enemy whose weapon could reach them before their own could reach him. It was a lesson in timing, distance and the dangers of believing that bravery alone could solve every problem.",
+    "winText": "Anthony learned to respect the spear's reach and to wait for his opportunity. The instructor nodded.\n\n\"Good. A man who understands why he might die has taken the first step towards avoiding it.\"\n\nAnthony decided this was the finest military advice he had ever received and wished he received this when he was still knocking down straw man at the farm.",
+    "loseText": "The spear reaches farther than the gladius. Charging straight at a hoplite is an excellent way to become an example in someone else's training lesson. Watch your distance, approach carefully and strike when the opening comes.",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -118,7 +118,7 @@
     },
     "tokens": [],
     "sort": 10,
-    "updatedAt": 1792862405031,
+    "updatedAt": 1793043696158,
     "armies": [
         {
             "type": "cohort",

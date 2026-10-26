@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvj8f11h-x0g06",
-    "name": "You have my bow!",
+    "name": "A Man With a Bow",
     "cols": 9,
     "rows": 8,
     "orientation": "flat",
@@ -98,10 +98,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "Bow and arrow",
-    "startText": "Welcome peasant. You are still not fit to fight but we can use determined people like you. Here is a bow. Its easy, point the pointy end to the target en release. Also, use the hill to see and shoot further.",
-    "winText": "Good job. In the next training you will learn to work with your sword and javelin.",
-    "loseText": "You almost drowned you idiot. Maybe get to higher ground to reach further.",
+    "teaserText": "If you cannot catch a man, find a longer way to reach him.",
+    "startText": "Anthony slept badly that night. He had lost his peace, most of his wine and whatever remained of his confidence in married life.\n\nBy dawn, he had decided to take revenge.\n\nThe three fellows had vanished, naturally. Cowards tend to be surprisingly good at this.\n\nHis father had taught him to shoot, although mostly at rabbits. Anthony now intended to practise the finer points of military archery: finding the high ground, judging the distance and making sure the arrow travelled towards the intended victim.\n\nThe last point was considered particularly important by the neighbours.",
+    "winText": "The arrows struck home. Two scarecrows fell, and the third lost an argument with a particularly well-aimed shaft.\n\nAnthony felt better. His neighbours, watching from behind their fences, felt less certain about the general state of public safety.",
+    "loseText": "The bow is a weapon, not a means of expressing one's feelings to the countryside. Take the high ground, judge your distance and aim carefully. The gods have given you two eyes for a reason, though they have clearly not promised you much wisdom.",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -199,10 +199,20 @@
             "type": "notouch",
             "col": 5,
             "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 1
         }
     ],
     "sort": 2,
-    "updatedAt": 1792900206690,
+    "updatedAt": 1793044243390,
     "armies": [
         {
             "type": "archer",
@@ -214,25 +224,29 @@
             "type": "u-mvgpbg68f593",
             "col": 7,
             "row": 5,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "peasant",
             "col": 3,
             "row": 2,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvgpbg68f593",
             "col": 1,
-            "row": 2,
-            "side": "blue"
+            "row": 1,
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "peasant",
             "col": 6,
             "row": 4,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

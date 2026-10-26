@@ -5,6 +5,7 @@ import {
   legalHighlights,
   pieceVisible,
   restPiece,
+  revealPiece,
   tokenAt,
   viewingSides,
   type GameState,
@@ -51,6 +52,10 @@ assert(!UNIT_STATS.soldier.canHide, 'stock soldier cannot hide');
   assert(isConcealedFrom(s, barb, 'red'), 'red cannot see them');
   assert(!isConcealedFrom(s, barb, 'blue'), 'blue still sees own unit');
   assert(!pieceVisible(s, barb, viewingSides(s)), 'board viewer is red');
+  revealPiece(barb);
+  assert(pieceVisible(s, barb, viewingSides(s)), 'revealPiece paints them for enemies');
+  barb.revealed = undefined;
+  assert(!pieceVisible(s, barb, viewingSides(s)), 'cover restored for later cases');
   assert(
     !legalHighlights(s, red.id).some(
       (h) => h.kind === 'shoot' && h.hex.col === woods.col && h.hex.row === woods.row,

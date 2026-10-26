@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvj4z5hb-0lejw",
-    "name": "Your gladius and javelins!",
+    "name": "The Glories of Rome",
     "cols": 8,
     "rows": 8,
     "orientation": "flat",
@@ -90,10 +90,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "",
-    "startText": "Welcome peasant. Today you become a real warmachine for the empire. Your cohort has stamina, a gladius and 3 javelins.",
-    "winText": "Good job. Tomorrow you will learn to coordinate a small regiment.",
-    "loseText": "You almost drowned you idiot. Check your stamina bar and rest before your jump in. Moving in and through water requires energy.",
+    "teaserText": "New armour, a proper sword and permission to hit things.",
+    "startText": "Anthony's training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked short but had a good grip. Or maybe his hands are just big.\n\nThe armour was less comfortable. It was also smellier than he had expected.\n\nHis instructor explained the essentials. The sword was for close fighting, the javelin for enemies at a little distance, and the armour for keeping one's organs where nature had put them.\n\nThree scarecrows waited in the yard.\n\nAt last, an assignment Anthony understood.",
+    "winText": "The scarecrows fell. Anthony tested the edge of his gladius, adjusted his armour and tried to look like a man who had always belonged in the army.\n\nFor the first time, he almost succeeded.",
+    "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -124,7 +124,7 @@
         }
     ],
     "sort": 5,
-    "updatedAt": 1792818610814,
+    "updatedAt": 1793043696158,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

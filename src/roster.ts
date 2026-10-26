@@ -262,7 +262,7 @@ export type UnitStats = UnitTraits & {
   /** Own turns you must sit out shooting after firing (1 = next activation, 2 = two, …). */
   shootCooldown: number;
   value: number;
-  /** Cap on total move cost across a multi-action activation (0 = no cap). */
+  /** Cap on total steps this activation, including stamina extras (0 = none). */
   moveBudget: number;
   /** Stamina pool. 0 = cannot climb or double. */
   stamina: number;

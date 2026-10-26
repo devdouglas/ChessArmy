@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvhz8dwn-z1uwo",
-    "name": "Just keep swimming",
+    "name": "No Rest for the Recruit",
     "cols": 8,
     "rows": 10,
     "orientation": "flat",
@@ -110,10 +110,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 18,
-    "teaserText": "Playing and coordinating multiple units",
-    "startText": "Try to coordinate the two units to destroy the scarecrows before time runs out. Both have different [energy] so make sure they don't drown in the rusn.",
-    "winText": "Good job. There is a tactician in you.",
-    "loseText": "Try again. Rushing is seldom a good way to win any battle.",
+    "teaserText": "A soldier carries his troubles. Sometimes he must swim with them.",
+    "startText": "\"Soldiers must learn to do several things at once,\" he said. \"Especially when someone is trying to kill them.\"\n\nAnthony was ordered across the water, managing his equipment while keeping enough breath in his lungs to remain alive.",
+    "winText": "Anthony crossed the water, recovered his breath and dealt with the scarecrows. His instructor grunted approvingly. It was not a warm expression of pride, but in the Roman army a grunt was practically a love poem.",
+    "loseText": "The river has claimed better men, though admittedly not many of them were carrying quite so much equipment. Coordinate your actions, watch your stamina and rest before your lungs begin to negotiate directly with the gods.",
     "star2": {
         "metric": "casualties",
         "op": "eq",
@@ -137,8 +137,8 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 6,
-    "updatedAt": 1792820776446,
+    "sort": 4,
+    "updatedAt": 1793043696158,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

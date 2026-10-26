@@ -103,13 +103,13 @@ export const AI_RULES = [
     id: 'advance-front',
     category: 'targeting',
     label: 'Advance the front',
-    blurb: 'Walk toward the far edge of the board in this army’s file. Unchecked: Attack / other hunts.',
+    blurb: 'Walk toward the far edge of the board in this army’s file. Ignored while Attack has a live enemy. Unchecked: Attack / other hunts.',
   },
   {
     id: 'hunt-enemy-general',
     category: 'targeting',
     label: 'Attack',
-    blurb: 'Close on the enemy general, else the nearest enemy. Unchecked: other hunts apply.',
+    blurb: 'Close on the nearest enemy. Beats Advance when both are on. Unchecked: other hunts apply.',
   },
   {
     id: 'close-on-hunt',

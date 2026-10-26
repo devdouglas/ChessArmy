@@ -2,12 +2,13 @@
  * AI picker. Checklist sections match this order:
  * 1 Walking — do-not-touch / flags / pikes / palisades / keep-line / general last.
  * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
- * 3 Targeting — hunt: enemy general else nearest; or advance the front; or guard owned flags.
+ * 3 Targeting — hunt: nearest enemy (Attack); else advance the front; else guard owned flags.
  * 4 Chasing — close on that hunt, prefer high ground.
  * 5 Defending — smash walls on the path; hold and face the nearest enemy.
  * 6 Retreating — do not flee the hunt; if not hunting, walk home; avoid skip.
  * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
- * Last remaining pieces all concealed → unhide + that AI goes aggressive.
+ * Last remaining pieces all concealed → unhide + that AI goes aggressive, but
+ * only if that side already had a visible unit. Kickoff ambush stays camped.
  */
 
 import {
@@ -88,26 +89,6 @@ function faceToward(state: GameState, from: Hex, to: Hex): HexDir | null {
   return best;
 }
 
-function enemyGeneral(state: GameState, me: Side, from: Hex) {
-  let best: (typeof state.pieces)[number] | null = null;
-  let bestD = Infinity;
-  for (const p of state.pieces) {
-    if (
-      !isHostile(state, p.side, me) ||
-      !hasAbility(p, 'general') ||
-      isConcealedFrom(state, p, me)
-    ) {
-      continue;
-    }
-    const d = dist(state, from, { col: p.col, row: p.row });
-    if (d < bestD) {
-      bestD = d;
-      best = p;
-    }
-  }
-  return best;
-}
-
 function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null {
   if (on('guard-owned-flags')) {
     const ours = (state.tokens ?? []).filter(
@@ -126,25 +107,17 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
       return { col: best.col, row: best.row };
     }
   }
+  // Attack beats Advance when both are on — otherwise they walk the far edge
+  // and look like they're wandering / retreating past live enemies.
+  if (on('hunt-enemy-general')) {
+    const near = nearestEnemy(state, from, me);
+    if (near) return { col: near.col, row: near.row };
+  }
   if (on('advance-front')) {
     const far = farEdgeHex(state, from, me);
     if (!eq(from, far)) return far;
   }
-  if (!on('hunt-enemy-general')) return null;
-  const gen = enemyGeneral(state, me, from);
-  if (gen) return { col: gen.col, row: gen.row };
-  let best: Hex | null = null;
-  let bestD = Infinity;
-  for (const p of state.pieces) {
-    if (!isHostile(state, p.side, me) || isConcealedFrom(state, p, me)) continue;
-    const h = { col: p.col, row: p.row };
-    const d = dist(state, from, h);
-    if (d < bestD) {
-      bestD = d;
-      best = h;
-    }
-  }
-  return best;
+  return null;
 }
 
 function inBoard(state: GameState, h: Hex): boolean {
@@ -674,6 +647,9 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
 
   const stop = palPlan.stop;
   const closeHunt = foe ? { col: foe.col, row: foe.row } : hunt;
+  const closer = closeHunt
+    ? dist(state, from, closeHunt) - dist(state, stop, closeHunt)
+    : 0;
   let highIdx = -1;
   if (on('prefer-high-ground')) {
     const ridgeGoal = closeHunt ?? highGroundSeek(state, piece, from);
@@ -687,15 +663,15 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     const toH = terrainHeight(terrainAt(state, stop));
     if (toH > fromH) score += 40 * (toH - fromH);
     if (toH < fromH) score -= 20 * (fromH - toH);
-    if (highIdx >= 0) score += 420 + highIdx * 80;
+    // Ridge is a tie-break toward the hunt, never a reason to walk away.
+    if (highIdx >= 0 && closer >= 0) score += 420 + highIdx * 80;
   }
   if (closeHunt && (on('close-on-hunt') || on('no-flee') || foe)) {
-    const closer = dist(state, from, closeHunt) - dist(state, stop, closeHunt);
     if (on('close-on-hunt') || foe) {
       score += closer * 80;
       if (closer > 0) score += 300;
     }
-    if (on('no-flee') && closer < 0 && highIdx < 0) score -= 900;
+    if (on('no-flee') && closer < 0) score -= 900;
   }
 
   if (on('return-to-start') && !hunt && !foe) {

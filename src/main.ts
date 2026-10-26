@@ -34,6 +34,7 @@ import {
   isPalisade,
   isWall,
   pieceVisible,
+  revealPiece,
   viewingSides,
   previewMove,
   rangeHighlights,
@@ -511,6 +512,7 @@ function computeLayout() {
 
 let { hexSize: HEX_SIZE, pad: PAD, pieceIcon: PIECE_ICON } = computeLayout();
 const MOVE_MS = 300;
+const REVEAL_MS = 520;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;
 const HIT_FLASH_MS = 110;
@@ -2117,9 +2119,43 @@ async function resolvePending(kind: ActionMode) {
   await tryAct(hex, kind);
 }
 
+function remountPlayBoard(): void {
+  const board = app.querySelector('svg.board');
+  if (!board) {
+    render();
+    return;
+  }
+  board.outerHTML = renderBoard();
+  bindBoardOnly();
+}
+
+/** Hidden units are omitted from the SVG — stamp cover broken, paint them, then pause. */
+async function showBreakCover(piece: Piece): Promise<void> {
+  if (pieceVisible(state, piece, viewingSides(state))) return;
+  revealPiece(piece);
+  remountPlayBoard();
+  const g = document.querySelector<SVGGElement>(
+    `g.piece-unit[data-id="${CSS.escape(piece.id)}"]`,
+  );
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ms = reduce ? 160 : REVEAL_MS;
+  if (g && !reduce) {
+    g.classList.add('revealing');
+    await wait(ms);
+    g.classList.remove('revealing');
+  } else {
+    await wait(ms);
+  }
+}
+
 async function playAnimatedAction(action: Action): Promise<void> {
   animating = true;
   const turnBefore = state.turn;
+
+  if (action.kind === 'move' || action.kind === 'shoot' || action.kind === 'rotate') {
+    const actor = getPiece(state, action.pieceId);
+    if (actor) await showBreakCover(actor);
+  }
 
   if (action.kind === 'skip' || action.kind === 'rest' || action.kind === 'rotate') {
     state = applyAction(state, action);
@@ -3356,7 +3392,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked; if that army's remaining pieces are all still hidden they all break cover and that AI goes aggressive</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -4907,13 +4943,13 @@ function renderEditorBar(): string {
             <textarea id="editor-teaser-text" maxlength="${TEASER_TEXT_MAX}" rows="2" placeholder="Shown on map lists under the title">${escapeHtml(editorTeaserText)}</textarea>
           </label>
           <label class="editor-cat level-copy-field">Start text
-            <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
+            <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="6" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
           </label>
           <label class="editor-cat level-copy-field">Winning text
-            <textarea id="editor-win-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown when you win">${escapeHtml(editorWinText)}</textarea>
+            <textarea id="editor-win-text" maxlength="${LEVEL_TEXT_MAX}" rows="4" placeholder="Shown when you win">${escapeHtml(editorWinText)}</textarea>
           </label>
           <label class="editor-cat level-copy-field">Losing text
-            <textarea id="editor-lose-text" maxlength="${LEVEL_TEXT_MAX}" rows="2" placeholder="Shown when you lose">${escapeHtml(editorLoseText)}</textarea>
+            <textarea id="editor-lose-text" maxlength="${LEVEL_TEXT_MAX}" rows="4" placeholder="Shown when you lose">${escapeHtml(editorLoseText)}</textarea>
           </label>
           <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [hp], [arrow]… — name in brackets becomes that item's icon.</p>
           <div class="star-rules">
@@ -5260,8 +5296,8 @@ function renderUnitEditor(): string {
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
-          <dd><strong>Move cap</strong> total steps this activation (0 = none; scout stock 3)</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK). Extra actions (scout) come first. Unused steps of an action are lost</dd>
+          <dd><strong>Move cap</strong> total steps this activation, actions and stamina extras included (0 = none; scout stock 3). Cannot go past it</dd>
+          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>

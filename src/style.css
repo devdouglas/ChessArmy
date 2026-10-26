@@ -3179,7 +3179,7 @@ svg.board .hex {
   display: block;
   white-space: pre-wrap;
   text-align: left;
-  max-width: 22rem;
+  max-width: 34rem;
   margin-left: auto;
   margin-right: auto;
 }
@@ -3207,7 +3207,11 @@ svg.board .hex {
 }
 
 .end-card.briefing {
-  min-width: 260px;
+  min-width: min(28rem, 92vw);
+  max-width: min(36rem, 94vw);
+  max-height: min(85vh, 42rem);
+  overflow: auto;
+  text-align: left;
 }
 
 .random-setup-overlay {
@@ -3627,8 +3631,28 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   pointer-events: none;
 }
 
-.piece-unit.moving {
+.piece-unit.moving,
+.piece-unit.revealing {
   z-index: 2;
+}
+
+.piece-unit.revealing {
+  animation: piece-reveal 0.52s ease-out;
+}
+
+@keyframes piece-reveal {
+  0% {
+    opacity: 0;
+    filter: brightness(2.2) saturate(0.35);
+  }
+  38% {
+    opacity: 1;
+    filter: brightness(1.5) drop-shadow(0 0 8px #f4ead0);
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+  }
 }
 
 .piece-sel {
@@ -4285,6 +4309,12 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
     animation: none;
     opacity: 0.2;
     filter: brightness(2.2) saturate(0) blur(0.8px);
+  }
+
+  .piece-unit.revealing {
+    animation: none;
+    opacity: 1;
+    filter: none;
   }
 
   .piece-unit.stam-gain {

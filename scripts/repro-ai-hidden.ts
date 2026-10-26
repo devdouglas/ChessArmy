@@ -141,5 +141,37 @@ function campBoard(): GameState {
   assert(aiStyleOf(s, 'red') === 'defensive', 'human style unchanged');
 }
 
+{
+  const s = createStateFromTerrain(
+    emptyTerrain(11, 11),
+    'hide-ai-ambush-army',
+    'pointy',
+    [
+      { type: 'archer', col: 5, row: 9, side: 'red', unitTokens: ['general'] },
+      { type: 'wolf', col: 2, row: 5, side: 'blue' },
+      { type: 'wolf', col: 8, row: 4, side: 'blue' },
+    ],
+    { blue: 'ai-enemy', red: 'player' },
+    [
+      { type: 'forest', col: 2, row: 5 },
+      { type: 'forest', col: 8, row: 4 },
+    ],
+    { blue: 'aggressive', red: 'aggressive' },
+  );
+  s.turn = 'blue';
+  s.unitsPerTurn = 5;
+  const wolves = s.pieces.filter((p) => p.type === 'wolf');
+  assert(wolves.length === 2 && wolves.every((p) => isConcealed(s, p)), 'ambush wolves start hidden');
+  const a = pickAiAction(s);
+  assert(
+    !a || a.kind === 'skip' || a.kind === 'rest',
+    'hidden ambush army does not walk',
+  );
+  assert(
+    wolves.every((p) => isConcealed(s, p)),
+    'kickoff ambush stays camped',
+  );
+}
+
 resetAiChecklist();
 console.log('repro-ai-hidden ok');

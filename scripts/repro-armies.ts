@@ -1,6 +1,7 @@
 import {
   applyAction,
   isHostile,
+  playerTeamWon,
   sameTeam,
   type GameState,
 } from '../src/engine';
@@ -64,6 +65,42 @@ const t = emptyTerrain(8, 10);
     to: { col: 5, row: 5 },
   });
   assert(after.winner === 'red' || after.winner === 'yellow', `player team wins, got ${after.winner}`);
+}
+
+{
+  const s = createStateFromTerrain(
+    t,
+    'player-dead-ally-live',
+    'pointy',
+    [
+      {
+        type: 'dude',
+        col: 3,
+        row: 5,
+        side: 'red',
+        unitTokens: ['general'],
+      },
+      { type: 'wolf', col: 4, row: 5, side: 'blue' },
+      { type: 'general', col: 0, row: 0, side: 'blue' },
+      { type: 'peasant', col: 7, row: 8, side: 'yellow' },
+    ],
+    {
+      red: 'player',
+      yellow: 'ai-ally',
+      blue: 'ai-enemy',
+      purple: 'ai-enemy',
+    },
+  );
+  s.turn = 'blue';
+  const killer = s.pieces.find((p) => p.side === 'blue' && p.type === 'wolf')!;
+  const after = applyAction(s, {
+    kind: 'move',
+    pieceId: killer.id,
+    to: { col: 3, row: 5 },
+  });
+  assert(after.winner === 'blue', `human wipe loses while ally lives, got ${after.winner}`);
+  assert(!playerTeamWon(after), 'ally still standing is not a player win');
+  assert(after.turn === 'blue', 'match ends on the killing side, ally does not get a turn');
 }
 
 {

@@ -1,6 +1,7 @@
 export type Period = 'ancient' | 'modern' | 'futuristic';
 
 export const PERIODS: Period[] = ['ancient', 'modern', 'futuristic'];
+export const DEFAULT_PERIOD: Period = 'ancient';
 
 export const PERIOD_LABEL: Record<Period, string> = {
   ancient: 'Ancient',
@@ -20,14 +21,14 @@ const STORAGE_KEY = 'chessarmy-period';
 
 export function sanitizePeriod(raw: unknown): Period {
   if (raw === 'ancient' || raw === 'modern' || raw === 'futuristic') return raw;
-  return 'modern';
+  return DEFAULT_PERIOD;
 }
 
 export function getSelectedPeriod(): Period {
   try {
     return sanitizePeriod(localStorage.getItem(STORAGE_KEY));
   } catch {
-    return 'modern';
+    return DEFAULT_PERIOD;
   }
 }
 

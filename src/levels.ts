@@ -227,7 +227,7 @@ export function starRuleLabel(rule: StarRule): string {
   return `${STAR_METRIC_LABEL[rule.metric]} ${starOpLabel(rule.op)} ${rule.value}`;
 }
 
-export const LEVEL_TEXT_MAX = 280;
+export const LEVEL_TEXT_MAX = 2500;
 export const TEASER_TEXT_MAX = 120;
 
 export function sanitizeLevelText(raw: unknown): string {

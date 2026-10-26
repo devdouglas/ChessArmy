@@ -1,6 +1,6 @@
 {
     "id": "lvl-mviffylu-jq6f6",
-    "name": "Hoplites",
+    "name": "Men, Not Scarecrows",
     "cols": 8,
     "rows": 8,
     "orientation": "flat",
@@ -90,10 +90,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "",
-    "startText": "",
-    "winText": "",
-    "loseText": "",
+    "teaserText": "The enemy has stopped being made of straw.",
+    "startText": "Anthony had become proficient at defeating scarecrows. They never dodged, never complained and never once tried to strike him in the stomach.\n\n\"Today, you will fight men.\"\n\nAnthony looked at the soldiers waiting across the yard. They had swords, shields and unpleasantly alert expressions.\n\nHe had the sudden suspicion that scarecrows had been invented by a man who wanted recruits to feel good about themselves before presenting them with reality.\n\nThe instructor raised his hand.\n\n\"Remember what you have learned. And try not to disgrace Rome before lunch.\"",
+    "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
+    "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -117,8 +117,8 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 8,
-    "updatedAt": 1792862414404,
+    "sort": 6,
+    "updatedAt": 1793043696158,
     "armies": [
         {
             "type": "cohort",

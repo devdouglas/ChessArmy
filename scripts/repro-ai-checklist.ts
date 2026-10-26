@@ -13,6 +13,8 @@ const start = { col: 4, row: 5 };
 const step = neighborInDir(start, 0, 'pointy');
 const closer = neighborInDir(start, 1, 'pointy');
 
+const beyond = neighborInDir(step, 0, 'pointy');
+
 function board(): GameState {
   const s = createStateFromTerrain(
     emptyTerrain(8, 10),
@@ -20,8 +22,7 @@ function board(): GameState {
     'pointy',
     [
       { type: 'soldier', col: start.col, row: start.row, side: 'blue' },
-      { type: 'general', col: 7, row: 1, side: 'red' },
-      { type: 'soldier', col: 6, row: 8, side: 'red' },
+      { type: 'soldier', col: beyond.col, row: beyond.row, side: 'red' },
     ],
     { blue: 'ai-enemy', red: 'player' },
     [

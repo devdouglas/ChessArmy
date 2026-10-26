@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvhpqwxj-thxuo",
-    "name": "The rebel scum",
+    "name": "The First Real Mission",
     "cols": 11,
     "rows": 11,
     "orientation": "flat",
@@ -153,10 +153,10 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "",
-    "startText": "Rebels are in their hideout. Position yourself. Its finally time to prove yourself a a true leader.",
-    "winText": "Rebels are no more. you have proven yourself. Welcome general, rome needs you.",
-    "loseText": "Don't charge head on. Position yourself and rest before your final assault.",
+    "teaserText": "Your training is not over yet. Unfortunately, the enemy has not received the news.",
+    "startText": "A band of rebels had established a hideout in the hills, troubling the roads and refusing to acknowledge Rome's authority.\n\nHis commander gave Anthony a small force and a simple order: find the hideout, deal with the rebels and return with a report.\n\nAnthony packed his gladius, checked his armour, counted his javelins and inspected his horse. Everything seemed in order, apart from the vague feeling this is only the beginning of the story.\n\nHe had begun as a farmer who could barely manage three scarecrows. Now he was being sent against armed men in hostile country.\n\nAnthony straightened his tunic.\n\nThere were men in Rome who had made fine careers from considerably less preparation.",
+    "winText": "The rebel hideout was taken, the road was secured, and Anthony returned to camp with his men and most of their equipment.\n\nHis commander read the report, studied Anthony for a moment and smiled.\n\n\"Good work. You may yet go far.\"\n\nAnthony stood a little taller. He could almost see his future: command, glory, perhaps even a place in the histories.\n\nIt was a promising beginning.\n\nRome, as usual, had other plans.",
+    "loseText": "The rebels know the ground, and they have no intention of surrendering it merely because Rome has sent you a letter. Study the situation, use your men wisely and complete the mission. A future general must first learn to bring his first assignment home in one piece.",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -204,8 +204,8 @@
             "row": 3
         }
     ],
-    "sort": 11,
-    "updatedAt": 1792901299581,
+    "sort": 12,
+    "updatedAt": 1793043696158,
     "armies": [
         {
             "type": "archer",

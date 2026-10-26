@@ -120,8 +120,8 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
-    "teaserText": "",
-    "startText": "Time to show your general skills",
+    "teaserText": "The making of a Roman legend.",
+    "startText": "Anthony began life with a plough in his hands and the conviction that he was meant for greater things. By greater things, he mostly meant better wine, free meals, women who laughed at his jokes, and enough adventures to make his stories more interesting than those of the other men at the tavern.\n\nThe army had given him a sword, a horse and a growing reputation. More importantly, it offered opportunities for drinking, looting and meeting women who might otherwise have found him entirely unremarkable. Anthony was a simple man with simple desires, and Rome seemed an excellent place to satisfy them at someone else's expense.\n\nThere would be battles to win, enemies to outwit and officers to endure. There might even be promotions, though Anthony suspected these involved more paperwork than was strictly necessary. And wherever the army went, there was always the hope of a decent feast, a barrel of wine and a few willing ears for his increasingly exaggerated tales.\n\nHe might rise to become a Roman general. He might fall from favour and find himself fighting for his life in the arena. He might escape, join the rebels and discover that overthrowing Rome was a great deal more complicated than knocking down scarecrows.\n\nAnd if fortune was especially cruel, Anthony might one day find himself in a position to rule the very city that sent him to war. A position that would surely offer excellent wine, a magnificent palace and no shortage of women to impress.\n\nFor now, he had a sword, a horse and a great deal to learn.\n\nBut there was wine to be drunk, loot to be taken and stories to be made. The rest could wait until morning.\n\nThanks for playing.",
     "winText": "",
     "loseText": "",
     "star2": {
@@ -148,7 +148,7 @@
     },
     "tokens": [],
     "sort": 0,
-    "updatedAt": 1792753272683,
+    "updatedAt": 1793043886489,
     "armies": [
         {
             "type": "cohort",

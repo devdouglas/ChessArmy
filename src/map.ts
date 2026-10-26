@@ -758,6 +758,7 @@ function freshGame(
     controls: controls ? sanitizeArmyControls(controls) : defaultArmyControls(),
     aiStyles: aiStyles ? sanitizeAiStyles(aiStyles) : defaultAiStyles(),
     hadKing,
+    hadVisible: emptyHadKing(),
     unitsPerTurn: 1,
     maxTurns: 0,
     actedIds: [],

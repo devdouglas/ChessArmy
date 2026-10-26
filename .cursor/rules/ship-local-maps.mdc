@@ -7,4 +7,4 @@ alwaysApply: true
 
 `public/data/levels/*.json` is part of the game. When committing or pushing to live, include every local map change (modified and new). Do not leave level JSON unstaged.
 
-Live deploy: `git push origin HEAD`, `npm run build`, rsync `dist/` to Pressable `htdocs/warchess/`, purge edge cache on site 1739399 (fictionindustries-oneshots).
+Live deploy: `git push origin HEAD`, `npm run build`, rsync `dist/` to Pressable `htdocs/warchess/` on site 1843336 (there-will-be-legions), SFTP `befb0724be994dc89@sftp.pressable.com:htdocs/warchess/`, purge edge cache. Do not deploy to fictionindustries-oneshots.

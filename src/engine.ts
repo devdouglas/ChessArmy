@@ -441,16 +441,30 @@ export function pieceVisible(state: GameState, piece: Piece, viewers: Side[]): b
   return viewers.some((v) => pieceVisibleTo(state, piece, v));
 }
 
-function reveal(piece: Piece): void {
+export function revealPiece(piece: Piece): void {
   if (statsOf(piece.type).canHide || hasUnitToken(piece, 'hidden')) {
     piece.revealed = true;
   }
 }
 
+function reveal(piece: Piece): void {
+  revealPiece(piece);
+}
+
+function noteExposedSides(state: GameState): void {
+  const vis = { ...emptyHadKing(), ...(state.hadVisible ?? {}) };
+  for (const p of state.pieces) {
+    if (!isConcealed(state, p)) vis[p.side] = true;
+  }
+  state.hadVisible = vis;
+}
+
 /**
- * Last hidden army: if a side's remaining pieces are all still concealed, they
- * break cover. AI sides also snap to aggressive. If every living piece on the
- * board is concealed, everyone unhides (so a human last-stand cannot stall).
+ * Last hidden army: if a side *had* a visible piece and now only concealed
+ * pieces remain, they break cover (AI also snaps to aggressive). An army that
+ * started fully hidden (ambush) stays camped until it attacks or is hit.
+ * If every living piece on the board is concealed, everyone unhides so a
+ * human last-stand cannot stall.
  */
 export function flushLastHiddenArmies(state: GameState): void {
   if (state.winner) return;
@@ -466,6 +480,8 @@ export function flushLastHiddenArmies(state: GameState): void {
     state.aiStyles = { ...state.aiStyles, [side]: 'aggressive' };
   };
 
+  noteExposedSides(state);
+
   if (living.every((p) => isConcealed(state, p))) {
     unhide(living);
     for (const side of new Set(living.map((p) => p.side))) goAggressive(side);
@@ -475,6 +491,7 @@ export function flushLastHiddenArmies(state: GameState): void {
   for (const side of participatingSides(state)) {
     const mine = living.filter((p) => p.side === side);
     if (!mine.length || !mine.every((p) => isConcealed(state, p))) continue;
+    if (!state.hadVisible?.[side]) continue;
     unhide(mine);
     goAggressive(side);
   }
@@ -613,6 +630,8 @@ export type GameState = {
   aiStyles: Record<Side, AiStyle>;
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
   hadKing: Record<Side, boolean>;
+  /** True once this side has fielded a non-concealed living piece. Ambush armies stay false. */
+  hadVisible: Record<Side, boolean>;
   /** How many pieces this side may activate before the turn ends. Default 1. */
   unitsPerTurn: number;
   /** Full rounds allowed. 0 = no limit. */
@@ -1185,24 +1204,43 @@ function moveRangeAt(state: GameState, piece: Piece, at: Hex): number {
   return move + hexHeight(state, at);
 }
 
+/** Steps still allowed this activation when Move cap is set. `null` = no cap. */
+function remainingMoveBudget(state: GameState, piece: Piece): number | null {
+  const cap = statsOf(piece.type).moveBudget;
+  if (cap <= 0) return null;
+  const spent =
+    state.scoutPieceId === piece.id ? (state.scoutMoveSpent ?? 0) : 0;
+  return Math.max(0, cap - spent);
+}
+
+function capMoveRange(state: GameState, piece: Piece, range: number): number {
+  const left = remainingMoveBudget(state, piece);
+  if (left === null) return range;
+  return Math.min(range, left);
+}
+
+/** Extra-action range from `via` after already walking `firstDist` this click. */
+function extraMoveRange(
+  state: GameState,
+  piece: Piece,
+  via: Hex,
+  firstDist: number,
+): number {
+  const uncapped = moveRangeAt(state, piece, via);
+  const left = remainingMoveBudget(state, piece);
+  if (left === null) return uncapped;
+  return Math.min(uncapped, Math.max(0, left - firstDist));
+}
+
 function activationMoveRange(state: GameState, piece: Piece): number {
   const stats = statsOf(piece.type);
   if (stats.move <= 0) return 0;
   const from = { col: piece.col, row: piece.row };
-  if (inWater(state, from)) return 1;
+  if (inWater(state, from)) return capMoveRange(state, piece, 1);
   const elev = hexHeight(state, from);
-  // Stamina's extra action is a fresh straight line of `move`. Leftover
-  // steps from the previous action (stop after 1 of 2, etc.) do not carry.
-  if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    return stats.move + elev;
-  }
-  let moveRange = stats.move;
-  if (stats.actions > 1 && stats.moveBudget > 0) {
-    const spent =
-      state.scoutPieceId === piece.id ? (state.scoutMoveSpent ?? 0) : 0;
-    moveRange = Math.min(stats.move, Math.max(0, stats.moveBudget - spent));
-  }
-  return moveRange + elev;
+  // Stamina extra is a fresh line of `move` (leftover steps don't carry)
+  // but still cannot exceed the remaining turn cap.
+  return capMoveRange(state, piece, stats.move + elev);
 }
 
 function destLandsBeyond(state: GameState, piece: Piece, dest: Hex): boolean {
@@ -1643,6 +1681,7 @@ function cloneState(state: GameState): GameState {
     hpLost: { ...emptySideCounts(), ...state.hpLost },
     flagCaptures: state.flagCaptures ?? 0,
     hadKing: { ...emptyHadKing(), ...state.hadKing },
+    hadVisible: { ...emptyHadKing(), ...state.hadVisible },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
     fxStamina: state.fxStamina?.map((h) => ({ ...h })),
     fxBoard: state.fxBoard ? { ...state.fxBoard } : undefined,
@@ -1982,8 +2021,9 @@ function finishActivation(state: GameState, piece: Piece): void {
   piece.rangedHit = undefined;
   clearScoutLock(state);
   if (!state.actedIds.includes(piece.id)) state.actedIds.push(piece.id);
-  if (!moreActivationsAfter(state, piece)) endSideTurn(state);
   checkWin(state);
+  if (state.winner) return;
+  if (!moreActivationsAfter(state, piece)) endSideTurn(state);
 }
 
 function sideDefeated(state: GameState, side: Side): boolean {
@@ -2013,6 +2053,17 @@ function checkWin(state: GameState): void {
   if (live.length === 0) {
     state.winner = state.turn;
     return;
+  }
+  // Vs AI: a dead human is a loss even if an ai-ally still has pieces.
+  if (matchHasEnemies(state)) {
+    const humans = parts.filter((s) => isPlayerControlled(state, s));
+    if (humans.length && humans.every((s) => sideDefeated(state, s))) {
+      const foe = live.find((s) => controlOf(state, s) === 'ai-enemy');
+      if (foe) {
+        state.winner = foe;
+        return;
+      }
+    }
   }
   const liveTeams = new Set(live.map((s) => coalition(state, s)));
   if (liveTeams.size === 1) {
@@ -2257,8 +2308,9 @@ function straightExtraStops(
 ): Map<string, StraightStop> {
   const start = { col: piece.col, row: piece.row };
   const firstRange = activationMoveRange(state, piece);
-  const extraMove = statsOf(piece.type).move;
-  const max = firstRange + extraMove + 2;
+  const extraMove = extraMoveRange(state, piece, start, firstRange);
+  const left = remainingMoveBudget(state, piece);
+  const max = left === null ? firstRange + extraMove + 3 : left;
   const opts = movePathOpts(state, piece, start);
   const out = new Map<string, StraightStop>();
   if (firstRange <= 0 || extraMove <= 0) return out;
@@ -2282,7 +2334,7 @@ function straightExtraStops(
         firstClimb = pathHaltsExtra(state, start, via, path.slice());
       }
       if (stop && dist > firstRange && via && !firstClimb && !first.has(key(next))) {
-        if (dist <= firstRange + moveRangeAt(state, piece, via)) {
+        if (dist <= firstRange + extraMoveRange(state, piece, via, firstRange)) {
           out.set(key(next), {
             dist,
             path: path.slice(),
@@ -2318,7 +2370,12 @@ function twoActionStops(
     if (pieceAt(state, via)) continue;
     if (palisadeHpAt(state, via) > 1) continue;
     if (pathHaltsExtra(state, start, via, a.path)) continue;
-    const second = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via));
+    const second = straightMoveStops(
+      state,
+      piece,
+      via,
+      extraMoveRange(state, piece, via, a.dist),
+    );
     for (const [dk, b] of second) {
       if (dk === startKey || first.has(dk)) continue;
       const dist = a.dist + b.dist;
