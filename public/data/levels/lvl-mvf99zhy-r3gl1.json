@@ -116,22 +116,66 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
-    "sort": 8,
-    "updatedAt": 1793043696158,
-    "armies": [
+    "tokens": [
         {
-            "type": "barbarian",
-            "col": 4,
-            "row": 1,
-            "side": "yellow"
+            "type": "forest",
+            "col": 0,
+            "row": 0
         },
         {
-            "type": "cohort",
+            "type": "forest",
+            "col": 1,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 2,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "forest",
             "col": 3,
-            "row": 6,
-            "side": "red"
+            "row": 0
         },
+        {
+            "type": "forest",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "tree",
+            "col": 1,
+            "row": 4
+        },
+        {
+            "type": "tree",
+            "col": 2,
+            "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 1,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 6
+        }
+    ],
+    "sort": 7,
+    "updatedAt": 1793133924342,
+    "armies": [
         {
             "type": "archer",
             "col": 5,
@@ -152,12 +196,33 @@
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 4,
+            "col": 3,
+            "row": 0,
+            "side": "yellow",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "dude",
+            "col": 5,
             "row": 7,
             "side": "red",
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "javelin",
+            "col": 4,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "barbarian",
+            "col": 4,
+            "row": 1,
+            "side": "yellow"
         },
         {
             "type": "barbarian",
@@ -166,13 +231,10 @@
             "side": "yellow"
         },
         {
-            "type": "u-mvf8ty84rdk3",
+            "type": "u-mvr2vokzh3n3",
             "col": 3,
-            "row": 0,
-            "side": "yellow",
-            "unitTokens": [
-                "general"
-            ]
+            "row": 6,
+            "side": "red"
         }
     ]
 }

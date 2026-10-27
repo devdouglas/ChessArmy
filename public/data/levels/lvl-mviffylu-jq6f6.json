@@ -95,8 +95,8 @@
     "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
     "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
+        "metric": "casualties",
+        "op": "lte",
         "value": 6
     },
     "star3": {
@@ -117,43 +117,34 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 6,
-    "updatedAt": 1793043696158,
+    "sort": 9,
+    "updatedAt": 1793133938602,
     "armies": [
         {
             "type": "cohort",
-            "col": 1,
+            "col": 3,
             "row": 6,
             "side": "red"
         },
         {
             "type": "cohort",
-            "col": 2,
+            "col": 5,
             "row": 6,
             "side": "red"
         },
         {
             "type": "hoplite",
             "col": 5,
-            "row": 6,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 4,
-            "side": "blue"
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 5,
-            "side": "blue"
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "exhausted"
+            ]
         },
         {
             "type": "hoplite",
-            "col": 1,
-            "row": 3,
+            "col": 2,
+            "row": 4,
             "side": "blue"
         }
     ]

@@ -136,9 +136,16 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
+    "tokens": [
+        {
+            "type": "board",
+            "col": 4,
+            "row": 9,
+            "text": "Sometimes you will need multiple units to get the job done. You will need to play all units to finish your turn or click 'end turn'. \nTip: Ending a turn without playing a unit counts as a 'rest' action for that unit."
+        }
+    ],
     "sort": 5,
-    "updatedAt": 1793131315177,
+    "updatedAt": 1793132391757,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
