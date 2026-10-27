@@ -16,6 +16,7 @@ import {
   sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  defaultSight,
   statsOf,
   type ShootArc,
   type UnitCategory,
@@ -36,6 +37,7 @@ export type EditableStat = Exclude<
 
 const INT_FIELDS = [
   'move',
+  'sight',
   'shoot',
   'shootMin',
   'actions',
@@ -68,6 +70,7 @@ const INT_FIELDS = [
 
 const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> = {
   move: { min: 0, max: 8 },
+  sight: { min: 1, max: 16 },
   shoot: { min: 0, max: 12 },
   shootMin: { min: 0, max: 12 },
   actions: { min: 1, max: 3 },
@@ -173,6 +176,7 @@ export function sanitizeUnitStats(
     king: abilities.includes('general'),
     abilities,
     move: clampInt(s.move, CLAMP.move.min, CLAMP.move.max, d.move),
+    sight: clampInt(s.sight, CLAMP.sight.min, CLAMP.sight.max, d.sight),
     shoot: clampInt(s.shoot, CLAMP.shoot.min, CLAMP.shoot.max, d.shoot),
     shootMin: clampInt(s.shootMin, CLAMP.shootMin.min, CLAMP.shootMin.max, d.shootMin),
     shootArc: sanitizeShootArc(s.shootArc ?? d.shootArc),
@@ -277,6 +281,9 @@ export function sanitizeUnitStats(
   const legacySplash = (s as { splash?: unknown }).splash;
   if (legacySplash === false) next.splashDamage = 0;
   if (next.shootMin > next.shoot) next.shootMin = next.shoot;
+  const floor = defaultSight(next.move, next.shoot);
+  if (s.sight === undefined || s.sight === null) next.sight = floor;
+  else next.sight = Math.max(floor, next.sight);
   return next;
 }
 

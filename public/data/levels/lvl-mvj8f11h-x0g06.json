@@ -19,7 +19,7 @@
         [
             "land",
             "land",
-            "high",
+            "plateau",
             "plateau",
             "water",
             "water",
@@ -35,7 +35,7 @@
             "water",
             "water",
             "water",
-            "water",
+            "land",
             "land"
         ],
         [
@@ -56,7 +56,7 @@
             "water",
             "water",
             "water",
-            "land",
+            "water",
             "land",
             "land"
         ],
@@ -78,7 +78,7 @@
             "water",
             "water",
             "water",
-            "water",
+            "land",
             "land",
             "land"
         ],
@@ -100,7 +100,7 @@
     "maxTurns": 0,
     "teaserText": "If you cannot catch a man, find a longer way to reach him.",
     "startText": "Anthony slept badly that night. He had lost his peace, most of his wine and whatever remained of his confidence in married life.\n\nBy dawn, he had decided to take revenge.\n\nThe three fellows had vanished, naturally. Cowards tend to be surprisingly good at this.\n\nHis father had taught him to shoot, although mostly at rabbits. Anthony now intended to practise the finer points of military archery: finding the high ground, judging the distance and making sure the arrow travelled towards the intended victim.\n\nThe last point was considered particularly important by the neighbours.",
-    "winText": "The arrows struck home. Two scarecrows fell, and the third lost an argument with a particularly well-aimed shaft.\n\nAnthony felt better. His neighbours, watching from behind their fences, felt less certain about the general state of public safety.",
+    "winText": "The arrows struck near their feet and Anthony felt better. \n\nHis neighbours, watching from behind their fences, felt less certain about the general state of public safety.",
     "loseText": "The bow is a weapon, not a means of expressing one's feelings to the countryside. Take the high ground, judge your distance and aim carefully. The gods have given you two eyes for a reason, though they have clearly not promised you much wisdom.",
     "star2": {
         "metric": "turns",
@@ -127,17 +127,7 @@
     "tokens": [
         {
             "type": "notouch",
-            "col": 7,
-            "row": 2
-        },
-        {
-            "type": "notouch",
             "col": 6,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 5,
             "row": 3
         },
         {
@@ -149,6 +139,82 @@
             "type": "notouch",
             "col": 5,
             "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 7
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 7
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 7
+        },
+        {
+            "type": "forest",
+            "col": 1,
+            "row": 7
+        },
+        {
+            "type": "forest",
+            "col": 2,
+            "row": 7
+        },
+        {
+            "type": "board",
+            "col": 1,
+            "row": 4,
+            "text": "Some obstacles or 'higher ground' block line of sight."
         },
         {
             "type": "notouch",
@@ -158,61 +224,89 @@
         {
             "type": "notouch",
             "col": 6,
-            "row": 7
-        },
-        {
-            "type": "notouch",
-            "col": 7,
-            "row": 7
-        },
-        {
-            "type": "notouch",
-            "col": 5,
-            "row": 0
-        },
-        {
-            "type": "notouch",
-            "col": 4,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 4,
-            "row": 2
-        },
-        {
-            "type": "notouch",
-            "col": 3,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 3,
-            "row": 4
-        },
-        {
-            "type": "notouch",
-            "col": 3,
             "row": 5
         },
         {
             "type": "notouch",
-            "col": 5,
+            "col": 7,
             "row": 4
         },
         {
             "type": "notouch",
-            "col": 7,
-            "row": 0
+            "col": 8,
+            "row": 5
         },
         {
             "type": "notouch",
             "col": 7,
+            "row": 6
+        },
+        {
+            "type": "house",
+            "col": 8,
+            "row": 6,
+            "noTouch": true
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 8,
             "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 1,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "board",
+            "col": 2,
+            "row": 2,
+            "text": "These rocks are too high from this side. There must be a way to climb to higher ground",
+            "noTouch": true
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 4
         }
     ],
     "sort": 2,
-    "updatedAt": 1793044243390,
+    "updatedAt": 1793128448028,
     "armies": [
         {
             "type": "archer",
@@ -221,21 +315,14 @@
             "side": "red"
         },
         {
-            "type": "u-mvgpbg68f593",
-            "col": 7,
-            "row": 5,
-            "side": "blue",
-            "facing": 2
-        },
-        {
             "type": "peasant",
             "col": 3,
             "row": 2,
             "side": "blue",
-            "facing": 2
+            "facing": 3
         },
         {
-            "type": "u-mvgpbg68f593",
+            "type": "peasant",
             "col": 1,
             "row": 1,
             "side": "blue",
@@ -243,8 +330,8 @@
         },
         {
             "type": "peasant",
-            "col": 6,
-            "row": 4,
+            "col": 7,
+            "row": 5,
             "side": "blue",
             "facing": 2
         }

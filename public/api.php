@@ -203,7 +203,7 @@ function sanitize_unit_tokens(mixed $raw): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['general' => true, 'hidden' => true];
+    $ok = ['general' => true, 'hidden' => true, 'exhausted' => true, 'neutral' => true, 'sleep' => true];
     $out = [];
     $seen = [];
     foreach ($raw as $item) {
@@ -227,7 +227,13 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
             continue;
         }
         $side = $piece['side'] ?? '';
-        if ($side !== 'red' && $side !== 'blue' && $side !== 'yellow' && $side !== 'purple') {
+        if (
+            $side !== 'red' &&
+            $side !== 'blue' &&
+            $side !== 'yellow' &&
+            $side !== 'purple' &&
+            $side !== 'neutral'
+        ) {
             continue;
         }
         $col = isset($piece['col']) && is_numeric($piece['col']) ? (int) $piece['col'] : -1;
@@ -277,7 +283,7 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
     $woodHp = ['palisade' => true, 'tree' => true, 'forest' => true];
     $out = [];
     $seen = [];
-    $cap = max(0, $cols * $rows);
+    $cap = max(0, $cols * $rows * 9);
     foreach (array_slice($raw, 0, $cap) as $token) {
         if (!is_array($token)) {
             continue;
@@ -291,7 +297,7 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
         if ($col < 0 || $col >= $cols || $row < 0 || $row >= $rows) {
             continue;
         }
-        $k = $col . ',' . $row;
+        $k = $col . ',' . $row . ',' . $type;
         if (isset($seen[$k])) {
             continue;
         }
@@ -562,10 +568,12 @@ function sanitize_level(mixed $level): ?array {
         'sort' => isset($level['sort']) && is_numeric($level['sort']) ? (int) $level['sort'] : 0,
         'updatedAt' => $updated,
     ];
-    $kept = [];
-    $tokenAt = [];
-    foreach ($out['tokens'] as $tok) {
-        $tokenAt[$tok['col'] . ',' . $tok['row']] = $tok;
+    $kept = $out['tokens'];
+    $hasWall = [];
+    foreach ($kept as $tok) {
+        if (($tok['type'] ?? '') === 'wall') {
+            $hasWall[$tok['col'] . ',' . $tok['row']] = true;
+        }
     }
     for ($r = 0; $r < $rows; $r++) {
         for ($c = 0; $c < $cols; $c++) {
@@ -573,11 +581,13 @@ function sanitize_level(mixed $level): ?array {
                 continue;
             }
             $grid[$r][$c] = 'land';
-            $tokenAt[$c . ',' . $r] = ['type' => 'wall', 'col' => $c, 'row' => $r];
+            $k = $c . ',' . $r;
+            if (isset($hasWall[$k])) {
+                continue;
+            }
+            $hasWall[$k] = true;
+            $kept[] = ['type' => 'wall', 'col' => $c, 'row' => $r];
         }
-    }
-    foreach ($tokenAt as $tok) {
-        $kept[] = $tok;
     }
     $out['tokens'] = $kept;
     $out['terrain'] = $grid;

@@ -68,6 +68,7 @@ import {
   sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  defaultSight,
   ARMY_CONTROLS,
   ARMY_CONTROL_LABEL,
   AI_STYLES,
@@ -77,8 +78,9 @@ import {
   TOKEN_LABEL,
   TOKEN_TYPES,
   BOARD_TEXT_MAX,
+  editorOpensBoardPopup,
   sanitizeBoardText,
-  tokenAt,
+  tokenOnHex,
   tokenIsNoTouch,
   UNIT_TOKEN_LABEL,
   UNIT_TOKEN_TYPES,
@@ -88,6 +90,8 @@ import {
   isAiControlled,
   isPlayerControlled,
   isSide,
+  isNeutralSide,
+  stampAffiliation,
   isAiStyle,
   matchHasEnemies,
   participatingSides,
@@ -107,6 +111,7 @@ import {
   type GameState,
   type Highlight,
   type Piece,
+  type Affiliation,
   type Side,
   type Terrain,
   type TileToken,
@@ -115,6 +120,7 @@ import {
   type UnitTokenType,
   type UnitType,
   hasUnitToken,
+  isSleeping,
   unitTokensOf,
   isTokenType,
   isUnitTokenType,
@@ -255,6 +261,9 @@ import {
   hpBadgeSvg,
   abilityBadgeSvg,
   hiddenBadgeSvg,
+  exhaustedBadgeSvg,
+  neutralBadgeSvg,
+  sleepZsSvg,
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
@@ -327,6 +336,8 @@ type RandomSetup = {
 };
 type UnitTokenBrush = `unit:${UnitTokenType}`;
 type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'notouch' | 'erase';
+
+const TRASH_ICON_SVG = `<svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg>`;
 
 const TERRAIN_BRUSHES: { id: Terrain; label: string }[] = [
   { id: 'land', label: 'Land' },
@@ -448,6 +459,7 @@ let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
 let editorArmiesOpen = false;
 let editorGlyphsOpen = false;
+let editorGlyphQuery = '';
 /** Last copy textarea focused — glyph chips insert here. */
 let editorCopyFieldId: string | null = null;
 let editorPainting = false;
@@ -707,6 +719,9 @@ function bootState(): GameState {
 }
 
 function startMatch(reshuffleRandom = true) {
+  doubleTime = false;
+  secondActionArmed = false;
+  persistDoubleTime();
   clearSelection();
   aiThinking = false;
   animating = false;
@@ -1527,17 +1542,18 @@ function rotateEditorUnit(idx: number) {
 
 function paintEditorUnit(col: number, row: number) {
   if (!isUnitBrush(editorBrush)) return;
+  const side: Affiliation = editorArmySide;
   const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   if (
     idx >= 0 &&
     editorPieces[idx].type === editorBrush &&
-    editorPieces[idx].side === editorArmySide
+    editorPieces[idx].side === side
   ) {
     rotateEditorUnit(idx);
     return;
   }
   if (idx >= 0) editorPieces.splice(idx, 1);
-  editorPieces.push({ type: editorBrush, col, row, side: editorArmySide });
+  editorPieces.push({ type: editorBrush, col, row, side });
   markEditorDirty();
   refreshEditorBoard();
 }
@@ -1545,16 +1561,11 @@ function paintEditorUnit(col: number, row: number) {
 function paintEditorToken(col: number, row: number) {
   if (!isTokenBrush(editorBrush)) return;
   if (!isWalkableTerrain(editorTerrain[row][col])) return;
-  const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
-  if (idx >= 0 && editorTokens[idx].type === editorBrush) return;
-  const keepTouch = idx >= 0 && tokenIsNoTouch(editorTokens[idx]);
-  if (idx >= 0) editorTokens.splice(idx, 1);
-  editorTokens.push({
-    type: editorBrush,
-    col,
-    row,
-    ...(keepTouch ? { noTouch: true } : {}),
-  });
+  const same = editorTokens.findIndex(
+    (t) => t.col === col && t.row === row && t.type === editorBrush,
+  );
+  if (same >= 0) return;
+  editorTokens.push({ type: editorBrush, col, row });
   markEditorDirty();
   refreshEditorBoard();
 }
@@ -1562,20 +1573,25 @@ function paintEditorToken(col: number, row: number) {
 function paintEditorNoTouch(col: number, row: number) {
   if (!isNoTouchBrush(editorBrush)) return;
   if (!isWalkableTerrain(editorTerrain[row][col])) return;
-  const idx = editorTokens.findIndex((t) => t.col === col && t.row === row);
-  const has = idx >= 0 && tokenIsNoTouch(editorTokens[idx]);
+  const here = editorTokens
+    .map((t, i) => ({ t, i }))
+    .filter((x) => x.t.col === col && x.t.row === row);
+  const has = here.some((x) => tokenIsNoTouch(x.t));
   if (!editorNoTouchStroke) editorNoTouchStroke = has ? 'remove' : 'add';
   if (editorNoTouchStroke === 'add' && has) return;
   if (editorNoTouchStroke === 'remove' && !has) return;
   if (editorNoTouchStroke === 'add') {
-    if (idx < 0) editorTokens.push({ type: 'notouch', col, row });
-    else editorTokens[idx] = { ...editorTokens[idx], noTouch: true };
-  } else if (idx >= 0) {
-    if (editorTokens[idx].type === 'notouch') editorTokens.splice(idx, 1);
-    else {
-      const next = { ...editorTokens[idx] };
-      delete next.noTouch;
-      editorTokens[idx] = next;
+    editorTokens.push({ type: 'notouch', col, row });
+  } else {
+    for (let i = editorTokens.length - 1; i >= 0; i--) {
+      const t = editorTokens[i];
+      if (t.col !== col || t.row !== row) continue;
+      if (t.type === 'notouch') editorTokens.splice(i, 1);
+      else if (t.noTouch) {
+        const next = { ...t };
+        delete next.noTouch;
+        editorTokens[i] = next;
+      }
     }
   }
   markEditorDirty();
@@ -1604,9 +1620,25 @@ function paintEditorUnitToken(col: number, row: number) {
   refreshEditorBoard();
 }
 
+function topTokenIndex(col: number, row: number): number {
+  let forest = -1;
+  let house = -1;
+  let last = -1;
+  for (let i = 0; i < editorTokens.length; i++) {
+    const t = editorTokens[i];
+    if (t.col !== col || t.row !== row) continue;
+    last = i;
+    if (t.type === 'forest') forest = i;
+    else if (t.type === 'house') house = i;
+  }
+  if (forest >= 0) return forest;
+  if (house >= 0) return house;
+  return last;
+}
+
 function paintEditorErase(col: number, row: number) {
   const pidx = editorPieces.findIndex((p) => p.col === col && p.row === row);
-  const tidx = editorTokens.findIndex((t) => t.col === col && t.row === row);
+  const tidx = topTokenIndex(col, row);
   if (pidx < 0 && tidx < 0) return;
   if (pidx >= 0) editorPieces.splice(pidx, 1);
   if (tidx >= 0) editorTokens.splice(tidx, 1);
@@ -1639,14 +1671,16 @@ function paintEditorHex(col: number, row: number, first = true) {
   const boardTok = editorTokens.find(
     (t) => t.type === 'board' && t.col === col && t.row === row,
   );
-  if (boardTok) {
-    if (first) openEditorBoard(col, row);
+  if (editorOpensBoardPopup(editorBrush, !!boardTok, first)) {
+    openEditorBoard(col, row);
     return;
   }
+  if (boardTok && editorBrush === 'board') return;
   const unitIdx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   if (unitIdx >= 0) {
-    if (editorBrush === 'house') {
+    if (isTokenBrush(editorBrush) && !isNoTouchBrush(editorBrush)) {
       paintEditorToken(col, row);
+      if (editorBrush === 'board') openEditorBoard(col, row);
       return;
     }
     rotateEditorUnit(unitIdx);
@@ -1773,7 +1807,8 @@ function livingOnSide(side: Side): { id: string }[] {
   return state.pieces.filter((p) => p.side === side);
 }
 
-function isSoloArmy(side: Side): boolean {
+function isSoloArmy(side: Affiliation): boolean {
+  if (!isSide(side)) return false;
   return livingOnSide(side).length === 1;
 }
 
@@ -1884,7 +1919,10 @@ function flagOwnerForDraw(t: TileToken): Side | undefined {
   if (t.type !== 'flag') return t.owner;
   if (screen === 'editor') {
     const u = editorPieces.find((p) => p.col === t.col && p.row === t.row);
-    if (u) return u.side;
+    if (u) {
+      const side = stampAffiliation(u);
+      if (isSide(side)) return side;
+    }
   }
   return t.owner;
 }
@@ -1898,7 +1936,7 @@ function flagGoalLabel(): string {
       : editorArmySide;
   const held = screen === 'play' ? flagsHeldBy(state, side) : flags.filter((t) => {
     const u = editorPieces.find((p) => p.col === t.col && p.row === t.row);
-    return u?.side === side;
+    return u ? stampAffiliation(u) === side : false;
   }).length;
   if (flags.length === 1) return held ? 'Flag held' : 'Capture the flag';
   return `Capture all flags (${held}/${flags.length})`;
@@ -2484,9 +2522,11 @@ async function commitRotate(dir: HexDir) {
   }
 }
 
-/** Off = first action ends the unit. On (Double time / Spend stamina) keeps the extra. */
+/** Off = first action ends the unit. On (Double time / Spend stamina) keeps the extra.
+ *  Board / briefing overlays must not leave the extra hanging — they already block
+ *  canControl(), which used to skip this and then show Skip second action on close. */
 async function settleUnarmedStaminaExtra(actingId: string) {
-  if (!canControl()) return;
+  if (state.winner || aiThinking) return;
   const piece = getPiece(state, actingId);
   if (!piece) return;
   if (
@@ -2566,11 +2606,11 @@ async function maybeAi() {
   render();
 }
 
-function pieceColor(side: Side): string {
+function pieceColor(side: Affiliation): string {
   return `var(--piece-${side})`;
 }
 
-function iconInk(side: Side): string {
+function iconInk(side: Affiliation): string {
   return `var(--piece-${side}-ink)`;
 }
 
@@ -2617,12 +2657,17 @@ function renderBoard(): string {
     else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
   }
+  const actor = selectedId ? getPiece(state, selectedId) : null;
+  const fromHeight = actor
+    ? terrainHeight(state.terrain[actor.row]?.[actor.col] ?? 'land')
+    : 0;
+  // Climb marks only. Same height or lower is not a climb, even on a hill.
   const restBusy = (hex: Hex) => {
     const occ = seenOcc(hex);
     const terrain = state.terrain[hex.row]?.[hex.col] ?? 'land';
     return (
       occ ||
-      (terrain !== 'land' && terrain !== 'water') ||
+      terrainHeight(terrain) > fromHeight ||
       isWall(state, hex) ||
       isPalisade(state, hex) ||
       isForest(state, hex)
@@ -2630,7 +2675,11 @@ function renderBoard(): string {
   };
   if (!editing && selectedId && canControl()) {
     for (const hl of restDestHighlights(selectedId)) {
-      if (restBusy(hl.hex) || doubleTime) restSet.add(key(hl.hex));
+      const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
+      // Double time still ghosts flat extra-moves. Same-or-lower high ground does not.
+      if (restBusy(hl.hex) || (doubleTime && !isElevatedTerrain(terrain))) {
+        restSet.add(key(hl.hex));
+      }
     }
   }
 
@@ -2780,7 +2829,7 @@ function renderBoard(): string {
     const read = t.type === 'board' && t.read ? ' read' : '';
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
     if (t.type === 'forest') forestSvg += g;
-    else if (garrison) houseSvg += g;
+    else if (t.type === 'house') houseSvg += g;
     else tokensSvg += g;
   }
 
@@ -2788,7 +2837,7 @@ function renderBoard(): string {
     const drawPieces: Piece[] = editing
     ? editorPieces.map((p) => ({
         id: `ed-${p.side}-${p.col}-${p.row}`,
-        side: p.side,
+        side: stampAffiliation(p),
         type: p.type,
         col: p.col,
         row: p.row,
@@ -2852,15 +2901,20 @@ function renderBoard(): string {
       )
       .join('');
     const hideIcons = unitTokensOf(p)
-      .filter((id) => id === 'hidden')
-      .map((_, i) =>
-        hiddenBadgeSvg(
-          -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65,
-          pr * 0.7,
-          badgeR,
-        ),
-      )
+      .filter((id) => id === 'hidden' || id === 'exhausted' || id === 'neutral')
+      .map((id, i) => {
+        const cx = -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65;
+        const cy = pr * 0.7;
+        return id === 'hidden'
+          ? hiddenBadgeSvg(cx, cy, badgeR)
+          : id === 'exhausted'
+            ? exhaustedBadgeSvg(cx, cy, badgeR)
+            : neutralBadgeSvg(cx, cy, badgeR);
+      })
       .join('');
+    const sleepMark = hasUnitToken(p, 'sleep')
+      ? sleepZsSvg(pr * 0.5, -pr * 0.58, badgeR)
+      : '';
     const maxHp = hpMax(p);
     const hpIcon =
       maxHp > 1
@@ -2898,6 +2952,7 @@ function renderBoard(): string {
         ${actedIcon}
         ${abilityIcons}
         ${hideIcons}
+        ${sleepMark}
       </g>`;
   }
 
@@ -2995,6 +3050,7 @@ function canRest(pieceId: string): boolean {
   if (!canControl()) return false;
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn) return false;
+  if (isSleeping(piece)) return false;
   if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
   if (state.scoutPieceId) return false;
   return true;
@@ -3075,6 +3131,8 @@ function renderActionBar(): string {
     hint = 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
+  } else if (isSleeping(piece)) {
+    hint = 'Sleeping — not active';
   } else if (!canMove && !canShoot) {
     hint = isDepleted(piece)
       ? "Empty — can't shoot"
@@ -3259,6 +3317,11 @@ function renderSidebar(): string {
       statRow('Melee', `${s.meleeDamage}`),
       statRow('Charge', s.charge > 0 ? String(s.charge) : '0'),
       statRow(
+        'Sight',
+        String(s.sight + elev),
+        elev > 0 ? `+${elev} from elevation` : 'AI Hold Sight — not fog',
+      ),
+      statRow(
         'Shot',
         String(s.shootDamage),
         hasSplash(s) ? `splash ${s.splashDamage} · FF` : '',
@@ -3318,6 +3381,21 @@ function renderSidebar(): string {
           : hasUnitToken(piece, 'hidden')
             ? 'Hidden — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range'
             : 'Can hide in forest — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range',
+      );
+    }
+    if (hasUnitToken(piece, 'exhausted')) {
+      extraNotes.push(
+        'Exhausted — started the match with no stamina (climb / extra move locked until idle regen)',
+      );
+    }
+    if (hasUnitToken(piece, 'sleep')) {
+      extraNotes.push(
+        'Sleeping — not active until hit. No move, shoot, turn, rest, or stamina',
+      );
+    }
+    if (isNeutralSide(piece.side)) {
+      extraNotes.push(
+        'Neutral — not in any army. A General that walks onto this hex converts it, no damage',
       );
     }
     extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
@@ -3391,8 +3469,8 @@ function renderSidebar(): string {
             <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped</dd></div>
+            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. A General that walks onto it converts it to that army, no damage. Other units cannot occupy the hex. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -3635,8 +3713,12 @@ function renderEditorBoardPopup(): string {
 
 function closeBoardPopup() {
   boardPopup = null;
-  render();
-  void maybeAi();
+  const actingId = state.scoutPieceId;
+  void (async () => {
+    if (actingId) await settleUnarmedStaminaExtra(actingId);
+    render();
+    await maybeAi();
+  })();
 }
 
 function bindBoardPopup() {
@@ -3816,8 +3898,8 @@ function onHexClick(col: number, row: number) {
     return;
   }
 
-  const board = tokenAt(state.tokens, hex);
-  if (board?.type === 'board' && board.read && board.text) {
+  const board = tokenOnHex(state.tokens, hex, 'board');
+  if (board?.read && board.text) {
     boardPopup = { text: board.text };
     render();
     return;
@@ -3980,25 +4062,6 @@ function paintBoardHover(next: Hex | null) {
   }
 }
 
-function levelSelectOptions(selectedId: string | null): string {
-  const groups = LEVEL_CATEGORIES.map((cat) => ({
-    cat,
-    levels: levelsInCategory(cat),
-  })).filter((g) => g.levels.length);
-  const opts = [`<option value="random"${!selectedId ? ' selected' : ''}>Random map</option>`];
-  for (const g of groups) {
-    opts.push(`<optgroup label="${LEVEL_CATEGORY_LABEL[g.cat]}">`);
-    for (const l of g.levels) {
-      const tag = l.id === defaultLevelId ? ' (default)' : '';
-      opts.push(
-        `<option value="${l.id}"${selectedId === l.id ? ' selected' : ''}>${escapeHtml(levelLabel(l))}${tag}</option>`,
-      );
-    }
-    opts.push('</optgroup>');
-  }
-  return opts.join('');
-}
-
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -4071,7 +4134,7 @@ function renderToolbar(): string {
     : '';
   return `<div class="toolbar">
     <h1><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h1>
-    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">Play game</button>
+    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">${inEditorSection() ? 'Exit editor' : 'Play game'}</button>
     ${editorNav}
   </div>`;
 }
@@ -4545,7 +4608,7 @@ function renderMapPanel(): string {
       <h3>Tiles</h3>
       <div class="editor-brushes">
         ${brushes}
-        <button type="button" id="editor-clear" class="ghost">Clear board</button>
+        <button type="button" id="editor-clear" class="brush erase">Clear board ${TRASH_ICON_SVG}</button>
       </div>
     </section>`;
 }
@@ -4575,6 +4638,7 @@ function renderTokenPanel(): string {
   return `
     <section class="editor-panel editor-panel-tokens">
       <h3>Tile tokens</h3>
+      <p class="muted">Stack on a hex in paint order. Forest and house always sit on top.</p>
       <div class="editor-brushes">
         ${tokens}
         <button type="button" class="brush token notouch${editorBrush === 'notouch' ? ' active' : ''}" data-brush="notouch">${noTouchSwatchSvg()}<span>Do not touch</span></button>
@@ -4612,7 +4676,7 @@ function renderUnitTokenPanel(): string {
 }
 
 function unitBrushIconSvg(type: UnitType): string {
-  const side = editorArmySide;
+  const side: Affiliation = editorArmySide;
   const fill = pieceColor(side);
   const ink = iconInk(side);
   const hexed = UNIT_STATS[type].hexArmor;
@@ -4671,7 +4735,7 @@ function renderArmySelectPanel(): string {
         ${unitBrushes}
       </div>
     </section>
-    <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase <svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg></button>
+    <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase ${TRASH_ICON_SVG}</button>
     </div>`;
 }
 
@@ -4740,13 +4804,13 @@ function renderLevelThumb(lvl: {
           : tokenGlyphSvg(t.type, size * 1.2)
     }${tokenIsNoTouch(t) ? noTouchMarkSvg(size * 0.55) : ''}</g>`;
     if (t.type === 'forest') forest += g;
-    else if (garrison) houses += g;
+    else if (t.type === 'house') houses += g;
     else hexes += g;
   }
   let dots = '';
   for (const p of lvl.armies ?? []) {
     const { x, y } = hexToPixel({ col: p.col, row: p.row }, size, ori);
-    dots += `<circle class="thumb-piece ${p.side}" cx="${x + pad}" cy="${y + pad}" r="${(size * 0.34).toFixed(1)}" />`;
+    dots += `<circle class="thumb-piece ${stampAffiliation(p)}" cx="${x + pad}" cy="${y + pad}" r="${(size * 0.34).toFixed(1)}" />`;
   }
   return `<svg class="level-thumb" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${hexes}${dots}${houses}${forest}</svg>`;
 }
@@ -4776,12 +4840,14 @@ function renderLevelRow(l: SavedLevel): string {
       </svg>
     </button>
     <button type="button" class="level-open" data-edit-level="${l.id}">
-      <span class="level-name">${escapeHtml(levelLabel(l))}</span>
-      ${levelTeaserHtml(l)}
       ${renderLevelThumb(l)}
-      <span class="level-details">
-        <span class="lvl-meta">${levelMetaLine(l)}</span>
-        ${bestStarsHtml(l.id)}
+      <span class="level-copy">
+        <span class="level-name">${escapeHtml(levelLabel(l))}</span>
+        ${levelTeaserHtml(l)}
+        <span class="level-details">
+          <span class="lvl-meta">${levelMetaLine(l)}</span>
+          ${bestStarsHtml(l.id)}
+        </span>
       </span>
     </button>
     <button type="button" class="level-play" data-play-level="${l.id}" title="Play ${escapeHtml(levelLabel(l))}">
@@ -4793,14 +4859,26 @@ function renderLevelRow(l: SavedLevel): string {
 
 function renderLevelsOverview(): string {
   const all = listLevels();
-  const filters = LEVEL_CATEGORIES.map(
-    (c) =>
-      `<button type="button" class="levels-filter${levelsFilter === c ? ' active' : ''}" data-levels-filter="${c}">${LEVEL_CATEGORY_LABEL[c]}</button>`,
-  ).join('');
-  const periodFilters = PERIODS.map(
-    (p) =>
-      `<button type="button" class="levels-filter${levelsPeriodFilter === p ? ' active' : ''}" data-levels-period="${p}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
-  ).join('');
+  const catOrder = [
+    ...LEVEL_CATEGORIES.filter((c) => levelsInCategory(c, levelsPeriodFilter).length > 0),
+    ...LEVEL_CATEGORIES.filter((c) => levelsInCategory(c, levelsPeriodFilter).length === 0),
+  ];
+  const periodOrder = [
+    ...PERIODS.filter((p) => levelsInCategory(levelsFilter, p).length > 0),
+    ...PERIODS.filter((p) => levelsInCategory(levelsFilter, p).length === 0),
+  ];
+  const filters = catOrder
+    .map((c) => {
+      const empty = levelsInCategory(c, levelsPeriodFilter).length === 0;
+      return `<button type="button" class="levels-filter${levelsFilter === c ? ' active' : ''}${empty ? ' empty' : ''}" data-levels-filter="${c}">${LEVEL_CATEGORY_LABEL[c]}</button>`;
+    })
+    .join('');
+  const periodFilters = periodOrder
+    .map((p) => {
+      const empty = levelsInCategory(levelsFilter, p).length === 0;
+      return `<button type="button" class="levels-filter${levelsPeriodFilter === p ? ' active' : ''}${empty ? ' empty' : ''}" data-levels-period="${p}" data-period="${p}">${PERIOD_LABEL[p]}${eraIsWip(p) ? '<span class="era-wip">under construction</span>' : ''}</button>`;
+    })
+    .join('');
 
   const levels = levelsInCategory(levelsFilter, levelsPeriodFilter);
   const emptyBits = [
@@ -4975,16 +5053,48 @@ function renderEditorBar(): string {
     </div>`;
 }
 
+function glyphChipMatches(tag: string, label: string, q: string): boolean {
+  if (!q) return true;
+  const needle = q.trim().toLowerCase();
+  return tag.toLowerCase().includes(needle) || label.toLowerCase().includes(needle);
+}
+
+function applyGlyphFilter(): void {
+  const body = app.querySelector('.editor-panel-glyphs .editor-fold-body');
+  if (!body) return;
+  const needle = editorGlyphQuery.trim().toLowerCase();
+  const groups = [...body.querySelectorAll<HTMLElement>('.glyph-group')];
+  const ranked = groups.map((el) => {
+    let hits = 0;
+    el.querySelectorAll<HTMLButtonElement>('.glyph-chip').forEach((chip) => {
+      const tag = chip.dataset.copyTag ?? '';
+      const label = chip.querySelector('.glyph-tag')?.textContent ?? '';
+      const ok = glyphChipMatches(tag, label, needle);
+      chip.hidden = !ok;
+      if (ok) hits += 1;
+    });
+    el.classList.toggle('empty', !!needle && hits === 0);
+    return { el, hits, order: Number(el.dataset.order ?? 0) };
+  });
+  ranked.sort((a, b) => {
+    const ae = needle && a.hits === 0 ? 1 : 0;
+    const be = needle && b.hits === 0 ? 1 : 0;
+    if (ae !== be) return ae - be;
+    return a.order - b.order;
+  });
+  for (const row of ranked) body.appendChild(row.el);
+}
+
 function renderGlyphPanel(): string {
   const groups = copyGlyphGroups()
-    .map((g) => {
+    .map((g, i) => {
       const chips = g.glyphs
         .map(
           (item) =>
             `<button type="button" class="glyph-chip" data-copy-tag="${escapeHtml(item.tag)}" title="Insert [${escapeHtml(item.tag)}]" aria-label="Insert [${escapeHtml(item.tag)}]">${item.icon}<span class="glyph-tag">[${escapeHtml(item.tag)}]</span></button>`,
         )
         .join('');
-      return `<div class="glyph-group">
+      return `<div class="glyph-group" data-order="${i}">
         <h4 class="glyph-group-label">${escapeHtml(g.label)}</h4>
         <div class="glyph-grid">${chips}</div>
       </div>`;
@@ -4998,6 +5108,9 @@ function renderGlyphPanel(): string {
           <span class="lvl-meta">[name] in texts — click to insert</span>
         </summary>
         <div class="editor-fold-body">
+          <label class="glyph-filter">Search
+            <input type="search" id="glyph-filter" value="${escapeHtml(editorGlyphQuery)}" placeholder="Filter glyphs" autocomplete="off" />
+          </label>
           ${groups}
         </div>
       </details>
@@ -5018,7 +5131,9 @@ function unitNumField(
   label: string,
 ): string {
   const spec = CLAMP[field as keyof typeof CLAMP];
-  const min = spec?.min ?? 0;
+  const s = UNIT_STATS[type];
+  const min =
+    field === 'sight' ? defaultSight(s.move, s.shoot) : (spec?.min ?? 0);
   const max = spec?.max ?? 99;
   const val = UNIT_STATS[type][field] as number;
   const armorish = field === 'armor' || String(field).startsWith('armor');
@@ -5194,6 +5309,7 @@ function renderUnitEditor(): string {
           ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value/weight')}
           ${unitNumField(type, 'actions', 'Actions')}
+          ${unitNumField(type, 'sight', 'Sight')}
           <label class="chk">
             <input type="checkbox" data-unit="${type}" data-field="canHide"${s.canHide ? ' checked' : ''} />
             Can hide
@@ -5289,6 +5405,7 @@ function renderUnitEditor(): string {
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
+          <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
           <dd><strong>Can hide</strong> invisible to enemies while on forest (and later hide tokens). Breaks for the rest of the match after the unit moves, attacks, or is hit. Owner still sees them</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
@@ -5493,6 +5610,9 @@ function bindUnitEditorEvents() {
       if (inp.type === 'checkbox') inp.checked = Boolean(v);
       else {
         if (Number(inp.value) !== v) inp.value = String(v);
+        if (f === 'sight') {
+          inp.min = String(defaultSight(UNIT_STATS[type].move, UNIT_STATS[type].shoot));
+        }
         if (f === 'armor' || String(f).startsWith('armor') || String(f).startsWith('damage')) {
           inp.style.borderColor = armorColor(Number(v));
         }
@@ -5679,8 +5799,6 @@ function bindEditorEvents() {
   });
   app.querySelector('#editor-name')?.addEventListener('change', (e) => {
     editorName = (e.target as HTMLInputElement).value;
-    const heading = app.querySelector('.sidebar h2');
-    if (heading) heading.textContent = editorName.trim() || 'New level';
   });
   app.querySelector('#editor-category')?.addEventListener('change', (e) => {
     editorCategory = sanitizeCategory((e.target as HTMLSelectElement).value);
@@ -5783,6 +5901,12 @@ function bindEditorEvents() {
       window.setTimeout(() => btn.classList.remove('copied'), 700);
     });
   });
+  const glyphFilter = app.querySelector<HTMLInputElement>('#glyph-filter');
+  glyphFilter?.addEventListener('input', () => {
+    editorGlyphQuery = glyphFilter.value;
+    applyGlyphFilter();
+  });
+  if (glyphFilter) applyGlyphFilter();
   app.querySelector('#army-name')?.addEventListener('change', (e) => {
     editorFormationName = (e.target as HTMLInputElement).value;
   });
@@ -6100,17 +6224,8 @@ function bindEvents() {
     void maybeAi();
   });
   app.querySelector('#briefing-skip')?.addEventListener('click', () => skipBriefing());
-  app.querySelector('#level-select')?.addEventListener('change', (e) => {
-    const v = (e.target as HTMLSelectElement).value;
-    if (v === 'random') {
-      activeLevelId = null;
-      setActiveLevelId(null);
-      startMatch(true);
-    } else {
-      activeLevelId = v;
-      setActiveLevelId(v);
-      startMatch(false);
-    }
+  app.querySelector('#open-levels')?.addEventListener('click', () => {
+    enterLevels();
   });
   app.querySelector('#skip-scout')?.addEventListener('click', () => {
     void skipScout();
@@ -6171,13 +6286,14 @@ function render() {
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
   applyHotseatTint();
+  app.classList.toggle('start-screen', screen === 'start');
   app.classList.toggle(
-    'start-screen',
-    screen === 'start' ||
-      screen === 'levels' ||
+    'editor-screen',
+    screen === 'levels' ||
       screen === 'units' ||
       screen === 'ai' ||
-      screen === 'experimental',
+      screen === 'experimental' ||
+      screen === 'editor',
   );
 
   if (screen === 'start') {
@@ -6243,11 +6359,6 @@ function render() {
         ${renderEditorBar()}
       </div>
       ${renderEditorBoardPopup()}
-      <aside class="sidebar">
-        <h2>${escapeHtml(editorName.trim() || 'New level')}</h2>
-        <p class="muted">This is the level. Set width × height and hex orientation, then paint land, water, Hill (lvl.1), Plateau (lvl.2), and Mountain (lvl.3). Heights connect by ±1 — no land↔plateau jumps. Walls are tokens on walkable tiles. Paint units onto the selected side, or load a saved army (Blue gets the formation flipped). Click a placed unit to turn it one hex face. Save as default army uses that preset on random maps and on levels with no stamped armies.</p>
-        <p class="muted">Levels / Units / AI in the header switches library, roster, and the AI checklist. Point up = pointy-top hexes. Flat up = flat-top. Saving stores the pieces currently on the board. Category: <strong>Campaign</strong> and <strong>Tutorial</strong> pick a map (win one to unlock the next). <strong>Historical</strong> playlists on Start follow the drag order in Levels. <strong>Skirmish</strong> pick a map. AI armies pick aggressive, defensive, or advance next to the controller.</p>
-      </aside>
     `;
     bindEvents();
     return;
@@ -6269,12 +6380,16 @@ function render() {
       : mode === 'hotseat'
         ? 'Hotseat'
         : 'vs AI';
+  const playing = activeLevelId
+    ? (() => {
+        const l = getLevel(activeLevelId);
+        return l ? levelLabel(l) : 'Level';
+      })()
+    : 'Random map';
   const levelSelect = pl
     ? ''
-    : `<label>Level
-          <select id="level-select">${levelSelectOptions(activeLevelId)}</select>
-        </label>
-        <span class="map-hint">${modeHint}</span>`;
+    : `<button type="button" id="open-levels">Levels</button>
+        <span class="map-hint">${escapeHtml(playing)} · ${modeHint}</span>`;
   const mapParams = pl
     ? `<div class="map-params">
         <button type="button" id="new-map">Restart level</button>

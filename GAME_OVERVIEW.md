@@ -237,7 +237,7 @@ Rules (short):
 - **Targets defenses** — shoot/melee wall or palisade on the hunt path.
 - **General does not dump into the army** — only the enemy general, or someone already in melee with him.
 - **Never capture flags** — unless that move hits the enemy general.
-- **Hold position** — when Attack is off: stay put, turn toward the nearest enemy. A ranged hit makes them move and try to attack that unit.
+- **Hold position** — when Attack is off: stay put. Turn only toward an enemy this piece can see. A ranged hit, or an enemy newly entering Sight, makes them move and try to attack. Hidden / forest / house cover does not trigger that contact, and a unit in cover is not pulled out by Sight.
 - **Activate the general last**
 - **Avoid skipping**
 - **Break palisades**

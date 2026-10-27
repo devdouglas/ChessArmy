@@ -252,6 +252,8 @@ export type UnitStats = UnitTraits & {
   /** Max occupiable height: 0 land, 1 hill, 2 plateau, 3 mountain. */
   climbLevel: number;
   move: number;
+  /** AI Hold Sight (hexes). Not fog of war. Hill / plateau / mountain add like shoot. Always ≥ max(move, shoot)+1. */
+  sight: number;
   /** Max shoot distance (shooter elevation adds; firing at elevation costs that much). */
   shoot: number;
   /** Min shoot distance (1 = can fire adjacent). */
@@ -386,7 +388,23 @@ function hexDamageDefaults(n = 0): Pick<
   };
 }
 
-export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
+/** Floor for Sight: one hex past this unit's move or shoot, whichever is longer. */
+export function defaultSight(move: number, shoot: number): number {
+  const m = Number.isFinite(move) ? Math.max(0, Math.floor(move)) : 0;
+  const sh = Number.isFinite(shoot) ? Math.max(0, Math.floor(shoot)) : 0;
+  return Math.max(m, sh) + 1;
+}
+
+export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
+  raw: Record<UnitRole, Omit<UnitStats, 'sight'>>,
+): Record<UnitRole, UnitStats> => {
+  const out = {} as Record<UnitRole, UnitStats>;
+  for (const role of STOCK_UNIT_TYPES) {
+    const s = raw[role];
+    out[role] = { ...s, sight: defaultSight(s.move, s.shoot) };
+  }
+  return out;
+})({
   soldier: {
     name: 'Soldier',
     chess: 'Pawn',
@@ -1145,7 +1163,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = {
     canHide: false,
     abilities: [],
   },
-};
+});
 
 /** Live stats — mutated by the unit editor. Engine reads this at action time. */
 export const UNIT_STATS: Record<string, UnitStats> = structuredClone(DEFAULT_UNIT_STATS);

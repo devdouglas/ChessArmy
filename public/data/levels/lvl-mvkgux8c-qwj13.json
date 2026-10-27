@@ -95,9 +95,9 @@
     "winText": "The javelin struck its target. The recruiting officer nodded, as though this had been the result he expected all along.\n\nAnthony had been accepted into the army. At last, a respectable career lay before him.\n\nIt was not necessarily a career he would enjoy.",
     "loseText": "A javelin is not a walking stick, and throwing it at random is not a recognised military discipline. The officer walks away as he has other recruits to disappoint.",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "metric": "casualties",
+        "op": "lte",
+        "value": 2
     },
     "star3": {
         "metric": "casualties",
@@ -116,9 +116,16 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
+    "tokens": [
+        {
+            "type": "board",
+            "col": 3,
+            "row": 0,
+            "text": "Anthony realizes his javelins will not reach his target, even from this height. But with all his training he has [energy] [engery] [energy] to spend and tons of [hp]. He can make it... right?"
+        }
+    ],
     "sort": 3,
-    "updatedAt": 1793043696158,
+    "updatedAt": 1793128950021,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

@@ -43,6 +43,18 @@
   --tree: #3a6a38;
   --tree-hi: #5a8a48;
   --tree-lo: #244828;
+  --house-plaster: #e2c07a;
+  --house-plaster-hi: #f3dba0;
+  --house-plaster-lo: #c49a52;
+  --house-roof: #d04a2c;
+  --house-roof-hi: #e86a40;
+  --house-roof-lo: #8a2818;
+  --house-ink: #3a2216;
+  --house-door: #4a2a16;
+  --house-cypress: #2a5a34;
+  --house-cypress-hi: #3e7848;
+  --house-hay: #d4a84a;
+  --house-hay-hi: #ecd070;
   --red: #c44;
   --blue: #4a7ec8;
   --yellow: #c9a227;
@@ -55,6 +67,8 @@
   --piece-blue-ink: #e0ecff;
   --piece-yellow-ink: #2a2208;
   --piece-purple-ink: #f0e4ff;
+  --piece-neutral: #8a8680;
+  --piece-neutral-ink: #f4efe4;
   --move: rgba(90, 210, 130, 0.28);
   --stamina: rgba(230, 185, 60, 0.32);
   --shoot: rgba(220, 70, 70, 0.3);
@@ -145,6 +159,18 @@ html[data-period='ancient'] {
   --tree: #4a7038;
   --tree-hi: #6a8a48;
   --tree-lo: #2e4a24;
+  --house-plaster: #ecc888;
+  --house-plaster-hi: #f8e0a8;
+  --house-plaster-lo: #c8a058;
+  --house-roof: #c43c22;
+  --house-roof-hi: #e05830;
+  --house-roof-lo: #7a2014;
+  --house-ink: #3a1c10;
+  --house-door: #4a2414;
+  --house-cypress: #2e6234;
+  --house-cypress-hi: #4a8848;
+  --house-hay: #dcb050;
+  --house-hay-hi: #f0d070;
   --red: #c45a38;
   --blue: #3d6a78;
   --yellow: #d4a44a;
@@ -157,6 +183,8 @@ html[data-period='ancient'] {
   --piece-blue-ink: #d8eef0;
   --piece-yellow-ink: #2c200c;
   --piece-purple-ink: #f4e4f0;
+  --piece-neutral: #9a8e78;
+  --piece-neutral-ink: #f4ead8;
   --move: rgba(200, 170, 90, 0.3);
   --stamina: rgba(220, 170, 70, 0.34);
   --shoot: rgba(200, 80, 50, 0.32);
@@ -222,6 +250,18 @@ html[data-period='futuristic'] {
   --tree: #1a5848;
   --tree-hi: #28a878;
   --tree-lo: #0c3028;
+  --house-plaster: #c8b070;
+  --house-plaster-hi: #dcc888;
+  --house-plaster-lo: #9a8450;
+  --house-roof: #c04038;
+  --house-roof-hi: #e05848;
+  --house-roof-lo: #701820;
+  --house-ink: #241418;
+  --house-door: #3a2030;
+  --house-cypress: #1a5848;
+  --house-cypress-hi: #28a878;
+  --house-hay: #c49838;
+  --house-hay-hi: #e0c060;
   --red: #e04070;
   --blue: #20b8e0;
   --yellow: #ffe060;
@@ -234,6 +274,8 @@ html[data-period='futuristic'] {
   --piece-blue-ink: #d8f8ff;
   --piece-yellow-ink: #1a1608;
   --piece-purple-ink: #f4e8ff;
+  --piece-neutral: #6a7080;
+  --piece-neutral-ink: #e8eef8;
   --move: rgba(80, 255, 200, 0.22);
   --stamina: rgba(80, 200, 255, 0.3);
   --shoot: rgba(255, 60, 140, 0.32);
@@ -333,8 +375,15 @@ html[data-hotseat='purple'] {
   padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
-#app.start-screen {
+#app.start-screen,
+#app.editor-screen {
   grid-template-columns: 1fr;
+}
+
+#app.editor-screen {
+  max-width: none;
+  margin: 0;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
 .board-wrap {
@@ -1195,6 +1244,34 @@ button.primary:focus-visible {
   gap: 0.85rem;
 }
 
+.glyph-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.glyph-filter input {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.55rem;
+  min-height: var(--touch);
+}
+
+.glyph-group.empty {
+  opacity: 0.4;
+}
+
 .glyph-group-label {
   margin: 0 0 0.4rem;
   font-size: 0.68rem;
@@ -1452,23 +1529,26 @@ button.primary:focus-visible {
   color: var(--sel);
 }
 
-.editor-top-army > .brush.erase {
+.brush.erase {
   display: inline-flex;
   align-items: center;
-  align-self: start;
   gap: 0.35rem;
 }
 
-.editor-top-army > .brush.erase .icon-trash {
+.editor-top-army > .brush.erase {
+  align-self: start;
+}
+
+.brush.erase .icon-trash {
   color: #c45a4a;
 }
 
-.editor-top-army > .brush.erase.active {
+.brush.erase.active {
   border-color: #c45a4a;
   color: #f0b8b0;
 }
 
-.editor-top-army > .brush.erase.active .icon-trash {
+.brush.erase.active .icon-trash {
   color: #e07060;
 }
 
@@ -2214,6 +2294,21 @@ button.primary:focus-visible {
   color: #b8ddd0;
 }
 
+.editor-brushes .brush.unit-token.exhausted.active {
+  border-color: #c9a227;
+  color: #f0d060;
+}
+
+.editor-brushes .brush.unit-token.neutral.active {
+  border-color: #8a8680;
+  color: #d8d0c4;
+}
+
+.editor-brushes .brush.unit-token.sleep.active {
+  border-color: #8aa0d0;
+  color: #c8d4f0;
+}
+
 .editor-label {
   color: var(--muted);
   margin-right: 0.25rem;
@@ -2237,6 +2332,11 @@ button.primary:focus-visible {
   align-items: center;
   gap: 0.4rem;
   padding: 0.28rem 0.6rem 0.28rem 0.32rem;
+}
+
+.editor-brushes .brush.erase {
+  padding: 0.35rem 0.65rem;
+  gap: 0.35rem;
 }
 
 .tile-swatch {
@@ -2264,10 +2364,13 @@ button.primary:focus-visible {
   border-color: #9a9080;
   color: #d0c8b8;
 }
-.editor-brushes .brush.wall.active,
-.editor-brushes .brush.house.active {
+.editor-brushes .brush.wall.active {
   border-color: #9aa0a8;
   color: #c8ced6;
+}
+.editor-brushes .brush.house.active {
+  border-color: #d04a2c;
+  color: #ecc888;
 }
 .editor-brushes .brush.palisade.active {
   border-color: #c4a060;
@@ -2515,6 +2618,10 @@ button.primary:focus-visible {
   border-color: var(--muted);
 }
 
+.levels-filter.empty:not(.active) {
+  opacity: 0.45;
+}
+
 .levels-group {
   margin: 0 0 1.25rem;
 }
@@ -2617,7 +2724,7 @@ button.primary:focus-visible {
   border-color: var(--sel);
 }
 
-.level-copy {
+.level-open .level-copy {
   display: flex;
   flex-direction: column;
   gap: 0.18rem;
@@ -2626,9 +2733,7 @@ button.primary:focus-visible {
 
 .level-open .level-name,
 .level-open .level-teaser {
-  grid-column: 1 / -1;
   min-width: 0;
-  padding: 0 0.15rem;
 }
 
 .level-open .level-details {
@@ -2724,6 +2829,10 @@ button.primary:focus-visible {
 
 .thumb-piece.purple {
   fill: var(--piece-purple);
+}
+
+.thumb-piece.neutral {
+  fill: var(--piece-neutral);
 }
 
 .level-row > button.danger,
@@ -3662,7 +3771,8 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 .reload-badge,
 .ammo-badge,
 .hp-badge,
-.stamina-empty-mark {
+.stamina-empty-mark,
+.sleep-zs {
   pointer-events: none;
 }
 
@@ -4031,6 +4141,14 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   fill: #4a5248;
 }
 
+.shot-inf {
+  color: #f0d060;
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1;
+  margin-left: 0.02rem;
+}
+
 .hp-pips,
 .units-pips {
   display: inline-flex;
@@ -4070,6 +4188,10 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 .hp-pips.purple .hp-pip.on,
 .units-pips.purple .units-pip.on {
   background: var(--piece-purple);
+}
+.hp-pips.neutral .hp-pip.on,
+.units-pips.neutral .units-pip.on {
+  background: var(--piece-neutral);
 }
 
 .hp-pips .hp-pip.on.general,
@@ -4714,6 +4836,11 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   font-weight: 650;
 }
 
+.log-side.neutral {
+  color: #c8c0b4;
+  font-weight: 650;
+}
+
 .log-dmg {
   display: block;
   margin-top: 0.18rem;
@@ -4803,7 +4930,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   .map-params button,
   .editor-brushes .brush,
   .editor-army .brush,
-  .editor-top-army > .brush.erase,
+  .brush.erase,
   .editor-side,
   .editor-control,
   .editor-save button,
@@ -4916,7 +5043,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 
   .editor-brushes .brush,
   .editor-army .brush,
-  .editor-top-army > .brush.erase {
+  .brush.erase {
     flex: 1 1 auto;
     padding: 0.55rem 0.7rem;
     font-size: 0.85rem;
@@ -4947,6 +5074,11 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 @media (min-width: 900px) and (max-width: 1180px) and (orientation: landscape) {
   #app {
     grid-template-columns: 1fr minmax(200px, 240px);
+  }
+
+  #app.start-screen,
+  #app.editor-screen {
+    grid-template-columns: 1fr;
   }
 
   .toolbar h1 {

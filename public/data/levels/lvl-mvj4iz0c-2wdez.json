@@ -70,8 +70,8 @@
     "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your stamina. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
     "star2": {
         "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "op": "lte",
+        "value": 4
     },
     "star3": {
         "metric": "casualties",
@@ -90,33 +90,67 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
+    "tokens": [
+        {
+            "type": "board",
+            "col": 4,
+            "row": 5,
+            "text": "Anthony is low on [energy], stomac empty and head fuzzy from last night out. Now he is going to teach those scarecrows what it means to be scared."
+        },
+        {
+            "type": "board",
+            "col": 1,
+            "row": 2,
+            "text": "The scarecrow up that hill will need some more energy [energy]. A good rest by the tree, or just anywhere, will replenish energy if needed."
+        },
+        {
+            "type": "board",
+            "col": 4,
+            "row": 2,
+            "text": "Now, crossing that pond looks tiring. It would be a good time to rest to gain some [energy]! \nAnthony heard people talk about a guy who did this ... but they were surely not talking about him."
+        },
+        {
+            "type": "board",
+            "col": 0,
+            "row": 4,
+            "text": "Note from the creator: This is not this kind of game where your first activity is chopping down trees with your bare fist to build tools. Nice try though. However, you did learn you can break thinks with enough resolve!"
+        },
+        {
+            "type": "tree",
+            "col": 0,
+            "row": 4
+        }
+    ],
     "sort": 0,
-    "updatedAt": 1793043961548,
+    "updatedAt": 1793126866290,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
             "col": 6,
             "row": 1,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvgpbg68f593",
             "col": 0,
             "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 0,
-            "row": 3,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "peasant",
-            "col": 2,
+            "col": 5,
             "row": 5,
-            "side": "red"
+            "side": "red",
+            "facing": 4
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
+            "row": 3,
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

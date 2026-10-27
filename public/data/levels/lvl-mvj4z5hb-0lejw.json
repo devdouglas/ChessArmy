@@ -23,7 +23,7 @@
             "high",
             "high",
             "land",
-            "water"
+            "land"
         ],
         [
             "rock",
@@ -33,7 +33,7 @@
             "high",
             "high",
             "land",
-            "water"
+            "land"
         ],
         [
             "rock",
@@ -42,7 +42,7 @@
             "land",
             "land",
             "land",
-            "water",
+            "land",
             "land"
         ],
         [
@@ -52,7 +52,7 @@
             "land",
             "land",
             "land",
-            "water",
+            "land",
             "land"
         ],
         [
@@ -62,7 +62,7 @@
             "land",
             "land",
             "land",
-            "water",
+            "land",
             "land"
         ],
         [
@@ -72,8 +72,8 @@
             "land",
             "land",
             "land",
-            "water",
-            "water"
+            "land",
+            "land"
         ],
         [
             "land",
@@ -83,7 +83,7 @@
             "land",
             "land",
             "land",
-            "water"
+            "land"
         ]
     ],
     "category": "tutorial",
@@ -91,13 +91,13 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "New armour, a proper sword and permission to hit things.",
-    "startText": "Anthony's training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked short but had a good grip. Or maybe his hands are just big.\n\nThe armour was less comfortable. It was also smellier than he had expected.\n\nHis instructor explained the essentials. The sword was for close fighting, the javelin for enemies at a little distance, and the armour for keeping one's organs where nature had put them.\n\nThree scarecrows waited in the yard.\n\nAt last, an assignment Anthony understood.",
+    "startText": "Anthony's training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked short but had a good grip. Or maybe his hands are just big.\n\nThe armour was less comfortable. It was also smellier than he had expected.\nHis instructor explained the essentials. The armour for keeping one's organs where nature had put them.\n\nThat night Anthony recognizes the 3 guys at the tavern. They fall asleep down the road.\n\nAt last, Anthony understood the signs.",
     "winText": "The scarecrows fell. Anthony tested the edge of his gladius, adjusted his armour and tried to look like a man who had always belonged in the army.\n\nFor the first time, he almost succeeded.",
     "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
     "star2": {
         "metric": "turns",
         "op": "lt",
-        "value": 6
+        "value": 20
     },
     "star3": {
         "metric": "casualties",
@@ -121,31 +121,77 @@
             "type": "wall",
             "col": 3,
             "row": 6
+        },
+        {
+            "type": "tree",
+            "col": 7,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 7,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 4
+        },
+        {
+            "type": "board",
+            "col": 2,
+            "row": 6,
+            "text": "Stronger units have different types of armor visualised by colors. Attacking on a green side will cause one regular melee damage. The orange side will cause 2 melee damage. Attacks on the red side does 3 melee damage."
+        },
+        {
+            "type": "board",
+            "col": 3,
+            "row": 4,
+            "text": "The armor makes quick turning around hard. Rotating towards a red side is considered an action. A minor annoyance unless you are cornered or feeling a pointy stick in your back."
+        },
+        {
+            "type": "board",
+            "col": 5,
+            "row": 2,
+            "text": "Use energy before your turn to double your actions. Move twice to maneuvre or hit the enemy twice."
         }
     ],
-    "sort": 5,
-    "updatedAt": 1793043696158,
+    "sort": 4,
+    "updatedAt": 1793131974515,
     "armies": [
         {
-            "type": "u-mvgpbg68f593",
+            "type": "u-mvr2vokzh3n3",
             "col": 1,
             "row": 2,
-            "side": "blue"
+            "side": "blue",
+            "unitTokens": [
+                "sleep",
+                "exhausted"
+            ],
+            "facing": 2
         },
         {
-            "type": "u-mvgpbg68f593",
+            "type": "u-mvr2vokzh3n3",
             "col": 4,
             "row": 1,
-            "side": "blue"
+            "side": "blue",
+            "unitTokens": [
+                "sleep",
+                "exhausted"
+            ]
         },
         {
-            "type": "u-mvgpbg68f593",
-            "col": 7,
-            "row": 4,
-            "side": "blue"
+            "type": "u-mvr2vokzh3n3",
+            "col": 6,
+            "row": 5,
+            "side": "blue",
+            "unitTokens": [
+                "sleep"
+            ],
+            "facing": 4
         },
         {
-            "type": "cohort",
+            "type": "u-mvr2vokzh3n3",
             "col": 3,
             "row": 6,
             "side": "red"

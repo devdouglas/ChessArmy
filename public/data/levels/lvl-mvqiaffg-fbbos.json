@@ -1,0 +1,479 @@
+{
+    "id": "lvl-mvqiaffg-fbbos",
+    "name": "Prison break",
+    "cols": 11,
+    "rows": 11,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "plateau",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 2,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 3,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 9,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 9,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 9,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 2,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "tree",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "tree",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 3
+        },
+        {
+            "type": "flag",
+            "col": 10,
+            "row": 10
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 9,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 1,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 6,
+            "row": 1
+        }
+    ],
+    "sort": 13,
+    "updatedAt": 1793109630086,
+    "armies": [
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 0,
+            "side": "red",
+            "unitTokens": [
+                "neutral"
+            ]
+        },
+        {
+            "type": "u-mvkn6vl7l0zw",
+            "col": 2,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvkn6vl7l0zw",
+            "col": 8,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "dude",
+            "col": 5,
+            "row": 10,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ],
+            "facing": 3
+        },
+        {
+            "type": "javelin",
+            "col": 4,
+            "row": 3,
+            "side": "blue",
+            "facing": 1
+        },
+        {
+            "type": "javelin",
+            "col": 6,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "wolf",
+            "col": 4,
+            "row": 6,
+            "side": "blue"
+        },
+        {
+            "type": "javelin",
+            "col": 8,
+            "row": 0,
+            "side": "red",
+            "unitTokens": [
+                "neutral"
+            ]
+        },
+        {
+            "type": "wolf",
+            "col": 5,
+            "row": 2,
+            "side": "blue",
+            "facing": 0
+        }
+    ]
+}

@@ -6,6 +6,7 @@ import {
   statsOf,
   type AbilityId,
   type Piece,
+  type Affiliation,
   type Side,
   type TokenType,
   type UnitRole,
@@ -121,20 +122,29 @@ const ICONS: Record<UnitRole, string> = {
     <rect x="-2.55" y="-1.7" width="6.15" height="0.9" rx="0.25"/>
     <path d="M3.25 -2.55 L5.55 -1.25 L3.25 0.05 Z"/>
   `,
-  // Scutum + galea
+  // Soldier behind the scutum; gladius in front, along the shield's right edge
   cohort: `
-    <path fill-rule="evenodd" d="M-8.6 -6.8
-      Q-9.6 0 -8.6 6.8
-      L-1.8 7.5
-      Q-2.8 0 -1.8 -7.4
-      Z
-      M-5.2 0 m-1.5 0 a1.5 1.5 0 1 0 3 0 a1.5 1.5 0 1 0 -3 0"/>
-    <circle cx="-5.2" cy="0" r="0.65"/>
-    <path d="M2.4 -8.8 L3.8 -9.4 L4.2 -4.6 H2.2 Z"/>
-    <path d="M0.8 -4.8
-      Q3.2 -7.4 5.6 -4.8
-      L5.8 -1.6
-      L5.2 7.2 H1.2 L0.8 -1.6 Z"/>
+    <g transform="translate(0.35,-1.15) scale(0.8)">
+      <circle cx="0" cy="-4.2" r="2.6"/>
+      <path d="M-4.2 -2.2 Q0 -5.5 4.2 -2.2 L3.2 0.5 H-3.2 Z"/>
+      <path d="M-3.4 1.2 H3.4 L2.6 6.5 H-2.6 Z"/>
+      <rect x="-0.7" y="1.5" width="1.4" height="4.5" rx="0.4"/>
+    </g>
+    <g transform="translate(6.5,1)">
+      <path fill-rule="evenodd" d="M-9.15 -5.55
+        Q-10.05 0.15 -9.15 5.85
+        L-5.45 6.45
+        Q-6.35 0.15 -5.45 -6.05
+        Z
+        M-7.3 0.15 m-1.05 0 a1.05 1.05 0 1 0 2.1 0 a1.05 1.05 0 1 0 -2.1 0"/>
+      <circle cx="-7.3" cy="0.15" r="0.42"/>
+    </g>
+    <g transform="translate(7.35,1.15)">
+      <path d="M-3.95 1.85 L-4.28 -2.15 L-3.55 -6.35 L-2.82 -2.15 L-3.15 1.85 Z"/>
+      <rect x="-4.55" y="1.75" width="2.0" height="0.72" rx="0.16"/>
+      <rect x="-3.82" y="2.42" width="0.54" height="2.05" rx="0.16"/>
+      <circle cx="-3.55" cy="4.95" r="0.72"/>
+    </g>
   `,
   // Helmet behind aspis, crest above the rim
   hoplite: `
@@ -413,34 +423,34 @@ export function tokenGlyphSvg(
     </g>`;
   }
   if (type === 'house') {
-    const r = size;
-    const sw = Math.max(1.2, r * 0.09);
-    const ink = Math.max(0.7, r * 0.045);
-    const gs = r / 10;
-    const hex = occupied
-      ? ''
-      : `<polygon points="${hexCorners(0, 0, r, o)}" fill="var(--wall)" stroke="var(--wall-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
-      <polygon points="${hexCorners(0, 0, r * 0.78, o)}" fill="var(--wall-hi)" opacity="0.35" stroke="var(--wall-ink)" stroke-width="${ink.toFixed(2)}" stroke-linejoin="miter"/>`;
+    const gs = size / 10;
     return `<g class="token-house${occupied ? ' occupied' : ''}">
-      ${hex}
       <g transform="scale(${gs.toFixed(3)})">
-        <ellipse cx="0" cy="6.25" rx="5.5" ry="1.3" fill="#1a1410" opacity="0.32"/>
-        <path d="M-5.55 0.2 L0 -6.7 L5.55 0.2 Z" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.48" stroke-linejoin="round"/>
-        <rect x="-4.2" y="0.05" width="8.4" height="6.45" rx="0.3" fill="var(--wall-lo)" stroke="var(--wall-ink)" stroke-width="0.45"/>
-        <rect x="-1.05" y="3.05" width="2.1" height="3.45" rx="0.18" fill="var(--wall-ink)"/>
-        <rect x="-3.45" y="1.25" width="1.85" height="1.5" rx="0.12" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.28"/>
-        <rect x="1.6" y="1.25" width="1.85" height="1.5" rx="0.12" fill="var(--wall-hi)" stroke="var(--wall-ink)" stroke-width="0.28"/>
+        <ellipse cx="0.35" cy="6.45" rx="6.4" ry="1.25" fill="#1a1410" opacity="0.3"/>
+        <path d="M-6.95 5.9 C-7.7 1.6 -7.25 -3.35 -6.4 -6.55 C-6.05 -7.7 -5.45 -7.7 -5.1 -6.55 C-4.25 -3.35 -3.8 1.6 -4.55 5.9 Z" fill="var(--house-cypress)"/>
+        <path d="M-6.55 -1.1 C-6.4 -3.4 -6.15 -5.35 -5.75 -6.35 C-5.55 -6.2 -5.4 -5.2 -5.35 -3.4 C-5.3 -1.5 -5.45 0.55 -5.7 2.2 Z" fill="var(--house-cypress-hi)" opacity="0.45"/>
+        <rect x="-5.95" y="5.55" width="0.9" height="1.2" rx="0.12" fill="var(--house-ink)"/>
+        <rect x="-4.2" y="0.2" width="8.9" height="5.85" rx="0.28" fill="var(--house-plaster)" stroke="var(--house-ink)" stroke-width="0.45"/>
+        <rect x="-4.2" y="0.2" width="8.9" height="1.35" fill="var(--house-plaster-hi)" opacity="0.55"/>
+        <rect x="-4.2" y="4.55" width="8.9" height="1.5" fill="var(--house-plaster-lo)" opacity="0.38"/>
+        <path d="M-5.95 0.7 L0 -5.35 L5.95 0.7 Z" fill="var(--house-roof)" stroke="var(--house-ink)" stroke-width="0.48" stroke-linejoin="round"/>
+        <path d="M-4.55 -0.85 L4.55 -0.85 M-3.3 -2.2 L3.3 -2.2 M-1.95 -3.55 L1.95 -3.55" fill="none" stroke="var(--house-roof-lo)" stroke-width="0.4" stroke-linecap="round"/>
+        <rect x="-6.05" y="0.28" width="12.1" height="0.72" rx="0.14" fill="var(--house-roof-lo)"/>
+        <path d="M-0.7 -5.2 L0 -5.95 L0.7 -5.2 Z" fill="var(--house-roof-hi)"/>
+        <rect x="-1.4" y="1.42" width="2.8" height="0.42" rx="0.08" fill="var(--house-ink)"/>
+        <path d="M-1.05 6.05 V2.55 Q-1.05 1.72 0 1.72 Q1.05 1.72 1.05 2.55 V6.05 Z" fill="var(--house-door)" stroke="var(--house-ink)" stroke-width="0.28"/>
+        <rect x="2.2" y="1.85" width="1.7" height="1.4" rx="0.12" fill="var(--house-door)" stroke="var(--house-ink)" stroke-width="0.22"/>
+        <rect x="-3.55" y="1.85" width="1.55" height="1.4" rx="0.12" fill="var(--house-door)" stroke="var(--house-ink)" stroke-width="0.22"/>
+        <ellipse cx="5.25" cy="5.55" rx="1.55" ry="0.88" fill="var(--house-hay)"/>
+        <ellipse cx="5.1" cy="5.2" rx="1.15" ry="0.52" fill="var(--house-hay-hi)" opacity="0.75"/>
       </g>
     </g>`;
   }
   if (type === 'tree') {
-    const r = size;
-    const sw = Math.max(1.1, r * 0.08);
-    const gs = r / 10;
+    const gs = size / 10;
     const left = hp ?? PALISADE_HP;
     const chips = Math.max(0, PALISADE_HP - left);
     return `<g class="token-tree${chips ? ' damaged' : ''}">
-      <polygon points="${hexCorners(0, 0, r, o)}" fill="var(--palisade)" stroke="var(--palisade-stroke)" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
       <g transform="scale(${gs.toFixed(3)})">
         ${treeMarkSvg(chips)}
       </g>
@@ -622,8 +632,13 @@ export function staminaPipsHtml(left: number, max: number): string {
 export const SHOT_ARROW =
   'M0 -6.5 L3.6 -1.15 H1.35 V3.35 H2.55 L1.15 6.5 H-1.15 L-2.55 3.35 H-1.35 V-1.15 H-3.6 Z';
 
-/** Shot pips — gold ready, orange reloading, grey spent. */
-export function shotPipsHtml(left: number, max: number, reloading = false): string {
+/** Shot pips — gold ready, orange reloading, grey spent. `unlimited` adds ∞ beside the arrow. */
+export function shotPipsHtml(
+  left: number,
+  max: number,
+  reloading = false,
+  unlimited = false,
+): string {
   if (max <= 0) return '';
   const ready = Math.max(0, Math.min(max, Math.floor(left)));
   const cooling = reloading && ready < max ? 1 : 0;
@@ -631,18 +646,23 @@ export function shotPipsHtml(left: number, max: number, reloading = false): stri
     const cls = i < ready ? 'on' : i < ready + cooling ? 'reload' : 'off';
     return `<svg class="shot-pip ${cls}" viewBox="-4 -7 8 14" width="10" height="16" aria-hidden="true"><path d="${SHOT_ARROW}"/></svg>`;
   }).join('');
-  const label = reloading
-    ? `Shots ${ready} of ${max}, reloading`
-    : `Shots ${ready} of ${max}`;
-  return `<span class="shot-pips" aria-label="${label}">${pips}</span>`;
+  const inf = unlimited ? '<span class="shot-inf" aria-hidden="true">∞</span>' : '';
+  const label = unlimited
+    ? reloading
+      ? 'Unlimited shots, reloading'
+      : 'Unlimited shots'
+    : reloading
+      ? `Shots ${ready} of ${max}, reloading`
+      : `Shots ${ready} of ${max}`;
+  return `<span class="shot-pips" aria-label="${label}">${pips}${inf}</span>`;
 }
 
-/** Ammo pips for a piece. Unlimited guns get one chamber pip. */
+/** Ammo pips for a piece. Unlimited guns get one arrow and ∞. */
 export function pieceShotPipsHtml(piece: Piece): string {
   const s = statsOf(piece.type);
   if (s.shoot <= 0) return '';
   const reloading = isReloading(piece);
-  if (s.ammo <= 0) return shotPipsHtml(reloading ? 0 : 1, 1, reloading);
+  if (s.ammo <= 0) return shotPipsHtml(reloading ? 0 : 1, 1, reloading, true);
   return shotPipsHtml(ammoLeft(piece) ?? 0, s.ammo, reloading);
 }
 
@@ -650,7 +670,7 @@ function factionBlockPips(
   kind: 'hp' | 'units',
   left: number,
   max: number,
-  side: Side | 'catalog',
+  side: Affiliation | 'catalog',
   label: string,
   generalFirst = false,
 ): string {
@@ -669,7 +689,7 @@ function factionBlockPips(
 export function hpPipsHtml(
   left: number,
   max: number,
-  side: Side | 'catalog',
+  side: Affiliation | 'catalog',
   generalFirst = false,
 ): string {
   return factionBlockPips('hp', left, max, side, 'HP', generalFirst);
@@ -734,11 +754,57 @@ export function hiddenBadgeSvg(cx: number, cy: number, r = 7): string {
       </g>`;
 }
 
+export function exhaustedBadgeSvg(cx: number, cy: number, r = 7): string {
+  const s = (r * 0.78) / 5.6;
+  return `
+      <g class="ability-badge exhausted" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#1c1810" stroke="#c9a227" stroke-width="1.3"/>
+        <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#6a5a28"/>
+      </g>`;
+}
+
+export function neutralBadgeSvg(cx: number, cy: number, r = 7): string {
+  const sw = Math.max(0.85, r * 0.16);
+  return `
+      <g class="ability-badge neutral" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#2a2824" stroke="#8a8680" stroke-width="1.3"/>
+        <circle cx="0" cy="0.1" r="${(r * 0.42).toFixed(2)}" fill="none" stroke="#d8d0c4" stroke-width="${sw.toFixed(2)}"/>
+      </g>`;
+}
+
+/** Two Z's, smaller one up-right. On the piece while Sleep is active. */
+export function sleepZsSvg(cx: number, cy: number, r = 7): string {
+  const big = Math.max(9, r * 1.55);
+  const small = big * 0.68;
+  const sw = Math.max(0.7, r * 0.11);
+  const letter = (x: number, y: number, fs: number) =>
+    `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="middle" dominant-baseline="central" font-size="${fs.toFixed(2)}" font-weight="800" font-family="inherit" fill="#f4f7ff" stroke="#12151c" stroke-width="${sw.toFixed(2)}" paint-order="stroke">Z</text>`;
+  return `
+    <g class="sleep-zs" transform="translate(${cx}, ${cy})">
+      ${letter(-r * 0.22, r * 0.18, big)}
+      ${letter(r * 0.52, -r * 0.5, small)}
+    </g>`;
+}
+
+export function sleepBadgeSvg(cx: number, cy: number, r = 7): string {
+  const moon = r * 0.42;
+  const cut = r * 0.32;
+  const ox = r * 0.18;
+  return `
+      <g class="ability-badge sleep" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#141824" stroke="#8aa0d0" stroke-width="1.3"/>
+        <path fill="#d0d8f0" fill-rule="evenodd" d="M ${(-ox).toFixed(2)} ${(-moon).toFixed(2)} A ${moon.toFixed(2)} ${moon.toFixed(2)} 0 1 0 ${(-ox).toFixed(2)} ${moon.toFixed(2)} A ${cut.toFixed(2)} ${cut.toFixed(2)} 0 1 1 ${(-ox).toFixed(2)} ${(-moon).toFixed(2)}"/>
+      </g>`;
+}
+
 /** Editor swatch for a unit token. */
 export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   const r = size * 0.42;
   if (id === 'general') return abilityBadgeSvg('general', 0, 0, r);
   if (id === 'hidden') return hiddenBadgeSvg(0, 0, r);
+  if (id === 'exhausted') return exhaustedBadgeSvg(0, 0, r);
+  if (id === 'neutral') return neutralBadgeSvg(0, 0, r);
+  if (id === 'sleep') return sleepBadgeSvg(0, 0, r);
   return '';
 }
 
@@ -767,7 +833,7 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   javelin: 'javelins',
   horsearcher: 'horse bow',
   chariotarcher: 'chariot bow',
-  cohort: 'scutum',
+  cohort: 'soldier scutum gladius',
   hoplite: 'aspis',
   elephant: 'war elephant',
   barbarian: 'axe',

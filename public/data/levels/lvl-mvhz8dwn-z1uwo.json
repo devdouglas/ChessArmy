@@ -120,9 +120,9 @@
         "value": 0
     },
     "star3": {
-        "metric": "turns",
-        "op": "lte",
-        "value": 11
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
     },
     "armyControls": {
         "red": "player",
@@ -137,8 +137,8 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 4,
-    "updatedAt": 1793043696158,
+    "sort": 5,
+    "updatedAt": 1793131315177,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

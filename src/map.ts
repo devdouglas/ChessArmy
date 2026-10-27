@@ -15,10 +15,13 @@ import {
   statsOf,
   hpMax,
   staminaMax,
+  hasUnitToken,
+  stampAffiliation,
   type ArmyControl,
   type AiStyle,
   type GameState,
   type Piece,
+  type Affiliation,
   type Side,
   type Terrain,
   type TileToken,
@@ -328,7 +331,7 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
 }
 
 let idSeq = 0;
-function pid(side: Side, type: UnitType): string {
+function pid(side: Affiliation, type: UnitType): string {
   idSeq += 1;
   return `${side}-${type}-${idSeq}`;
 }
@@ -477,7 +480,7 @@ export type ArmyStamp = {
   type: UnitType;
   col: number;
   row: number;
-  side: Side;
+  side: Affiliation;
   unitTokens?: UnitTokenType[];
   /** Cube facing. Missing → defaultFacing(side). */
   facing?: HexDir;
@@ -488,7 +491,7 @@ export function facingFromStamp(p: Pick<ArmyStamp, 'side' | 'facing'>): HexDir {
 }
 
 /** Persist only when it differs from the side's default. */
-export function sanitizeStampFacing(side: Side, raw: unknown): HexDir | undefined {
+export function sanitizeStampFacing(side: Affiliation, raw: unknown): HexDir | undefined {
   if (!isHexDir(raw)) return undefined;
   return raw === defaultFacing(side) ? undefined : raw;
 }
@@ -558,7 +561,7 @@ export function placeSlots(
 
 /** Nearest map edge for a side's pieces. Empty → that side's default edge. */
 export function inferArmyEdge(
-  pieces: Array<{ col: number; row: number; side: Side }>,
+  pieces: Array<{ col: number; row: number; side: Affiliation }>,
   side: Side,
   cols: number,
   rows: number,
@@ -579,7 +582,7 @@ export function inferArmyEdge(
 
 /** Unique edge occupancy from piece positions. Empty sides do not claim an edge. */
 export function inferEdgeOwners(
-  pieces: Array<{ col: number; row: number; side: Side }>,
+  pieces: Array<{ col: number; row: number; side: Affiliation }>,
   cols: number,
   rows: number,
 ): Record<ArmyEdge, Side | null> {
@@ -619,9 +622,10 @@ export function stockSlots(cols: number, rows: number): ArmySlot[] {
 export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
   return stamps.map((p) => {
     const tokens = stampTokens(p.unitTokens);
+    const side = stampAffiliation({ side: p.side, unitTokens: tokens });
     const piece: Piece = {
-      id: pid(p.side, p.type),
-      side: p.side,
+      id: pid(side, p.type),
+      side,
       type: p.type,
       col: p.col,
       row: p.row,
@@ -634,7 +638,8 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
     const max = hpMax(piece);
     piece.hp = max > 1 ? max : undefined;
     const stam = staminaMax(piece);
-    piece.stamina = stam > 0 ? stam : undefined;
+    if (hasUnitToken(piece, 'exhausted') && stam > 0) piece.stamina = 0;
+    else piece.stamina = stam > 0 ? stam : undefined;
     return piece;
   });
 }

@@ -58,7 +58,49 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   h.facing = 5;
   const a = pickAiAction(s);
   assert(a?.kind === 'rotate' && a.pieceId === h.id, 'unprovoked hold rotates, does not march');
-  assert(a.dir === 0, 'turns toward the nearest enemy');
+  assert(a.dir === 0, 'turns toward the nearest enemy in Sight');
+}
+
+{
+  const out = neighborInDir(
+    neighborInDir(neighborInDir(origin, 0, 'pointy'), 0, 'pointy'),
+    0,
+    'pointy',
+  );
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  const h = blueHoplite(s);
+  h.facing = 5;
+  const a = pickAiAction(s);
+  assert(a?.kind === 'rest' && a.pieceId === h.id, 'beyond Sight: no turn');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: far.col, row: far.row, side: 'red' }]);
+  s.tokens = [...(s.tokens ?? []), { type: 'wall', col: front.col, row: front.row }];
+  const h = blueHoplite(s);
+  h.facing = 5;
+  const a = pickAiAction(s);
+  assert(a?.kind === 'rest' && a.pieceId === h.id, 'wall in the way: no turn');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  const h = blueHoplite(s);
+  h.facing = 0;
+  const idle = pickAiAction(s);
+  assert(idle?.kind === 'rest', 'first look beyond Sight is a rest');
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  const a = pickAiAction(s);
+  assert(a?.kind === 'move' && a.pieceId === h.id, 'enemy entering Sight → they come');
+  const before = distance(origin, far, s.orientation);
+  assert(a.kind === 'move' && distance(a.to, far, s.orientation) < before, 'close on the contact');
 }
 
 {
@@ -145,6 +187,87 @@ setAiRule('aggressive', 'guard-owned-flags', false);
     a?.kind === 'move' && a.to.col === near.col && a.to.row === near.row,
     'provoked: attack the nearest unit, not the far general',
   );
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  s.tokens = [...(s.tokens ?? []), { type: 'forest', col: far.col, row: far.row }];
+  const h = blueHoplite(s);
+  h.facing = 0;
+  pickAiAction(s);
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  const a = pickAiAction(s);
+  assert(a?.kind === 'rest' || a?.kind === 'rotate', 'forest cover: no LOS charge');
+  assert(a?.kind !== 'move', 'entering forest does not pull holders');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  s.tokens = [...(s.tokens ?? []), { type: 'house', col: far.col, row: far.row }];
+  const h = blueHoplite(s);
+  h.facing = 0;
+  pickAiAction(s);
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  const a = pickAiAction(s);
+  assert(a?.kind !== 'move', 'house cover: no LOS charge');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  const h = blueHoplite(s);
+  h.facing = 0;
+  pickAiAction(s);
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  grunt.unitTokens = ['hidden'];
+  const a = pickAiAction(s);
+  assert(a?.kind !== 'move', 'hidden token: no LOS charge');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  s.tokens = [...(s.tokens ?? []), { type: 'forest', col: origin.col, row: origin.row }];
+  const h = blueHoplite(s);
+  h.facing = 0;
+  pickAiAction(s);
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  const a = pickAiAction(s);
+  assert(a?.kind !== 'move', 'holder in forest is not pulled out by Sight');
+}
+
+{
+  const front = neighborInDir(origin, 0, 'pointy');
+  const far = neighborInDir(front, 0, 'pointy');
+  const out = neighborInDir(far, 0, 'pointy');
+  const s = board([{ type: 'soldier', col: out.col, row: out.row, side: 'red' }]);
+  s.tokens = [...(s.tokens ?? []), { type: 'house', col: origin.col, row: origin.row }];
+  const h = blueHoplite(s);
+  h.facing = 0;
+  pickAiAction(s);
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  grunt.col = far.col;
+  grunt.row = far.row;
+  const a = pickAiAction(s);
+  assert(a?.kind !== 'move', 'holder in a house is not pulled out by Sight');
 }
 
 setAiRule('aggressive', 'hunt-enemy-general', true);

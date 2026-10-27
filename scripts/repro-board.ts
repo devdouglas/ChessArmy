@@ -1,5 +1,6 @@
 import {
   applyAction,
+  editorOpensBoardPopup,
   isPlayerControlled,
   sanitizeTokens,
   tokenAt,
@@ -45,6 +46,18 @@ function board(): GameState {
 }
 
 {
+  assert(editorOpensBoardPopup('board', true, true), 'board brush edits existing');
+  assert(editorOpensBoardPopup('land', true, true), 'land click (editor default) edits existing');
+  assert(editorOpensBoardPopup('water', true, true), 'terrain click edits existing');
+  assert(!editorOpensBoardPopup('land', true, false), 'drag does not reopen');
+  assert(!editorOpensBoardPopup('land', false, true), 'empty hex does not popup');
+  assert(!editorOpensBoardPopup('pikes', true, true), 'other tokens still stack');
+  assert(!editorOpensBoardPopup('erase', true, true), 'erase still erases');
+  assert(!editorOpensBoardPopup('soldier', true, true), 'unit brush still paints');
+  assert(!editorOpensBoardPopup('unit:general', true, true), 'unit token still stamps');
+}
+
+{
   const s = board();
   const tok = tokenAt(s.tokens, step)!;
   assert(tok.type === 'board' && !tok.read, 'unread at kickoff');
@@ -58,6 +71,11 @@ function board(): GameState {
     after.log.some((line) => line.includes('message board')),
     'log mentions the board',
   );
+  assert(after.staminaBonus, 'unused stamina still hangs after the walk');
+  assert(after.scoutPieceId === soldier.id, 'bonus lock is this walker');
+  const skipped = applyAction(after, { kind: 'skip' });
+  assert(!skipped.staminaBonus, 'skip clears the unarmed extra');
+  assert(!skipped.scoutPieceId, 'skip clears the scout lock');
 }
 
 {

@@ -3,7 +3,7 @@ import {
   clampUnitsPerTurn,
   isKnownUnit,
   sanitizeUnitTokens,
-  isSide,
+  isAffiliation,
   sanitizeArmyControls,
   sanitizeAiStyles,
   sanitizeTokens,
@@ -273,7 +273,7 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
     if (!item || typeof item !== 'object') continue;
     const p = item as Partial<ArmyStamp>;
     if (!validType(p.type)) continue;
-    const side = isSide(p.side) ? p.side : null;
+    const side = isAffiliation(p.side) ? p.side : null;
     if (!side) continue;
     const col = Math.floor(Number(p.col));
     const row = Math.floor(Number(p.row));

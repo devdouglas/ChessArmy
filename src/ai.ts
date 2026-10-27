@@ -4,11 +4,12 @@
  * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
  * 3 Targeting — hunt: nearest enemy (Attack); else advance the front; else guard owned flags.
  * 4 Chasing — close on that hunt, prefer high ground.
- * 5 Defending — smash walls on the path; hold and face the nearest enemy.
+ * 5 Defending — smash walls on the path; hold and face only enemies in Sight.
  * 6 Retreating — do not flee the hunt; if not hunting, walk home; avoid skip.
  * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
  * Last remaining pieces all concealed → unhide + that AI goes aggressive, but
  * only if that side already had a visible unit. Kickoff ambush stays camped.
+ * Sleep token: not active until hit. No rest, no stamina. Awake allies act.
  */
 
 import {
@@ -21,6 +22,8 @@ import {
   hasSplash,
   hpLeft,
   isHostile,
+  pieceSees,
+  pieceVisibleTo,
   pathForMove,
   pieceAt,
   previewMove,
@@ -29,15 +32,15 @@ import {
   splashHitsEnemy,
   terrainAt,
   terrainHeight,
-  tokenAt,
+  tokenOnHex,
   UNIT_STATS,
   isNoTouch,
   hexDamageOn,
   hexDamagePushHits,
   isBlockedWalk,
   flushLastHiddenArmies,
+  hidesHoldLos,
   isConcealed,
-  isConcealedFrom,
   type Action,
   aiStyleOf,
   type GameState,
@@ -62,7 +65,7 @@ function nearestEnemy(state: GameState, from: Hex, me: Side): Piece | null {
   let best: Piece | null = null;
   let bestD = Infinity;
   for (const p of state.pieces) {
-    if (!isHostile(state, p.side, me) || isConcealedFrom(state, p, me)) continue;
+    if (!isHostile(state, p.side, me) || !pieceVisibleTo(state, p, me)) continue;
     const d = dist(state, from, { col: p.col, row: p.row });
     if (d < bestD) {
       bestD = d;
@@ -70,6 +73,64 @@ function nearestEnemy(state: GameState, from: Hex, me: Side): Piece | null {
     }
   }
   return best;
+}
+
+function nearestHostile(state: GameState, from: Hex, me: Side): Piece | null {
+  let best: Piece | null = null;
+  let bestD = Infinity;
+  for (const p of state.pieces) {
+    if (!isHostile(state, p.side, me)) continue;
+    const d = dist(state, from, { col: p.col, row: p.row });
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
+function visiblesInSight(state: GameState, piece: Piece, me: Side): Piece[] {
+  return state.pieces.filter(
+    (p) =>
+      p.id !== piece.id &&
+      isHostile(state, p.side, me) &&
+      !hidesHoldLos(state, p) &&
+      pieceSees(state, piece, p),
+  );
+}
+
+function nearestInSight(state: GameState, piece: Piece, me: Side): Piece | null {
+  const from: Hex = { col: piece.col, row: piece.row };
+  let best: Piece | null = null;
+  let bestD = Infinity;
+  for (const p of visiblesInSight(state, piece, me)) {
+    const d = dist(state, from, { col: p.col, row: p.row });
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
+/** Snapshot Sight, then mark a new contact like a ranged hit. */
+function scanHoldLos(state: GameState, me: Side): void {
+  for (const p of state.pieces) {
+    if (p.side !== me) continue;
+    const visIds = visiblesInSight(state, p, me).map((x) => x.id);
+    if (!p.holdSawIds) {
+      p.holdSawIds = visIds;
+      continue;
+    }
+    p.holdSawIds = p.holdSawIds.filter((id) => visIds.includes(id));
+    const entered = visIds.some((id) => !p.holdSawIds!.includes(id));
+    p.holdSawIds = [...new Set([...p.holdSawIds, ...visIds])];
+    if (entered && !hidesHoldLos(state, p)) p.losHit = true;
+  }
+}
+
+function isHoldProvoked(piece: Piece): boolean {
+  return !!piece.rangedHit || !!piece.losHit;
 }
 
 /** Cube dir whose neighbor is closest to `to`. */
@@ -110,7 +171,7 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
   // Attack beats Advance when both are on — otherwise they walk the far edge
   // and look like they're wandering / retreating past live enemies.
   if (on('hunt-enemy-general')) {
-    const near = nearestEnemy(state, from, me);
+    const near = nearestEnemy(state, from, me) ?? nearestHostile(state, from, me);
     if (near) return { col: near.col, row: near.row };
   }
   if (on('advance-front')) {
@@ -369,6 +430,7 @@ function isAttackAction(state: GameState, action: Action, me: Side): boolean {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
     const plan = previewMove(state, piece, action.to);
+    if (plan.converts.length) return true;
     if (plan.hits.some((h) => {
       const v = getPiece(state, h.id);
       return !!v && isHostile(state, v.side, me);
@@ -438,7 +500,7 @@ function moveStepsOnPikes(state: GameState, piece: Piece, to: Hex): boolean {
   const plan = previewMove(state, piece, to);
   if (eq(from, plan.stop)) return false;
   for (const h of pathForMove(state, piece, to)) {
-    if (tokenAt(state.tokens, h)?.type === 'pikes') return true;
+    if (tokenOnHex(state.tokens, h, 'pikes')) return true;
     if (hexDamageOn(state, h, piece.side)) return true;
     if (eq(h, plan.stop)) break;
   }
@@ -475,6 +537,10 @@ function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
   if (action.kind !== 'move') return out;
   const plan = previewMove(state, piece, action.to);
   for (const h of plan.hits) add(getPiece(state, h.id));
+  for (const id of plan.converts) {
+    const v = getPiece(state, id);
+    if (v && !out.some((x) => x.id === v.id)) out.push(v);
+  }
   add(pieceAt(state, plan.stop));
   for (const t of hexDamagePushHits(state, piece, {
     col: plan.stop.col,
@@ -533,7 +599,7 @@ function moveTouchesNoTouch(state: GameState, action: Action): boolean {
 
 /** Stay put only when Hold is on and Attack/flag-hunt is not pulling them. */
 function isHolding(state: GameState, piece: Piece, me: Side, on: RuleOn): boolean {
-  if (!on('hold-position') || piece.rangedHit) return false;
+  if (!on('hold-position') || isHoldProvoked(piece)) return false;
   return huntHex(state, { col: piece.col, row: piece.row }, me, on) == null;
 }
 
@@ -541,7 +607,7 @@ function isHolding(state: GameState, piece: Piece, me: Side, on: RuleOn): boolea
 function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
   if (action.kind !== 'move') return false;
   const piece = getPiece(state, action.pieceId);
-  if (!piece || piece.rangedHit) return false;
+  if (!piece || isHoldProvoked(piece)) return false;
   const from: Hex = { col: piece.col, row: piece.row };
   const occ = pieceAt(state, action.to);
   if (occ && isHostile(state, occ.side, me) && dist(state, from, action.to) === 1) return false;
@@ -556,8 +622,8 @@ function moveCapturesFlag(state: GameState, action: Action, me: Side): boolean {
   const plan = previewMove(state, piece, action.to);
   if (eq(from, plan.stop)) return false;
   for (const h of pathForMove(state, piece, action.to)) {
-    const tok = tokenAt(state.tokens, h);
-    if (tok?.type === 'flag' && (!tok.owner || isHostile(state, tok.owner, me))) return true;
+    const tok = tokenOnHex(state.tokens, h, 'flag');
+    if (tok && (!tok.owner || isHostile(state, tok.owner, me))) return true;
     if (eq(h, plan.stop)) break;
   }
   return false;
@@ -603,7 +669,9 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
 
   const hunt = huntHex(state, from, me, on);
   const foe =
-    on('hold-position') && piece.rangedHit ? nearestEnemy(state, from, me) : null;
+    on('hold-position') && isHoldProvoked(piece)
+      ? (nearestInSight(state, piece, me) ?? nearestHostile(state, from, me))
+      : null;
   const blocking = hunt ? blockingDefenses(state, from, hunt) : [];
   const hitsBlocking = blocking.some((h) => actionHitsDefenseHex(state, action, h));
   if (on('targets-defenses') && hitsBlocking) {
@@ -627,7 +695,7 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
       score -= 600;
       return score;
     }
-    const enemy = nearestEnemy(state, from, me);
+    const enemy = nearestInSight(state, piece, me);
     const want = enemy
       ? faceToward(state, from, { col: enemy.col, row: enemy.row })
       : null;
@@ -712,7 +780,7 @@ function holdAction(
     const p = getPiece(state, id);
     if (!p) continue;
     const from: Hex = { col: p.col, row: p.row };
-    const enemy = nearestEnemy(state, from, me);
+    const enemy = nearestInSight(state, p, me);
     if (enemy) {
       const want = faceToward(state, from, { col: enemy.col, row: enemy.row });
       if (want != null && want !== facingOf(p)) {
@@ -736,7 +804,7 @@ function isMobileAction(state: GameState, action: Action): boolean {
   if (action.kind === 'skip') return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
-  return !!piece.rangedHit;
+  return isHoldProvoked(piece);
 }
 
 /** Drop own-general actions while any other piece can still act. Scout lock is sacred. */
@@ -838,7 +906,9 @@ export function pickAiAction(state: GameState): Action | null {
   flushLastHiddenArmies(state);
   const me = state.turn;
   const on = rulesFor(state);
-  const actions = allLegalActions(state).filter((a) => {
+  if (on('hold-position')) scanHoldLos(state, me);
+  const raw = allLegalActions(state);
+  const actions = raw.filter((a) => {
     if (!hiddenCamperOk(state, a, me)) return false;
     if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
     if (

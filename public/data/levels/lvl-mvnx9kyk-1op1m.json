@@ -521,7 +521,7 @@
     },
     "tokens": [],
     "sort": 8,
-    "updatedAt": 1792938497272,
+    "updatedAt": 1793109700098,
     "armies": [
         {
             "type": "u-mvf8ty84rdk3",
@@ -582,72 +582,240 @@
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 10,
-            "row": 0,
+            "col": 0,
+            "row": 10,
             "side": "yellow",
             "unitTokens": [
                 "general"
             ]
         },
         {
-            "type": "u-mvf8ty84rdk3",
-            "col": 8,
-            "row": 0,
+            "type": "archer",
+            "col": 0,
+            "row": 13,
             "side": "yellow"
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 6,
-            "row": 0,
+            "col": 0,
+            "row": 12,
+            "side": "yellow"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 0,
+            "row": 14,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 6,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 8,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 10,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 12,
+            "side": "yellow"
+        },
+        {
+            "type": "hoplite",
+            "col": 1,
+            "row": 14,
+            "side": "yellow"
+        },
+        {
+            "type": "archer",
+            "col": 0,
+            "row": 7,
+            "side": "yellow"
+        },
+        {
+            "type": "archer",
+            "col": 0,
+            "row": 9,
             "side": "yellow"
         },
         {
             "type": "barbarian",
+            "col": 13,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "barbarian",
+            "col": 7,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "horsearcher",
             "col": 14,
             "row": 1,
-            "side": "yellow"
+            "side": "blue"
         },
         {
-            "type": "barbarian",
+            "type": "horsearcher",
             "col": 12,
             "row": 1,
-            "side": "yellow"
+            "side": "blue"
+        },
+        {
+            "type": "horsearcher",
+            "col": 10,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "horsearcher",
+            "col": 8,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "horsearcher",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvf8ty84rdk3",
+            "col": 10,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
             "type": "barbarian",
             "col": 10,
-            "row": 1,
-            "side": "yellow"
+            "row": 2,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 14,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 14,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 13,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 12,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 11,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 10,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 9,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 8,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 19,
+            "row": 6,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 6,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 7,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 13,
+            "side": "purple"
         },
         {
             "type": "javelin",
-            "col": 13,
-            "row": 0,
-            "side": "yellow"
+            "col": 20,
+            "row": 12,
+            "side": "purple"
         },
         {
             "type": "javelin",
-            "col": 11,
-            "row": 0,
-            "side": "yellow"
+            "col": 19,
+            "row": 7,
+            "side": "purple"
         },
         {
-            "type": "javelin",
-            "col": 7,
-            "row": 0,
-            "side": "yellow"
+            "type": "u-mvf8ty84rdk3",
+            "col": 20,
+            "row": 11,
+            "side": "purple",
+            "unitTokens": [
+                "general"
+            ]
         },
         {
-            "type": "barbarian",
-            "col": 8,
-            "row": 1,
-            "side": "yellow"
+            "type": "archer",
+            "col": 20,
+            "row": 8,
+            "side": "purple"
         },
         {
-            "type": "barbarian",
-            "col": 6,
-            "row": 1,
-            "side": "yellow"
+            "type": "peasant",
+            "col": 19,
+            "row": 10,
+            "side": "purple"
+        },
+        {
+            "type": "peasant",
+            "col": 20,
+            "row": 9,
+            "side": "purple"
         }
     ]
 }

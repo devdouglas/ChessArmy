@@ -428,31 +428,11 @@
     {
         "id": "frm-mvkyr8mq-hb5lx",
         "name": "Peasants",
-        "cols": 13,
+        "cols": 21,
         "slots": [
             {
                 "type": "peasant",
-                "col": 2,
-                "fromBack": 1
-            },
-            {
-                "type": "peasant",
-                "col": 2,
-                "fromBack": 0
-            },
-            {
-                "type": "peasant",
-                "col": 3,
-                "fromBack": 1
-            },
-            {
-                "type": "peasant",
-                "col": 4,
-                "fromBack": 1
-            },
-            {
-                "type": "peasant",
-                "col": 5,
+                "col": 6,
                 "fromBack": 1
             },
             {
@@ -472,7 +452,7 @@
             },
             {
                 "type": "peasant",
-                "col": 10,
+                "col": 9,
                 "fromBack": 1
             },
             {
@@ -482,27 +462,47 @@
             },
             {
                 "type": "peasant",
-                "col": 9,
+                "col": 11,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 12,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 14,
+                "fromBack": 1
+            },
+            {
+                "type": "peasant",
+                "col": 14,
                 "fromBack": 0
             },
             {
                 "type": "peasant",
-                "col": 3,
+                "col": 13,
+                "fromBack": 0
+            },
+            {
+                "type": "peasant",
+                "col": 7,
                 "fromBack": 0
             },
             {
                 "type": "javelin",
-                "col": 4,
+                "col": 8,
                 "fromBack": 0
             },
             {
                 "type": "javelin",
-                "col": 9,
+                "col": 13,
                 "fromBack": 1
             },
             {
                 "type": "u-mvf8ty84rdk3",
-                "col": 5,
+                "col": 9,
                 "fromBack": 0,
                 "unitTokens": [
                     "general"
@@ -510,21 +510,21 @@
             },
             {
                 "type": "archer",
-                "col": 8,
+                "col": 12,
                 "fromBack": 0
             },
             {
                 "type": "peasant",
-                "col": 6,
+                "col": 10,
                 "fromBack": 1
             },
             {
                 "type": "peasant",
-                "col": 7,
+                "col": 11,
                 "fromBack": 0
             }
         ],
-        "updatedAt": 1792759623309,
+        "updatedAt": 1793109695768,
         "period": "ancient"
     }
 ]

@@ -68,6 +68,7 @@ export {
   sanitizeUnitCategory,
   stockMobility,
   statsOf,
+  defaultSight,
   type AbilityId,
   type ClimbLevel,
   type HexArmorSide,
@@ -82,6 +83,8 @@ export {
 
 export const SIDES = ['red', 'blue', 'yellow', 'purple'] as const;
 export type Side = (typeof SIDES)[number];
+export const NEUTRAL = 'neutral' as const;
+export type Affiliation = Side | typeof NEUTRAL;
 
 export const SIDE_LABEL: Record<Side, string> = {
   red: 'Red',
@@ -92,6 +95,14 @@ export const SIDE_LABEL: Record<Side, string> = {
 
 export function isSide(v: unknown): v is Side {
   return v === 'red' || v === 'blue' || v === 'yellow' || v === 'purple';
+}
+
+export function isNeutralSide(v: unknown): v is typeof NEUTRAL {
+  return v === NEUTRAL;
+}
+
+export function isAffiliation(v: unknown): v is Affiliation {
+  return isSide(v) || isNeutralSide(v);
 }
 
 export type ArmyControl = 'player' | 'ai-enemy' | 'ai-ally';
@@ -228,15 +239,39 @@ export function sanitizeBoardText(raw: unknown): string {
     .trim()
     .slice(0, BOARD_TEXT_MAX);
 }
+
+/**
+ * Editor click on a hex that already has a board. Board brush always edits.
+ * Terrain brushes too — the editor boots on Land, so old boards were dead clicks.
+ * Other token / unit / erase brushes still paint.
+ */
+export function editorOpensBoardPopup(
+  brush: string,
+  hasBoard: boolean,
+  first: boolean,
+): boolean {
+  if (!hasBoard || !first) return false;
+  if (brush === 'board') return true;
+  return (
+    brush === 'land' ||
+    brush === 'water' ||
+    brush === 'rock' ||
+    brush === 'high' ||
+    brush === 'plateau'
+  );
+}
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
 /** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
-export const UNIT_TOKEN_TYPES = ['general', 'hidden'] as const;
+export const UNIT_TOKEN_TYPES = ['general', 'hidden', 'exhausted', 'neutral', 'sleep'] as const;
 export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
 export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   general: 'General',
   hidden: 'Hidden',
+  exhausted: 'Exhausted',
+  neutral: 'Neutral',
+  sleep: 'Sleep',
 };
 
 export function isUnitTokenType(v: unknown): v is UnitTokenType {
@@ -264,12 +299,62 @@ export function hasUnitToken(
   return unitTokensOf(piece).includes(id);
 }
 
+/** Kickoff Sleep token — no move / shoot / turn until hit. */
+export function isSleeping(piece: { unitTokens?: UnitTokenType[] }): boolean {
+  return hasUnitToken(piece, 'sleep');
+}
+
+/** Neutral token (or persisted side) — not in any army until a General claims it. */
+export function stampAffiliation(p: {
+  side: Affiliation;
+  unitTokens?: UnitTokenType[];
+}): Affiliation {
+  return hasUnitToken(p, 'neutral') ? NEUTRAL : p.side;
+}
+
+function dropUnitToken(piece: Piece, id: UnitTokenType): void {
+  const next = unitTokensOf(piece).filter((t) => t !== id);
+  piece.unitTokens = next.length ? next : undefined;
+}
+
 export function isTokenType(v: unknown): v is TokenType {
   return (TOKEN_TYPES as readonly string[]).includes(v as string);
 }
 
+export function tokensAt(tokens: TileToken[] | undefined, h: Hex): TileToken[] {
+  if (!tokens?.length) return [];
+  return tokens.filter((t) => t.col === h.col && t.row === h.row);
+}
+
 export function tokenAt(tokens: TileToken[], h: Hex): TileToken | undefined {
-  return tokens.find((t) => t.col === h.col && t.row === h.row);
+  const all = tokensAt(tokens, h);
+  return all[all.length - 1];
+}
+
+export function tokenOnHex(
+  tokens: TileToken[] | undefined,
+  h: Hex,
+  type: TokenType,
+): TileToken | undefined {
+  const all = tokensAt(tokens, h);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const t = all[i];
+    if (t?.type === type) return t;
+  }
+  return undefined;
+}
+
+function hexToken(
+  tokens: TileToken[] | undefined,
+  h: Hex,
+  pred: (t: TileToken) => boolean,
+): TileToken | undefined {
+  const all = tokensAt(tokens, h);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const t = all[i];
+    if (t && pred(t)) return t;
+  }
+  return undefined;
 }
 
 export function mapFlags(state: { tokens?: TileToken[] }): TileToken[] {
@@ -292,17 +377,18 @@ export function winByFlags(state: GameState): boolean {
 /** Units already standing on a flag claim it (match start). */
 export function seedFlagOwners(state: GameState): void {
   for (const p of state.pieces) {
-    const tok = tokenAt(state.tokens, { col: p.col, row: p.row });
-    if (tok?.type === 'flag') tok.owner = p.side;
+    if (!isSide(p.side)) continue;
+    const tok = tokenOnHex(state.tokens, { col: p.col, row: p.row }, 'flag');
+    if (tok) tok.owner = p.side;
   }
 }
 
-/** One token per hex. Out of bounds / unknown types dropped. */
+/** One of each type per hex. Paint order kept. Out of bounds / unknown types dropped. */
 export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileToken[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   const out: TileToken[] = [];
-  const cap = Math.max(0, cols * rows);
+  const cap = Math.max(0, cols * rows * TOKEN_TYPES.length);
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const t = item as Partial<TileToken>;
@@ -311,7 +397,7 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
     const row = Math.floor(Number(t.row));
     if (!Number.isFinite(col) || !Number.isFinite(row)) continue;
     if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
-    const k = `${col},${row}`;
+    const k = `${col},${row},${t.type}`;
     if (seen.has(k)) continue;
     seen.add(k);
     const tok: TileToken = { type: t.type, col, row };
@@ -332,23 +418,29 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
   return out;
 }
 
-/** Old wall terrain cells become land + a wall token. One token per hex. */
+/** Old wall terrain cells become land + a wall token. Existing tokens on the hex stay. */
 export function liftWallTerrain(
   terrain: Terrain[][],
   tokens: TileToken[] = [],
 ): { terrain: Terrain[][]; tokens: TileToken[] } {
   const t = terrain.map((r) => [...r]);
-  const byHex = new Map(tokens.map((tok) => [`${tok.col},${tok.row}`, tok] as const));
+  const out = [...tokens];
+  const hasWall = new Set(
+    tokens.filter((tok) => tok.type === 'wall').map((tok) => `${tok.col},${tok.row}`),
+  );
   for (let row = 0; row < t.length; row++) {
     const line = t[row];
     if (!line) continue;
     for (let col = 0; col < line.length; col++) {
       if (line[col] !== 'wall') continue;
       line[col] = 'land';
-      byHex.set(`${col},${row}`, { type: 'wall', col, row });
+      const k = `${col},${row}`;
+      if (hasWall.has(k)) continue;
+      hasWall.add(k);
+      out.push({ type: 'wall', col, row });
     }
   }
-  return { terrain: t, tokens: [...byHex.values()] };
+  return { terrain: t, tokens: out };
 }
 
 /** Impassable solid terrain leftover from old saves. Mountain is climbable height 3. */
@@ -381,7 +473,7 @@ export function isWall(
   state: { tokens: TileToken[]; terrain: Terrain[][] },
   h: Hex,
 ): boolean {
-  if (isWallToken(tokenAt(state.tokens, h)?.type)) return true;
+  if (hexToken(state.tokens, h, (t) => isWallToken(t.type))) return true;
   return state.terrain[h.row]?.[h.col] === 'wall';
 }
 
@@ -389,21 +481,21 @@ export function isHouse(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return isHouseToken(tokenAt(state.tokens, h)?.type);
+  return !!hexToken(state.tokens, h, (t) => isHouseToken(t.type));
 }
 
 export function isPalisade(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return isPalisadeToken(tokenAt(state.tokens, h)?.type);
+  return !!hexToken(state.tokens, h, (t) => isPalisadeToken(t.type));
 }
 
 export function isForest(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return isForestToken(tokenAt(state.tokens, h)?.type);
+  return !!hexToken(state.tokens, h, (t) => isForestToken(t.type));
 }
 
 export function isHideToken(type: TokenType | undefined): boolean {
@@ -414,7 +506,21 @@ export function isHideCover(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return isHideToken(tokenAt(state.tokens, h)?.type);
+  return !!hexToken(state.tokens, h, (t) => isHideToken(t.type));
+}
+
+/** Tiles that hide a unit for Hold LOS: forest, or a house they're garrisoned in. */
+export function isHideTile(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return isForest(state, h) || isHouse(state, h);
+}
+
+/** Hidden, or taking cover in forest / house — Hold LOS contact does not fire. */
+export function hidesHoldLos(state: GameState, piece: Piece): boolean {
+  if (isConcealed(state, piece)) return true;
+  return isHideTile(state, { col: piece.col, row: piece.row });
 }
 
 export function hasHide(piece: Piece): boolean {
@@ -428,12 +534,20 @@ export function isConcealed(state: GameState, piece: Piece): boolean {
   return isHideCover(state, { col: piece.col, row: piece.row });
 }
 
-export function isConcealedFrom(state: GameState, piece: Piece, viewer: Side): boolean {
+export function isConcealedFrom(
+  state: GameState,
+  piece: Piece,
+  viewer: Affiliation,
+): boolean {
   if (!isConcealed(state, piece)) return false;
   return isHostile(state, piece.side, viewer);
 }
 
-export function pieceVisibleTo(state: GameState, piece: Piece, viewer: Side): boolean {
+export function pieceVisibleTo(
+  state: GameState,
+  piece: Piece,
+  viewer: Affiliation,
+): boolean {
   return !isConcealedFrom(state, piece, viewer);
 }
 
@@ -454,6 +568,7 @@ function reveal(piece: Piece): void {
 function noteExposedSides(state: GameState): void {
   const vis = { ...emptyHadKing(), ...(state.hadVisible ?? {}) };
   for (const p of state.pieces) {
+    if (!isSide(p.side)) continue;
     if (!isConcealed(state, p)) vis[p.side] = true;
   }
   state.hadVisible = vis;
@@ -484,7 +599,9 @@ export function flushLastHiddenArmies(state: GameState): void {
 
   if (living.every((p) => isConcealed(state, p))) {
     unhide(living);
-    for (const side of new Set(living.map((p) => p.side))) goAggressive(side);
+    for (const side of new Set(living.map((p) => p.side))) {
+      if (isSide(side)) goAggressive(side);
+    }
     return;
   }
 
@@ -505,7 +622,7 @@ export function isNoTouch(
   state: { tokens?: TileToken[] },
   h: Hex,
 ): boolean {
-  return tokenIsNoTouch(tokenAt(state.tokens ?? [], h));
+  return tokensAt(state.tokens, h).some(tokenIsNoTouch);
 }
 
 /** Stone wall or wooden palisade — units cannot enter. */
@@ -525,7 +642,7 @@ function palisadeHpAt(
   state: { tokens: TileToken[] },
   h: Hex,
 ): number {
-  return palisadeHp(tokenAt(state.tokens, h));
+  return palisadeHp(hexToken(state.tokens, h, (t) => isPalisadeToken(t.type)));
 }
 
 function forestHp(tok: TileToken | undefined): number {
@@ -534,8 +651,8 @@ function forestHp(tok: TileToken | undefined): number {
 }
 
 function chipForestAt(state: GameState, h: Hex): { remaining: number } | null {
-  const tok = tokenAt(state.tokens, h);
-  if (!tok || !isForestToken(tok.type)) return null;
+  const tok = hexToken(state.tokens, h, (t) => isForestToken(t.type));
+  if (!tok) return null;
   const remaining = Math.max(0, forestHp(tok) - 1);
   if (remaining <= 0) {
     state.tokens = state.tokens.filter(
@@ -565,7 +682,7 @@ export function isElevatedTerrain(t: Terrain): boolean {
 
 export type Piece = {
   id: string;
-  side: Side;
+  side: Affiliation;
   type: UnitType;
   col: number;
   row: number;
@@ -592,11 +709,15 @@ export type Piece = {
   staminaRegenWait?: number;
   /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
   facing?: HexDir;
-  /** Took ranged damage since last finished activation. Hoplite AI advances. */
+  /** Took ranged damage since last finished activation. Hold-position AI advances. */
   rangedHit?: boolean;
+  /** Hostile newly entered this piece's Sight this activation. Hold-position AI advances. */
+  losHit?: boolean;
+  /** Hostile piece ids this unit has already seen while holding. Missing → not scanned yet. */
+  holdSawIds?: string[];
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
-  /** Attachments (General, …). Missing → none. */
+  /** Attachments (General, Hidden, Exhausted, Sleep). Missing → none. */
   unitTokens?: UnitTokenType[];
   /** Hide broken this match (moved, attacked, or was hit). */
   revealed?: boolean;
@@ -762,7 +883,7 @@ function hexDamageFaceAmount(piece: Piece, dir: HexDir): number {
 export function hexDamageOn(
   state: GameState,
   hex: Hex,
-  victimSide: Side,
+  victimSide: Affiliation,
 ): { amount: number; from: Hex } | null {
   if (isBlockedWalk(state, hex)) return null;
   let amount = 0;
@@ -862,6 +983,7 @@ function applyHexDamagePush(state: GameState, attacker: Piece, prevCovered: Set<
 export function hexDamageMarks(state: GameState): HexDamageMark[] {
   const best = new Map<string, HexDamageMark>();
   for (const p of state.pieces) {
+    if (!isSide(p.side)) continue;
     for (const f of hexDamageFaces(state, p)) {
       const k = key(f.hex);
       const prev = best.get(k);
@@ -991,6 +1113,9 @@ function applyDamage(
   ranged = false,
   markShot = ranged,
 ): { fatal: boolean; remaining: number; routed: boolean } {
+  if (isNeutralSide(victim.side)) {
+    return { fatal: false, remaining: hpLeft(victim), routed: false };
+  }
   const routed = wouldRout(state, victim, from);
   const before = hpLeft(victim);
   const remaining = routed
@@ -1000,13 +1125,16 @@ function applyDamage(
         before - netDamage(victim, amount, min, from, state.orientation, ranged),
       );
   victim.hp = remaining;
-  addHpLost(state, victim.side, before - remaining);
+  if (isSide(victim.side)) addHpLost(state, victim.side, before - remaining);
   reveal(victim);
+  if (hasUnitToken(victim, 'sleep')) dropUnitToken(victim, 'sleep');
   if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
-    const lost = state.casualties[victim.side] ?? 0;
-    state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
+    if (isSide(victim.side)) {
+      const lost = state.casualties[victim.side] ?? 0;
+      state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
+    }
     return { fatal: true, remaining: 0, routed };
   }
   return { fatal: false, remaining, routed: false };
@@ -1069,6 +1197,7 @@ function walkedHexes(from: Hex, path: Hex[], stop: Hex): Hex[] {
 
 function claimFlag(state: GameState, piece: Piece, tok: TileToken): void {
   if (tok.type !== 'flag') return;
+  if (!isSide(piece.side)) return;
   if (tok.owner && sameTeam(state, tok.owner, piece.side)) return;
   const prev = tok.owner;
   tok.owner = piece.side;
@@ -1107,7 +1236,7 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
 
 function readBoard(state: GameState, piece: Piece, tok: TileToken): void {
   if (tok.type !== 'board') return;
-  if (!isPlayerControlled(state, piece.side)) return;
+  if (!isSide(piece.side) || !isPlayerControlled(state, piece.side)) return;
   if (tok.read) return;
   tok.read = true;
   const text = sanitizeBoardText(tok.text);
@@ -1123,21 +1252,22 @@ function applyWalkTokens(
   stop: Hex,
 ): void {
   for (const h of walkedHexes(from, path, stop)) {
-    const tok = tokenAt(state.tokens, h);
-    if (tok?.type === 'flag') claimFlag(state, piece, tok);
-    if (tok?.type === 'board') readBoard(state, piece, tok);
-    if (tok?.type === 'pikes') {
-      const before = hpLeft(piece);
-      const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
-      const dealt = before - dmg.remaining;
-      if (dealt > 0) {
-        state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
-        state.log.push(
-          dmg.fatal
-            ? `${unitLog(piece)} dies on pikes`
-            : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
-        );
-        if (dmg.fatal) return;
+    for (const tok of tokensAt(state.tokens, h)) {
+      if (tok.type === 'flag') claimFlag(state, piece, tok);
+      if (tok.type === 'board') readBoard(state, piece, tok);
+      if (tok.type === 'pikes') {
+        const before = hpLeft(piece);
+        const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
+        const dealt = before - dmg.remaining;
+        if (dealt > 0) {
+          state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+          state.log.push(
+            dmg.fatal
+              ? `${unitLog(piece)} dies on pikes`
+              : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+          );
+          if (dmg.fatal) return;
+        }
       }
     }
     if (strikeFacingPikes(state, piece, h)) return;
@@ -1190,6 +1320,8 @@ export type MovePlan = {
   hits: MoveHit[];
   palisadeHits: PalisadeHit[];
   facing: HexDir;
+  /** Neutral piece ids a General claims on this walk. */
+  converts: string[];
 };
 
 function inWater(state: GameState, h: Hex): boolean {
@@ -1246,7 +1378,7 @@ function activationMoveRange(state: GameState, piece: Piece): number {
 function destLandsBeyond(state: GameState, piece: Piece, dest: Hex): boolean {
   const occ = pieceAt(state, dest);
   if (occ && occ.id !== piece.id) return false;
-  if (isPalisadeToken(tokenAt(state.tokens, dest)?.type)) return false;
+  if (isPalisade(state, dest)) return false;
   return true;
 }
 
@@ -1276,6 +1408,7 @@ export function previewMove(
   const hpMap = new Map(state.pieces.map((p) => [p.id, hpLeft(p)]));
   const hits: MoveHit[] = [];
   const palisadeHits: PalisadeHit[] = [];
+  const converts: string[] = [];
   // Last hex this piece may occupy. Friends / living enemies are pass-through only.
   let stop = from;
   let facing = facingOf(piece);
@@ -1305,8 +1438,8 @@ export function previewMove(
     if (step !== null) facing = step;
     const occ = pieceAt(state, h);
     if (!occ || occ.id === piece.id) {
-      const pal = tokenAt(state.tokens, h);
-      if (isPalisadeToken(pal?.type)) {
+      const pal = hexToken(state.tokens, h, (t) => isPalisadeToken(t.type));
+      if (pal) {
         if (melee <= 0) break;
         const remaining = Math.max(0, palisadeHp(pal) - 1);
         palisadeHits.push({ hex: h, remaining, destroyed: remaining <= 0 });
@@ -1320,6 +1453,14 @@ export function previewMove(
       continue;
     }
     if (sameTeam(state, occ.side, piece.side)) {
+      prev = h;
+      continue;
+    }
+    if (isNeutralSide(occ.side)) {
+      if (!canConvert(piece, occ)) break;
+      converts.push(occ.id);
+      const isDest = i === path.length - 1;
+      if (isDest) break;
       prev = h;
       continue;
     }
@@ -1341,7 +1482,7 @@ export function previewMove(
     prev = h;
   }
 
-  return { stop, hits, palisadeHits, facing };
+  return { stop, hits, palisadeHits, facing, converts };
 }
 
 function pathsEq(a: Hex[], b: Hex[]): boolean {
@@ -1524,12 +1665,23 @@ function highTargetTax(state: GameState, to: Hex): number {
   return hexHeight(state, to);
 }
 
+/** AI Hold Sight only — not fog. Walls / higher ground block; units and forest do not. */
+export function pieceSees(state: GameState, viewer: Piece, target: Piece): boolean {
+  if (viewer.id === target.id) return true;
+  if (isConcealedFrom(state, target, viewer.side)) return false;
+  const origin: Hex = { col: viewer.col, row: viewer.row };
+  const dest: Hex = { col: target.col, row: target.row };
+  const range = statsOf(viewer.type).sight + hexHeight(state, origin);
+  if (hexDist(state, origin, dest) > range) return false;
+  return eq(origin, dest) || losClear(state, origin, dest, true, viewer.side);
+}
+
 function losClear(
   state: GameState,
   from: Hex,
   to: Hex,
   overUnits: boolean,
-  viewer: Side,
+  viewer: Affiliation,
 ): boolean {
   const cells = line(from, to, state.orientation);
   const fromH = hexHeight(state, from);
@@ -1609,7 +1761,7 @@ export function splashHitsEnemy(
   state: GameState,
   at: Hex,
   from: Hex,
-  shooterSide: Side,
+  shooterSide: Affiliation,
 ): boolean {
   for (const h of splashBlast(state, at, from)) {
     const t = pieceAt(state, h);
@@ -1629,7 +1781,7 @@ function splashHasTarget(
   state: GameState,
   at: Hex,
   from: Hex,
-  shooterSide: Side,
+  shooterSide: Affiliation,
 ): boolean {
   if (splashHitsEnemy(state, at, from, shooterSide)) return true;
   // Walls: must aim at the wall itself (not the tile in front) so the rocket impacts on it
@@ -1672,6 +1824,7 @@ function cloneState(state: GameState): GameState {
       ...p,
       abilities: p.abilities ? [...p.abilities] : undefined,
       unitTokens: p.unitTokens ? [...p.unitTokens] : undefined,
+      holdSawIds: p.holdSawIds ? [...p.holdSawIds] : undefined,
     })),
     log: [...state.log],
     actedIds: [...state.actedIds],
@@ -1768,12 +1921,19 @@ function coalition(state: GameState, side: Side): string {
   return `solo-${side}`;
 }
 
-export function sameTeam(state: GameState, a: Side, b: Side): boolean {
+export function sameTeam(state: GameState, a: Affiliation, b: Affiliation): boolean {
+  if (!isSide(a) || !isSide(b)) return false;
   return a === b || coalition(state, a) === coalition(state, b);
 }
 
-export function isHostile(state: GameState, a: Side, b: Side): boolean {
+export function isHostile(state: GameState, a: Affiliation, b: Affiliation): boolean {
+  if (!isSide(a) || !isSide(b)) return false;
   return !sameTeam(state, a, b);
+}
+
+/** A General walking onto an unaligned piece claims it — no damage. */
+export function canConvert(attacker: Piece, occ: Piece): boolean {
+  return isNeutralSide(occ.side) && hasAbility(attacker, 'general');
 }
 
 export function playerSides(state: GameState): Side[] {
@@ -1835,7 +1995,7 @@ export function playerTeamWon(state: GameState): boolean {
   return humans.some((s) => sameTeam(state, s, state.winner!));
 }
 
-export function openingSide(pieces: { side: Side }[]): Side {
+export function openingSide(pieces: { side: Affiliation }[]): Side {
   return SIDES.find((s) => pieces.some((p) => p.side === s)) ?? 'red';
 }
 
@@ -1862,6 +2022,8 @@ function tickStamina(state: GameState, side: Side): void {
     p.actedThisTurn = false;
     p.movedThisTurn = false;
     p.staminaUsedThisTurn = false;
+    // Asleep units are not active: no idle countdown, no stamina grant.
+    if (isSleeping(p)) continue;
     const max = staminaMax(p);
     const regen = statsOf(p.type).staminaRegen;
     if (max <= 0 || regen <= 0) continue;
@@ -1925,13 +2087,15 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
     const dealt = before - remaining;
     p.hp = remaining;
     if (dealt > 0) {
-      addHpLost(state, p.side, dealt);
+      if (isSide(p.side)) addHpLost(state, p.side, dealt);
       state.fxHits = [...(state.fxHits ?? []), { id: p.id, fatal: remaining <= 0, dealt }];
     }
     if (remaining <= 0) {
       state.pieces = state.pieces.filter((x) => x.id !== p.id);
-      const lost = state.casualties[p.side] ?? 0;
-      state.casualties = { ...state.casualties, [p.side]: lost + 1 };
+      if (isSide(p.side)) {
+        const lost = state.casualties[p.side] ?? 0;
+        state.casualties = { ...state.casualties, [p.side]: lost + 1 };
+      }
       state.log.push(`${unitLog(p)} drowns`);
     } else {
       state.log.push(`${unitLog(p)} drowns — ${WATER_DROWN_HP} HP (${remaining} HP)`);
@@ -2011,7 +2175,11 @@ function moreActivationsAfter(state: GameState, piece: Piece): boolean {
   return (
     n < cap &&
     state.pieces.some(
-      (p) => p.side === state.turn && p.id !== piece.id && !state.actedIds.includes(p.id),
+      (p) =>
+        p.side === state.turn &&
+        p.id !== piece.id &&
+        !state.actedIds.includes(p.id) &&
+        !isSleeping(p),
     )
   );
 }
@@ -2019,6 +2187,7 @@ function moreActivationsAfter(state: GameState, piece: Piece): boolean {
 /** Finish this piece's activation; end the side-turn if the unit quota is spent. */
 function finishActivation(state: GameState, piece: Piece): void {
   piece.rangedHit = undefined;
+  piece.losHit = undefined;
   clearScoutLock(state);
   if (!state.actedIds.includes(piece.id)) state.actedIds.push(piece.id);
   checkWin(state);
@@ -2159,6 +2328,7 @@ function movePathOpts(
         return stats.meleeDamage > 0;
       }
       if (!occ) return true;
+      if (canConvert(piece, occ)) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
       return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
     },
@@ -2179,6 +2349,7 @@ function movePathOpts(
       // behind only resolves if this charge would kill them; empty dest trampling
       // still goes through survivors. previewMove is the gate.
       if (stats.charge > 0 && isHostile(state, occ.side, piece.side)) return true;
+      if (stats.charge > 0 && canConvert(piece, occ)) return true;
       return sameTeam(state, occ.side, piece.side);
     },
   };
@@ -2423,6 +2594,7 @@ function allMoveStops(state: GameState, piece: Piece): Map<string, StraightStop>
 export function rangeHighlights(state: GameState, pieceId: string): Highlight[] {
   const piece = getPiece(state, pieceId);
   if (!piece) return [];
+  if (isSleeping(piece)) return [];
 
   const stats = statsOf(piece.type);
   const from: Hex = { col: piece.col, row: piece.row };
@@ -2542,6 +2714,7 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   const piece = getPiece(next, pieceId);
   if (!piece || piece.side !== next.turn) return state;
   if (!statsOf(piece.type).hexArmor) return state;
+  if (isSleeping(piece)) return state;
   if (hasActed(next, piece.id)) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
   const prevCovered = hexDamageCoveredKeys(next, piece);
@@ -2564,6 +2737,7 @@ export function restPiece(state: GameState, pieceId: string): GameState {
   next.fxBoard = undefined;
   const piece = getPiece(next, pieceId);
   if (!piece || piece.side !== next.turn) return state;
+  if (isSleeping(piece)) return state;
   if (piece.movedThisTurn) return state;
   if (hasActed(next, piece.id)) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
@@ -2654,6 +2828,16 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const plan = previewMove(next, piece, action.to, action.path);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
+    for (const id of plan.converts) {
+      const claimed = getPiece(next, id);
+      if (!claimed || !isNeutralSide(claimed.side) || !isSide(piece.side)) continue;
+      hitBits.push(unitLog(claimed));
+      claimed.side = piece.side;
+      dropUnitToken(claimed, 'neutral');
+      const flag = tokenOnHex(next.tokens, { col: claimed.col, row: claimed.row }, 'flag');
+      if (flag) flag.owner = piece.side;
+    }
+
     for (const mh of plan.hits) {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
@@ -2663,8 +2847,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     for (const ph of plan.palisadeHits) {
-      const tok = tokenAt(next.tokens, ph.hex);
-      if (!tok || !isPalisadeToken(tok.type)) continue;
+      const tok = hexToken(next.tokens, ph.hex, (t) => isPalisadeToken(t.type));
+      if (!tok) continue;
       if (ph.destroyed) {
         next.tokens = next.tokens.filter(
           (t) =>
@@ -2681,20 +2865,23 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const staminaTag = hit.kind === 'stamina' ? ' (stamina)' : '';
     const brokePal =
       plan.palisadeHits.some((p) => p.destroyed) && plan.hits.length === 0;
+    const converted = plan.converts.length > 0 && plan.hits.length === 0;
     if (hitBits.length) {
       next.log.push(
         `${unitLog(piece)} ${
-          bounced
-            ? 'strikes'
-            : brokePal
-              ? 'breaks'
-              : plan.hits.some((h) => h.routed)
-                ? 'routs'
-                : plan.hits.some((h) => h.fatal)
-                  ? 'captures'
-                  : statsOf(piece.type).charge > 0
-                    ? 'charges'
-                    : 'hits'
+          converted
+            ? 'converts'
+            : bounced
+              ? 'strikes'
+              : brokePal
+                ? 'breaks'
+                : plan.hits.some((h) => h.routed)
+                  ? 'routs'
+                  : plan.hits.some((h) => h.fatal)
+                    ? 'captures'
+                    : statsOf(piece.type).charge > 0
+                      ? 'charges'
+                      : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
@@ -2719,7 +2906,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
     );
-    const palStanding = isPalisadeToken(tokenAt(next.tokens, plan.stop)?.type);
+    const palStanding = isPalisade(next, plan.stop);
     if (!taken && !palStanding) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
@@ -2776,7 +2963,11 @@ function applyActionInner(state: GameState, action: Action): GameState {
       }
       // Concrete walls and palisades crumble under rockets; the tile underneath stays
       if (isBlockedWalk(next, h)) {
-        const tok = tokenAt(next.tokens, h);
+        const tok = hexToken(
+          next.tokens,
+          h,
+          (item) => isWallToken(item.type) || isPalisadeToken(item.type),
+        );
         const kind = tok?.type ?? (isPalisade(next, h) ? 'palisade' : 'wall');
         if (terrainAt(next, h) === 'wall') next.terrain[h.row][h.col] = 'land';
         next.tokens = next.tokens.filter(
@@ -2840,6 +3031,7 @@ export function allLegalActions(state: GameState): Action[] {
       : state.pieces.filter((p) => p.side === state.turn && !hasActed(state, p.id));
 
   for (const p of pieces) {
+    if (isSleeping(p)) continue;
     for (const h of legalHighlights(state, p.id)) {
       if (h.kind === 'move' || h.kind === 'stamina') {
         actions.push({
