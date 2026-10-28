@@ -3708,6 +3708,24 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   fill: color-mix(in srgb, #e08930 58%, transparent);
 }
 
+.hl-tint.path.march {
+  fill: rgba(255, 255, 255, 0.34);
+  stroke: #fff;
+  stroke-width: 2.4;
+  stroke-opacity: 1;
+}
+
+.hl-tint.path.march.path-end {
+  fill: rgba(255, 255, 255, 0.62);
+}
+
+.hl-tint.march-dest {
+  fill: rgba(255, 255, 255, 0.16);
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+}
+
 .path-via-mark {
   fill: none;
   stroke: var(--sel);

@@ -752,6 +752,8 @@ export type Piece = {
   story?: PieceStory;
   /** Hide broken this match (moved, attacked, or was hit). */
   revealed?: boolean;
+  /** Standing march. Each own turn with no other order, walk toward this hex. */
+  walkTo?: Hex;
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
@@ -1875,6 +1877,7 @@ function cloneState(state: GameState): GameState {
       unitTokens: p.unitTokens ? [...p.unitTokens] : undefined,
       story: p.story ? { ...p.story } : undefined,
       holdSawIds: p.holdSawIds ? [...p.holdSawIds] : undefined,
+      walkTo: p.walkTo ? { col: p.walkTo.col, row: p.walkTo.row } : undefined,
     })),
     log: [...state.log],
     actedIds: [...state.actedIds],
@@ -2192,9 +2195,230 @@ export function beginSideTurn(state: GameState, newRound = false, _kickoff = fal
   checkWin(state);
 }
 
+export type MarchAnim = {
+  pieceId: string;
+  from: Hex;
+  facing: HexDir;
+  path: Hex[];
+  stop: Hex;
+};
+
+let queuedMarches: MarchAnim[] = [];
+
+export function takeQueuedMarches(): MarchAnim[] {
+  const q = queuedMarches;
+  queuedMarches = [];
+  return q;
+}
+
+/** Tile a standing march can enter (empty, walkable). Ignores this turn's stamina. */
+function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
+  const stats = statsOf(piece.type);
+  if (!inBounds(state, toHex)) return false;
+  const t = terrainAt(state, toHex);
+  if (isWall(state, toHex) || isPalisade(state, toHex)) return false;
+  if (t === 'water' && !stats.passWater) return false;
+  if (terrainHeight(t) > stats.climbLevel) return false;
+  if (Math.abs(hexHeight(state, toHex) - hexHeight(state, fromHex)) > 1) return false;
+  const occ = pieceAt(state, toHex);
+  if (occ && occ.id !== piece.id) return false;
+  return true;
+}
+
+/**
+ * Shortest walk from the piece to `goal`, facing updated along the route.
+ * Red-face steps are illegal. Climbs are included even if stamina is empty —
+ * execution stops until they can pay.
+ */
+function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | null {
+  const start: Hex = { col: piece.col, row: piece.row };
+  if (!inBounds(state, goal) || eq(start, goal)) return null;
+  if (isSleeping(piece) || statsOf(piece.type).move <= 0) return null;
+  const goalOcc = pieceAt(state, goal);
+  if (goalOcc && goalOcc.id !== piece.id) return null;
+  const tGoal = terrainAt(state, goal);
+  const stats = statsOf(piece.type);
+  if (isWall(state, goal) || isPalisade(state, goal)) return null;
+  if (tGoal === 'water' && !stats.passWater) return null;
+  if (terrainHeight(tGoal) > stats.climbLevel) return null;
+
+  type Node = { hex: Hex; facing: HexDir; prev: Node | null };
+  const startNode: Node = { hex: start, facing: facingOf(piece), prev: null };
+  const seen = new Set<string>([`${start.col},${start.row},${startNode.facing}`]);
+  const q: Node[] = [startNode];
+  const o = state.orientation;
+  let found: Node | null = null;
+  while (q.length) {
+    const cur = q.shift()!;
+    if (eq(cur.hex, goal)) {
+      found = cur;
+      break;
+    }
+    for (let d = 0; d < 6; d++) {
+      const dir = d as HexDir;
+      const next = neighborInDir(cur.hex, dir, o);
+      const nk = `${next.col},${next.row},${dir}`;
+      if (seen.has(nk)) continue;
+      const probe: Piece = { ...piece, col: cur.hex.col, row: cur.hex.row, facing: cur.facing };
+      if (blockedWalkDirs(probe).has(dir)) continue;
+      if (!marchCanEnter(state, piece, cur.hex, next)) continue;
+      seen.add(nk);
+      q.push({ hex: next, facing: dir, prev: cur });
+    }
+  }
+  if (!found) return null;
+  const path: Hex[] = [];
+  let n: Node | null = found;
+  while (n && !eq(n.hex, start)) {
+    path.push(n.hex);
+    n = n.prev;
+  }
+  path.reverse();
+  return path.length ? path : null;
+}
+
+/** Full route to `goal` when walk-to orders are on. Empty when unreachable. */
+export function marchRoute(state: GameState, piece: Piece, goal: Hex): Hex[] | null {
+  if (!isExperimentalOn('walk-orders')) return null;
+  return marchRouteInner(state, piece, goal);
+}
+
+export function setWalkOrder(state: GameState, pieceId: string, dest: Hex | null): GameState {
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn || state.winner) return state;
+  if (dest) {
+    if (!marchRoute(state, piece, dest)) return state;
+  } else if (!piece.walkTo) {
+    return state;
+  }
+  const next = cloneState(state);
+  const p = getPiece(next, pieceId);
+  if (!p) return state;
+  if (dest) {
+    p.walkTo = { col: dest.col, row: dest.row };
+    next.log.push(`${unitLog(p)} march ordered to ${dest.col},${dest.row}`);
+  } else {
+    p.walkTo = undefined;
+    next.log.push(`${unitLog(p)} march cancelled`);
+  }
+  return next;
+}
+
+function marchEligible(state: GameState, piece: Piece): boolean {
+  if (piece.side !== state.turn || !piece.walkTo || state.winner) return false;
+  if (isSleeping(piece) || statsOf(piece.type).move <= 0) return false;
+  if (piece.movedThisTurn || piece.actedThisTurn || hasActed(state, piece.id)) return false;
+  return true;
+}
+
+/** Walk one speed-chunk toward `walkTo`. Mutates `state`. Null if they stay put. */
+function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
+  if (!piece.walkTo) return null;
+  const dest = piece.walkTo;
+  const here: Hex = { col: piece.col, row: piece.row };
+  if (eq(here, dest)) {
+    piece.walkTo = undefined;
+    return null;
+  }
+  const full = marchRouteInner(state, piece, dest);
+  if (!full?.length) return null;
+  const speed = moveRangeAt(state, piece, here);
+  if (speed <= 0) return null;
+  const stats = statsOf(piece.type);
+  const taken: Hex[] = [];
+  let facing = facingOf(piece);
+  let cur = here;
+  for (const next of full) {
+    if (taken.length >= speed) break;
+    const step = dirBetween(cur, next, state.orientation);
+    if (step === null) break;
+    const probe: Piece = { ...piece, col: cur.col, row: cur.row, facing };
+    if (blockedWalkDirs(probe).has(step)) break;
+    if (!marchCanEnter(state, piece, cur, next)) break;
+    if (!canWalkStep(state, piece, here, cur, next)) break;
+    taken.push(next);
+    facing = step;
+    cur = next;
+    const enteredWater = terrainAt(state, here) !== 'water' && terrainAt(state, next) === 'water';
+    if (enteredWater) break;
+    if (stats.charge > 0 && isForest(state, next)) break;
+  }
+  if (!taken.length) return null;
+  const stop = taken[taken.length - 1]!;
+  const anim: MarchAnim = {
+    pieceId: piece.id,
+    from: here,
+    facing: facingOf(piece),
+    path: taken.slice(),
+    stop,
+  };
+  reveal(piece);
+  const prevCovered = hexDamageCoveredKeys(state, piece);
+  const climbed = taken.some((h) => hexHeight(state, h) > hexHeight(state, here));
+  piece.col = stop.col;
+  piece.row = stop.row;
+  piece.facing = facing;
+  const arrived = eq(stop, dest);
+  state.log.push(
+    arrived
+      ? `${unitLog(piece)} arrives at ${stop.col},${stop.row}`
+      : `${unitLog(piece)} marches to ${stop.col},${stop.row}`,
+  );
+  applyWalkTokens(state, piece, here, taken, stop);
+  if (!getPiece(state, piece.id)) return anim;
+  applyHexDamagePush(state, piece, prevCovered);
+  if (!getPiece(state, piece.id)) return anim;
+  if (climbed && canSpendStamina(piece)) spendStamina(piece);
+  markMoved(piece);
+  if (arrived) piece.walkTo = undefined;
+  return anim;
+}
+
+/**
+ * Spend this unit's activation on one march step.
+ * Other standing marches still resolve if that ends the side-turn.
+ */
+export function performMarch(state: GameState, pieceId: string): GameState {
+  if (!isExperimentalOn('walk-orders') || state.winner) return state;
+  const next = cloneState(state);
+  const piece = getPiece(next, pieceId);
+  if (!piece || !marchEligible(next, piece)) return next;
+  const anim = applyOneMarch(next, piece);
+  if (!anim) return next;
+  queuedMarches.push(anim);
+  const live = getPiece(next, pieceId);
+  if (live) finishActivation(next, live);
+  return next;
+}
+
+/** One turn of standing marches for units that were not given another order. */
+function applyStandingMarches(state: GameState): void {
+  const anims: MarchAnim[] = [];
+  if (!isExperimentalOn('walk-orders') || state.winner) {
+    queuedMarches.push(...anims);
+    return;
+  }
+  const candidates = state.pieces.filter((p) => marchEligible(state, p));
+  candidates.sort((a, b) => {
+    const da = marchRouteInner(state, a, a.walkTo!)?.length ?? 9999;
+    const db = marchRouteInner(state, b, b.walkTo!)?.length ?? 9999;
+    return da - db;
+  });
+  for (const id of candidates.map((p) => p.id)) {
+    const piece = getPiece(state, id);
+    if (!piece || !marchEligible(state, piece)) continue;
+    const anim = applyOneMarch(state, piece);
+    if (anim) anims.push(anim);
+  }
+  queuedMarches.push(...anims);
+}
+
 function endSideTurn(state: GameState): void {
   const finished = state.turn;
   clearScoutLock(state);
+  applyStandingMarches(state);
+  checkWin(state);
+  if (state.winner) return;
   tickShootCooldowns(state, finished);
   tickStamina(state, finished);
   state.actedIds = [];
@@ -2963,6 +3187,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
       applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
+    }
+    if (piece.walkTo && piece.col === piece.walkTo.col && piece.row === piece.walkTo.row) {
+      piece.walkTo = undefined;
     }
     piece.facing = plan.facing;
     if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);

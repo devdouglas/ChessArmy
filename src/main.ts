@@ -18,6 +18,10 @@ import {
   MIN_MAX_TURNS,
   MIN_UNITS_PER_TURN,
   passTurn,
+  marchRoute,
+  performMarch,
+  setWalkOrder,
+  takeQueuedMarches,
   restPiece,
   rotatePiece,
   getPiece,
@@ -831,7 +835,30 @@ function wait(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms));
 }
 
+async function playQueuedMarches(): Promise<void> {
+  const steps = takeQueuedMarches();
+  for (const step of steps) {
+    const live = getPiece(state, step.pieceId);
+    const g = document.querySelector<SVGGElement>(
+      `g.piece-unit[data-id="${CSS.escape(step.pieceId)}"]`,
+    );
+    if (!g) continue;
+    const ghost: Piece = {
+      ...(live ?? {
+        id: step.pieceId,
+        side: 'red',
+        type: 'soldier',
+      }),
+      col: step.from.col,
+      row: step.from.row,
+      facing: step.facing,
+    };
+    await animateMoveAlong(g, ghost, step.path, step.stop, step.stop);
+  }
+}
+
 async function playPendingFx(): Promise<void> {
+  await playQueuedMarches();
   const hits = state.fxHits;
   const stam = state.fxStamina ?? [];
   const board = state.fxBoard;
@@ -2714,8 +2741,16 @@ function renderBoard(): string {
   const pathSet = new Set<string>();
   let pathVia: Hex | null = null;
   let pathKind: 'move' | 'stamina' | null = null;
+  const marchSet = new Set<string>();
+  let marchEnd: Hex | null = null;
+  const selForMarch = !editing && selectedId ? getPiece(state, selectedId) : null;
+  const marchOn =
+    !!selForMarch &&
+    canControl() &&
+    selForMarch.side === state.turn &&
+    isExperimentalOn('walk-orders');
   if (!editing && hoverHex) {
-    const sel = selectedId ? getPiece(state, selectedId) : null;
+    const sel = selForMarch;
     const splashAim = highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hoverHex!));
     if (sel && splashAim && hasSplash(UNIT_STATS[sel.type])) {
       const fromHex = { col: sel.col, row: sel.row };
@@ -2723,15 +2758,29 @@ function renderBoard(): string {
         splashSet.add(key(n));
       }
     }
-    const destHl = highlights.find(
-      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hoverHex!),
-    );
-    if (sel && destHl) {
-      pathKind = destHl.kind === 'stamina' ? 'stamina' : 'move';
-      const plan = stickyMovePlan(state, sel, hoverHex, hoverPath);
-      hoverPath = plan.path;
-      pathVia = plan.via;
-      for (const h of hoverPath) pathSet.add(key(h));
+    const previewMarch =
+      marchOn && sel && !splashAim ? marchRoute(state, sel, hoverHex) : null;
+    if (previewMarch?.length) {
+      for (const h of previewMarch) marchSet.add(key(h));
+      marchEnd = previewMarch[previewMarch.length - 1] ?? null;
+    } else {
+      const destHl = highlights.find(
+        (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hoverHex!),
+      );
+      if (sel && destHl) {
+        pathKind = destHl.kind === 'stamina' ? 'stamina' : 'move';
+        const plan = stickyMovePlan(state, sel, hoverHex, hoverPath);
+        hoverPath = plan.path;
+        pathVia = plan.via;
+        for (const h of hoverPath) pathSet.add(key(h));
+      }
+    }
+  }
+  if (marchOn && selForMarch?.walkTo && !marchSet.size) {
+    const committed = marchRoute(state, selForMarch, selForMarch.walkTo);
+    if (committed?.length) {
+      for (const h of committed) marchSet.add(key(h));
+      marchEnd = committed[committed.length - 1] ?? null;
     }
   }
 
@@ -2775,6 +2824,18 @@ function renderBoard(): string {
         if (via) {
           hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
         }
+      }
+      if (marchSet.has(k)) {
+        const end = !!(marchEnd && eq(marchEnd, hex));
+        hlOverlays += `<polygon class="hl-tint path march${end ? ' path-end' : ''}" points="${pts}" />`;
+      } else if (
+        !editing &&
+        isExperimentalOn('walk-orders') &&
+        state.pieces.some(
+          (p) => p.side === state.turn && p.walkTo && eq(p.walkTo, hex),
+        )
+      ) {
+        hlOverlays += `<polygon class="hl-tint march-dest" points="${pts}" />`;
       }
 
       if (pendingHex && eq(pendingHex, hex)) {
@@ -3173,6 +3234,20 @@ function renderActionBar(): string {
     hint = 'Range preview';
   } else {
     hint = '';
+  }
+
+  if (
+    !choosing &&
+    isExperimentalOn('walk-orders') &&
+    piece.side === state.turn &&
+    canControl() &&
+    !(state.scoutPieceId && state.scoutPieceId !== piece.id)
+  ) {
+    if (piece.walkTo) {
+      hint = `March ${piece.walkTo.col},${piece.walkTo.row} · click again to cancel`;
+    } else if (!hint && UNIT_STATS[piece.type].move > 0 && !isSleeping(piece)) {
+      hint = 'Click a tile to march';
+    }
   }
 
   const left = state.scoutActionsLeft ?? 0;
@@ -3946,6 +4021,45 @@ function bindHexChoice() {
   });
 }
 
+function trySetMarch(piece: Piece, hex: Hex): boolean {
+  if (!isExperimentalOn('walk-orders') || !canControl() || state.winner) return false;
+  if (piece.side !== state.turn || isSleeping(piece)) return false;
+  if (UNIT_STATS[piece.type].move <= 0) return false;
+  if (state.scoutPieceId && state.scoutPieceId !== piece.id) return false;
+  if (eq(hex, { col: piece.col, row: piece.row })) return false;
+  if (!marchRoute(state, piece, hex)) return false;
+  const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
+  const acting = !cancel && canActWithSelected() && selectedId === piece.id;
+  void commitMarch(piece.id, cancel ? null : hex, acting);
+  return true;
+}
+
+async function commitMarch(pieceId: string, dest: Hex | null, stepNow: boolean): Promise<void> {
+  if (animating) return;
+  animating = true;
+  const turnBefore = state.turn;
+  let next = setWalkOrder(state, pieceId, dest);
+  if (dest && stepNow) next = performMarch(next, pieceId);
+  state = next;
+  if (state.turn !== turnBefore) secondActionArmed = false;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
+  pendingHex = null;
+  await playPendingFx();
+  animating = false;
+  const still = getPiece(state, pieceId);
+  if (still && still.side === state.turn && canControl()) {
+    selectedId = pieceId;
+    refreshHighlights();
+  } else {
+    retainSelection(pieceId);
+  }
+  ensureSoloTurnSelection();
+  render();
+  if (dest) await maybeAi();
+}
+
 function onHexClick(col: number, row: number) {
   if (briefingBlocks() || boardBlocks() || animating || aiThinking) return;
   const hex = { col, row };
@@ -3981,10 +4095,18 @@ function onHexClick(col: number, row: number) {
       return;
     }
     if (canMove) {
+      const blocker = pieceAt(state, hex);
+      const melee = !!blocker && !!piece && blocker.id !== piece.id;
+      if (!melee && piece && trySetMarch(piece, hex)) return;
       commitPath = drawnPathTo(hex);
       void tryAct(hex, 'move');
       return;
     }
+  }
+
+  if (selectedId) {
+    const piece = getPiece(state, selectedId);
+    if (piece && trySetMarch(piece, hex)) return;
   }
 
   if (occ) {
@@ -4140,7 +4262,13 @@ function bindBoardOnly() {
       hasSplash(UNIT_STATS[sel.type]) &&
       highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
     const zoneHover = !!sel && redZoneDir(sel, hex) != null;
-    paintBoardHover(moveHover || splashHover || zoneHover ? hex : null);
+    const marchHover =
+      !!sel &&
+      canControl() &&
+      sel.side === state.turn &&
+      isExperimentalOn('walk-orders') &&
+      !!marchRoute(state, sel, hex);
+    paintBoardHover(moveHover || splashHover || zoneHover || marchHover ? hex : null);
   });
 }
 

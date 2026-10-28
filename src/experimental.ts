@@ -19,6 +19,12 @@ export const EXPERIMENTAL_RULES = [
     blurb:
       'A −2 (red) hex-armor face cannot be shot — those hexes are not legal fire targets. Usually the rear. Off: you can shoot that way.',
   },
+  {
+    id: 'walk-orders',
+    label: 'Walk to destination orders',
+    blurb:
+      'Select a unit, then hover or click any tile it can reach. The route lights up white. It walks that route at its move speed — when you click, and again each later turn you give it no other order — until it arrives. Click the destination again to cancel.',
+  },
 ] as const;
 
 export type ExperimentalRuleId = (typeof EXPERIMENTAL_RULES)[number]['id'];
@@ -28,6 +34,7 @@ type Flags = Record<ExperimentalRuleId, boolean>;
 const DEFAULTS: Flags = {
   'block-red-move': true,
   'block-red-shoot': true,
+  'walk-orders': false,
 };
 
 const RULE_IDS: ExperimentalRuleId[] = EXPERIMENTAL_RULES.map((r) => r.id);
