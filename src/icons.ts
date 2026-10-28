@@ -261,17 +261,20 @@ const ICONS: Record<UnitRole, string> = {
     <rect x="5.25" y="-6.85" width="1.1" height="14.6" rx="0.35"/>
     <path d="M3.45 -8.85 H8.15 V-7.4 H7.3 V-8.6 H6.4 V-6.9 H5.2 V-8.6 H4.3 V-7.4 H3.45 Z"/>
   `,
-  // Wolf — side profile, snout right
+  // Wolf — lunge, hackles, open jaws. Snout right.
   wolf: `
-    <path d="M-6.35 1.25
-      C-8.85 -1.85 -8.15 3.55 -5.45 3.15
-      L-4.85 7.85 L-3.25 7.85
-      C-3.05 5.55 -2.15 3.75 -0.85 3.35
-      L-0.25 7.95 L1.35 7.95
-      C1.45 5.75 2.05 4.05 3.15 3.25
-      L5.05 2.55 L7.95 0.85 L8.55 -0.45 L6.65 -1.55 L5.05 -1.15
-      L4.55 -4.05 L3.25 -1.55 L2.35 -4.45 L1.55 -1.35
-      C-0.95 -1.95 -3.55 -0.75 -6.35 1.25 Z"/>
+    <path fill-rule="evenodd" d="M-5.6 1.6
+      L-8.9 -2.4 L-7.1 -0.2 L-8.2 1.5 L-6.4 0.6
+      L-4.6 -1.7 L-3.5 0.3 L-2.2 -2.1 L-1.1 0.1 L0.2 -1.5
+      L1.5 -0.3 L0.6 -4.7 L2.5 -0.5 L3.2 -5.1 L4.6 -0.6
+      L8.7 -1.3 L9.5 0.2 L7.9 0.5 L8.7 1.5 L7.2 0.9
+      L6.5 2.7 L4.6 1.6 L3.8 3.1
+      C1.6 3.6 -0.4 3.1 -2.2 3.5
+      L-1.2 7.7 L-2.9 7.7 L-3.4 3.8
+      L-4.8 4.1 L-5.6 7.9 L-7.3 7.9
+      C-6.8 4.4 -6.2 2.8 -5.6 1.6 Z
+      M5.7 0.35 L7.6 -0.15 L7.15 1.45 Z
+      M3.55 -1.55 L4.35 -0.85 L2.85 -0.95 Z"/>
   `,
   // Delta interceptor
   fighter: `
@@ -786,6 +789,17 @@ export function sleepZsSvg(cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
+export function storyBadgeSvg(cx: number, cy: number, r = 7): string {
+  const w = r * 0.62;
+  const h = r * 0.78;
+  return `
+      <g class="ability-badge story" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="#2a2416" stroke="#c4a15a" stroke-width="1.3"/>
+        <rect x="${(-w / 2).toFixed(2)}" y="${(-h / 2).toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="${(r * 0.08).toFixed(2)}" fill="#e7d7a4"/>
+        <path d="M${(-w * 0.28).toFixed(2)} ${(-h * 0.22).toFixed(2)} h${(w * 0.56).toFixed(2)} M${(-w * 0.28).toFixed(2)} 0 h${(w * 0.56).toFixed(2)} M${(-w * 0.28).toFixed(2)} ${(h * 0.22).toFixed(2)} h${(w * 0.34).toFixed(2)}" fill="none" stroke="#6a5430" stroke-width="${Math.max(0.6, r * 0.08).toFixed(2)}" stroke-linecap="round"/>
+      </g>`;
+}
+
 export function sleepBadgeSvg(cx: number, cy: number, r = 7): string {
   const moon = r * 0.42;
   const cut = r * 0.32;
@@ -805,6 +819,7 @@ export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   if (id === 'exhausted') return exhaustedBadgeSvg(0, 0, r);
   if (id === 'neutral') return neutralBadgeSvg(0, 0, r);
   if (id === 'sleep') return sleepBadgeSvg(0, 0, r);
+  if (id === 'story') return storyBadgeSvg(0, 0, r);
   return '';
 }
 

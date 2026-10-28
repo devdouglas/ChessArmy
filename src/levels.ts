@@ -2,7 +2,7 @@ import {
   clampMaxTurns,
   clampUnitsPerTurn,
   isKnownUnit,
-  sanitizeUnitTokens,
+  withStory,
   isAffiliation,
   sanitizeArmyControls,
   sanitizeAiStyles,
@@ -282,15 +282,17 @@ function sanitizeArmies(raw: unknown, cols: number, rows: number): ArmyStamp[] |
     const k = `${col},${row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    const unitTokens = sanitizeUnitTokens(
+    const packed = withStory(
       (p as ArmyStamp & { unitTokens?: unknown }).unitTokens,
+      (p as ArmyStamp & { story?: unknown }).story,
     );
     out.push({
       type: p.type,
       col,
       row,
       side,
-      unitTokens: unitTokens.length ? unitTokens : undefined,
+      unitTokens: packed.unitTokens,
+      story: packed.story,
       facing: sanitizeStampFacing(side, (p as { facing?: unknown }).facing),
     });
     if (out.length >= 128) break;

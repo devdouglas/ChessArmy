@@ -27,7 +27,8 @@ import {
   type TileToken,
   type UnitTokenType,
   type UnitType,
-  sanitizeUnitTokens,
+  withStory,
+  type PieceStory,
 } from './engine';
 import { defaultFacing, isHexDir, neighbors, type HexDir, type HexOrientation } from './hex';
 
@@ -472,6 +473,7 @@ export type ArmySlot = {
   col: number;
   fromBack: number;
   unitTokens?: UnitTokenType[];
+  story?: PieceStory;
   /** Cube facing as if this slot were Red. Missing → defaultFacing('red'). */
   facing?: HexDir;
 };
@@ -482,6 +484,7 @@ export type ArmyStamp = {
   row: number;
   side: Affiliation;
   unitTokens?: UnitTokenType[];
+  story?: PieceStory;
   /** Cube facing. Missing → defaultFacing(side). */
   facing?: HexDir;
 };
@@ -494,11 +497,6 @@ export function facingFromStamp(p: Pick<ArmyStamp, 'side' | 'facing'>): HexDir {
 export function sanitizeStampFacing(side: Affiliation, raw: unknown): HexDir | undefined {
   if (!isHexDir(raw)) return undefined;
   return raw === defaultFacing(side) ? undefined : raw;
-}
-
-function stampTokens(raw: unknown): UnitTokenType[] | undefined {
-  const tokens = sanitizeUnitTokens(raw);
-  return tokens.length ? tokens : undefined;
 }
 
 export function slotsFromSide(
@@ -515,11 +513,13 @@ export function slotsFromSide(
       const abs = facingFromStamp(p);
       const asRed = rotateDir(abs, -rot);
       const { along, depth } = hexToSlot(p.col, p.row, edge, cols, rows);
+      const packed = withStory(p.unitTokens, p.story);
       return {
         type: p.type,
         col: along,
         fromBack: depth,
-        unitTokens: stampTokens(p.unitTokens),
+        unitTokens: packed.unitTokens,
+        story: packed.story,
         facing: sanitizeStampFacing('red', asRed),
       };
     })
@@ -547,12 +547,14 @@ export function placeSlots(
     seen.add(k);
     const asRed = facingFromStamp({ side: 'red', facing: s.facing });
     const facing = rotateDir(asRed, rot);
+    const packed = withStory(s.unitTokens, s.story);
     out.push({
       type: s.type,
       col,
       row,
       side,
-      unitTokens: stampTokens(s.unitTokens),
+      unitTokens: packed.unitTokens,
+      story: packed.story,
       facing: sanitizeStampFacing(side, facing),
     });
   }
@@ -621,8 +623,8 @@ export function stockSlots(cols: number, rows: number): ArmySlot[] {
 
 export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
   return stamps.map((p) => {
-    const tokens = stampTokens(p.unitTokens);
-    const side = stampAffiliation({ side: p.side, unitTokens: tokens });
+    const packed = withStory(p.unitTokens, p.story);
+    const side = stampAffiliation({ side: p.side, unitTokens: packed.unitTokens });
     const piece: Piece = {
       id: pid(side, p.type),
       side,
@@ -633,7 +635,8 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
       startRow: p.row,
       facing: facingFromStamp(p),
       ...spawnExtras(p.type),
-      unitTokens: tokens,
+      unitTokens: packed.unitTokens,
+      story: packed.story,
     };
     const max = hpMax(piece);
     piece.hp = max > 1 ? max : undefined;

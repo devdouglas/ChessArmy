@@ -2461,6 +2461,7 @@ button.primary:focus-visible {
   margin: 0.35rem 0 1rem;
 }
 
+.board-edit select,
 .board-edit textarea {
   background: var(--panel);
   color: var(--ink);
@@ -2469,8 +2470,19 @@ button.primary:focus-visible {
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+.board-edit textarea {
   min-height: 8rem;
   resize: vertical;
+}
+
+.board-when-label {
+  margin: 0.15rem 0 0.3rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #9aa396);
 }
 
 .board-hint {

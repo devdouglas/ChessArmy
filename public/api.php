@@ -203,7 +203,7 @@ function sanitize_unit_tokens(mixed $raw): array {
     if (!is_array($raw)) {
         return [];
     }
-    $ok = ['general' => true, 'hidden' => true, 'exhausted' => true, 'neutral' => true, 'sleep' => true];
+    $ok = ['general' => true, 'hidden' => true, 'exhausted' => true, 'neutral' => true, 'sleep' => true, 'story' => true];
     $out = [];
     $seen = [];
     foreach ($raw as $item) {
@@ -214,6 +214,27 @@ function sanitize_unit_tokens(mixed $raw): array {
         $out[] = $item;
     }
     return $out;
+}
+
+function sanitize_story(mixed $raw): ?array {
+    if (!is_array($raw)) {
+        return null;
+    }
+    $text = sanitize_level_text($raw['text'] ?? '', 280);
+    if ($text === '') {
+        return null;
+    }
+    $when = (($raw['when'] ?? '') === 'touch') ? 'touch' : 'kill';
+    return ['text' => $text, 'when' => $when];
+}
+
+/** Attach story copy, and the story token when that copy exists. */
+function merge_story_tokens(array $unitTokens, mixed $rawStory): array {
+    $story = sanitize_story($rawStory);
+    if ($story && !in_array('story', $unitTokens, true)) {
+        $unitTokens[] = 'story';
+    }
+    return [$unitTokens, $story];
 }
 
 function sanitize_armies(mixed $raw, int $cols, int $rows): array {
@@ -252,9 +273,15 @@ function sanitize_armies(mixed $raw, int $cols, int $rows): array {
             'row' => $row,
             'side' => $side,
         ];
-        $unitTokens = sanitize_unit_tokens($piece['unitTokens'] ?? null);
+        [$unitTokens, $story] = merge_story_tokens(
+            sanitize_unit_tokens($piece['unitTokens'] ?? null),
+            $piece['story'] ?? null,
+        );
         if ($unitTokens) {
             $rowOut['unitTokens'] = $unitTokens;
+        }
+        if ($story) {
+            $rowOut['story'] = $story;
         }
         $facing = sanitize_facing($piece['facing'] ?? null);
         if ($facing !== null) {
@@ -422,9 +449,15 @@ function sanitize_formation(mixed $form): ?array {
             'col' => $col,
             'fromBack' => $fromBack,
         ];
-        $unitTokens = sanitize_unit_tokens($slot['unitTokens'] ?? null);
+        [$unitTokens, $story] = merge_story_tokens(
+            sanitize_unit_tokens($slot['unitTokens'] ?? null),
+            $slot['story'] ?? null,
+        );
         if ($unitTokens) {
             $slotOut['unitTokens'] = $unitTokens;
+        }
+        if ($story) {
+            $slotOut['story'] = $story;
         }
         $facing = sanitize_facing($slot['facing'] ?? null);
         if ($facing !== null) {

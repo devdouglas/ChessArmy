@@ -1,4 +1,4 @@
-import { isKnownUnit, sanitizeUnitTokens, UNIT_STATS, type Side, type UnitType } from './engine';
+import { isKnownUnit, UNIT_STATS, withStory, type Side, type UnitType } from './engine';
 import {
   COLS,
   DEFAULT_ARMY_EDGE,
@@ -69,12 +69,13 @@ function sanitizeSlot(raw: unknown): ArmySlot | null {
   const fromBack = Math.floor(Number(s.fromBack));
   if (!Number.isFinite(col) || !Number.isFinite(fromBack)) return null;
   if (col < 0 || col > 32 || fromBack < 0 || fromBack > 32) return null;
-  const unitTokens = sanitizeUnitTokens(s.unitTokens);
+  const packed = withStory(s.unitTokens, (s as { story?: unknown }).story);
   return {
     type: s.type,
     col,
     fromBack,
-    unitTokens: unitTokens.length ? unitTokens : undefined,
+    unitTokens: packed.unitTokens,
+    story: packed.story,
     facing: sanitizeStampFacing('red', s.facing),
   };
 }
@@ -295,7 +296,7 @@ export function formationCombatValue(slots: ArmySlot[]): number {
 export function slotsEqual(a: ArmySlot[], b: ArmySlot[]): boolean {
   if (a.length !== b.length) return false;
   const key = (s: ArmySlot) =>
-    `${s.type}:${s.col}:${s.fromBack}:${s.facing ?? ''}:${(s.unitTokens ?? []).join(',')}`;
+    `${s.type}:${s.col}:${s.fromBack}:${s.facing ?? ''}:${(s.unitTokens ?? []).join(',')}:${s.story ? `${s.story.when}:${s.story.text}` : ''}`;
   const left = a.map(key).sort();
   const right = b.map(key).sort();
   return left.every((k, i) => k === right[i]);

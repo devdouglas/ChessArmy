@@ -264,7 +264,7 @@ export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
 /** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
-export const UNIT_TOKEN_TYPES = ['general', 'hidden', 'exhausted', 'neutral', 'sleep'] as const;
+export const UNIT_TOKEN_TYPES = ['general', 'hidden', 'exhausted', 'neutral', 'sleep', 'story'] as const;
 export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
 export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   general: 'General',
@@ -272,7 +272,36 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   exhausted: 'Exhausted',
   neutral: 'Neutral',
   sleep: 'Sleep',
+  story: 'Story',
 };
+
+export const STORY_WHENS = ['kill', 'touch'] as const;
+export type StoryWhen = (typeof STORY_WHENS)[number];
+
+/** Message on a Story token. `kill` pops when the unit dies. `touch` pops on melee contact. */
+export type PieceStory = {
+  text: string;
+  when: StoryWhen;
+};
+
+export function sanitizeStory(raw: unknown): PieceStory | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const s = raw as { text?: unknown; when?: unknown };
+  const text = sanitizeBoardText(typeof s.text === 'string' ? s.text : '');
+  if (!text) return undefined;
+  return { text, when: s.when === 'touch' ? 'touch' : 'kill' };
+}
+
+/** Keep a valid story payload, and the story token whenever that payload exists. */
+export function withStory(
+  tokens: UnitTokenType[] | undefined,
+  rawStory: unknown,
+): { unitTokens?: UnitTokenType[]; story?: PieceStory } {
+  const story = sanitizeStory(rawStory);
+  let list = sanitizeUnitTokens(tokens);
+  if (story && !list.includes('story')) list = [...list, 'story'];
+  return { unitTokens: list.length ? list : undefined, story };
+}
 
 export function isUnitTokenType(v: unknown): v is UnitTokenType {
   return (UNIT_TOKEN_TYPES as readonly string[]).includes(v as string);
@@ -717,15 +746,17 @@ export type Piece = {
   holdSawIds?: string[];
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
-  /** Attachments (General, Hidden, Exhausted, Sleep). Missing → none. */
+  /** Attachments (General, Hidden, Exhausted, Sleep, Story). Missing → none. */
   unitTokens?: UnitTokenType[];
+  /** Story token copy. Ignored unless the story token is attached. */
+  story?: PieceStory;
   /** Hide broken this match (moved, attacked, or was hit). */
   revealed?: boolean;
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
 export type FxStamina = { id: string; kind: 'gain' | 'spend' };
-export type FxBoard = { col: number; row: number; text: string };
+export type FxBoard = { col: number; row: number; text: string; title?: string };
 
 export type GameState = {
   cols: number;
@@ -1130,6 +1161,7 @@ function applyDamage(
   if (hasUnitToken(victim, 'sleep')) dropUnitToken(victim, 'sleep');
   if (markShot) victim.rangedHit = true;
   if (remaining <= 0) {
+    tellStory(state, victim, 'kill');
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
     if (isSide(victim.side)) {
       const lost = state.casualties[victim.side] ?? 0;
@@ -1234,13 +1266,30 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
   return dmg.fatal;
 }
 
+function pushFxCopy(state: GameState, text: string, at: Hex, title?: string): void {
+  const clean = sanitizeBoardText(text);
+  if (!clean) return;
+  const cur = state.fxBoard;
+  if (!cur) {
+    state.fxBoard = { col: at.col, row: at.row, text: clean, title };
+    return;
+  }
+  if (cur.text.split('\n\n').includes(clean)) return;
+  state.fxBoard = { ...cur, text: `${cur.text}\n\n${clean}`, title: cur.title ?? title };
+}
+
+/** Story popup. `touch` is melee contact only — shots, splash, and pikes are `kill`. */
+function tellStory(state: GameState, piece: Piece, when: StoryWhen): void {
+  if (!hasUnitToken(piece, 'story') || !piece.story || piece.story.when !== when) return;
+  pushFxCopy(state, piece.story.text, { col: piece.col, row: piece.row }, 'Story');
+}
+
 function readBoard(state: GameState, piece: Piece, tok: TileToken): void {
   if (tok.type !== 'board') return;
   if (!isSide(piece.side) || !isPlayerControlled(state, piece.side)) return;
   if (tok.read) return;
   tok.read = true;
-  const text = sanitizeBoardText(tok.text);
-  if (text) state.fxBoard = { col: tok.col, row: tok.row, text };
+  pushFxCopy(state, tok.text ?? '', { col: tok.col, row: tok.row });
   state.log.push(`${unitLog(piece)} reads a message board`);
 }
 
@@ -1824,6 +1873,7 @@ function cloneState(state: GameState): GameState {
       ...p,
       abilities: p.abilities ? [...p.abilities] : undefined,
       unitTokens: p.unitTokens ? [...p.unitTokens] : undefined,
+      story: p.story ? { ...p.story } : undefined,
       holdSawIds: p.holdSawIds ? [...p.holdSawIds] : undefined,
     })),
     log: [...state.log],
@@ -2091,6 +2141,7 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
       state.fxHits = [...(state.fxHits ?? []), { id: p.id, fatal: remaining <= 0, dealt }];
     }
     if (remaining <= 0) {
+      tellStory(state, p, 'kill');
       state.pieces = state.pieces.filter((x) => x.id !== p.id);
       if (isSide(p.side)) {
         const lost = state.casualties[p.side] ?? 0;
@@ -2841,6 +2892,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     for (const mh of plan.hits) {
       const victim = getPiece(next, mh.id);
       if (!victim) continue;
+      tellStory(next, victim, 'touch');
       applyDamage(next, victim, mh.amount, 1, mh.from);
       hitBits.push(hpBit(victim, mh.fatal, mh.remaining, mh.routed));
       dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));

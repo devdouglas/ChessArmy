@@ -1,8 +1,8 @@
 {
     "id": "lvl-mviffylu-jq6f6",
     "name": "Men, Not Scarecrows",
-    "cols": 8,
-    "rows": 8,
+    "cols": 9,
+    "rows": 10,
     "orientation": "flat",
     "terrain": [
         [
@@ -13,29 +13,11 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land"
         ],
         [
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -53,15 +35,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land"
         ],
@@ -73,9 +46,66 @@
             "land",
             "land",
             "land",
+            "land",
             "land"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
             "land",
             "land",
             "land",
@@ -112,39 +142,143 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "aggressive",
+        "blue": "defensive",
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
-    "sort": 9,
-    "updatedAt": 1793133938602,
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 9
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 9
+        }
+    ],
+    "sort": 6,
+    "updatedAt": 1793164303154,
     "armies": [
         {
-            "type": "cohort",
+            "type": "javelin",
+            "col": 4,
+            "row": 6,
+            "side": "blue"
+        },
+        {
+            "type": "u-mvr2vokzh3n3",
             "col": 3,
-            "row": 6,
+            "row": 8,
             "side": "red"
         },
         {
-            "type": "cohort",
+            "type": "u-mvr2vokzh3n3",
             "col": 5,
-            "row": 6,
+            "row": 8,
             "side": "red"
         },
         {
-            "type": "hoplite",
-            "col": 5,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
+            "type": "u-mvr2vokzh3n3",
+            "col": 6,
+            "row": 3,
+            "side": "blue"
         },
         {
-            "type": "hoplite",
+            "type": "u-mvr2vokzh3n3",
             "col": 2,
-            "row": 4,
+            "row": 2,
             "side": "blue"
         }
     ]

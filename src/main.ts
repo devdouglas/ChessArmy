@@ -125,6 +125,8 @@ import {
   isTokenType,
   isUnitTokenType,
   sanitizeUnitTokens,
+  sanitizeStory,
+  withStory,
   isWalkableTerrain,
   liftWallTerrain,
   sanitizeTokens,
@@ -263,6 +265,7 @@ import {
   hiddenBadgeSvg,
   exhaustedBadgeSvg,
   neutralBadgeSvg,
+  storyBadgeSvg,
   sleepZsSvg,
   pieceIconSvg,
   reloadBadgeSvg,
@@ -384,9 +387,10 @@ const RANDOM_UNITS_PER_TURN = 6;
 let state: GameState = bootState();
 let briefingOpen = false;
 /** Play: reread / walk-on message board. */
-let boardPopup: { text: string } | null = null;
+let boardPopup: { text: string; title?: string } | null = null;
 /** Editor: hex whose board text is being edited. */
 let editorBoardHex: Hex | null = null;
+let editorStoryHex: Hex | null = null;
 let playlist: Playlist | null = null;
 let mapPick: MapPickKind | null = null;
 let unitEditorCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
@@ -552,13 +556,14 @@ function clipStamps(pieces: ArmyStamp[], cols: number, rows: number): ArmyStamp[
     const k = `${p.col},${p.row}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    const unitTokens = sanitizeUnitTokens(p.unitTokens);
+    const packed = withStory(p.unitTokens, p.story);
     out.push({
       type: p.type,
       col: p.col,
       row: p.row,
       side: p.side,
-      unitTokens: unitTokens.length ? unitTokens : undefined,
+      unitTokens: packed.unitTokens,
+      story: packed.story,
       facing: sanitizeStampFacing(p.side, p.facing),
     });
   }
@@ -845,7 +850,7 @@ async function playPendingFx(): Promise<void> {
     if (gains.length) await flashStamina(gains, 'stam-gain');
     if (spends.length) await flashStamina(spends, 'stam-spend');
   }
-  if (board?.text) boardPopup = { text: board.text };
+  if (board?.text) boardPopup = { text: board.text, title: board.title };
 }
 
 function flashDamaged(
@@ -1129,6 +1134,7 @@ function showStart() {
   briefingOpen = false;
   boardPopup = null;
   editorBoardHex = null;
+  editorStoryHex = null;
   randomSetup = null;
   screen = 'start';
   playlist = null;
@@ -1374,6 +1380,7 @@ function beginEditorSession(): void {
   briefingOpen = false;
   boardPopup = null;
   editorBoardHex = null;
+  editorStoryHex = null;
   screen = 'editor';
   clearSelection();
   aiThinking = false;
@@ -1461,6 +1468,7 @@ function enterEditorFromMatch() {
       row: p.row,
       side: p.side,
       unitTokens: p.unitTokens,
+      story: p.story,
       facing: p.facing,
     })),
     editorTerrain[0]?.length ?? COLS,
@@ -1598,11 +1606,16 @@ function paintEditorNoTouch(col: number, row: number) {
   refreshEditorBoard();
 }
 
-function paintEditorUnitToken(col: number, row: number) {
+function paintEditorUnitToken(col: number, row: number, first = true) {
   if (!isUnitTokenBrush(editorBrush)) return;
   const kind = unitTokenFromBrush(editorBrush);
   const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   if (idx < 0) return;
+  if (kind === 'story') {
+    if (!first) return;
+    openEditorStory(col, row);
+    return;
+  }
   const cur = sanitizeUnitTokens(editorPieces[idx].unitTokens);
   const has = cur.includes(kind);
   if (!editorUnitTokenStroke) editorUnitTokenStroke = has ? 'remove' : 'add';
@@ -1648,6 +1661,15 @@ function paintEditorErase(col: number, row: number) {
 
 function openEditorBoard(col: number, row: number) {
   editorBoardHex = { col, row };
+  editorStoryHex = null;
+  editorPainting = false;
+  editorPaintKey = null;
+  render();
+}
+
+function openEditorStory(col: number, row: number) {
+  editorStoryHex = { col, row };
+  editorBoardHex = null;
   editorPainting = false;
   editorPaintKey = null;
   render();
@@ -1665,7 +1687,7 @@ function paintEditorHex(col: number, row: number, first = true) {
     return;
   }
   if (isUnitTokenBrush(editorBrush)) {
-    paintEditorUnitToken(col, row);
+    paintEditorUnitToken(col, row, first);
     return;
   }
   const boardTok = editorTokens.find(
@@ -2567,6 +2589,7 @@ async function maybeAi() {
   updateChrome();
 
   let guard = 0;
+  let pausedForBoard = false;
   while (isAiControlled(state, state.turn) && !state.winner && guard < 64) {
     const action = pickAiAction(state);
     if (!action) {
@@ -2579,6 +2602,10 @@ async function maybeAi() {
     const actedBefore = state.actedIds.length;
     await wait(180);
     await playAnimatedAction(action);
+    if (boardBlocks()) {
+      pausedForBoard = true;
+      break;
+    }
     if (
       state.turn === turnBefore &&
       state.scoutPieceId === scoutBefore &&
@@ -2595,7 +2622,7 @@ async function maybeAi() {
     render();
     guard += 1;
   }
-  if (isAiControlled(state, state.turn) && !state.winner) {
+  if (!pausedForBoard && isAiControlled(state, state.turn) && !state.winner) {
     state = passTurn(state);
     secondActionArmed = false;
     await playPendingFx();
@@ -2843,6 +2870,7 @@ function renderBoard(): string {
         row: p.row,
         facing: facingFromStamp(p),
         unitTokens: p.unitTokens,
+        story: p.story,
       }))
     : state.pieces.filter((p) => pieceVisible(state, p, viewers));
   const dmgBoard: GameState = editing
@@ -2901,7 +2929,7 @@ function renderBoard(): string {
       )
       .join('');
     const hideIcons = unitTokensOf(p)
-      .filter((id) => id === 'hidden' || id === 'exhausted' || id === 'neutral')
+      .filter((id) => id === 'hidden' || id === 'exhausted' || id === 'neutral' || id === 'story')
       .map((id, i) => {
         const cx = -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65;
         const cy = pr * 0.7;
@@ -2909,7 +2937,9 @@ function renderBoard(): string {
           ? hiddenBadgeSvg(cx, cy, badgeR)
           : id === 'exhausted'
             ? exhaustedBadgeSvg(cx, cy, badgeR)
-            : neutralBadgeSvg(cx, cy, badgeR);
+            : id === 'neutral'
+              ? neutralBadgeSvg(cx, cy, badgeR)
+              : storyBadgeSvg(cx, cy, badgeR);
       })
       .join('');
     const sleepMark = hasUnitToken(p, 'sleep')
@@ -3470,7 +3500,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. A General that walks onto it converts it to that army, no damage. Other units cannot occupy the hex. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. A General that walks onto it converts it to that army, no damage. Other units cannot occupy the hex. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -3673,10 +3703,11 @@ function renderStartOverlay(): string {
 
 function renderBoardPopup(): string {
   if (!boardPopup) return '';
+  const title = boardPopup.title || 'Message board';
   return `
-    <div class="end-overlay briefing board-overlay" role="dialog" aria-modal="true" aria-label="Message board">
+    <div class="end-overlay briefing board-overlay" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <div class="end-card briefing board-card">
-        <h2 class="end-title">Message board</h2>
+        <h2 class="end-title">${escapeHtml(title)}</h2>
         <p class="end-sub level-copy board-copy">${formatCopyHtml(boardPopup.text)}</p>
         <div class="end-actions">
           <button type="button" id="board-close">Close</button>
@@ -3764,6 +3795,79 @@ function bindEditorBoardPopup() {
   });
   box?.addEventListener('focus', () => {
     editorCopyFieldId = 'board-text';
+  });
+  box?.focus();
+}
+
+function renderEditorStoryPopup(): string {
+  if (!editorStoryHex) return '';
+  const piece = editorPieces.find(
+    (p) => p.col === editorStoryHex!.col && p.row === editorStoryHex!.row,
+  );
+  if (!piece) return '';
+  const story = sanitizeStory(piece.story);
+  const when = story?.when ?? 'kill';
+  return `
+    <div class="end-overlay briefing board-overlay" role="dialog" aria-modal="true" aria-label="Edit story">
+      <div class="end-card briefing board-card">
+        <h2 class="end-title">Story</h2>
+        <label class="board-edit">
+          <span class="sr-only">Message</span>
+          <textarea id="story-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(story?.text ?? '')}</textarea>
+          <p class="muted board-hint">Wrap a unit or tile-token name in [brackets] to show its icon. Leave the message empty to remove the token.</p>
+        </label>
+        <label class="board-edit">
+          <span class="board-when-label">When</span>
+          <select id="story-when">
+            <option value="kill"${when === 'kill' ? ' selected' : ''}>On kill</option>
+            <option value="touch"${when === 'touch' ? ' selected' : ''}>On touch</option>
+          </select>
+        </label>
+        <div class="end-actions">
+          <button type="button" id="story-save">Save</button>
+          <button type="button" id="story-cancel" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function closeEditorStory() {
+  editorStoryHex = null;
+  render();
+}
+
+function bindEditorStoryPopup() {
+  const box = app.querySelector<HTMLTextAreaElement>('#story-text');
+  const whenEl = app.querySelector<HTMLSelectElement>('#story-when');
+  const hex = editorStoryHex;
+  if (!hex) return;
+  const idx = editorPieces.findIndex((p) => p.col === hex.col && p.row === hex.row);
+  app.querySelector('#story-cancel')?.addEventListener('click', () => closeEditorStory());
+  app.querySelector('#story-save')?.addEventListener('click', () => {
+    if (idx < 0) {
+      closeEditorStory();
+      return;
+    }
+    const text = sanitizeBoardText(box?.value ?? '');
+    const when = whenEl?.value === 'touch' ? 'touch' : 'kill';
+    const cur = editorPieces[idx];
+    const tokens = sanitizeUnitTokens(cur.unitTokens).filter((t) => t !== 'story');
+    if (!text) {
+      const next = { ...cur, unitTokens: tokens.length ? tokens : undefined };
+      delete next.story;
+      editorPieces[idx] = next;
+    } else {
+      editorPieces[idx] = {
+        ...cur,
+        unitTokens: sanitizeUnitTokens([...tokens, 'story']),
+        story: { text, when },
+      };
+    }
+    markEditorDirty();
+    closeEditorStory();
+  });
+  box?.addEventListener('focus', () => {
+    editorCopyFieldId = 'story-text';
   });
   box?.focus();
 }
@@ -4669,6 +4773,7 @@ function renderUnitTokenPanel(): string {
   return `
     <section class="editor-panel editor-panel-unit-tokens">
       <h3>Unit tokens</h3>
+      <p class="muted">Story opens a message. On kill, or on touch by a melee move.</p>
       <div class="editor-brushes">
         ${tokens}
       </div>
@@ -5751,11 +5856,12 @@ function insertCopyTag(tag: string, setters: Record<string, (v: string) => void>
   el.setSelectionRange(caret, caret);
   el.focus();
   setters[id]?.(next);
-  if (id !== 'board-text') markEditorDirty();
+  if (id !== 'board-text' && id !== 'story-text') markEditorDirty();
 }
 
 function bindEditorEvents() {
   bindEditorBoardPopup();
+  bindEditorStoryPopup();
   app.querySelectorAll<HTMLButtonElement>('[data-brush]').forEach((btn) => {
     btn.addEventListener('click', () => {
       editorBrush = btn.dataset.brush as EditorBrush;
@@ -6359,6 +6465,7 @@ function render() {
         ${renderEditorBar()}
       </div>
       ${renderEditorBoardPopup()}
+      ${renderEditorStoryPopup()}
     `;
     bindEvents();
     return;
