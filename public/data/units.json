@@ -270,8 +270,10 @@
         "king": false,
         "passWater": true,
         "climbLevel": 2,
-        "canHide": false,
-        "abilities": [],
+        "canHide": true,
+        "abilities": [
+            "hide"
+        ],
         "unitClass": "ranged",
         "sight": 3
     },
@@ -409,7 +411,9 @@
         "passWater": true,
         "climbLevel": 2,
         "canHide": false,
-        "abilities": [],
+        "abilities": [
+            "javelin"
+        ],
         "unitClass": "melee",
         "sight": 3
     },
@@ -501,7 +505,10 @@
         "passWater": false,
         "climbLevel": 0,
         "canHide": false,
-        "abilities": [],
+        "abilities": [
+            "charge",
+            "javelin"
+        ],
         "unitClass": "mounted",
         "sight": 3
     },
@@ -547,7 +554,9 @@
         "passWater": true,
         "climbLevel": 2,
         "canHide": true,
-        "abilities": [],
+        "abilities": [
+            "hide"
+        ],
         "unitClass": "melee",
         "sight": 2
     },
@@ -685,9 +694,7 @@
         "passWater": true,
         "climbLevel": 2,
         "canHide": false,
-        "abilities": [
-            "general"
-        ],
+        "abilities": [],
         "unitClass": "hero",
         "sight": 3
     },
@@ -871,7 +878,9 @@
         "passWater": true,
         "climbLevel": 3,
         "canHide": true,
-        "abilities": [],
+        "abilities": [
+            "hide"
+        ],
         "unitClass": "hero",
         "sight": 4
     },
@@ -917,7 +926,9 @@
         "passWater": false,
         "climbLevel": 3,
         "canHide": true,
-        "abilities": [],
+        "abilities": [
+            "hide"
+        ],
         "unitClass": "melee",
         "sight": 3
     },
@@ -1209,7 +1220,9 @@
         "passUnits": true,
         "infantry": false,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "charge"
+        ],
         "move": 2,
         "sight": 3,
         "shoot": 0,
@@ -1255,9 +1268,7 @@
         "passUnits": false,
         "infantry": false,
         "king": true,
-        "abilities": [
-            "general"
-        ],
+        "abilities": [],
         "move": 2,
         "sight": 3,
         "shoot": 0,
@@ -1395,7 +1406,9 @@
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "trap"
+        ],
         "move": 1,
         "sight": 2,
         "shoot": 0,
@@ -1441,7 +1454,9 @@
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "javelin"
+        ],
         "move": 1,
         "sight": 3,
         "shoot": 0,
@@ -1487,7 +1502,9 @@
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "hide"
+        ],
         "move": 1,
         "sight": 4,
         "shoot": 0,
@@ -1533,7 +1550,9 @@
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "hide"
+        ],
         "move": 1,
         "sight": 4,
         "shoot": 0,

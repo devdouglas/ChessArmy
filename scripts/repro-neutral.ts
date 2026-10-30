@@ -1,7 +1,6 @@
 import {
   applyAction,
   canConvert,
-  hasAbility,
   hasUnitToken,
   hpLeft,
   isHostile,
@@ -52,7 +51,7 @@ function board(): GameState {
   assert(isNeutralSide(levy.side), 'kickoff unaligned');
   assert(hasUnitToken(levy, 'neutral'), 'token still on');
   assert(!isHostile(s, levy.side, 'red'), 'not an enemy');
-  assert(hasAbility(gen, 'general'), 'red general');
+  assert(hasUnitToken(gen, 'general'), 'red general');
   assert(canConvert(gen, levy), 'general can convert');
   assert(canConvert(grunt, levy), 'any unit can convert');
   assert(

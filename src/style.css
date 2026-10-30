@@ -71,6 +71,7 @@
   --piece-neutral-ink: #f4efe4;
   --move: rgba(90, 210, 130, 0.28);
   --stamina: rgba(230, 185, 60, 0.32);
+  --charge: rgba(224, 112, 64, 0.34);
   --shoot: rgba(220, 70, 70, 0.3);
   --splash: rgba(255, 140, 40, 0.25);
   --sel: #f0e6a0;
@@ -187,6 +188,7 @@ html[data-period='ancient'] {
   --piece-neutral-ink: #f4ead8;
   --move: rgba(200, 170, 90, 0.3);
   --stamina: rgba(220, 170, 70, 0.34);
+  --charge: rgba(210, 100, 50, 0.36);
   --shoot: rgba(200, 80, 50, 0.32);
   --splash: rgba(210, 140, 50, 0.28);
   --sel: #e0c070;
@@ -278,6 +280,7 @@ html[data-period='futuristic'] {
   --piece-neutral-ink: #e8eef8;
   --move: rgba(80, 255, 200, 0.22);
   --stamina: rgba(80, 200, 255, 0.3);
+  --charge: rgba(255, 140, 70, 0.32);
   --shoot: rgba(255, 60, 140, 0.32);
   --splash: rgba(255, 120, 60, 0.28);
   --sel: #7dffd4;
@@ -3867,6 +3870,10 @@ svg.board .hex {
   fill: var(--stamina);
 }
 
+.hl-tint.charge {
+  fill: var(--charge);
+}
+
 .hl-tint.rest {
   fill: rgba(180, 140, 70, 0.16);
 }
@@ -3920,7 +3927,8 @@ svg.board .hex {
 }
 
 svg.board:has(.hl-tint.path) .hl-tint.move,
-svg.board:has(.hl-tint.path) .hl-tint.stamina {
+svg.board:has(.hl-tint.path) .hl-tint.stamina,
+svg.board:has(.hl-tint.path) .hl-tint.charge {
   opacity: 0.38;
 }
 
@@ -3950,6 +3958,19 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 
 .hl-tint.path.stamina.path-via {
   fill: color-mix(in srgb, #e08930 58%, transparent);
+}
+
+.hl-tint.path.charge {
+  fill: color-mix(in srgb, #e07040 34%, transparent);
+  stroke: #e07040;
+}
+
+.hl-tint.path.charge.path-end {
+  fill: color-mix(in srgb, #e07040 52%, transparent);
+}
+
+.hl-tint.path.charge.path-via {
+  fill: color-mix(in srgb, #e07040 58%, transparent);
 }
 
 .hl-tint.path.march {
@@ -4648,6 +4669,13 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   border-color: #f0d060;
 }
 
+.unit-dock .dock-btn.is-on:disabled {
+  background: #6a5420;
+  color: #1a1508;
+  border-color: #8a7030;
+  opacity: 0.72;
+}
+
 .unit-dock .dock-btn.is-on:hover:not(:disabled),
 .unit-dock .dock-btn.is-on:focus-visible:not(:disabled) {
   background: #f0c040;
@@ -4774,64 +4802,6 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   background: #1a221c;
 }
 
-.action-bar #second-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28em;
-  background: #2a2618;
-  color: #c8b070;
-  border: 1px solid #5a4a20;
-  padding: 0.28rem 0.55rem;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.action-bar #second-action {
-  text-transform: none;
-  letter-spacing: 0.02em;
-}
-
-.action-bar #second-action .copy-icon {
-  width: 0.95em;
-  height: 1.15em;
-  vertical-align: 0;
-}
-
-.action-bar #second-action:hover,
-.action-bar #second-action:focus-visible {
-  background: #3a3220;
-  color: #f0d060;
-  outline: none;
-}
-
-.action-bar #second-action.is-on {
-  background: #d4a017;
-  color: #1a1508;
-  border-color: #f0d060;
-}
-
-.action-bar #second-action.is-on:hover,
-.action-bar #second-action.is-on:focus-visible {
-  background: #f0c040;
-  color: #1a1508;
-}
-
-.action-bar #second-action.needs-pick {
-  background: #d4a017;
-  color: #1a1508;
-  border-color: #f0d060;
-  animation: skip-pulse 1.8s ease-in-out infinite;
-}
-
-.action-bar #second-action.is-on .copy-icon.hud.energy path,
-.action-bar #second-action.needs-pick .copy-icon.hud.energy path {
-  fill: #1a1508;
-}
-
 .action-bar #skip-scout.quiet {
   animation: none;
   background: #2a2618;
@@ -4876,8 +4846,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .action-bar #skip-scout:not(.quiet),
-  .action-bar #second-action.needs-pick {
+  .action-bar #skip-scout:not(.quiet) {
     animation: none;
     box-shadow: 0 0 0 2px rgba(240, 192, 64, 0.45);
   }

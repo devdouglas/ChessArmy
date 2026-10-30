@@ -159,6 +159,9 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   assert(h.rangedHit, 'a real shot marks the unit');
   shot.turn = 'blue';
   shot.actedIds = [];
+  shot.scoutPieceId = null;
+  shot.scoutActionsLeft = 0;
+  shot.staminaBonus = false;
   const a = pickAiAction(shot);
   assert(a?.kind === 'move' && a.to.col === far.col && a.to.row === far.row, 'shot provokes an attack if they can reach');
 }

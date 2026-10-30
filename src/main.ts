@@ -4,6 +4,10 @@ import {
   ABILITY_IDS,
   ABILITY_LABEL,
   abilitiesOf,
+  hasAbility,
+  javelinIsSpecial,
+  canTrap,
+  isHideCover,
   applyAction,
   clampMaxTurns,
   clampUnitsPerTurn,
@@ -55,7 +59,6 @@ import {
   staminaLeft,
   staminaMax,
   refusesWaterJump,
-  canBuyStaminaExtra,
   canSpendStamina,
   terrainHeight,
   isElevatedTerrain,
@@ -279,6 +282,7 @@ import {
   ammoBadgeSvg,
   hpBadgeSvg,
   abilityBadgeSvg,
+  generalBadgeSvg,
   hiddenBadgeSvg,
   exhaustedBadgeSvg,
   neutralBadgeSvg,
@@ -348,7 +352,7 @@ const APP_VERSION = pkg.version;
 document.title = `${APP_NAME} — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
-type ActionMode = 'move' | 'shoot';
+type ActionMode = 'move' | 'shoot' | 'charge';
 type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai' | 'experimental';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
@@ -434,20 +438,20 @@ let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
 let rotatePreviewDir: HexDir | null = null;
-/** Player pref: gold extra dests on select. Off → Second action opt-in. Default off. */
+/** Player pref: auto extra-action energy. Off = no auto spend. Default on. */
 const DOUBLE_TIME_KEY = 'chessarmy-double-time-v1';
 let doubleTime = loadDoubleTime();
 /** Player pref: narration on intro / victory / lose popups. Default on. */
 const POPUP_AUDIO_KEY = 'chessarmy-popup-audio-v1';
 let popupAudioOn = loadPopupAudio();
-/** This activation: player opted into extra dests while Double time is off. */
-let secondActionArmed = false;
+/** Active special mode for the selected unit (hide / javelin / charge). */
+let specialMode: AbilityId | null = null;
 
 function loadDoubleTime(): boolean {
   try {
-    return localStorage.getItem(DOUBLE_TIME_KEY) === '1';
+    return localStorage.getItem(DOUBLE_TIME_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -781,10 +785,8 @@ function bootState(): GameState {
 }
 
 function startMatch(reshuffleRandom = true) {
-  doubleTime = false;
-  setMarchDoubleTime(false);
-  secondActionArmed = false;
-  persistDoubleTime();
+  setMarchDoubleTime(doubleTime);
+  specialMode = null;
   clearSelection();
   aiThinking = false;
   animating = false;
@@ -1809,7 +1811,13 @@ function paintEditorUnit(col: number, row: number) {
     return;
   }
   if (idx >= 0) editorPieces.splice(idx, 1);
-  editorPieces.push({ type: editorBrush, col, row, side });
+  editorPieces.push({
+    type: editorBrush,
+    col,
+    row,
+    side,
+    unitTokens: UNIT_STATS[editorBrush].king ? ['general'] : undefined,
+  });
   markEditorDirty();
   refreshEditorBoard();
 }
@@ -2078,7 +2086,7 @@ function clearSelection() {
   hoverPath = [];
   commitPath = [];
   rotatePreviewDir = null;
-  secondActionArmed = false;
+  specialMode = null;
 }
 
 function livingOnSide(side: Side): { id: string }[] {
@@ -2179,7 +2187,6 @@ function currentPopupAudio(): { key: string; url: string } | null {
 }
 
 let narrationAudio: HTMLAudioElement | null = null;
-let narrationKey: string | null = null;
 /** URL last started. Closing a popup leaves this playing. */
 let narrationUrl: string | null = null;
 /** Popup key last rendered, so a reopened briefing can restart a finished clip. */
@@ -2214,10 +2221,8 @@ function syncPopupNarration(): void {
   const sameFile = narrationUrl === spec.url;
   if (sameFile && !justOpened && !narrationReplay) return;
   if (sameFile && justOpened && !narrationReplay && !el.paused && !el.ended) {
-    narrationKey = spec.key;
     return;
   }
-  narrationKey = spec.key;
   if (!sameFile) {
     narrationUrl = spec.url;
     el.src = spec.url;
@@ -2437,8 +2442,8 @@ function canControl(): boolean {
   return isPlayerControlled(state, state.turn);
 }
 
-function extrasVisible(piece: Piece): boolean {
-  return doubleTime || (secondActionArmed && selectedId === piece.id);
+function extrasVisible(): boolean {
+  return doubleTime;
 }
 
 /** Extra-action dests (second move / rest). Climb gold is this-action — never extra. */
@@ -2446,11 +2451,27 @@ function isExtraStaminaDest(h: Highlight): boolean {
   return (h.kind === 'stamina' && !!h.extra) || h.kind === 'rest';
 }
 
-/** Extra-move dests stay hidden unless Double time / Spend stamina. Climbs stay. */
+/** Extra-move dests stay hidden unless Double time. Climbs stay. Specials filter dests. */
 function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
-  if (extrasVisible(piece)) return list;
-  let out = list.filter((h) => !isExtraStaminaDest(h));
+  let out = extrasVisible() ? list : list.filter((h) => !isExtraStaminaDest(h));
   if (state.staminaBonus && state.scoutPieceId === piece.id) {
+    out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
+  }
+  const javelinOn = specialMode === 'javelin' && javelinIsSpecial(piece);
+  if (javelinOn) {
+    return out.filter((h) => h.kind === 'shoot' || h.kind === 'shoot-range');
+  }
+  if (specialMode === 'charge' && hasAbility(piece, 'charge')) {
+    return out.filter((h) => h.kind === 'charge');
+  }
+  if (specialMode === 'hide' && hasAbility(piece, 'hide')) {
+    return out.filter(
+      (h) =>
+        (h.kind === 'move' || h.kind === 'stamina') && isHideCover(state, h.hex),
+    );
+  }
+  out = out.filter((h) => h.kind !== 'charge');
+  if (javelinIsSpecial(piece)) {
     out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
   }
   return out;
@@ -2481,8 +2502,9 @@ function emptyEnergyKeys(pieceId: string): Set<string> {
     const p = pieceAt(state, hex);
     return !!p && pieceVisible(state, p, viewers);
   };
-  const showExtras = extrasVisible(actor);
+  const showExtras = extrasVisible();
   for (const hl of restDestHighlights(pieceId)) {
+    if (hl.kind !== 'rest') continue;
     const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
     if (terrain === 'water' && refusesWaterJump(actor)) {
       if (!hl.extra || showExtras) marks.add(key(hl.hex));
@@ -2521,25 +2543,31 @@ function actingHighlights(pieceId: string): Highlight[] {
 function hexActions(
   pieceId: string,
   hex: Hex,
-): { canMove: boolean; canShoot: boolean } {
+): { canMove: boolean; canShoot: boolean; canCharge: boolean } {
   const legal = actingHighlights(pieceId).filter(
     (h) => eq(h.hex, hex) && h.kind !== 'shoot-range' && h.kind !== 'rest',
   );
   return {
     canMove: legal.some((h) => h.kind === 'move' || h.kind === 'stamina'),
     canShoot: legal.some((h) => h.kind === 'shoot'),
+    canCharge: legal.some((h) => h.kind === 'charge'),
   };
 }
 
-/** Real options anywhere: move hexes, or actual fire targets. */
-function availableActions(pieceId: string): { canMove: boolean; canShoot: boolean } {
+/** Real options anywhere: move hexes, fire targets, or charge dests. */
+function availableActions(pieceId: string): {
+  canMove: boolean;
+  canShoot: boolean;
+  canCharge: boolean;
+} {
   const piece = getPiece(state, pieceId);
-  if (!piece) return { canMove: false, canShoot: false };
+  if (!piece) return { canMove: false, canShoot: false, canCharge: false };
   const all = highlightsFor(pieceId);
   const canMove = all.some((h) => h.kind === 'move' || h.kind === 'stamina');
   const canShoot =
     !isReloading(piece) && !isDepleted(piece) && all.some((h) => h.kind === 'shoot');
-  return { canMove, canShoot };
+  const canCharge = all.some((h) => h.kind === 'charge');
+  return { canMove, canShoot, canCharge };
 }
 
 function highlightsFor(pieceId: string): Highlight[] {
@@ -2572,7 +2600,7 @@ function syncMarchSpend(pieceId: string | null, on: boolean): void {
 function selectPiece(id: string | null) {
   if (animating) return;
   if (selectedId !== id) {
-    secondActionArmed = false;
+    specialMode = null;
     syncMarchSpend(selectedId, false);
   }
   selectedId = id;
@@ -2637,14 +2665,25 @@ async function playAnimatedAction(action: Action): Promise<void> {
   animating = true;
   const turnBefore = state.turn;
 
-  if (action.kind === 'move' || action.kind === 'shoot' || action.kind === 'rotate') {
+  if (
+    action.kind === 'move' ||
+    action.kind === 'charge' ||
+    action.kind === 'shoot' ||
+    action.kind === 'rotate' ||
+    action.kind === 'trap'
+  ) {
     const actor = getPiece(state, action.pieceId);
     if (actor) await showBreakCover(actor);
   }
 
-  if (action.kind === 'skip' || action.kind === 'rest' || action.kind === 'rotate') {
+  if (
+    action.kind === 'skip' ||
+    action.kind === 'rest' ||
+    action.kind === 'rotate' ||
+    action.kind === 'trap'
+  ) {
     state = applyAction(state, action);
-    if (state.turn !== turnBefore) secondActionArmed = false;
+    if (state.turn !== turnBefore) specialMode = null;
     applyHotseatTint();
     updateChrome();
     await playPendingFx();
@@ -2658,9 +2697,10 @@ async function playAnimatedAction(action: Action): Promise<void> {
     return;
   }
 
-  if (action.kind === 'move') {
-    const path = resolveMovePath(state, piece, action.to, action.path);
-    const plan = previewMove(state, piece, action.to, path);
+  if (action.kind === 'move' || action.kind === 'charge') {
+    const charging = action.kind === 'charge';
+    const path = resolveMovePath(state, piece, action.to, action.path, charging);
+    const plan = previewMove(state, piece, action.to, path, { charging });
     const g = document.querySelector<SVGGElement>(
       `g.piece-unit[data-id="${CSS.escape(piece.id)}"]`,
     );
@@ -2696,7 +2736,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
   }
 
   state = applyAction(state, action);
-  if (state.turn !== turnBefore) secondActionArmed = false;
+  if (state.turn !== turnBefore) specialMode = null;
   applyHotseatTint();
   updateChrome();
   await playPendingFx();
@@ -2853,7 +2893,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
 function drawnPathTo(hex: Hex): Hex[] {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   if (!piece) return [];
-  return stickyMovePlan(state, piece, hex, hoverPath).path;
+  return stickyMovePlan(state, piece, hex, hoverPath, specialMode === 'charge').path;
 }
 
 function committedPathTo(hex: Hex): Hex[] {
@@ -2864,14 +2904,17 @@ function committedPathTo(hex: Hex): Hex[] {
 async function tryAct(hex: Hex, kind: ActionMode) {
   if (!canActWithSelected() || !selectedId) return;
 
-  const { canMove, canShoot } = hexActions(selectedId, hex);
+  const { canMove, canShoot, canCharge } = hexActions(selectedId, hex);
   if (kind === 'move' && !canMove) return;
   if (kind === 'shoot' && !canShoot) return;
+  if (kind === 'charge' && !canCharge) return;
 
   const action: Action =
-    kind === 'move'
-      ? { kind: 'move', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
-      : { kind: 'shoot', pieceId: selectedId, at: hex };
+    kind === 'charge'
+      ? { kind: 'charge', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
+      : kind === 'move'
+        ? { kind: 'move', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
+        : { kind: 'shoot', pieceId: selectedId, at: hex };
 
   const actingId = selectedId;
   pendingHex = null;
@@ -2892,6 +2935,17 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   }
 }
 
+async function trapSelected() {
+  if (!selectedId || animating || !canControl()) return;
+  if (!canTrap(state, selectedId)) return;
+  const actingId = selectedId;
+  specialMode = null;
+  await playAnimatedAction({ kind: 'trap', pieceId: actingId });
+  retainSelection(actingId);
+  render();
+  await maybeAi();
+}
+
 async function restSelected() {
   if (!selectedId || !canRest(selectedId) || animating) return;
   const resting = getPiece(state, selectedId);
@@ -2901,7 +2955,7 @@ async function restSelected() {
   const actingId = selectedId;
   const turnBefore = state.turn;
   state = restPiece(state, actingId);
-  if (state.turn !== turnBefore) secondActionArmed = false;
+  if (state.turn !== turnBefore) specialMode = null;
   await playPendingFx();
   animating = false;
   retainSelection(actingId);
@@ -2917,7 +2971,7 @@ function canRotate(pieceId: string): boolean {
   if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
   if (state.downhillMove && state.scoutPieceId === piece.id) return false;
-  if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible(piece)) {
+  if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible()) {
     return false;
   }
   return true;
@@ -2970,7 +3024,7 @@ async function commitRotate(dir: HexDir) {
   }
 }
 
-/** Off = first action ends the unit. On (Double time / Spend stamina) keeps the extra.
+/** Off = first action ends the unit. On (Double time) keeps the extra.
  *  Board / briefing overlays must not leave the extra hanging — they already block
  *  canControl(), which used to skip this and then show Skip second action on close. */
 async function settleUnarmedStaminaExtra(actingId: string) {
@@ -2980,7 +3034,7 @@ async function settleUnarmedStaminaExtra(actingId: string) {
   if (
     state.staminaBonus &&
     state.scoutPieceId === actingId &&
-    !extrasVisible(piece)
+    !extrasVisible()
   ) {
     await playAnimatedAction({ kind: 'skip' });
   }
@@ -2988,7 +3042,7 @@ async function settleUnarmedStaminaExtra(actingId: string) {
 
 async function skipScout(nextId?: string) {
   if (!state.scoutPieceId || !canControl()) return;
-  secondActionArmed = false;
+  specialMode = null;
   const actingId = state.scoutPieceId;
   await playAnimatedAction({ kind: 'skip' });
   const next = nextId ? getPiece(state, nextId) : null;
@@ -3022,7 +3076,7 @@ async function maybeAi() {
     const action = pickAiAction(state);
     if (!action) {
       state = passTurn(state);
-      secondActionArmed = false;
+      specialMode = null;
       await playPendingFx();
       if (boardBlocks()) break;
       guard += 1;
@@ -3041,7 +3095,7 @@ async function maybeAi() {
       !state.winner
     ) {
       state = passTurn(state);
-      secondActionArmed = false;
+      specialMode = null;
       await playPendingFx();
       if (boardBlocks()) break;
       guard += 1;
@@ -3099,14 +3153,15 @@ function renderBoard(): string {
   // Dest overlay is yours-to-act only. Rebuilding it on every AI step remounts
   // energy bolts and they flash while the unit stays selected.
   const allHl = !editing && selectedId && canControl() ? highlights : [];
-  const moveMap = new Map<string, 'move' | 'stamina'>();
+  const moveMap = new Map<string, 'move' | 'stamina' | 'charge'>();
   const restSet = new Set<string>();
   const shootRange = new Set<string>();
   const shootTarget = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
-    if (hl.kind === 'move' || hl.kind === 'stamina') moveMap.set(k, hl.kind);
-    else if (hl.kind === 'shoot') shootTarget.add(k);
+    if (hl.kind === 'move' || hl.kind === 'stamina' || hl.kind === 'charge') {
+      moveMap.set(k, hl.kind);
+    } else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
   }
   const actor = selectedId ? getPiece(state, selectedId) : null;
@@ -3133,7 +3188,7 @@ function renderBoard(): string {
   const splashSet = new Set<string>();
   const pathSet = new Set<string>();
   let pathVia: Hex | null = null;
-  let pathKind: 'move' | 'stamina' | null = null;
+  let pathKind: 'move' | 'stamina' | 'charge' | null = null;
   const marchSet = new Set<string>();
   let marchEnd: Hex | null = null;
   const selForMarch = !editing && selectedId ? getPiece(state, selectedId) : null;
@@ -3158,11 +3213,24 @@ function renderBoard(): string {
       marchEnd = previewMarch[previewMarch.length - 1] ?? null;
     } else {
       const destHl = highlights.find(
-        (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hoverHex!),
+        (h) =>
+          (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+          eq(h.hex, hoverHex!),
       );
       if (sel && destHl) {
-        pathKind = destHl.kind === 'stamina' ? 'stamina' : 'move';
-        const plan = stickyMovePlan(state, sel, hoverHex, hoverPath);
+        pathKind =
+          destHl.kind === 'charge'
+            ? 'charge'
+            : destHl.kind === 'stamina'
+              ? 'stamina'
+              : 'move';
+        const plan = stickyMovePlan(
+          state,
+          sel,
+          hoverHex,
+          hoverPath,
+          destHl.kind === 'charge',
+        );
         hoverPath = plan.path;
         pathVia = plan.via;
         for (const h of hoverPath) pathSet.add(key(h));
@@ -3218,12 +3286,15 @@ function renderBoard(): string {
       const mv = moveMap.get(k);
       if (!meleeHex && mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (!meleeHex && mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+      else if (!meleeHex && mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
       else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
 
       if (!meleeHex && pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
         const via = !!(pathVia && eq(pathVia, hex) && !end);
-        hlOverlays += `<polygon class="hl-tint path${pathKind === 'stamina' ? ' stamina' : ''}${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
+        hlOverlays += `<polygon class="hl-tint path${
+          pathKind === 'stamina' ? ' stamina' : pathKind === 'charge' ? ' charge' : ''
+        }${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
         if (via) {
           hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
         }
@@ -3268,11 +3339,15 @@ function renderBoard(): string {
   const staminaMarkHexes = new Set<string>();
   if (canActWithSelected()) {
     for (const hl of allHl) {
-      if (hl.kind !== 'stamina') continue;
+      if (hl.kind !== 'stamina' && hl.kind !== 'charge') continue;
       if (actor && meleeRangeHex(actor, hl.hex)) continue;
       staminaMarkHexes.add(key(hl.hex));
     }
-    if (pathKind === 'stamina' && hoverHex && !(actor && meleeRangeHex(actor, hoverHex))) {
+    if (
+      (pathKind === 'stamina' || pathKind === 'charge') &&
+      hoverHex &&
+      !(actor && meleeRangeHex(actor, hoverHex))
+    ) {
       staminaMarkHexes.add(key(hoverHex));
     }
   }
@@ -3410,6 +3485,7 @@ function renderBoard(): string {
     const hideIcons = unitTokensOf(p)
       .filter(
         (id) =>
+          id === 'general' ||
           id === 'hidden' ||
           id === 'exhausted' ||
           id === 'story' ||
@@ -3418,13 +3494,15 @@ function renderBoard(): string {
       .map((id, i) => {
         const cx = -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65;
         const cy = pr * 0.7;
-        return id === 'hidden'
-          ? hiddenBadgeSvg(cx, cy, badgeR)
-          : id === 'exhausted'
-            ? exhaustedBadgeSvg(cx, cy, badgeR)
-            : id === 'neutral'
-              ? neutralBadgeSvg(cx, cy, badgeR)
-              : storyBadgeSvg(cx, cy, badgeR);
+        return id === 'general'
+          ? generalBadgeSvg(cx, cy, badgeR)
+          : id === 'hidden'
+            ? hiddenBadgeSvg(cx, cy, badgeR)
+            : id === 'exhausted'
+              ? exhaustedBadgeSvg(cx, cy, badgeR)
+              : id === 'neutral'
+                ? neutralBadgeSvg(cx, cy, badgeR)
+                : storyBadgeSvg(cx, cy, badgeR);
       })
       .join('');
     const sleepMark = hasUnitToken(p, 'sleep')
@@ -3543,7 +3621,7 @@ function renderBoard(): string {
   </svg>`;
 }
 
-function dockIcon(kind: 'energy' | 'double' | 'rest' | 'special' | 'end'): string {
+function dockIcon(kind: ActionGlyphId): string {
   return actionGlyphSvg(kind, { className: 'dock-ico' });
 }
 
@@ -3555,10 +3633,10 @@ function dockButton(
     pressed?: boolean;
     title?: string;
     className?: string;
-    icon: 'energy' | 'double' | 'rest' | 'special' | 'end';
+    icon: ActionGlyphId;
   },
 ): string {
-  const on = !!opts.pressed && enabled;
+  const on = !!opts.pressed;
   const cls = ['dock-btn', opts.className ?? '', on ? 'is-on' : ''].filter(Boolean).join(' ');
   const title = opts.title ? ` title="${escapeHtml(opts.title)}"` : '';
   const pressed = opts.pressed !== undefined ? ` aria-pressed="${on ? 'true' : 'false'}"` : '';
@@ -3586,20 +3664,9 @@ function energyFull(piece: Piece): boolean {
   return max > 0 && staminaLeft(piece) >= max;
 }
 
-function canOfferSecondAction(piece: Piece): boolean {
-  if (doubleTime) return false;
-  if (!canControl()) return false;
-  if (state.staminaBonus) return false;
-  return canBuyStaminaExtra(state, piece.id);
-}
-
 function setDoubleTime(on: boolean): void {
   doubleTime = on;
   setMarchDoubleTime(on);
-  if (on) {
-    secondActionArmed = false;
-    syncMarchSpend(selectedId, false);
-  }
   persistDoubleTime();
   hoverHex = null;
   hoverPath = [];
@@ -3608,15 +3675,9 @@ function setDoubleTime(on: boolean): void {
   render();
 }
 
-function setSecondActionArmed(on: boolean): void {
-  secondActionArmed = on;
-  syncMarchSpend(selectedId, on);
-  const piece = selectedId ? getPiece(state, selectedId) : null;
-  const marchNow = !!(on && piece?.walkTo && piece.spendMarch);
-  if (marchNow && piece?.walkTo) {
-    void commitMarch(piece.id, piece.walkTo, true);
-    return;
-  }
+function setSpecialMode(mode: AbilityId | null): void {
+  specialMode = specialMode === mode ? null : mode;
+  pendingHex = null;
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
@@ -3631,7 +3692,7 @@ function renderActionBar(): string {
   }
 
   const s = UNIT_STATS[piece.type];
-  const { canMove, canShoot } = availableActions(piece.id);
+  const { canMove, canShoot, canCharge } = availableActions(piece.id);
   const pending =
     pendingHex && canActWithSelected() ? hexActions(piece.id, pendingHex) : null;
   const choosing = !!(pending?.canMove && pending?.canShoot);
@@ -3669,7 +3730,7 @@ function renderActionBar(): string {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (isSleeping(piece)) {
     hint = 'Sleeping — not active';
-  } else if (!canMove && !canShoot) {
+  } else if (!canMove && !canShoot && !canCharge) {
     hint = isDepleted(piece)
       ? "Empty — can't shoot"
       : isReloading(piece)
@@ -3745,19 +3806,50 @@ function renderActionBar(): string {
     </div>`;
 }
 
-/** Five actions, always in this order. Disabled until that action is legal. */
+function dockSpecials(piece: Piece): AbilityId[] {
+  return abilitiesOf(piece).filter((id) => id !== 'javelin' || javelinIsSpecial(piece));
+}
+
+function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
+  if (!canControl() || piece.side !== state.turn) return false;
+  if (isSleeping(piece) || hasActed(state, piece.id)) return false;
+  if (id === 'trap') return canTrap(state, piece.id);
+  if (id === 'charge') return canSpendStamina(piece);
+  if (id === 'javelin') return !isReloading(piece) && !isDepleted(piece);
+  return true;
+}
+
+/** Double time, Rest, specials (or stub), End turn. */
 function renderUnitDock(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   const yours = canControl();
-  const spend = !!(piece && canOfferSecondAction(piece));
   const rest = !!(piece && canRest(piece.id) && !energyFull(piece));
-  return `<div class="unit-dock" role="toolbar" aria-label="Unit actions">
-    ${dockButton('second-action', 'Spend energy', spend, {
-      icon: 'energy',
-      pressed: secondActionArmed,
-      title: 'Spend 1 stamina for another action',
-    })}
-    ${dockButton('double-time', 'Double time', yours, {
+  const specials = piece ? dockSpecials(piece) : [];
+  const cols = 3 + Math.max(1, specials.length);
+  const ownSelected = !!(piece && piece.side === state.turn);
+  const energyLocked =
+    ownSelected && staminaMax(piece!) > 0 && !canSpendStamina(piece!);
+  const doubleOn = yours && !energyLocked;
+  const specialBtns = specials.length
+    ? specials
+        .map((id) => {
+          const on = specialDockEnabled(piece!, id);
+          if (id === 'trap') {
+            return dockButton(`special-${id}`, ABILITY_LABEL[id], on, {
+              icon: id,
+              title: ABILITY_BLURB[id],
+            });
+          }
+          return dockButton(`special-${id}`, ABILITY_LABEL[id], on, {
+            icon: id,
+            pressed: specialMode === id,
+            title: ABILITY_BLURB[id],
+          });
+        })
+        .join('')
+    : dockButton('special-action', 'Special', false, { icon: 'special', title: 'No special' });
+  return `<div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
+    ${dockButton('double-time', 'Double time', doubleOn, {
       icon: 'double',
       pressed: doubleTime,
       title: 'Stamina extras for every unit in your army',
@@ -3766,7 +3858,7 @@ function renderUnitDock(): string {
       icon: 'rest',
       title: 'Skip this activation. An idle turn restores 1 stamina',
     })}
-    ${dockButton('special-action', 'Special', false, { icon: 'special', title: 'No special' })}
+    ${specialBtns}
     ${dockButton('end-turn', 'End turn', yours, { icon: 'end', className: 'play-end-turn' })}
   </div>`;
 }
@@ -3780,7 +3872,7 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is climb, red is shoot. Double time shows stamina extras. Dual hex: pick Move or Shoot.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb, red is shoot. Double time auto-spends energy. Specials (hide / javelin / charge / trap) replace overlapping clicks.</p>';
   let moreStats = '';
 
   if (piece) {
@@ -3930,13 +4022,13 @@ function renderSidebar(): string {
       if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 energy with 2 HP or less; turn-start stamina penalty or 2 HP; no regen)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
-    if (s.charge > 0) extraNotes.push(
-      `Charge through ${s.charge} dmg (armor applies). Like palisade: a living blocker stops you unless that hit kills it, or you land empty beyond`,
+    if (hasAbility(piece, 'charge')) extraNotes.push(
+      `Charge special: ${Math.max(1, s.charge)} dmg through enemies (armor applies). Only if energy is unused this round; spends 1. A living blocker stops you unless that hit kills it, or you land empty beyond`,
     );
     if (isHouse(state, { col: piece.col, row: piece.row })) {
       extraNotes.push('In a house — after leaving, nobody can enter it again');
     }
-    if (s.canHide || hasUnitToken(piece, 'hidden')) {
+    if (hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden')) {
       extraNotes.push(
         piece.revealed
           ? 'Hide broken (moved, attacked, or was hit)'
@@ -4028,7 +4120,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -4518,7 +4610,7 @@ async function commitMarch(pieceId: string, dest: Hex | null, stepNow: boolean):
   let next = setWalkOrder(state, pieceId, dest);
   if (dest && stepNow) next = performMarch(next, pieceId);
   state = next;
-  if (state.turn !== turnBefore) secondActionArmed = false;
+  if (state.turn !== turnBefore) specialMode = null;
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
@@ -4548,13 +4640,22 @@ function onHexClick(col: number, row: number) {
   // Own piece selected + can act → resolve by what that hex allows
   if (canActWithSelected() && selectedId) {
     const piece = getPiece(state, selectedId);
-    const { canMove, canShoot } = hexActions(selectedId, hex);
-    if (!canMove && !canShoot && piece) {
+    const { canMove, canShoot, canCharge } = hexActions(selectedId, hex);
+    if (!canMove && !canShoot && !canCharge && piece) {
       const dir = redZoneDir(piece, hex);
       if (dir != null) {
         void commitRotate(dir);
         return;
       }
+    }
+    if (canCharge) {
+      commitPath = drawnPathTo(hex);
+      void tryAct(hex, 'charge');
+      return;
+    }
+    if (specialMode === 'javelin' && canShoot) {
+      void tryAct(hex, 'shoot');
+      return;
     }
     if (canMove && canShoot) {
       if (pendingHex && eq(pendingHex, hex)) {
@@ -4573,7 +4674,7 @@ function onHexClick(col: number, row: number) {
       return;
     }
     if (canMove) {
-      if (piece && trySetMarch(piece, hex)) return;
+      if (piece && !specialMode && trySetMarch(piece, hex)) return;
       commitPath = drawnPathTo(hex);
       void tryAct(hex, 'move');
       return;
@@ -4582,7 +4683,7 @@ function onHexClick(col: number, row: number) {
 
   if (selectedId) {
     const piece = getPiece(state, selectedId);
-    if (piece && trySetMarch(piece, hex)) return;
+    if (piece && !specialMode && trySetMarch(piece, hex)) return;
   }
 
   if (occ) {
@@ -4737,7 +4838,9 @@ function bindBoardOnly() {
     }
     const sel = selectedId ? getPiece(state, selectedId) : null;
     const moveHover = highlights.some(
-      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, hex),
+      (h) =>
+        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+        eq(h.hex, hex),
     );
     const splashHover =
       !!sel &&
@@ -4764,7 +4867,9 @@ function paintBoardHover(next: Hex | null) {
   const moveHover = !!(
     next &&
     highlights.some(
-      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, next),
+      (h) =>
+        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+        eq(h.hex, next),
     )
   );
   rotatePreviewDir = sel && next && !moveHover ? redZoneDir(sel, next) : null;
@@ -6019,10 +6124,7 @@ function unitNumField(
 }
 
 function abilityGlyph(id: AbilityId): string {
-  if (id === 'general') {
-    return `<svg class="ability-glyph" viewBox="-8 -8 16 16" width="16" height="16" aria-hidden="true"><path d="M0 -6.5 L1.5 -2 H6 L2.2 0.6 L3.6 5 L0 2.2 L-3.6 5 L-2.2 0.6 L-6 -2 H-1.5 Z" fill="currentColor"/></svg>`;
-  }
-  return '';
+  return actionGlyphSvg(id, { className: 'ability-glyph', em: '16' });
 }
 
 function abilityPanel(type: UnitType, abilities: AbilityId[]): string {
@@ -6033,8 +6135,9 @@ function abilityPanel(type: UnitType, abilities: AbilityId[]): string {
       ${ABILITY_LABEL[id]}
     </button>`;
   }).join('');
-  const active = abilities[0];
-  const blurb = active ? ABILITY_BLURB[active] : 'None. Toggle General to make this a command piece.';
+  const blurb = abilities.length
+    ? abilities.map((id) => ABILITY_BLURB[id]).join(' ')
+    : 'None.';
   return `<div class="ability-panel">
     <span class="unit-group-label">Abilities</span>
     <div class="ability-picks">${picks}</div>
@@ -6191,10 +6294,6 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'value', 'Value/weight')}
           ${unitNumField(type, 'actions', 'Actions')}
           ${unitNumField(type, 'sight', 'Sight')}
-          <label class="chk">
-            <input type="checkbox" data-unit="${type}" data-field="canHide"${s.canHide ? ' checked' : ''} />
-            Can hide
-          </label>
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Move</span>
@@ -6294,10 +6393,10 @@ function renderUnitEditor(): string {
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
           <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
-          <dd><strong>Can hide</strong> invisible to enemies while on forest (and later hide tokens). Breaks for the rest of the match after the unit moves, attacks, or is hit. Owner still sees them</dd>
+          <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Owner still sees them</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
-          <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Trap replace the Special dock slot (a unit can have several). Command is the General unit token, not an ability</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
@@ -6307,7 +6406,7 @@ function renderUnitEditor(): string {
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> 0 = no charge through. 1+ = damage on every unit you walk through (armor applies, including negative). Same as palisade: a living blocker stops you — click the 2nd unit and the 1st still takes the hit; you only continue if that charge would kill them (like a palisade on its last hit). Empty dest beyond: pass through the line and damage them even if they survive. Palisades: you do not pass unless that melee hit breaks them. Forest: walk onto or through; charge cannot pass through</dd>
+          <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. Only legal if energy is unused this round; spends 1. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
@@ -7256,8 +7355,16 @@ function bindEvents() {
   app.querySelector('#double-time')?.addEventListener('click', () => {
     setDoubleTime(!doubleTime);
   });
-  app.querySelector('#second-action')?.addEventListener('click', () => {
-    setSecondActionArmed(!secondActionArmed);
+  app.querySelectorAll<HTMLButtonElement>('[id^="special-"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.id.slice('special-'.length);
+      if (id === 'action') return;
+      if (id === 'trap') {
+        void trapSelected();
+        return;
+      }
+      if (isAbilityId(id)) setSpecialMode(id);
+    });
   });
   app.querySelector('#end-turn')?.addEventListener('click', () => {
     void (async () => {
@@ -7266,7 +7373,7 @@ function bindEvents() {
       const actingId = selectedId;
       const turnBefore = state.turn;
       state = passTurn(state);
-      if (state.turn !== turnBefore) secondActionArmed = false;
+      if (state.turn !== turnBefore) specialMode = null;
       applyHotseatTint();
       updateChrome();
       await playPendingFx();

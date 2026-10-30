@@ -160,11 +160,12 @@ export function sanitizeUnitStats(
       ? s.chess.trim().slice(0, 24)
       : d.chess;
   const armor = clampInt(s.armor, CLAMP.armor.min, CLAMP.armor.max, d.armor);
-  const kingHint = bool(s.king, d.king);
-  const abilities = sanitizeAbilities(
-    s.abilities,
-    s.abilities === undefined && kingHint ? ['general'] : d.abilities,
-  );
+  const hadGeneralAbility =
+    Array.isArray(s.abilities) && (s.abilities as unknown[]).includes('general');
+  let abilities = sanitizeAbilities(s.abilities, d.abilities);
+  if (bool(s.canHide, false) && !abilities.includes('hide')) {
+    abilities = [...abilities, 'hide'];
+  }
   const next: UnitStats = {
     name,
     chess,
@@ -172,11 +173,11 @@ export function sanitizeUnitStats(
     role: dRole,
     unitClass: sanitizeUnitClass(s.unitClass, d.unitClass),
     passWater: mobility.passWater,
-    canHide: bool(s.canHide, d.canHide),
+    canHide: abilities.includes('hide'),
     climbLevel: mobility.climbLevel,
     passUnits: bool(s.passUnits, traits.passUnits),
     infantry: bool(s.infantry, traits.infantry),
-    king: abilities.includes('general'),
+    king: bool(s.king, d.king) || hadGeneralAbility,
     abilities,
     move: clampInt(s.move, CLAMP.move.min, CLAMP.move.max, d.move),
     sight: clampInt(s.sight, CLAMP.sight.min, CLAMP.sight.max, d.sight),
@@ -376,7 +377,6 @@ export function unitStatsAreStock(): boolean {
       INT_FIELDS.every((k) => a[k] === b[k]) &&
       TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
       a.passWater === b.passWater &&
-      a.canHide === b.canHide &&
       a.shootArc === b.shootArc &&
       a.hexArmor === b.hexArmor &&
       a.hexDamage === b.hexDamage &&
@@ -437,7 +437,11 @@ export function patchUnitAbility(type: UnitType, id: AbilityId, on: boolean): vo
   const abilities = on
     ? sanitizeAbilities([...prev.abilities, id])
     : prev.abilities.filter((a) => a !== id);
-  const next = sanitizeUnitStats(type, { ...prev, abilities, king: abilities.includes('general') });
+  const next = sanitizeUnitStats(type, {
+    ...prev,
+    abilities,
+    canHide: abilities.includes('hide'),
+  });
   Object.assign(UNIT_STATS[type], next);
   persistUnitStats();
 }

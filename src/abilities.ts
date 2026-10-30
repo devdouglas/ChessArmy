@@ -1,19 +1,27 @@
-/** Catalog of unit abilities. Kits don't own these — the editor (and later effects) do. */
+/** Unit specials. Editor-granted; kits don't own them. */
 
-export const ABILITY_IDS = ['general'] as const;
+export const ABILITY_IDS = ['hide', 'javelin', 'charge', 'trap'] as const;
 
 export type AbilityId = (typeof ABILITY_IDS)[number];
 
 export const ABILITY_LABEL: Record<AbilityId, string> = {
-  general: 'General',
+  hide: 'Hide',
+  javelin: 'Javelin',
+  charge: 'Charge',
+  trap: 'Trap',
 };
 
 export const ABILITY_BLURB: Record<AbilityId, string> = {
-  general: 'Command. Every general on a side must fall — killing one of several does not end the battle.',
+  hide: 'Hide in forest. Enemies cannot see this unit until it moves, attacks, or is hit.',
+  javelin:
+    'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
+  charge:
+    'Spend unused energy to crash through enemies. Hover shows charge routes. Not legal after energy is spent this round.',
+  trap: 'Plant pikes on the hex this unit faces.',
 };
 
 export function isAbilityId(raw: unknown): raw is AbilityId {
-  return raw === 'general';
+  return typeof raw === 'string' && (ABILITY_IDS as readonly string[]).includes(raw);
 }
 
 export function sanitizeAbilities(raw: unknown, fallback: readonly AbilityId[] = []): AbilityId[] {

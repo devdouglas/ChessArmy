@@ -399,6 +399,27 @@ function spawnExtras(type: UnitType): Pick<Piece, 'ammo' | 'hp' | 'stamina'> {
   };
 }
 
+/** King kit with no token list yet gets the General token. Explicit [] stays empty. */
+function spawnTokens(
+  type: UnitType,
+  specified: boolean,
+  list: UnitTokenType[] | undefined,
+): UnitTokenType[] | undefined {
+  const tokens = list ? [...list] : [];
+  if (!specified && statsOf(type).king && !tokens.includes('general')) {
+    tokens.push('general');
+  }
+  return tokens.length ? tokens : undefined;
+}
+
+function applySpawnPools(piece: Piece): void {
+  const max = hpMax(piece);
+  piece.hp = max > 1 ? max : undefined;
+  const stam = staminaMax(piece);
+  if (hasUnitToken(piece, 'exhausted') && stam > 0) piece.stamina = 0;
+  else piece.stamina = stam > 0 ? stam : undefined;
+}
+
 /** Map edge a formation is stamped onto. One army per edge. */
 export const ARMY_EDGES = ['bottom', 'top', 'left', 'right'] as const;
 export type ArmyEdge = (typeof ARMY_EDGES)[number];
@@ -632,7 +653,8 @@ export function stockSlots(cols: number, rows: number): ArmySlot[] {
 export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
   return stamps.map((p) => {
     const packed = withStory(p.unitTokens, p.story);
-    const side = stampAffiliation({ side: p.side, unitTokens: packed.unitTokens });
+    const unitTokens = spawnTokens(p.type, p.unitTokens !== undefined, packed.unitTokens);
+    const side = stampAffiliation({ side: p.side, unitTokens });
     const piece: Piece = {
       id: pid(side, p.type),
       side,
@@ -643,14 +665,10 @@ export function piecesFromStamps(stamps: ArmyStamp[]): Piece[] {
       startRow: p.row,
       facing: facingFromStamp(p),
       ...spawnExtras(p.type),
-      unitTokens: packed.unitTokens,
+      unitTokens,
       story: packed.story,
     };
-    const max = hpMax(piece);
-    piece.hp = max > 1 ? max : undefined;
-    const stam = staminaMax(piece);
-    if (hasUnitToken(piece, 'exhausted') && stam > 0) piece.stamina = 0;
-    else piece.stamina = stam > 0 ? stam : undefined;
+    applySpawnPools(piece);
     return piece;
   });
 }
@@ -664,7 +682,7 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
 
   for (let i = 0; i < backW; i++) {
     const col = backCol(side, i, backStart, backW);
-    pieces.push({
+    const piece: Piece = {
       id: pid(side, BACK[i]),
       side,
       type: BACK[i],
@@ -674,7 +692,10 @@ function spawnArmy(side: Side, cols: number, rows: number): Piece[] {
       startRow: backRow,
       facing: defaultFacing(side),
       ...spawnExtras(BACK[i]),
-    });
+      unitTokens: spawnTokens(BACK[i], false, undefined),
+    };
+    applySpawnPools(piece);
+    pieces.push(piece);
   }
 
   // Pawns against each unit except bunker hexes (concrete walls) → 6

@@ -624,7 +624,16 @@ export function staminaEmptyMarkSvg(
     </g>`;
 }
 
-export type ActionGlyphId = 'energy' | 'double' | 'rest' | 'special' | 'end';
+export type ActionGlyphId =
+  | 'energy'
+  | 'double'
+  | 'rest'
+  | 'special'
+  | 'end'
+  | 'hide'
+  | 'javelin'
+  | 'charge'
+  | 'trap';
 
 /** Same drawing as the bottom action buttons. */
 export function actionGlyphSvg(
@@ -665,6 +674,34 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
     return {
       viewBox: '0 0 24 24',
       inner: `<path fill="currentColor" d="M12 2.2 L14.4 9 H21.5 L15.7 13.2 L17.9 20.2 L12 16.1 L6.1 20.2 L8.3 13.2 L2.5 9 H9.6 Z"/>`,
+    };
+  }
+  if (kind === 'hide') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<ellipse cx="0" cy="0" rx="5.4" ry="3.2" fill="none" stroke="currentColor" stroke-width="1.35"/>
+        <circle cx="0" cy="0" r="1.55" fill="currentColor"/>`,
+    };
+  }
+  if (kind === 'javelin') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<g transform="rotate(-42)">
+        <rect x="-6.2" y="-0.55" width="9.4" height="1.1" rx="0.4" fill="currentColor"/>
+        <path d="M3.2 -1.7 L7.4 0 L3.2 1.7 Z" fill="currentColor"/>
+      </g>`,
+    };
+  }
+  if (kind === 'charge') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-6.2 -3.6 L-1.1 0 L-6.2 3.6 Z M-0.6 -3.6 L4.5 0 L-0.6 3.6 Z M5.1 -3.6 L7.4 0 L5.1 3.6 Z"/>`,
+    };
+  }
+  if (kind === 'trap') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-4.8 5.4 L-3.6 -5.2 L-2.2 -5.2 L-3.4 5.4 Z M-1.3 5.4 L-0.1 -5.6 L1.3 -5.6 L0.1 5.4 Z M2.2 5.4 L3.4 -5.2 L4.8 -5.2 L3.6 5.4 Z"/>`,
     };
   }
   return {
@@ -809,18 +846,41 @@ export function ammoBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
     </g>`;
 }
 
-/** Ability pip — bottom-left of the piece. Star = General. */
-export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): string {
+/** General token pip — gold star. */
+export function generalBadgeSvg(cx: number, cy: number, r = 7): string {
   const sw = Math.max(0.7, r * 0.12);
   const star = `M0 ${-r * 0.62} L${r * 0.18} ${-r * 0.18} H${r * 0.58} L${r * 0.24} ${r * 0.08} L${r * 0.36} ${r * 0.52} L0 ${r * 0.22} L${-r * 0.36} ${r * 0.52} L${-r * 0.24} ${r * 0.08} L${-r * 0.58} ${-r * 0.18} H${-r * 0.18} Z`;
-  if (id === 'general') {
-    return `
+  return `
       <g class="ability-badge general" transform="translate(${cx}, ${cy})">
         <circle cx="0" cy="0" r="${r}" fill="#2a2410" stroke="#e0c070" stroke-width="1.3"/>
         <path d="${star}" fill="#f0d060" stroke="#8a7030" stroke-width="${sw}" stroke-linejoin="round"/>
       </g>`;
-  }
-  return '';
+}
+
+/** Ability pip — bottom-left of the piece. */
+export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): string {
+  const drawn = actionGlyphDrawn(id);
+  const fill =
+    id === 'hide'
+      ? '#14201c'
+      : id === 'charge'
+        ? '#2a1810'
+        : id === 'javelin'
+          ? '#241810'
+          : '#1c2018';
+  const stroke =
+    id === 'hide'
+      ? '#6a9a88'
+      : id === 'charge'
+        ? '#e07040'
+        : id === 'javelin'
+          ? '#c9a227'
+          : '#8aaa70';
+  return `
+      <g class="ability-badge ${id}" transform="translate(${cx}, ${cy})">
+        <circle cx="0" cy="0" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>
+        <g transform="scale(${(r / 8).toFixed(3)})" fill="${stroke}" color="${stroke}">${drawn.inner}</g>
+      </g>`;
 }
 
 export function hiddenBadgeSvg(cx: number, cy: number, r = 7): string {
@@ -893,7 +953,7 @@ export function sleepBadgeSvg(cx: number, cy: number, r = 7): string {
 /** Editor swatch for a unit token. */
 export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   const r = size * 0.42;
-  if (id === 'general') return abilityBadgeSvg('general', 0, 0, r);
+  if (id === 'general') return generalBadgeSvg(0, 0, r);
   if (id === 'hidden') return hiddenBadgeSvg(0, 0, r);
   if (id === 'exhausted') return exhaustedBadgeSvg(0, 0, r);
   if (id === 'neutral') return neutralBadgeSvg(0, 0, r);

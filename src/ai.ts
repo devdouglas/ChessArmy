@@ -18,8 +18,8 @@ import {
   combatValue,
   facingOf,
   getPiece,
-  hasAbility,
   hasSplash,
+  hasUnitToken,
   hpLeft,
   isHostile,
   pieceSees,
@@ -322,9 +322,15 @@ function ridgeFollowIndex(walk: Hex[], ridge: Hex[]): number {
   return walk.length - 1;
 }
 
-function walkHexesToStop(state: GameState, piece: Piece, to: Hex, stop: Hex): Hex[] {
+function walkHexesToStop(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  stop: Hex,
+  charging = false,
+): Hex[] {
   const walk: Hex[] = [];
-  for (const h of pathForMove(state, piece, to)) {
+  for (const h of pathForMove(state, piece, to, charging)) {
     walk.push(h);
     if (eq(h, stop)) return walk;
   }
@@ -398,10 +404,12 @@ function actionHitsDefenseHex(state: GameState, action: Action, hex: Hex): boole
     }
     return eq(action.at, hex);
   }
-  if (action.kind !== 'move') return false;
+  if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
-  return previewMove(state, piece, action.to).palisadeHits.some((ph) => eq(ph.hex, hex));
+  return previewMove(state, piece, action.to, action.path, {
+    charging: action.kind === 'charge',
+  }).palisadeHits.some((ph) => eq(ph.hex, hex));
 }
 
 function isDefenseOnlyShot(state: GameState, action: Action, me: Side): boolean {
@@ -424,12 +432,20 @@ function shootHitsEnemy(state: GameState, action: Action, me: Side): boolean {
   return !!(t && isHostile(state, t.side, me));
 }
 
+function isWalkAction(
+  action: Action,
+): action is Extract<Action, { kind: 'move' | 'charge' }> {
+  return action.kind === 'move' || action.kind === 'charge';
+}
+
 function isAttackAction(state: GameState, action: Action, me: Side): boolean {
   if (action.kind === 'shoot') return shootHitsEnemy(state, action, me);
-  if (action.kind === 'move') {
+  if (isWalkAction(action)) {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
-    const plan = previewMove(state, piece, action.to);
+    const plan = previewMove(state, piece, action.to, action.path, {
+      charging: action.kind === 'charge',
+    });
     if (plan.converts.length) return true;
     if (plan.hits.some((h) => {
       const v = getPiece(state, h.id);
@@ -458,7 +474,7 @@ function isAttackAction(state: GameState, action: Action, me: Side): boolean {
 }
 
 function isEnemyGeneral(state: GameState, piece: Piece | undefined, me: Side): boolean {
-  return !!piece && isHostile(state, piece.side, me) && hasAbility(piece, 'general');
+  return !!piece && isHostile(state, piece.side, me) && hasUnitToken(piece, 'general');
 }
 
 /** Shoot or walk that actually hits an enemy general this action. */
@@ -483,8 +499,10 @@ function attacksEnemyGeneral(state: GameState, action: Action, me: Side): boolea
       facing: action.dir,
     }).some((t) => isEnemyGeneral(state, t, me));
   }
-  if (action.kind !== 'move') return false;
-  const plan = previewMove(state, piece, action.to);
+  if (!isWalkAction(action)) return false;
+  const plan = previewMove(state, piece, action.to, action.path, {
+    charging: action.kind === 'charge',
+  });
   if (plan.hits.some((h) => isEnemyGeneral(state, getPiece(state, h.id), me))) return true;
   if (isEnemyGeneral(state, pieceAt(state, plan.stop), me)) return true;
   return hexDamagePushHits(state, piece, {
@@ -495,11 +513,16 @@ function attacksEnemyGeneral(state: GameState, action: Action, me: Side): boolea
 }
 
 /** True when this walk enters at least one pike hex (origin does not count). */
-function moveStepsOnPikes(state: GameState, piece: Piece, to: Hex): boolean {
+function moveStepsOnPikes(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  charging = false,
+): boolean {
   const from: Hex = { col: piece.col, row: piece.row };
-  const plan = previewMove(state, piece, to);
+  const plan = previewMove(state, piece, to, undefined, { charging });
   if (eq(from, plan.stop)) return false;
-  for (const h of pathForMove(state, piece, to)) {
+  for (const h of pathForMove(state, piece, to, charging)) {
     if (tokenOnHex(state.tokens, h, 'pikes')) return true;
     if (hexDamageOn(state, h, piece.side)) return true;
     if (eq(h, plan.stop)) break;
@@ -534,8 +557,10 @@ function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
     }
     return out;
   }
-  if (action.kind !== 'move') return out;
-  const plan = previewMove(state, piece, action.to);
+  if (!isWalkAction(action)) return out;
+  const plan = previewMove(state, piece, action.to, action.path, {
+    charging: action.kind === 'charge',
+  });
   for (const h of plan.hits) add(getPiece(state, h.id));
   for (const id of plan.converts) {
     const v = getPiece(state, id);
@@ -573,25 +598,25 @@ function meleeThreatens(state: GameState, attacker: Piece, target: Piece): boole
 function generalAttackOk(state: GameState, action: Action, me: Side): boolean {
   if (action.kind === 'skip') return true;
   const piece = getPiece(state, action.pieceId);
-  if (!piece || !hasAbility(piece, 'general')) return true;
+  if (!piece || !hasUnitToken(piece, 'general')) return true;
   if (!isAttackAction(state, action, me)) return true;
   if (attacksEnemyGeneral(state, action, me)) return true;
   return victimsOf(state, action, me).some((v) => meleeThreatens(state, v, piece));
 }
 
 function isPikeWalk(state: GameState, action: Action): boolean {
-  if (action.kind !== 'move') return false;
+  if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
-  return moveStepsOnPikes(state, piece, action.to);
+  return moveStepsOnPikes(state, piece, action.to, action.kind === 'charge');
 }
 
 /** Walk whose drawn/canonical path steps onto a Do-not-touch token. */
 function moveTouchesNoTouch(state: GameState, action: Action): boolean {
-  if (action.kind !== 'move') return false;
+  if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
-  for (const h of pathForMove(state, piece, action.to)) {
+  for (const h of pathForMove(state, piece, action.to, action.kind === 'charge')) {
     if (isNoTouch(state, h)) return true;
   }
   return false;
@@ -605,7 +630,7 @@ function isHolding(state: GameState, piece: Piece, me: Side, on: RuleOn): boolea
 
 /** Unprovoked hold walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
 function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
-  if (action.kind !== 'move') return false;
+  if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece || isHoldProvoked(piece)) return false;
   const from: Hex = { col: piece.col, row: piece.row };
@@ -615,13 +640,14 @@ function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
 }
 
 function moveCapturesFlag(state: GameState, action: Action, me: Side): boolean {
-  if (action.kind !== 'move') return false;
+  if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
   if (!piece) return false;
   const from: Hex = { col: piece.col, row: piece.row };
-  const plan = previewMove(state, piece, action.to);
+  const charging = action.kind === 'charge';
+  const plan = previewMove(state, piece, action.to, action.path, { charging });
   if (eq(from, plan.stop)) return false;
-  for (const h of pathForMove(state, piece, action.to)) {
+  for (const h of pathForMove(state, piece, action.to, charging)) {
     const tok = tokenOnHex(state.tokens, h, 'flag');
     if (tok && (!tok.owner || isHostile(state, tok.owner, me))) return true;
     if (eq(h, plan.stop)) break;
@@ -704,9 +730,11 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     return score;
   }
 
-  if (action.kind !== 'move') return score;
+  if (!isWalkAction(action)) return score;
 
-  const palPlan = previewMove(state, piece, action.to);
+  const palPlan = previewMove(state, piece, action.to, action.path, {
+    charging: action.kind === 'charge',
+  });
   if (on('break-palisades')) {
     for (const ph of palPlan.palisadeHits) {
       score += ph.destroyed ? 280 : 140;
@@ -723,7 +751,7 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     const ridgeGoal = closeHunt ?? highGroundSeek(state, piece, from);
     if (ridgeGoal) {
       highIdx = ridgeFollowIndex(
-        walkHexesToStop(state, piece, action.to, stop),
+        walkHexesToStop(state, piece, action.to, stop, action.kind === 'charge'),
         highGroundPath(state, piece, from, ridgeGoal),
       );
     }
@@ -797,7 +825,7 @@ function holdAction(
 function isOwnGeneralAction(state: GameState, action: Action): boolean {
   if (action.kind === 'skip') return false;
   const piece = getPiece(state, action.pieceId);
-  return !!piece && hasAbility(piece, 'general');
+  return !!piece && hasUnitToken(piece, 'general');
 }
 
 function isMobileAction(state: GameState, action: Action): boolean {
@@ -825,7 +853,7 @@ function resolveShootMelee(
   const other: Action[] = [];
   for (const a of attacks) {
     if (
-      (a.kind === 'shoot' || a.kind === 'move') &&
+      (a.kind === 'shoot' || isWalkAction(a)) &&
       isAttackAction(state, a, me)
     ) {
       const list = byPiece.get(a.pieceId) ?? [];
@@ -839,7 +867,7 @@ function resolveShootMelee(
   const out = [...other];
   for (const list of byPiece.values()) {
     const shots = list.filter((a) => a.kind === 'shoot');
-    const melees = list.filter((a) => a.kind === 'move');
+    const melees = list.filter((a) => isWalkAction(a));
     if (shots.length && melees.length) {
       out.push(...(shootFirst ? shots : melees));
     } else {
@@ -977,18 +1005,18 @@ export function pickAiAction(state: GameState): Action | null {
   if (on('keep-line')) {
     const marchers = marcherIds(state, mobile, me);
     march = mobile.filter((a) => {
-      if (a.kind !== 'move') return true;
+      if (!isWalkAction(a)) return true;
       const piece = getPiece(state, a.pieceId);
       if (!piece) return false;
       return !breaksLine(
         state,
         piece,
-        previewMove(state, piece, a.to).stop,
+        previewMove(state, piece, a.to, a.path, { charging: a.kind === 'charge' }).stop,
         me,
         marchers,
       );
     });
-    const steps = march.filter((a) => a.kind === 'move');
+    const steps = march.filter((a) => isWalkAction(a));
     if (steps.length) march = steps;
     march = preferRear(state, march, me);
   }

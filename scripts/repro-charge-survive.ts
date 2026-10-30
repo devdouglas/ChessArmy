@@ -29,6 +29,7 @@ const savedStam = UNIT_STATS.tank.stamina;
 const savedClimb = UNIT_STATS.tank.climbLevel;
 const savedCharge = UNIT_STATS.tank.charge;
 const savedMelee = UNIT_STATS.tank.meleeDamage;
+const savedAbilities = [...UNIT_STATS.tank.abilities];
 
 try {
   UNIT_STATS.soldier.hp = 2;
@@ -38,6 +39,9 @@ try {
   UNIT_STATS.tank.climbLevel = 0;
   UNIT_STATS.tank.charge = 1;
   UNIT_STATS.tank.meleeDamage = 1;
+  if (!UNIT_STATS.tank.abilities.includes('charge')) {
+    UNIT_STATS.tank.abilities = [...UNIT_STATS.tank.abilities, 'charge'];
+  }
 
   const firstHex = { col: 2, row: 5 };
   const secondHex = { col: 3, row: 5 };
@@ -58,20 +62,28 @@ try {
     assert(moved.col === 1 && moved.row === 5, 'tank stays put');
     assert(hpLeft(front) === 1, 'front took the hit');
     assert(hpLeft(back) === 2, 'back unit untouched');
+    assert(
+      !legalHighlights(s, tank.id).some((h) => h.kind === 'charge'),
+      'no energy → no charge dests',
+    );
   }
+
+  UNIT_STATS.tank.stamina = Math.max(1, savedStam);
 
   {
     const s = board();
     const tank = s.pieces.find((p) => p.type === 'tank' && p.side === 'red')!;
     assert(
-      legalHighlights(s, tank.id).some((h) => h.hex.col === secondHex.col && h.hex.row === secondHex.row),
-      'clicking the second unit is legal',
+      legalHighlights(s, tank.id).some(
+        (h) => h.kind === 'charge' && h.hex.col === secondHex.col && h.hex.row === secondHex.row,
+      ),
+      'second unit is a charge dest',
     );
-    const plan = previewMove(s, tank, secondHex);
+    const plan = previewMove(s, tank, secondHex, undefined, { charging: true });
     assert(plan.hits.length === 1, `blocker eats the charge, got ${plan.hits.length} hits`);
     assert(plan.hits[0].remaining === 1, 'front took charge, survived');
     assert(plan.stop.col === 1 && plan.stop.row === 5, 'blocked, bounce');
-    const after = applyAction(s, { kind: 'move', pieceId: tank.id, to: secondHex });
+    const after = applyAction(s, { kind: 'charge', pieceId: tank.id, to: secondHex });
     const front = after.pieces.find((p) => p.col === 2 && p.row === 5)!;
     const back = after.pieces.find((p) => p.col === 3 && p.row === 5)!;
     assert(hpLeft(front) === 1, 'front blocked the click-through');
@@ -81,11 +93,11 @@ try {
   {
     const s = board();
     const tank = s.pieces.find((p) => p.type === 'tank' && p.side === 'red')!;
-    const plan = previewMove(s, tank, beyond);
+    const plan = previewMove(s, tank, beyond, undefined, { charging: true });
     assert(plan.hits.length === 2, `empty dest trampling, got ${plan.hits.length}`);
     assert(plan.hits.every((h) => !h.fatal && h.remaining === 1), 'both survive at 1');
     assert(plan.stop.col === 4 && plan.stop.row === 5, 'lands empty beyond');
-    const after = applyAction(s, { kind: 'move', pieceId: tank.id, to: beyond });
+    const after = applyAction(s, { kind: 'charge', pieceId: tank.id, to: beyond });
     const moved = after.pieces.find((p) => p.id === tank.id)!;
     const blues = after.pieces.filter((p) => p.side === 'blue' && p.type === 'soldier');
     assert(moved.col === 4 && moved.row === 5, 'tank at empty dest');
@@ -97,11 +109,11 @@ try {
   {
     const s = board();
     const tank = s.pieces.find((p) => p.type === 'tank' && p.side === 'red')!;
-    const plan = previewMove(s, tank, secondHex);
+    const plan = previewMove(s, tank, secondHex, undefined, { charging: true });
     assert(plan.hits.length === 2, `kill first then melee second, got ${plan.hits.length}`);
     assert(plan.hits[0].fatal, 'first died to charge');
     assert(plan.hits[1].fatal, 'second died to melee');
-    const after = applyAction(s, { kind: 'move', pieceId: tank.id, to: secondHex });
+    const after = applyAction(s, { kind: 'charge', pieceId: tank.id, to: secondHex });
     const moved = after.pieces.find((p) => p.id === tank.id)!;
     assert(moved.col === 3 && moved.row === 5, 'occupies second after killing the blocker');
     assert(!after.pieces.some((p) => p.side === 'blue' && p.type === 'soldier'), 'both dead');
@@ -114,6 +126,7 @@ try {
   UNIT_STATS.tank.climbLevel = savedClimb;
   UNIT_STATS.tank.charge = savedCharge;
   UNIT_STATS.tank.meleeDamage = savedMelee;
+  UNIT_STATS.tank.abilities = savedAbilities;
 }
 
 console.log('charge: blocker stops occupied dest unless killed; empty dest trampling');

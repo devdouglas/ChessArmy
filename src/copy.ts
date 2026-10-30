@@ -53,6 +53,10 @@ const ACTION_GLYPHS: {
   { id: 'double', tag: 'double time', label: 'Double time', aliases: ['double'] },
   { id: 'rest', tag: 'rest', label: 'Rest', aliases: [] },
   { id: 'special', tag: 'special', label: 'Special', aliases: [] },
+  { id: 'hide', tag: 'hide', label: 'Hide', aliases: [] },
+  { id: 'javelin', tag: 'javelin throw', label: 'Javelin', aliases: ['throw'] },
+  { id: 'charge', tag: 'charge', label: 'Charge', aliases: [] },
+  { id: 'trap', tag: 'trap', label: 'Trap', aliases: [] },
   { id: 'end', tag: 'end turn', label: 'End turn', aliases: ['end'] },
 ];
 

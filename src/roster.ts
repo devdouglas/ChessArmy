@@ -195,7 +195,7 @@ export type UnitTraits = {
   /** Pass through any pieces; stop rules still apply. */
   passUnits: boolean;
   infantry: boolean;
-  /** Killing this wins — only if the side started the match with a king. Wipeout always wins. */
+  /** King kit stamps the General token when a stamp omits unitTokens. Command-kill is the token. */
   king: boolean;
 };
 
@@ -299,7 +299,7 @@ export type UnitStats = UnitTraits & {
   unitClass: UnitClass;
   /** Stop on / enter water. From water: 1 hex. Turn-start: 1 stamina or 2 HP. No regen in water. */
   passWater: boolean;
-  /** Hide from enemies while on a hide token (forest). Breaks after move, attack, or being hit. */
+  /** Derived from the hide ability. Kept on the stats blob for persist / old JSON. */
   canHide: boolean;
   /** Max occupiable height: 0 land, 1 hill, 2 plateau, 3 mountain. */
   climbLevel: number;
@@ -633,7 +633,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.javelin,
     ...stockMobility('javelin'),
     canHide: false,
-    abilities: [],
+    abilities: ['javelin'],
   },
   horsearcher: {
     name: 'Horse archer',
@@ -693,7 +693,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     passWater: false,
     climbLevel: 1,
     canHide: false,
-    abilities: [],
+    abilities: ['charge'],
   },
   cohort: {
     name: 'Cohort',
@@ -723,7 +723,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.cohort,
     ...stockMobility('cohort'),
     canHide: false,
-    abilities: [],
+    abilities: ['javelin'],
   },
   hoplite: {
     name: 'Hoplite',
@@ -753,7 +753,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.hoplite,
     ...stockMobility('hoplite'),
     canHide: false,
-    abilities: [],
+    abilities: ['trap'],
   },
   elephant: {
     name: 'Elephant',
@@ -782,7 +782,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.elephant,
     ...stockMobility('elephant'),
     canHide: false,
-    abilities: [],
+    abilities: ['charge'],
   },
   barbarian: {
     name: 'Barbarian',
@@ -811,7 +811,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.barbarian,
     ...stockMobility('barbarian'),
     canHide: true,
-    abilities: [],
+    abilities: ['hide', 'charge'],
   },
   catapult: {
     name: 'Catapult',
@@ -869,7 +869,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.tank,
     ...stockMobility('tank'),
     canHide: false,
-    abilities: [],
+    abilities: ['charge'],
   },
   general: {
     name: 'General',
@@ -898,7 +898,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.general,
     ...stockMobility('general'),
     canHide: false,
-    abilities: ['general'],
+    abilities: [],
   },
   tower: {
     name: 'Tower',
@@ -1043,7 +1043,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.wolf,
     ...stockMobility('wolf'),
     canHide: true,
-    abilities: [],
+    abilities: ['hide', 'charge'],
   },
   fighter: {
     name: 'Fighter',
@@ -1072,7 +1072,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.fighter,
     ...stockMobility('fighter'),
     canHide: false,
-    abilities: [],
+    abilities: ['charge'],
   },
   gunship: {
     name: 'Gunship',
@@ -1159,7 +1159,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.frigate,
     ...stockMobility('frigate'),
     canHide: false,
-    abilities: [],
+    abilities: ['charge'],
   },
   cruiser: {
     name: 'Cruiser',

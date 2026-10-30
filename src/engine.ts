@@ -30,7 +30,7 @@ import {
   type UnitStats,
   type UnitType,
 } from './roster';
-import { type AbilityId } from './abilities';
+import type { AbilityId } from './abilities';
 import { isExperimentalOn } from './experimental';
 
 export {
@@ -561,7 +561,7 @@ export function hidesHoldLos(state: GameState, piece: Piece): boolean {
 
 export function hasHide(piece: Piece): boolean {
   if (piece.revealed) return false;
-  return statsOf(piece.type).canHide || hasUnitToken(piece, 'hidden');
+  return hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden');
 }
 
 export function isConcealed(state: GameState, piece: Piece): boolean {
@@ -592,7 +592,7 @@ export function pieceVisible(state: GameState, piece: Piece, viewers: Side[]): b
 }
 
 export function revealPiece(piece: Piece): void {
-  if (statsOf(piece.type).canHide || hasUnitToken(piece, 'hidden')) {
+  if (hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden')) {
     piece.revealed = true;
   }
 }
@@ -830,9 +830,11 @@ export type GameState = {
 
 export type Action =
   | { kind: 'move'; pieceId: string; to: Hex; path?: Hex[] }
+  | { kind: 'charge'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
   | { kind: 'rest'; pieceId: string }
+  | { kind: 'trap'; pieceId: string }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
@@ -841,6 +843,8 @@ export type Highlight =
   | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean }
   /** Would be a stamina walk if the pool weren't empty — display only. */
   | { kind: 'rest'; hex: Hex; cost: number; extra?: boolean }
+  /** Energy-spend crash through enemies. */
+  | { kind: 'charge'; hex: Hex; cost: number }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
@@ -1207,7 +1211,7 @@ function addHpLost(state: GameState, side: Side, dealt: number): void {
  */
 export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean {
   if (!from) return false;
-  if (hasAbility(victim, 'general')) return false;
+  if (hasUnitToken(victim, 'general')) return false;
   const at: Hex = { col: victim.col, row: victim.row };
   const incoming = incomingDir(from, at, state.orientation);
   if (incoming === null) return false;
@@ -1461,12 +1465,14 @@ export function previewMove(
   piece: Piece,
   to: Hex,
   along?: Hex[],
+  opts?: { charging?: boolean },
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
   const stats = statsOf(piece.type);
   const melee = Math.max(0, stats.meleeDamage);
-  const charge = Math.max(0, stats.charge);
-  const path = resolveMovePath(state, piece, to, along);
+  const charging = !!opts?.charging;
+  const charge = charging ? chargeDamageOf(piece) : 0;
+  const path = resolveMovePath(state, piece, to, along, charging);
   const dest = path[path.length - 1];
   const landsBeyond = dest ? destLandsBeyond(state, piece, dest) : false;
 
@@ -1570,22 +1576,23 @@ function isLegalMovePath(
   piece: Piece,
   to: Hex,
   path: Hex[],
+  charging = false,
 ): boolean {
   const from = { col: piece.col, row: piece.row };
   if (isBlockedFaceRay(piece, from, to, state.orientation)) return false;
   if (!isStepWalk(state, from, path, to)) return false;
-  const first = straightMoveStops(state, piece);
+  const first = straightMoveStops(state, piece, undefined, undefined, charging);
   const one = first.get(key(to));
   if (one && pathsEq(one.path, path)) return true;
   if (!extraMoveAction(state, piece) || first.has(key(to))) return false;
-  const planned = allMoveStops(state, piece).get(key(to));
+  const planned = allMoveStops(state, piece, charging).get(key(to));
   if (planned && pathsEq(planned.path, path)) return true;
   const firstRange = activationMoveRange(state, piece);
   const blocked = blockedWalkDirs(piece);
   const via0 = path[firstRange - 1];
   const secondRange = via0 ? moveRangeAt(state, piece, via0) : statsOf(piece.type).move;
   if (path.length > firstRange && path.length <= firstRange + secondRange) {
-    const opts = movePathOpts(state, piece, from);
+    const opts = movePathOpts(state, piece, from, charging);
     let cur = from;
     let dir: HexDir | null = null;
     let ok = true;
@@ -1618,7 +1625,13 @@ function isLegalMovePath(
     const a = first.get(key(via));
     if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
     if (pieceAt(state, via) || palisadeHpAt(state, via) > 1 || pathHaltsExtra(state, from, via, a.path)) continue;
-    const b = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
+    const b = straightMoveStops(
+      state,
+      piece,
+      via,
+      moveRangeAt(state, piece, via),
+      charging,
+    ).get(key(to));
     if (b && pathsEq(b.path, path.slice(i))) return true;
   }
   return false;
@@ -1630,14 +1643,20 @@ export function resolveMovePath(
   piece: Piece,
   to: Hex,
   drawn?: Hex[],
+  charging = false,
 ): Hex[] {
-  if (drawn?.length && isLegalMovePath(state, piece, to, drawn)) return drawn;
-  return pathForMove(state, piece, to);
+  if (drawn?.length && isLegalMovePath(state, piece, to, drawn, charging)) return drawn;
+  return pathForMove(state, piece, to, charging);
 }
 
 /** Hexes walked start→to (excludes start). One or two straight-line actions. */
-export function pathForMove(state: GameState, piece: Piece, to: Hex): Hex[] {
-  return allMoveStops(state, piece).get(key(to))?.path ?? [];
+export function pathForMove(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  charging = false,
+): Hex[] {
+  return allMoveStops(state, piece, charging).get(key(to))?.path ?? [];
 }
 
 export type MovePathPlan = { path: Hex[]; via: Hex | null };
@@ -1657,9 +1676,10 @@ export function stickyMovePlan(
   piece: Piece,
   to: Hex,
   prev: Hex[],
+  charging = false,
 ): MovePathPlan {
-  const first = straightMoveStops(state, piece);
-  const fresh = planFromStop(allMoveStops(state, piece).get(key(to)));
+  const first = straightMoveStops(state, piece, undefined, undefined, charging);
+  const fresh = planFromStop(allMoveStops(state, piece, charging).get(key(to)));
   if (!fresh.path.length) return { path: [], via: null };
 
   const onPrev = prev.findIndex((h) => eq(h, to));
@@ -1926,32 +1946,48 @@ function cloneState(state: GameState): GameState {
 }
 
 export function abilitiesOf(piece: Piece): AbilityId[] {
-  const base = piece.abilities ?? statsOf(piece.type).abilities ?? [];
-  if (hasUnitToken(piece, 'general') && !base.includes('general')) {
-    return [...base, 'general'];
-  }
-  return base;
+  return piece.abilities ?? statsOf(piece.type).abilities ?? [];
 }
 
 export function hasAbility(piece: Piece, id: AbilityId): boolean {
   return abilitiesOf(piece).includes(id);
 }
 
-export function grantAbility(piece: Piece, id: AbilityId): void {
-  const cur = abilitiesOf(piece);
-  if (cur.includes(id)) {
-    piece.abilities = [...cur];
-    return;
-  }
-  piece.abilities = [...cur, id];
+/** Charge crash damage. Ability gates it; 0 on the stat still hits for 1. */
+export function chargeDamageOf(piece: Piece): number {
+  if (!hasAbility(piece, 'charge')) return 0;
+  return Math.max(1, statsOf(piece.type).charge);
 }
 
-export function revokeAbility(piece: Piece, id: AbilityId): void {
-  piece.abilities = abilitiesOf(piece).filter((a) => a !== id);
+/** Melee unit with javelin: shoot is a special, not a default click. */
+export function javelinIsSpecial(piece: Piece): boolean {
+  const s = statsOf(piece.type);
+  return hasAbility(piece, 'javelin') && s.meleeDamage > 0 && s.shoot > 0;
+}
+
+export function trapFrontHex(state: GameState, piece: Piece): Hex | null {
+  const h = neighborInDir({ col: piece.col, row: piece.row }, facingOf(piece), state.orientation);
+  if (!inBounds(state, h)) return null;
+  return h;
+}
+
+export function canTrap(state: GameState, pieceId: string): boolean {
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn || state.winner) return false;
+  if (!hasAbility(piece, 'trap')) return false;
+  if (isSleeping(piece)) return false;
+  if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
+  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  const front = trapFrontHex(state, piece);
+  if (!front) return false;
+  if (isWall(state, front)) return false;
+  if (terrainAt(state, front) === 'water') return false;
+  if (tokenOnHex(state.tokens, front, 'pikes')) return false;
+  return true;
 }
 
 export function hasGeneral(pieces: Piece[], side: Side): boolean {
-  return pieces.some((p) => p.side === side && hasAbility(p, 'general'));
+  return pieces.some((p) => p.side === side && hasUnitToken(p, 'general'));
 }
 
 /** If a piece just became a general, command-kill is now in play for that side. */
@@ -2245,7 +2281,7 @@ export function setMarchDoubleTime(on: boolean): void {
   marchDoubleTime = on;
 }
 
-/** One log line per stamina point spent on Spend energy or Double time. */
+/** One log line per stamina point spent on Double time or an armed march extra. */
 function logStaminaAction(state: GameState, piece: Piece, times = 1): void {
   const line = marchDoubleTime
     ? `${unitLog(piece)} double time`
@@ -2434,7 +2470,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   if (!full?.length) return null;
   const first = moveRangeAt(state, piece, here);
   if (first <= 0) return null;
-  // Each extra is a fresh line of `move`. Spend energy buys one. Double time buys the whole pool.
+  // Each extra is a fresh line of `move`. Double time spends the pool; an armed spendMarch buys one.
   const extraBudget = marchDoubleTime
     ? piece.staminaUsedThisTurn
       ? 0
@@ -2570,12 +2606,12 @@ export function performMarch(state: GameState, pieceId: string): GameState {
   queuedMarches.push(anim);
   const live = getPiece(next, pieceId);
   if (!live) return next;
-  // Spend energy / double time that this step did not already walk stays a
+  // Unused Double time / armed spend that this step did not already walk stays a
   // separate action: another move, or a shot.
   const enteredWater =
     terrainAt(next, anim.from) !== 'water' && terrainAt(next, anim.stop) === 'water';
   const dropped = downSteps(next, anim.from, anim.path, anim.stop);
-  // A one-level drop leaves another move even when spend-energy was not armed.
+  // A one-level drop leaves another move even when a march extra was not armed.
   if (dropped > 0 || (armedExtra && !live.staminaUsedThisTurn)) {
     afterAction(next, live, 'move', enteredWater, dropped);
   } else finishActivation(next, live);
@@ -2902,13 +2938,25 @@ function occupantAt(
   return occ;
 }
 
+function pathChargesThrough(state: GameState, piece: Piece, path: Hex[]): boolean {
+  if (path.length < 2) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  for (let i = 0; i < path.length - 1; i++) {
+    const occ = occupantAt(state, piece, from, path[i]!);
+    if (occ && isHostile(state, occ.side, piece.side)) return true;
+  }
+  return false;
+}
+
 /** Path rules for a piece (shared by highlights + charge resolution). */
 function movePathOpts(
   state: GameState,
   piece: Piece,
   from: Hex = { col: piece.col, row: piece.row },
+  charging = false,
 ): Omit<PathOpts, 'maxDist'> {
   const stats = statsOf(piece.type);
+  const charge = charging ? chargeDamageOf(piece) : 0;
   return {
     cols: state.cols,
     rows: state.rows,
@@ -2938,7 +2986,7 @@ function movePathOpts(
       if (isPalisade(state, h)) {
         return stats.meleeDamage > 0 && palisadeHpAt(state, h) <= 1;
       }
-      if (isForest(state, h) && stats.charge > 0) return false;
+      if (isForest(state, h) && charge > 0) return false;
       if (t === 'water') return false;
       if (terrainHeight(t) > stats.climbLevel) return false;
       if (stats.passUnits) return true;
@@ -2947,8 +2995,8 @@ function movePathOpts(
       // Charge may path onto/past a blocker (like a palisade). Occupied dest
       // behind only resolves if this charge would kill them; empty dest trampling
       // still goes through survivors. previewMove is the gate.
-      if (stats.charge > 0 && isHostile(state, occ.side, piece.side)) return true;
-      if (stats.charge > 0 && canConvert(piece, occ)) return true;
+      if (charge > 0 && isHostile(state, occ.side, piece.side)) return true;
+      if (charge > 0 && canConvert(piece, occ)) return true;
       return sameTeam(state, occ.side, piece.side);
     },
   };
@@ -3043,8 +3091,9 @@ function straightMoveStops(
   piece: Piece,
   from: Hex = { col: piece.col, row: piece.row },
   range = activationMoveRange(state, piece),
+  charging = false,
 ): Map<string, StraightStop> {
-  const opts = movePathOpts(state, piece, from);
+  const opts = movePathOpts(state, piece, from, charging);
   const out = new Map<string, StraightStop>();
   if (range <= 0) return out;
   const blocked = blockedWalkDirs(piece);
@@ -3076,13 +3125,14 @@ function straightExtraStops(
   state: GameState,
   piece: Piece,
   first: Map<string, StraightStop>,
+  charging = false,
 ): Map<string, StraightStop> {
   const start = { col: piece.col, row: piece.row };
   const firstRange = activationMoveRange(state, piece);
   const extraMove = extraMoveRange(state, piece, start, firstRange);
   const left = remainingMoveBudget(state, piece);
   const max = left === null ? firstRange + extraMove + 3 : left;
-  const opts = movePathOpts(state, piece, start);
+  const opts = movePathOpts(state, piece, start, charging);
   const out = new Map<string, StraightStop>();
   if (firstRange <= 0 || extraMove <= 0) return out;
   const blocked = blockedWalkDirs(piece);
@@ -3130,6 +3180,7 @@ function twoActionStops(
   state: GameState,
   piece: Piece,
   first: Map<string, StraightStop>,
+  charging = false,
 ): Map<string, StraightStop> {
   const start = { col: piece.col, row: piece.row };
   const startKey = key(start);
@@ -3146,6 +3197,7 @@ function twoActionStops(
       piece,
       via,
       extraMoveRange(state, piece, via, a.dist),
+      charging,
     );
     for (const [dk, b] of second) {
       if (dk === startKey || first.has(dk)) continue;
@@ -3177,12 +3229,20 @@ function keepBetterStop(
   out.set(k, stop);
 }
 
-function allMoveStops(state: GameState, piece: Piece): Map<string, StraightStop> {
-  const first = straightMoveStops(state, piece);
+function allMoveStops(
+  state: GameState,
+  piece: Piece,
+  charging = false,
+): Map<string, StraightStop> {
+  const first = straightMoveStops(state, piece, undefined, undefined, charging);
   if (!extraMoveAction(state, piece)) return first;
   const out = new Map(first);
-  for (const [k, stop] of straightExtraStops(state, piece, first)) keepBetterStop(out, k, stop);
-  for (const [k, stop] of twoActionStops(state, piece, first)) keepBetterStop(out, k, stop);
+  for (const [k, stop] of straightExtraStops(state, piece, first, charging)) {
+    keepBetterStop(out, k, stop);
+  }
+  for (const [k, stop] of twoActionStops(state, piece, first, charging)) {
+    keepBetterStop(out, k, stop);
+  }
   const start = { col: piece.col, row: piece.row };
   for (const k of [...out.keys()]) {
     if (isBlockedFaceRay(piece, start, parseKey(k), state.orientation)) out.delete(k);
@@ -3212,6 +3272,14 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       out.push({ kind: 'stamina', hex: h, cost: dist, extra });
     } else {
       out.push({ kind: 'move', hex: h, cost: dist });
+    }
+  }
+
+  if (chargeDamageOf(piece) > 0 && canSpendStamina(piece) && !stamAction) {
+    const charged = allMoveStops(state, piece, true);
+    for (const [k, { dist, path }] of charged) {
+      if (!pathChargesThrough(state, piece, path)) continue;
+      out.push({ kind: 'charge', hex: parseKey(k), cost: dist });
     }
   }
 
@@ -3430,14 +3498,33 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
   const highlights = legalHighlights(next, piece.id);
 
-  if (action.kind === 'move') {
-    const hit = highlights.find(
-      (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, action.to),
-    );
-    if (!hit || (hit.kind !== 'move' && hit.kind !== 'stamina')) return state;
+  if (action.kind === 'trap') {
+    if (!canTrap(next, piece.id)) return state;
+    const front = trapFrontHex(next, piece);
+    if (!front) return state;
+    reveal(piece);
+    next.tokens = [...next.tokens, { type: 'pikes', col: front.col, row: front.row }];
+    next.log.push(`${unitLog(piece)} plants pikes`);
+    finishActivation(next, piece);
+    return next;
+  }
+
+  if (action.kind === 'move' || action.kind === 'charge') {
+    const charging = action.kind === 'charge';
+    const hit = charging
+      ? highlights.find((h) => h.kind === 'charge' && eq(h.hex, action.to))
+      : highlights.find(
+          (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, action.to),
+        );
+    if (!hit) return state;
+    if (charging) {
+      if (hit.kind !== 'charge' || !canSpendStamina(piece)) return state;
+    } else if (hit.kind !== 'move' && hit.kind !== 'stamina') {
+      return state;
+    }
 
     reveal(piece);
-    const plan = previewMove(next, piece, action.to, action.path);
+    const plan = previewMove(next, piece, action.to, action.path, { charging });
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
     for (const id of plan.converts) {
@@ -3492,7 +3579,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
                   ? 'routs'
                   : plan.hits.some((h) => h.fatal)
                     ? 'captures'
-                    : statsOf(piece.type).charge > 0
+                    : charging
                       ? 'charges'
                       : 'hits'
         } ${hitBits.join(', ')}` +
@@ -3514,7 +3601,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
     const fromHex = { col: piece.col, row: piece.row };
     const prevCovered = hexDamageCoveredKeys(next, piece);
-    const walkPath = resolveMovePath(next, piece, action.to, action.path);
+    const walkPath = resolveMovePath(next, piece, action.to, action.path, charging);
     const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
@@ -3530,7 +3617,10 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
     piece.facing = plan.facing;
     if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);
-    if (hit.kind === 'stamina') {
+    if (charging) {
+      spendStamina(piece);
+      logStaminaAction(next, piece);
+    } else if (hit.kind === 'stamina') {
       spendStamina(piece);
       if (hit.extra) logStaminaAction(next, piece);
     }
@@ -3659,10 +3749,15 @@ export function allLegalActions(state: GameState): Action[] {
           pieceId: p.id,
           to: h.hex,
         });
+      } else if (h.kind === 'charge') {
+        actions.push({ kind: 'charge', pieceId: p.id, to: h.hex });
       } else if (h.kind === 'shoot') {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });
       }
       // shoot-range / rest are display-only
+    }
+    if (canTrap(state, p.id)) {
+      actions.push({ kind: 'trap', pieceId: p.id });
     }
     if (statsOf(p.type).hexArmor && !(state.downhillMove && state.scoutPieceId === p.id)) {
       const cur = facingOf(p);
