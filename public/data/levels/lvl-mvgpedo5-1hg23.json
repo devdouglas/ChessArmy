@@ -77,6 +77,9 @@
     "startText": "Anthony's exploits had begun to travel faster than he did. By the time he returned to camp, his victories had grown, his wounds had multiplied and his companions had developed a lively interest in correcting the details.\n\nHis commander summoned him and presented him with a horse.\n\nAnthony had ridden a donkey as a boy, though the donkey had generally been the one making decisions. This horse was larger, faster and possessed an expression of profound mistrust.\n\nAnthony mounted.\n\nThe animal shifted its weight.\n\nAnthony considered dismounting.\n\nThe horse considered otherwise.",
     "winText": "Anthony and the horse reached the end of the course without either of them suffering a fatal disappointment. His commander approved, and Anthony began to see the possibilities. A horse could carry him into battle, carry him away from battle and, if properly persuaded, carry him past an unpleasant conversation.",
     "loseText": "A horse is not a cart, and it will not necessarily go where you wish simply because you are sitting on it. Learn to control your mount, keep your balance and watch where you are going. The ground is considerably less forgiving than it looks.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lte",

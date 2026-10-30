@@ -27,7 +27,7 @@ function board(): GameState {
     'pointy',
     [
       { type: 'general', col: at.col, row: at.row, side: 'red' },
-      { type: 'soldier', col: 2, row: 7, side: 'red' },
+      { type: 'soldier', col: 3, row: 7, side: 'red' },
       { type: 'soldier', col: step.col, row: step.row, side: 'blue', unitTokens: ['neutral'] },
       { type: 'soldier', col: 6, row: 8, side: 'blue' },
       { type: 'general', col: 1, row: 9, side: 'blue' },
@@ -54,12 +54,12 @@ function board(): GameState {
   assert(!isHostile(s, levy.side, 'red'), 'not an enemy');
   assert(hasAbility(gen, 'general'), 'red general');
   assert(canConvert(gen, levy), 'general can convert');
-  assert(!canConvert(grunt, levy), 'grunt cannot convert');
+  assert(canConvert(grunt, levy), 'any unit can convert');
   assert(
-    legalHighlights(s, grunt.id).every(
-      (h) => !(h.kind === 'move' && h.hex.col === step.col && h.hex.row === step.row),
+    legalHighlights(s, grunt.id).some(
+      (h) => h.kind === 'move' && h.hex.col === step.col && h.hex.row === step.row,
     ),
-    'soldier cannot walk onto the hex',
+    'soldier can walk onto the hex',
   );
   assert(
     legalHighlights(s, gen.id).some(
@@ -67,6 +67,16 @@ function board(): GameState {
     ),
     'general can walk onto the hex',
   );
+}
+
+{
+  const s = board();
+  const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+  const before = s.pieces.find((p) => p.col === step.col && p.row === step.row)!;
+  const after = applyAction(s, { kind: 'move', pieceId: grunt.id, to: step });
+  const claimed = after.pieces.find((p) => p.id === before.id)!;
+  assert(claimed.side === 'red', 'soldier converts it');
+  assert(hpLeft(claimed) === hpLeft(before), 'soldier convert deals no damage');
 }
 
 {
@@ -112,4 +122,4 @@ function board(): GameState {
   assert(after.pieces.find((p) => p.type === 'hoplite')!.side === 'red', 'token-general claims it');
 }
 
-console.log('neutral token: unaligns the stamped unit until a general touches');
+console.log('neutral token: unaligns the stamped unit until any unit walks onto it');

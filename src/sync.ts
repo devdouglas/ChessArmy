@@ -44,7 +44,32 @@ export type ServerStore = {
 };
 
 const API_URL = `${import.meta.env.BASE_URL}api.php`;
+const AUDIO_URL = `${API_URL}?audio=1`;
 const SAVE_KEY = 'warchess-oneshot';
+
+export async function listLevelAudio(): Promise<string[]> {
+  const res = await fetch(AUDIO_URL, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('could not list audio');
+  const data = (await res.json()) as { files?: unknown };
+  if (!Array.isArray(data.files)) return [];
+  return data.files.filter((f): f is string => typeof f === 'string');
+}
+
+export async function uploadLevelAudio(file: File): Promise<string> {
+  const body = new FormData();
+  body.append('file', file, file.name);
+  const res = await fetch(AUDIO_URL, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'X-Warchess-Key': SAVE_KEY },
+    body,
+  });
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; file?: string; error?: string } | null;
+  if (!res.ok || !data?.ok || typeof data.file !== 'string' || !data.file) {
+    throw new Error(data?.error || 'upload failed');
+  }
+  return data.file;
+}
 
 let status: ServerStatus = 'checking';
 let timer = 0;

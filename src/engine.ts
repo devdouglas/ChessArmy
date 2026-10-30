@@ -54,8 +54,11 @@ export {
   SHOOT_ARC_LABEL,
   STOCK_UNIT_TYPES,
   TRAIT_FIELDS,
+  STOCK_UNIT_CLASS,
   UNIT_CATEGORIES,
   UNIT_CATEGORY_LABEL,
+  UNIT_CLASSES,
+  UNIT_CLASS_LABEL,
   UNIT_ROLE_LABEL,
   UNIT_STATS,
   UNIT_TYPES,
@@ -66,6 +69,7 @@ export {
   sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  sanitizeUnitClass,
   stockMobility,
   statsOf,
   defaultSight,
@@ -75,6 +79,7 @@ export {
   type HexDamageSide,
   type ShootArc,
   type UnitCategory,
+  type UnitClass,
   type UnitRole,
   type UnitStats,
   type UnitTraits,
@@ -200,6 +205,7 @@ export const TOKEN_TYPES = [
   'forest',
   'flag',
   'board',
+  'tutorial',
   'notouch',
 ] as const;
 export type TokenType = (typeof TOKEN_TYPES)[number];
@@ -227,6 +233,7 @@ export const TOKEN_LABEL: Record<TokenType, string> = {
   forest: 'Forest',
   flag: 'Flag',
   board: 'Board',
+  tutorial: 'Tutorial',
   notouch: 'Do not touch',
 };
 export const BOARD_TEXT_MAX = 280;
@@ -333,7 +340,7 @@ export function isSleeping(piece: { unitTokens?: UnitTokenType[] }): boolean {
   return hasUnitToken(piece, 'sleep');
 }
 
-/** Neutral token (or persisted side) — not in any army until a General claims it. */
+/** Neutral token (or persisted side) — not in any army until someone walks onto it. */
 export function stampAffiliation(p: {
   side: Affiliation;
   unitTokens?: UnitTokenType[];
@@ -754,6 +761,8 @@ export type Piece = {
   revealed?: boolean;
   /** Standing march. Each own turn with no other order, walk toward this hex. */
   walkTo?: Hex;
+  /** This activation's march also spends 1 stamina for a second move. */
+  spendMarch?: boolean;
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
@@ -764,6 +773,10 @@ export type GameState = {
   cols: number;
   rows: number;
   orientation: HexOrientation;
+  /** 0 = rectangle. Otherwise tiles from the center hex to the edge. */
+  hexRadius: number;
+  /** Center of a hex board. Ignored when `hexRadius` is 0. */
+  hexCenter?: Hex;
   terrain: Terrain[][]; // [row][col]
   /** Overlay stamps. One per hex. Missing on old states → []. */
   tokens: TileToken[];
@@ -1700,7 +1713,9 @@ function hexHeight(state: GameState, h: Hex): number {
 }
 
 function inBounds(state: GameState, h: Hex): boolean {
-  return h.col >= 0 && h.row >= 0 && h.col < state.cols && h.row < state.rows;
+  if (h.col < 0 || h.row < 0 || h.col >= state.cols || h.row >= state.rows) return false;
+  if (!state.hexRadius || !state.hexCenter) return true;
+  return distance(h, state.hexCenter, state.orientation) <= state.hexRadius;
 }
 
 function hexDist(state: GameState, a: Hex, b: Hex): number {
@@ -1869,6 +1884,9 @@ export function hasActed(state: GameState, id: string): boolean {
 function cloneState(state: GameState): GameState {
   return {
     ...state,
+    hexCenter: state.hexCenter
+      ? { col: state.hexCenter.col, row: state.hexCenter.row }
+      : undefined,
     terrain: state.terrain.map((r) => [...r]),
     tokens: (state.tokens ?? []).map((t) => ({ ...t })),
     pieces: state.pieces.map((p) => ({
@@ -1984,9 +2002,9 @@ export function isHostile(state: GameState, a: Affiliation, b: Affiliation): boo
   return !sameTeam(state, a, b);
 }
 
-/** A General walking onto an unaligned piece claims it — no damage. */
+/** Walking onto an unaligned piece claims it — no damage. Any real army can. */
 export function canConvert(attacker: Piece, occ: Piece): boolean {
-  return isNeutralSide(occ.side) && hasAbility(attacker, 'general');
+  return isNeutralSide(occ.side) && isSide(attacker.side);
 }
 
 export function playerSides(state: GameState): Side[] {
@@ -2120,6 +2138,17 @@ function clearScoutLock(state: GameState): void {
 
 const WATER_DROWN_HP = 2;
 
+/** 0 energy and 2 lives or fewer: the next water upkeep kills them. */
+export function refusesWaterJump(piece: Piece): boolean {
+  if (hpLeft(piece) > WATER_DROWN_HP) return false;
+  if (staminaMax(piece) <= 0) return true;
+  return staminaLeft(piece) <= 0;
+}
+
+function enteringWater(state: GameState, from: Hex, to: Hex): boolean {
+  return terrainAt(state, to) === 'water' && terrainAt(state, from) !== 'water';
+}
+
 /** Start of a side's turn: each unit in water spends 1 stamina, or takes 2 HP. */
 export function applyWaterUpkeep(state: GameState, side: Side): void {
   const drowned: Piece[] = [];
@@ -2193,6 +2222,7 @@ export function beginSideTurn(state: GameState, newRound = false, _kickoff = fal
     if (!state.fxStamina.length) state.fxStamina = undefined;
   }
   checkWin(state);
+  maybeAutoEnd(state);
 }
 
 export type MarchAnim = {
@@ -2205,24 +2235,87 @@ export type MarchAnim = {
 
 let queuedMarches: MarchAnim[] = [];
 
+/** UI double time. Each march spends the whole stamina pool for extra move chunks. */
+let marchDoubleTime = false;
+
+export function setMarchDoubleTime(on: boolean): void {
+  marchDoubleTime = on;
+}
+
 export function takeQueuedMarches(): MarchAnim[] {
   const q = queuedMarches;
   queuedMarches = [];
   return q;
 }
 
-/** Tile a standing march can enter (empty, walkable). Ignores this turn's stamina. */
-function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
+/** Hostile unit or palisade/tree the march can fight onto. Hidden units stay hidden. */
+function marchCombatAt(state: GameState, piece: Piece, hex: Hex): boolean {
+  if (statsOf(piece.type).meleeDamage <= 0) return false;
+  if (!inBounds(state, hex) || isWall(state, hex)) return false;
+  if (isPalisade(state, hex)) return true;
+  const occ = pieceAt(state, hex);
+  if (!occ || occ.id === piece.id) return false;
+  if (isConcealedFrom(state, occ, piece.side)) return false;
+  return isHostile(state, piece.side, occ.side);
+}
+
+function marchStepTerrain(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
   const stats = statsOf(piece.type);
-  if (!inBounds(state, toHex)) return false;
   const t = terrainAt(state, toHex);
-  if (isWall(state, toHex) || isPalisade(state, toHex)) return false;
   if (t === 'water' && !stats.passWater) return false;
+  if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
   if (terrainHeight(t) > stats.climbLevel) return false;
   if (Math.abs(hexHeight(state, toHex) - hexHeight(state, fromHex)) > 1) return false;
+  return true;
+}
+
+/** Tile a standing march can enter. Climbs ignore empty stamina; a lethal water jump does not. */
+function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
+  if (!inBounds(state, toHex)) return false;
+  if (isWall(state, toHex) || isPalisade(state, toHex)) return false;
+  if (!marchStepTerrain(state, piece, fromHex, toHex)) return false;
   const occ = pieceAt(state, toHex);
   if (occ && occ.id !== piece.id) return false;
   return true;
+}
+
+/** One melee hit on the destination. True when the hex is taken. */
+function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex): boolean {
+  const melee = Math.max(0, statsOf(piece.type).meleeDamage);
+  if (melee <= 0) return false;
+  const occ = pieceAt(state, target);
+  if (
+    occ &&
+    occ.id !== piece.id &&
+    isHostile(state, piece.side, occ.side) &&
+    !isConcealedFrom(state, occ, piece.side)
+  ) {
+    tellStory(state, occ, 'touch');
+    const res = applyDamage(state, occ, melee, 1, from);
+    state.log.push(
+      `${unitLog(piece)} ${
+        res.routed ? 'routs' : res.fatal ? 'captures' : 'strikes'
+      } ${hpBit(occ, res.fatal, res.remaining, res.routed)}` +
+        (res.fatal ? '' : ` — stops ${from.col},${from.row}`) +
+        ` ${dmgLine(state, occ, melee, 1, from)}`,
+    );
+    return res.fatal && !pieceAt(state, target);
+  }
+  const pal = hexToken(state.tokens, target, (t) => isPalisadeToken(t.type));
+  if (!pal) return false;
+  const remaining = Math.max(0, palisadeHp(pal) - 1);
+  if (remaining <= 0) {
+    state.tokens = state.tokens.filter(
+      (t) => !(isPalisadeToken(t.type) && t.col === target.col && t.row === target.row),
+    );
+    state.log.push(`${unitLog(piece)} breaks ${pal.type}`);
+    return true;
+  }
+  pal.hp = remaining;
+  state.log.push(
+    `${unitLog(piece)} strikes ${pal.type} (${remaining} left) — stops ${from.col},${from.row}`,
+  );
+  return false;
 }
 
 /**
@@ -2234,13 +2327,16 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
   const start: Hex = { col: piece.col, row: piece.row };
   if (!inBounds(state, goal) || eq(start, goal)) return null;
   if (isSleeping(piece) || statsOf(piece.type).move <= 0) return null;
-  const goalOcc = pieceAt(state, goal);
-  if (goalOcc && goalOcc.id !== piece.id) return null;
-  const tGoal = terrainAt(state, goal);
-  const stats = statsOf(piece.type);
-  if (isWall(state, goal) || isPalisade(state, goal)) return null;
-  if (tGoal === 'water' && !stats.passWater) return null;
-  if (terrainHeight(tGoal) > stats.climbLevel) return null;
+  const combatGoal = marchCombatAt(state, piece, goal);
+  if (!combatGoal) {
+    const goalOcc = pieceAt(state, goal);
+    if (goalOcc && goalOcc.id !== piece.id) return null;
+    const tGoal = terrainAt(state, goal);
+    const stats = statsOf(piece.type);
+    if (isWall(state, goal) || isPalisade(state, goal)) return null;
+    if (tGoal === 'water' && !stats.passWater) return null;
+    if (terrainHeight(tGoal) > stats.climbLevel) return null;
+  }
 
   type Node = { hex: Hex; facing: HexDir; prev: Node | null };
   const startNode: Node = { hex: start, facing: facingOf(piece), prev: null };
@@ -2261,7 +2357,10 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
       if (seen.has(nk)) continue;
       const probe: Piece = { ...piece, col: cur.hex.col, row: cur.hex.row, facing: cur.facing };
       if (blockedWalkDirs(probe).has(dir)) continue;
-      if (!marchCanEnter(state, piece, cur.hex, next)) continue;
+      const combatStep = combatGoal && eq(next, goal) && marchCombatAt(state, piece, next);
+      if (combatStep) {
+        if (!marchStepTerrain(state, piece, cur.hex, next)) continue;
+      } else if (!marchCanEnter(state, piece, cur.hex, next)) continue;
       seen.add(nk);
       q.push({ hex: next, facing: dir, prev: cur });
     }
@@ -2322,52 +2421,120 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   }
   const full = marchRouteInner(state, piece, dest);
   if (!full?.length) return null;
-  const speed = moveRangeAt(state, piece, here);
-  if (speed <= 0) return null;
+  const first = moveRangeAt(state, piece, here);
+  if (first <= 0) return null;
+  // Each extra is a fresh line of `move`. Spend energy buys one. Double time buys the whole pool.
+  const extraBudget = marchDoubleTime
+    ? piece.staminaUsedThisTurn
+      ? 0
+      : staminaLeft(piece)
+    : piece.spendMarch && canSpendStamina(piece)
+      ? 1
+      : 0;
+  let speed = first;
+  let extraLeft = extraBudget;
+  const bounds = [0, first];
   const stats = statsOf(piece.type);
   const taken: Hex[] = [];
   let facing = facingOf(piece);
   let cur = here;
+  let strike: Hex | null = null;
   for (const next of full) {
     if (taken.length >= speed) break;
     const step = dirBetween(cur, next, state.orientation);
     if (step === null) break;
     const probe: Piece = { ...piece, col: cur.col, row: cur.row, facing };
     if (blockedWalkDirs(probe).has(step)) break;
-    if (!marchCanEnter(state, piece, cur, next)) break;
     if (!canWalkStep(state, piece, here, cur, next)) break;
+    if (marchCombatAt(state, piece, next) && eq(next, dest)) {
+      strike = next;
+      facing = step;
+      break;
+    }
+    if (!marchCanEnter(state, piece, cur, next)) break;
     taken.push(next);
     facing = step;
     cur = next;
     const enteredWater = terrainAt(state, here) !== 'water' && terrainAt(state, next) === 'water';
-    if (enteredWater) break;
-    if (stats.charge > 0 && isForest(state, next)) break;
+    const chargeForest = stats.charge > 0 && isForest(state, next);
+    const climbedNow = taken.some((h) => hexHeight(state, h) > hexHeight(state, here));
+    if (
+      extraLeft > 0 &&
+      taken.length === speed &&
+      !enteredWater &&
+      !chargeForest &&
+      !climbedNow
+    ) {
+      const add = moveRangeAt(state, piece, cur);
+      if (add > 0) {
+        speed += add;
+        extraLeft -= 1;
+        bounds.push(speed);
+      }
+    }
+    if (enteredWater || chargeForest) break;
   }
-  if (!taken.length) return null;
-  const stop = taken[taken.length - 1]!;
+  if (!taken.length && !strike) return null;
+  const approach = taken.length ? taken[taken.length - 1]! : here;
+  let landed = approach;
+  if (strike) {
+    const took = applyMarchStrike(state, piece, approach, strike);
+    if (took && getPiece(state, piece.id)) {
+      landed = strike;
+      taken.push(strike);
+    }
+  }
+  if (!getPiece(state, piece.id)) {
+    return {
+      pieceId: piece.id,
+      from: here,
+      facing: facingOf(piece),
+      path: taken.length ? taken.slice() : strike ? [strike] : [],
+      stop: landed,
+    };
+  }
+  const animPath =
+    strike && !taken.some((h) => eq(h, strike)) ? [...taken, strike] : taken.slice();
   const anim: MarchAnim = {
     pieceId: piece.id,
     from: here,
     facing: facingOf(piece),
-    path: taken.slice(),
-    stop,
+    path: animPath,
+    stop: landed,
   };
   reveal(piece);
   const prevCovered = hexDamageCoveredKeys(state, piece);
   const climbed = taken.some((h) => hexHeight(state, h) > hexHeight(state, here));
-  piece.col = stop.col;
-  piece.row = stop.row;
+  if (!eq(landed, here)) {
+    piece.col = landed.col;
+    piece.row = landed.row;
+  }
   piece.facing = facing;
-  const arrived = eq(stop, dest);
-  state.log.push(
-    arrived
-      ? `${unitLog(piece)} arrives at ${stop.col},${stop.row}`
-      : `${unitLog(piece)} marches to ${stop.col},${stop.row}`,
-  );
-  applyWalkTokens(state, piece, here, taken, stop);
+  const arrived = eq(landed, dest);
+  if (taken.length && !strike) {
+    state.log.push(
+      arrived
+        ? `${unitLog(piece)} arrives at ${landed.col},${landed.row}`
+        : `${unitLog(piece)} marches to ${landed.col},${landed.row}`,
+    );
+  } else if (arrived) {
+    state.log.push(`${unitLog(piece)} arrives at ${landed.col},${landed.row}`);
+  } else if (taken.length) {
+    state.log.push(`${unitLog(piece)} marches to ${approach.col},${approach.row}`);
+  }
+  if (taken.length) applyWalkTokens(state, piece, here, taken, landed);
   if (!getPiece(state, piece.id)) return anim;
-  applyHexDamagePush(state, piece, prevCovered);
+  if (!eq(landed, here)) applyHexDamagePush(state, piece, prevCovered);
   if (!getPiece(state, piece.id)) return anim;
+  let used = 0;
+  for (let i = 1; i < bounds.length - 1; i++) {
+    if (taken.length > bounds[i]!) used += 1;
+  }
+  piece.spendMarch = undefined;
+  for (let i = 0; i < used && staminaLeft(piece) > 0; i++) {
+    spendStamina(piece);
+    state.fxStamina = [...(state.fxStamina ?? []), { id: piece.id, kind: 'spend' }];
+  }
   if (climbed && canSpendStamina(piece)) spendStamina(piece);
   markMoved(piece);
   if (arrived) piece.walkTo = undefined;
@@ -2413,10 +2580,84 @@ function applyStandingMarches(state: GameState): void {
   queuedMarches.push(...anims);
 }
 
+function hasMarchDestination(piece: Piece): boolean {
+  return isExperimentalOn('walk-orders') && !!piece.walkTo;
+}
+
+/** Someone on this side still has to be ordered. Sleepers and marchers do not. */
+function sideNeedsManualPlay(state: GameState): boolean {
+  if (state.scoutPieceId) return true;
+  return state.pieces.some(
+    (p) =>
+      p.side === state.turn &&
+      !isSleeping(p) &&
+      !hasMarchDestination(p) &&
+      !hasActed(state, p.id),
+  );
+}
+
+function autoWalkProgressKey(state: GameState): string {
+  const pieces = state.pieces
+    .map(
+      (p) =>
+        `${p.id}@${p.col},${p.row}:${p.hp ?? ''}:${p.walkTo ? `${p.walkTo.col},${p.walkTo.row}` : ''}`,
+    )
+    .sort()
+    .join('|');
+  const tokens = (state.tokens ?? [])
+    .map((t) => `${t.type}@${t.col},${t.row}:${t.hp ?? ''}`)
+    .sort()
+    .join('|');
+  return `${pieces}#${tokens}`;
+}
+
+let autoEnding = false;
+
+/** True when a standing march would actually step or strike this turn. */
+function sideCanAutoMarch(state: GameState): boolean {
+  for (const p of state.pieces) {
+    if (!marchEligible(state, p)) continue;
+    const clone = cloneState(state);
+    const piece = getPiece(clone, p.id);
+    if (piece && applyOneMarch(clone, piece)) return true;
+  }
+  return false;
+}
+
+/**
+ * End the side when every unit without a destination has acted.
+ * Chains into the next side when that side is already fully ordered.
+ * A side that cannot take a step keeps the turn, so the march can be cancelled.
+ * Stops if a full lap moves nobody, so a blocked march does not spin.
+ */
+function maybeAutoEnd(state: GameState): void {
+  if (autoEnding || !isExperimentalOn('auto-walk') || state.winner) return;
+  if (sideNeedsManualPlay(state)) return;
+  autoEnding = true;
+  try {
+    let guard = 0;
+    let idle = 0;
+    while (!state.winner && !sideNeedsManualPlay(state) && guard < 128) {
+      if (!sideCanAutoMarch(state)) break;
+      const before = autoWalkProgressKey(state);
+      state.log.push(sideLog(state.turn, 'Auto walk'));
+      endSideTurn(state);
+      guard += 1;
+      if (state.winner) break;
+      if (autoWalkProgressKey(state) === before) idle += 1;
+      else idle = 0;
+      if (idle >= Math.max(1, participatingSides(state).length)) break;
+    }
+  } finally {
+    autoEnding = false;
+  }
+}
+
 function endSideTurn(state: GameState): void {
   const finished = state.turn;
   clearScoutLock(state);
   applyStandingMarches(state);
+  for (const p of state.pieces) p.spendMarch = undefined;
   checkWin(state);
   if (state.winner) return;
   tickShootCooldowns(state, finished);
@@ -2468,6 +2709,7 @@ function finishActivation(state: GameState, piece: Piece): void {
   checkWin(state);
   if (state.winner) return;
   if (!moreActivationsAfter(state, piece)) endSideTurn(state);
+  else maybeAutoEnd(state);
 }
 
 function sideDefeated(state: GameState, side: Side): boolean {
@@ -2643,6 +2885,7 @@ function canWalkStep(
   if (isWall(state, toHex)) return false;
   if (isPalisade(state, toHex)) return stats.meleeDamage > 0;
   if (t === 'water' && !stats.passWater) return false;
+  if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
   const fh = hexHeight(state, fromHex);
   const th = hexHeight(state, toHex);
   if (th > stats.climbLevel) return false;
@@ -2899,6 +3142,15 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     for (const [k, { dist, via }] of allMoveStops(state, fresh)) {
       if (reach.has(k)) continue;
       out.push({ kind: 'rest', hex: parseKey(k), cost: dist, extra: !!via });
+    }
+  } else if (refusesWaterJump(piece)) {
+    // No stamina pool to fake. Extra HP is enough to open the water step.
+    const spared: Piece = { ...piece, hp: WATER_DROWN_HP + 1 };
+    for (const [k, { dist, via }] of allMoveStops(state, spared)) {
+      if (reach.has(k)) continue;
+      const h = parseKey(k);
+      if (terrainAt(state, h) !== 'water') continue;
+      out.push({ kind: 'rest', hex: h, cost: dist, extra: !!via });
     }
   }
 

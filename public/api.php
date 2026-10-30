@@ -305,12 +305,13 @@ function sanitize_tokens(mixed $raw, int $cols, int $rows): array {
         'forest' => true,
         'flag' => true,
         'board' => true,
+        'tutorial' => true,
         'notouch' => true,
     ];
     $woodHp = ['palisade' => true, 'tree' => true, 'forest' => true];
     $out = [];
     $seen = [];
-    $cap = max(0, $cols * $rows * 9);
+    $cap = max(0, $cols * $rows * count($ok));
     foreach (array_slice($raw, 0, $cap) as $token) {
         if (!is_array($token)) {
             continue;
@@ -507,6 +508,60 @@ function sanitize_star_rule(mixed $raw, array $fallback): array {
     return ['metric' => $metric, 'op' => $op, 'value' => $value];
 }
 
+function sanitize_audio_file(mixed $raw): string {
+    if (!is_string($raw)) {
+        return '';
+    }
+    $base = basename(str_replace('\\', '/', $raw));
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._ -]{0,120}\.(mp3|wav|ogg|m4a)$/i', $base)) {
+        return '';
+    }
+    return $base;
+}
+
+function audio_filename_from_upload(string $name): string {
+    $clean = sanitize_audio_file($name);
+    if ($clean !== '') {
+        return $clean;
+    }
+    $base = basename(str_replace('\\', '/', $name));
+    $ext = strtolower(pathinfo($base, PATHINFO_EXTENSION));
+    if (!in_array($ext, ['mp3', 'wav', 'ogg', 'm4a'], true)) {
+        return '';
+    }
+    $stem = pathinfo($base, PATHINFO_FILENAME);
+    $stem = preg_replace('/[^A-Za-z0-9._ -]+/', '-', $stem);
+    if (!is_string($stem)) {
+        return '';
+    }
+    $stem = trim($stem, '.- ');
+    if ($stem === '') {
+        $stem = 'audio';
+    }
+    return sanitize_audio_file($stem . '.' . $ext);
+}
+
+function audio_dir(): string {
+    global $DATA_DIR;
+    return $DATA_DIR . '/audio';
+}
+
+function list_audio_files(): array {
+    $dir = audio_dir();
+    if (!is_dir($dir)) {
+        return [];
+    }
+    $out = [];
+    foreach (scandir($dir) ?: [] as $name) {
+        $clean = sanitize_audio_file($name);
+        if ($clean !== '' && is_file($dir . '/' . $clean)) {
+            $out[] = $clean;
+        }
+    }
+    natcasesort($out);
+    return array_values($out);
+}
+
 function sanitize_level_text(mixed $raw, int $max = 2500): string {
     if (!is_string($raw)) {
         return '';
@@ -547,6 +602,15 @@ function sanitize_level(mixed $level): ?array {
         $grid[] = $row;
     }
     $ori = ($level['orientation'] ?? '') === 'flat' ? 'flat' : 'pointy';
+    $hexRadius = isset($level['hexRadius']) && is_numeric($level['hexRadius'])
+        ? (int) $level['hexRadius']
+        : 0;
+    if ($hexRadius < 0) {
+        $hexRadius = 0;
+    }
+    if ($hexRadius > 10) {
+        $hexRadius = 10;
+    }
     $updated = isset($level['updatedAt']) && is_numeric($level['updatedAt'])
         ? (int) $level['updatedAt']
         : time() * 1000;
@@ -584,6 +648,7 @@ function sanitize_level(mixed $level): ?array {
         'cols' => $cols,
         'rows' => $rows,
         'orientation' => $ori,
+        'hexRadius' => $hexRadius,
         'terrain' => $grid,
         'category' => $cat,
         'period' => $period,
@@ -593,6 +658,9 @@ function sanitize_level(mixed $level): ?array {
         'startText' => sanitize_level_text($level['startText'] ?? ''),
         'winText' => sanitize_level_text($level['winText'] ?? ''),
         'loseText' => sanitize_level_text($level['loseText'] ?? ''),
+        'startAudio' => sanitize_audio_file($level['startAudio'] ?? ''),
+        'winAudio' => sanitize_audio_file($level['winAudio'] ?? ''),
+        'loseAudio' => sanitize_audio_file($level['loseAudio'] ?? ''),
         'star2' => sanitize_star_rule($level['star2'] ?? null, ['metric' => 'turns', 'op' => 'lt', 'value' => 6]),
         'star3' => sanitize_star_rule($level['star3'] ?? null, ['metric' => 'casualties', 'op' => 'eq', 'value' => 0]),
         'armyControls' => sanitize_army_controls($level['armyControls'] ?? null),
@@ -878,6 +946,44 @@ function with_store_lock(int $mode, callable $fn): mixed {
         flock($fp, LOCK_UN);
         fclose($fp);
     }
+}
+
+if ($method === 'GET' && isset($_GET['audio'])) {
+    echo json_encode(['ok' => true, 'files' => list_audio_files()], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($method === 'POST' && isset($_GET['audio'])) {
+    if ($SAVE_KEY !== '') {
+        $got = $_SERVER['HTTP_X_WARCHESS_KEY'] ?? '';
+        if (!is_string($got) || !hash_equals($SAVE_KEY, $got)) {
+            fail(403, 'bad key');
+        }
+    }
+    $file = $_FILES['file'] ?? null;
+    if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        fail(400, 'upload failed');
+    }
+    $size = (int) ($file['size'] ?? 0);
+    if ($size < 1 || $size > 12 * 1024 * 1024) {
+        fail(413, 'audio too large');
+    }
+    $name = audio_filename_from_upload((string) ($file['name'] ?? ''));
+    if ($name === '') {
+        fail(400, 'use mp3, wav, ogg, or m4a');
+    }
+    $tmp = (string) ($file['tmp_name'] ?? '');
+    ensure_dir(audio_dir());
+    $dest = audio_dir() . '/' . $name;
+    if ($tmp === '' || !is_uploaded_file($tmp) || !move_uploaded_file($tmp, $dest)) {
+        fail(500, 'could not store audio');
+    }
+    @chmod($dest, 0664);
+    echo json_encode(
+        ['ok' => true, 'file' => $name, 'files' => list_audio_files()],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+    );
+    exit;
 }
 
 if ($method === 'GET') {

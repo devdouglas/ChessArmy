@@ -20,6 +20,7 @@ import {
   passTurn,
   marchRoute,
   performMarch,
+  setMarchDoubleTime,
   setWalkOrder,
   takeQueuedMarches,
   restPiece,
@@ -53,12 +54,17 @@ import {
   splashBlast,
   staminaLeft,
   staminaMax,
+  refusesWaterJump,
   canBuyStaminaExtra,
+  canSpendStamina,
   terrainHeight,
   isElevatedTerrain,
   STOCK_UNIT_TYPES,
   UNIT_CATEGORIES,
   UNIT_CATEGORY_LABEL,
+  UNIT_CLASSES,
+  UNIT_CLASS_LABEL,
+  sanitizeUnitClass,
   UNIT_ROLE_LABEL,
   UNIT_STATS,
   UNIT_TYPES,
@@ -138,14 +144,18 @@ import {
   isRedFaceRay,
 } from './engine';
 import {
+  cubeToOffset,
   dirBetween,
+  distance,
   eq,
   hexCorners,
+  hexDisk,
   hexGridExtent,
   hexToPixel,
   key,
   parseKey,
   neighborInDir,
+  offsetToCube,
   pixelToHex,
   type Hex,
   type HexDir,
@@ -163,6 +173,7 @@ import {
   MIN_ROWS,
   ROWS,
   cloneTerrain,
+  clampGridSize,
   createInitialState,
   createStateFromTerrain,
   DEFAULT_MAP,
@@ -193,6 +204,8 @@ import {
   saveLevel,
   isLevelCategory,
   sanitizeCategory,
+  levelAudioUrl,
+  sanitizeLevelAudio,
   sanitizeLevelText,
   sanitizeTeaserText,
   sanitizeStarMetric,
@@ -278,6 +291,7 @@ import {
   facingPikeSvg,
   staminaEmptyMarkSvg,
   staminaHexMarkSvg,
+  actionGlyphSvg,
   staminaPipsHtml,
   unitTokenGlyphSvg,
   pieceShotPipsHtml,
@@ -285,13 +299,14 @@ import {
   unitQuotaPipsHtml,
   starGlyphSvg,
 } from './icons';
-import { copyGlyphGroups, formatCopyHtml } from './copy';
+import { copyGlyphGroups, copyMentionsTutorial, formatCopyHtml } from './copy';
 import {
   CLAMP,
   copyUnit,
   deleteCopiedUnit,
   patchUnitAbility,
   patchUnitCategory,
+  patchUnitClass,
   patchUnitKit,
   patchUnitName,
   patchUnitShootArc,
@@ -304,7 +319,9 @@ import type { AbilityId } from './abilities';
 import {
   flushStore,
   getServerStatus,
+  listLevelAudio,
   onServerStatus,
+  uploadLevelAudio,
   type ServerStatus,
   syncFromServer,
 } from './sync';
@@ -392,6 +409,8 @@ let state: GameState = bootState();
 let briefingOpen = false;
 /** Play: reread / walk-on message board. */
 let boardPopup: { text: string; title?: string } | null = null;
+/** Bouncing hands on Tutorial tokens after a message with [tutorial] closes. */
+let tutorialHands: Hex[] | null = null;
 /** Editor: hex whose board text is being edited. */
 let editorBoardHex: Hex | null = null;
 let editorStoryHex: Hex | null = null;
@@ -414,6 +433,9 @@ let rotatePreviewDir: HexDir | null = null;
 /** Player pref: gold extra dests on select. Off → Second action opt-in. Default off. */
 const DOUBLE_TIME_KEY = 'chessarmy-double-time-v1';
 let doubleTime = loadDoubleTime();
+/** Player pref: narration on intro / victory / lose popups. Default on. */
+const POPUP_AUDIO_KEY = 'chessarmy-popup-audio-v1';
+let popupAudioOn = loadPopupAudio();
 /** This activation: player opted into extra dests while Double time is off. */
 let secondActionArmed = false;
 
@@ -433,6 +455,22 @@ function persistDoubleTime(): void {
   }
 }
 
+function loadPopupAudio(): boolean {
+  try {
+    return localStorage.getItem(POPUP_AUDIO_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function persistPopupAudio(): void {
+  try {
+    localStorage.setItem(POPUP_AUDIO_KEY, popupAudioOn ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 /** Editor draft */
 let editorTerrain: Terrain[][] = emptyTerrain();
 let editorOrientation: HexOrientation = 'flat';
@@ -447,6 +485,16 @@ let editorTeaserText = '';
 let editorStartText = '';
 let editorWinText = '';
 let editorLoseText = '';
+let editorStartAudio = '';
+let editorWinAudio = '';
+let editorLoseAudio = '';
+type EditorAudioSlot = 'start' | 'win' | 'lose';
+let editorAudioPick: EditorAudioSlot | null = null;
+let editorAudioFiles: string[] | null = null;
+let editorAudioError = '';
+let editorAudioPlaying: EditorAudioSlot | null = null;
+let levelAudio: HTMLAudioElement | null = null;
+let audioPickAbort: AbortController | null = null;
 let editorStar2: StarRule = { ...DEFAULT_STAR_2 };
 let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
@@ -712,6 +760,7 @@ function bootState(): GameState {
           matchControls(lvl),
           lvl.tokens,
           matchAiStyles(lvl),
+          lvl.hexRadius,
         ),
         lvl,
       );
@@ -729,6 +778,7 @@ function bootState(): GameState {
 
 function startMatch(reshuffleRandom = true) {
   doubleTime = false;
+  setMarchDoubleTime(false);
   secondActionArmed = false;
   persistDoubleTime();
   clearSelection();
@@ -736,6 +786,7 @@ function startMatch(reshuffleRandom = true) {
   animating = false;
   briefingOpen = false;
   boardPopup = null;
+  tutorialHands = null;
   if (activeLevelId) {
     const lvl = getLevel(activeLevelId);
     if (lvl) {
@@ -748,6 +799,7 @@ function startMatch(reshuffleRandom = true) {
           matchControls(lvl),
           lvl.tokens,
           matchAiStyles(lvl),
+          lvl.hexRadius,
         ),
         lvl,
       );
@@ -801,6 +853,121 @@ function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
   return s;
 }
 
+let editorHex = false;
+let editorRadius = 5;
+let editorHexCenter: Hex | null = null;
+/** Rectangle height to restore when Hex is turned off. */
+let editorRectRows = ROWS;
+
+function editorBoardCenter(): Hex {
+  const { cols, rows } = currentGrid();
+  return editorHexCenter ?? { col: Math.floor((cols - 1) / 2), row: Math.floor((rows - 1) / 2) };
+}
+
+function inEditorHex(col: number, row: number): boolean {
+  if (!editorHex || !editorHexCenter) return true;
+  return distance({ col, row }, editorHexCenter, editorOrientation) <= editorRadius;
+}
+
+/** Move the current paint onto a new grid, matched through the center. */
+function transplantBoard(
+  nextCols: number,
+  nextRows: number,
+  nextCenter: Hex,
+  keep: (h: Hex) => boolean,
+  mode: 'cube' | 'offset' = 'cube',
+): void {
+  const o = editorOrientation;
+  const oldCenter = editorBoardCenter();
+  const oldT = editorTerrain;
+  const oc = offsetToCube(oldCenter, o);
+  const nc = offsetToCube(nextCenter, o);
+  const terrain: Terrain[][] = Array.from({ length: nextRows }, () =>
+    Array.from({ length: nextCols }, () => 'land' as Terrain),
+  );
+  const srcOf = (cell: Hex): Hex => {
+    if (mode === 'offset') {
+      return {
+        col: cell.col - nextCenter.col + oldCenter.col,
+        row: cell.row - nextCenter.row + oldCenter.row,
+      };
+    }
+    const c = offsetToCube(cell, o);
+    const q = c.q - nc.q + oc.q;
+    const r = c.r - nc.r + oc.r;
+    return cubeToOffset({ q, r, s: -q - r }, o);
+  };
+  const destOf = (cell: Hex): Hex => {
+    if (mode === 'offset') {
+      return {
+        col: cell.col - oldCenter.col + nextCenter.col,
+        row: cell.row - oldCenter.row + nextCenter.row,
+      };
+    }
+    const c = offsetToCube(cell, o);
+    const q = c.q - oc.q + nc.q;
+    const r = c.r - oc.r + nc.r;
+    return cubeToOffset({ q, r, s: -q - r }, o);
+  };
+  for (let row = 0; row < nextRows; row++) {
+    for (let col = 0; col < nextCols; col++) {
+      const cell = { col, row };
+      if (!keep(cell)) continue;
+      const src = srcOf(cell);
+      const prev = oldT[src.row]?.[src.col];
+      if (prev) terrain[row][col] = prev;
+    }
+  }
+  const move = <T extends { col: number; row: number }>(items: T[]): T[] =>
+    items.flatMap((p) => {
+      const dest = destOf(p);
+      if (dest.col < 0 || dest.row < 0 || dest.col >= nextCols || dest.row >= nextRows) return [];
+      if (!keep(dest)) return [];
+      return [{ ...p, col: dest.col, row: dest.row }];
+    });
+  editorTerrain = terrain;
+  editorPieces = move(editorPieces);
+  editorTokens = move(editorTokens);
+}
+
+function finishEditorShape(): void {
+  editorDirty = true;
+  applyLayout(computeLayout(), false);
+  render();
+}
+
+function applyHexBoard(mode: 'cube' | 'offset' = 'cube'): void {
+  let radius = Math.max(1, Math.min(10, Math.floor(editorRadius) || 1));
+  let disk = hexDisk(radius, editorOrientation);
+  while ((disk.cols > MAX_COLS || disk.rows > MAX_ROWS) && radius > 1) {
+    radius -= 1;
+    disk = hexDisk(radius, editorOrientation);
+  }
+  editorRadius = radius;
+  transplantBoard(
+    disk.cols,
+    disk.rows,
+    disk.center,
+    (h) => distance(h, disk.center, editorOrientation) <= radius,
+    mode,
+  );
+  editorHex = true;
+  editorHexCenter = disk.center;
+  finishEditorShape();
+}
+
+function applyRectBoard(cols: number, rows: number): void {
+  const size = clampGridSize(cols, rows);
+  const center = {
+    col: Math.floor((size.cols - 1) / 2),
+    row: Math.floor((size.rows - 1) / 2),
+  };
+  transplantBoard(size.cols, size.rows, center, () => true);
+  editorHex = false;
+  editorHexCenter = null;
+  finishEditorShape();
+}
+
 function applyEditorGrid(cols: number, rows: number): void {
   const next = resizeTerrain(editorTerrain, cols, rows);
   const same =
@@ -824,6 +991,10 @@ function applyEditorOrientation(o: HexOrientation): void {
   if (o !== 'pointy' && o !== 'flat') return;
   if (o === editorOrientation) return;
   editorOrientation = o;
+  if (editorHex) {
+    applyHexBoard('offset');
+    return;
+  }
   editorDirty = true;
   applyLayout(computeLayout(), false);
   render();
@@ -853,7 +1024,8 @@ async function playQueuedMarches(): Promise<void> {
       row: step.from.row,
       facing: step.facing,
     };
-    await animateMoveAlong(g, ghost, step.path, step.stop, step.stop);
+    const aim = step.path[step.path.length - 1] ?? step.stop;
+    await animateMoveAlong(g, ghost, step.path, step.stop, aim);
   }
 }
 
@@ -1160,6 +1332,7 @@ function showStart() {
   editorPainting = false;
   briefingOpen = false;
   boardPopup = null;
+  tutorialHands = null;
   editorBoardHex = null;
   editorStoryHex = null;
   randomSetup = null;
@@ -1350,12 +1523,36 @@ function loadEditorLevel(lvl: SavedLevel): void {
   editorStartText = sanitizeLevelText(lvl.startText);
   editorWinText = sanitizeLevelText(lvl.winText);
   editorLoseText = sanitizeLevelText(lvl.loseText);
+  editorStartAudio = sanitizeLevelAudio(lvl.startAudio);
+  editorWinAudio = sanitizeLevelAudio(lvl.winAudio);
+  editorLoseAudio = sanitizeLevelAudio(lvl.loseAudio);
+  editorAudioPick = null;
+  editorAudioError = '';
   editorStar2 = sanitizeStarRule(lvl.star2, DEFAULT_STAR_2);
   editorStar3 = sanitizeStarRule(lvl.star3, DEFAULT_STAR_3);
+  editorHex = lvl.hexRadius > 0;
+  editorRadius = editorHex ? lvl.hexRadius : Math.max(1, Math.floor(cols / 2));
+  editorRectRows = editorHex ? Math.max(MIN_ROWS, editorRadius * 2) : rows;
+  if (editorHex) {
+    const disk = hexDisk(editorRadius, editorOrientation);
+    editorHexCenter =
+      disk.cols === cols && disk.rows === rows
+        ? disk.center
+        : { col: Math.floor((cols - 1) / 2), row: Math.floor((rows - 1) / 2) };
+  } else {
+    editorHexCenter = null;
+  }
   editorPieces = Array.isArray(lvl.armies)
     ? clipStamps(lvl.armies, cols, rows)
     : seedArmies(cols, rows);
   editorTokens = lifted.tokens;
+  if (editorHex && editorHexCenter) {
+    const center = editorHexCenter;
+    const on = (p: { col: number; row: number }) =>
+      distance(p, center, editorOrientation) <= editorRadius;
+    editorPieces = editorPieces.filter(on);
+    editorTokens = editorTokens.filter(on);
+  }
   editorControls = sanitizeArmyControls(lvl.armyControls);
   editorAiStyles = sanitizeAiStyles(lvl.aiStyles);
 }
@@ -1406,6 +1603,7 @@ function beginEditorSession(): void {
   editorPointerAbort?.abort();
   briefingOpen = false;
   boardPopup = null;
+  tutorialHands = null;
   editorBoardHex = null;
   editorStoryHex = null;
   screen = 'editor';
@@ -1453,6 +1651,10 @@ function enterEditor(fromLevelId?: string | null) {
 function newEditorLevel() {
   editorTerrain = emptyTerrain(COLS, ROWS);
   editorOrientation = 'flat';
+  editorHex = false;
+  editorRadius = Math.max(1, Math.floor(COLS / 2));
+  editorHexCenter = null;
+  editorRectRows = ROWS;
   editorLevelId = null;
   editorName = 'New level';
   editorCategory = 'skirmish';
@@ -1463,6 +1665,10 @@ function newEditorLevel() {
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
+  editorStartAudio = '';
+  editorWinAudio = '';
+  editorLoseAudio = '';
+  editorAudioPick = null;
   editorStar2 = { ...DEFAULT_STAR_2 };
   editorStar3 = { ...DEFAULT_STAR_3 };
   editorPieces = [];
@@ -1476,6 +1682,10 @@ function newEditorLevel() {
 function enterEditorFromMatch() {
   editorTerrain = cloneTerrain(state.terrain);
   editorOrientation = state.orientation;
+  editorHex = state.hexRadius > 0;
+  editorRadius = editorHex ? state.hexRadius : Math.max(1, Math.floor(state.cols / 2));
+  editorHexCenter = editorHex && state.hexCenter ? { ...state.hexCenter } : null;
+  editorRectRows = editorHex ? Math.max(MIN_ROWS, editorRadius * 2) : state.rows;
   editorLevelId = null;
   editorName = 'New level';
   editorCategory = 'skirmish';
@@ -1486,6 +1696,10 @@ function enterEditorFromMatch() {
   editorStartText = '';
   editorWinText = '';
   editorLoseText = '';
+  editorStartAudio = '';
+  editorWinAudio = '';
+  editorLoseAudio = '';
+  editorAudioPick = null;
   editorStar2 = { ...DEFAULT_STAR_2 };
   editorStar3 = { ...DEFAULT_STAR_3 };
   editorPieces = clipStamps(
@@ -1705,6 +1919,7 @@ function openEditorStory(col: number, row: number) {
 function paintEditorHex(col: number, row: number, first = true) {
   if (row < 0 || row >= editorTerrain.length) return;
   if (col < 0 || col >= editorTerrain[0].length) return;
+  if (!inEditorHex(col, row)) return;
   if (editorBrush === 'erase') {
     paintEditorErase(col, row);
     return;
@@ -1802,17 +2017,24 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
       startText: editorStartText,
       winText: editorWinText,
       loseText: editorLoseText,
+      startAudio: editorStartAudio,
+      winAudio: editorWinAudio,
+      loseAudio: editorLoseAudio,
     },
     { star2: editorStar2, star3: editorStar3 },
     editorControls,
     editorTokens,
     editorMaxTurns,
     editorAiStyles,
+    editorHex ? editorRadius : 0,
   );
   editorTeaserText = saved.teaserText;
   editorStartText = saved.startText;
   editorWinText = saved.winText;
   editorLoseText = saved.loseText;
+  editorStartAudio = saved.startAudio;
+  editorWinAudio = saved.winAudio;
+  editorLoseAudio = saved.loseAudio;
   editorStar2 = saved.star2;
   editorStar3 = saved.star3;
   editorUnitsPerTurn = saved.unitsPerTurn;
@@ -1920,6 +2142,123 @@ function levelCopy(kind: 'start' | 'win' | 'lose'): string {
   if (kind === 'start') return sanitizeLevelText(lvl.startText);
   if (kind === 'win') return sanitizeLevelText(lvl.winText);
   return sanitizeLevelText(lvl.loseText);
+}
+
+function levelAudioFile(kind: 'start' | 'win' | 'lose'): string {
+  const lvl = activeSavedLevel();
+  if (!lvl) return '';
+  if (kind === 'start') return sanitizeLevelAudio(lvl.startAudio);
+  if (kind === 'win') return sanitizeLevelAudio(lvl.winAudio);
+  return sanitizeLevelAudio(lvl.loseAudio);
+}
+
+/** Intro, victory, or lose popup that has a narration file. */
+function currentPopupAudio(): { key: string; url: string } | null {
+  if (screen !== 'play') return null;
+  const lvl = activeSavedLevel();
+  if (!lvl) return null;
+  let kind: 'start' | 'win' | 'lose' | null = null;
+  if (state.winner) {
+    const vsEnemy = matchHasEnemies(state);
+    if (vsEnemy && playerTeamWon(state)) kind = 'win';
+    else if (vsEnemy && !playerTeamWon(state)) kind = 'lose';
+  } else if (briefingBlocks()) {
+    kind = 'start';
+  }
+  if (!kind) return null;
+  const url = levelAudioUrl(levelAudioFile(kind));
+  if (!url) return null;
+  return { key: `${lvl.id}:${kind}`, url };
+}
+
+let narrationAudio: HTMLAudioElement | null = null;
+let narrationKey: string | null = null;
+/** URL last started. Closing a popup leaves this playing. */
+let narrationUrl: string | null = null;
+/** Popup key last rendered, so a reopened briefing can restart a finished clip. */
+let narrationShownKey: string | null = null;
+/** Next sync should start the current clip over (user turned narration back on). */
+let narrationReplay = false;
+
+function narrationEl(): HTMLAudioElement {
+  if (!narrationAudio) {
+    narrationAudio = new Audio();
+    narrationAudio.preload = 'auto';
+  }
+  return narrationAudio;
+}
+
+function syncPopupNarration(): void {
+  const spec = currentPopupAudio();
+  if (!popupAudioOn) {
+    narrationAudio?.pause();
+    narrationReplay = false;
+    narrationShownKey = spec?.key ?? null;
+    return;
+  }
+  if (!spec) {
+    narrationShownKey = null;
+    narrationReplay = false;
+    return;
+  }
+  const justOpened = narrationShownKey !== spec.key;
+  narrationShownKey = spec.key;
+  const el = narrationEl();
+  const sameFile = narrationUrl === spec.url;
+  if (sameFile && !justOpened && !narrationReplay) return;
+  if (sameFile && justOpened && !narrationReplay && !el.paused && !el.ended) {
+    narrationKey = spec.key;
+    return;
+  }
+  narrationKey = spec.key;
+  if (!sameFile) {
+    narrationUrl = spec.url;
+    el.src = spec.url;
+  } else if (el.ended || narrationReplay) {
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* metadata not in yet — src already starts at 0 */
+    }
+  }
+  narrationReplay = false;
+  void el.play().catch(() => {});
+}
+
+function speakerSvg(on: boolean): string {
+  const waves = on
+    ? `<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16.5 9.2a3.6 3.6 0 010 5.6M19 7a7 7 0 010 10"/>`
+    : `<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 10l5 5M21 10l-5 5"/>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 9.2v5.6h4.1L12.2 19V5L7.1 9.2H3z"/>${waves}</svg>`;
+}
+
+function popupAudioButton(): string {
+  if (!currentPopupAudio()) return '';
+  const on = popupAudioOn;
+  return `<button type="button" class="popup-audio${on ? ' on' : ''}" id="popup-audio" aria-pressed="${on ? 'true' : 'false'}" aria-label="${on ? 'Narration on' : 'Narration off'}">${speakerSvg(on)}</button>`;
+}
+
+function paintPopupAudioButton(): void {
+  const btn = app.querySelector<HTMLButtonElement>('#popup-audio');
+  if (!btn) return;
+  btn.classList.toggle('on', popupAudioOn);
+  btn.setAttribute('aria-pressed', popupAudioOn ? 'true' : 'false');
+  btn.setAttribute('aria-label', popupAudioOn ? 'Narration on' : 'Narration off');
+  btn.innerHTML = speakerSvg(popupAudioOn);
+}
+
+function togglePopupAudio(): void {
+  const el = narrationAudio;
+  const spec = currentPopupAudio();
+  if (popupAudioOn && el && spec && el.paused && !el.ended) {
+    void el.play().catch(() => {});
+    return;
+  }
+  popupAudioOn = !popupAudioOn;
+  persistPopupAudio();
+  narrationReplay = popupAudioOn;
+  syncPopupNarration();
+  paintPopupAudioButton();
 }
 
 function levelStars(): { star2: StarRule; star3: StarRule } {
@@ -2174,9 +2513,19 @@ function refreshHighlights() {
   highlights = selectedId ? highlightsFor(selectedId) : [];
 }
 
+function syncMarchSpend(pieceId: string | null, on: boolean): void {
+  if (!pieceId) return;
+  const piece = getPiece(state, pieceId);
+  if (!piece) return;
+  piece.spendMarch = on && canSpendStamina(piece) ? true : undefined;
+}
+
 function selectPiece(id: string | null) {
   if (animating) return;
-  if (selectedId !== id) secondActionArmed = false;
+  if (selectedId !== id) {
+    secondActionArmed = false;
+    syncMarchSpend(selectedId, false);
+  }
   selectedId = id;
   pendingHex = null;
   hoverHex = null;
@@ -2470,6 +2819,17 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   if (kind === 'move' && !canMove) return;
   if (kind === 'shoot' && !canShoot) return;
 
+  if (kind === 'move' && isExperimentalOn('walk-orders')) {
+    const piece = getPiece(state, selectedId);
+    const occupied = pieceAt(state, hex);
+    const fight = (!!occupied && occupied.id !== selectedId) || isPalisade(state, hex);
+    if (piece && fight && marchRoute(state, piece, hex)) {
+      pendingHex = null;
+      void commitMarch(piece.id, hex, true);
+      return;
+    }
+  }
+
   const action: Action =
     kind === 'move'
       ? { kind: 'move', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
@@ -2616,23 +2976,25 @@ async function maybeAi() {
   updateChrome();
 
   let guard = 0;
-  let pausedForBoard = false;
-  while (isAiControlled(state, state.turn) && !state.winner && guard < 64) {
+  // An empty side (scarecrows) used to pass once and quit. Auto walk spends
+  // the player's turn on that pass and hands it straight back, so the march
+  // stopped after two steps with nobody able to move.
+  while (isAiControlled(state, state.turn) && !state.winner && guard < 256) {
     const action = pickAiAction(state);
     if (!action) {
       state = passTurn(state);
+      secondActionArmed = false;
       await playPendingFx();
-      break;
+      if (boardBlocks()) break;
+      guard += 1;
+      continue;
     }
     const turnBefore = state.turn;
     const scoutBefore = state.scoutPieceId;
     const actedBefore = state.actedIds.length;
     await wait(180);
     await playAnimatedAction(action);
-    if (boardBlocks()) {
-      pausedForBoard = true;
-      break;
-    }
+    if (boardBlocks()) break;
     if (
       state.turn === turnBefore &&
       state.scoutPieceId === scoutBefore &&
@@ -2642,17 +3004,14 @@ async function maybeAi() {
       state = passTurn(state);
       secondActionArmed = false;
       await playPendingFx();
-      break;
+      if (boardBlocks()) break;
+      guard += 1;
+      continue;
     }
     if (!isAiControlled(state, state.turn)) break;
     clearSelectionUnlessSolo();
     render();
     guard += 1;
-  }
-  if (!pausedForBoard && isAiControlled(state, state.turn) && !state.winner) {
-    state = passTurn(state);
-    secondActionArmed = false;
-    await playPendingFx();
   }
 
   aiThinking = false;
@@ -2722,14 +3081,22 @@ function renderBoard(): string {
     return (
       occ ||
       terrainHeight(terrain) > fromHeight ||
+      (terrain === 'water' && !!actor && refusesWaterJump(actor)) ||
       isWall(state, hex) ||
       isPalisade(state, hex) ||
       isForest(state, hex)
     );
   };
+  const showExtras = actor ? extrasVisible(actor) : false;
   if (!editing && selectedId && canControl()) {
     for (const hl of restDestHighlights(selectedId)) {
       const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
+      // Water only while this unit is selected and that hex is a move it could take.
+      // The extra ring stays hidden until Spend energy / Double time, same as other moves.
+      if (terrain === 'water' && actor && refusesWaterJump(actor)) {
+        if (!hl.extra || showExtras) restSet.add(key(hl.hex));
+        continue;
+      }
       // Double time still ghosts flat extra-moves. Same-or-lower high ground does not.
       if (restBusy(hl.hex) || (doubleTime && !isElevatedTerrain(terrain))) {
         restSet.add(key(hl.hex));
@@ -2791,6 +3158,15 @@ function renderBoard(): string {
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const hex = { col, row };
+      if (editing) {
+        if (!inEditorHex(col, row)) continue;
+      } else if (
+        state.hexRadius > 0 &&
+        state.hexCenter &&
+        distance(hex, state.hexCenter, ori) > state.hexRadius
+      ) {
+        continue;
+      }
       const { x, y } = pixelOf(hex);
       const terrain = terrainGrid[row][col];
       const k = key(hex);
@@ -2890,6 +3266,7 @@ function renderBoard(): string {
   let tokensSvg = '';
   let forestSvg = '';
   let houseSvg = '';
+  let tutorialSvg = '';
   const drawTokens = editing ? editorTokens : state.tokens;
   const occupiedHouse = (col: number, row: number) =>
     editing
@@ -2915,9 +3292,15 @@ function renderBoard(): string {
             : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
     const read = t.type === 'board' && t.read ? ' read' : '';
-    const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${mark}${ban}</g>`;
+    const bounce =
+      !editing &&
+      t.type === 'tutorial' &&
+      !!tutorialHands?.some((h) => h.col === t.col && h.row === t.row);
+    const body = bounce ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
+    const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
     if (t.type === 'forest') forestSvg += g;
     else if (t.type === 'house') houseSvg += g;
+    else if (!editing && t.type === 'tutorial') tutorialSvg += g;
     else tokensSvg += g;
   }
 
@@ -2990,7 +3373,13 @@ function renderBoard(): string {
       )
       .join('');
     const hideIcons = unitTokensOf(p)
-      .filter((id) => id === 'hidden' || id === 'exhausted' || id === 'neutral' || id === 'story')
+      .filter(
+        (id) =>
+          id === 'hidden' ||
+          id === 'exhausted' ||
+          id === 'story' ||
+          (id === 'neutral' && editing),
+      )
       .map((id, i) => {
         const cx = -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65;
         const cy = pr * 0.7;
@@ -3115,26 +3504,32 @@ function renderBoard(): string {
     <g class="shoot-mark-layer">${shootMarks}</g>
     <g class="stamina-mark-layer">${staminaMarks}</g>
     <g class="rotate-btn-layer">${rotateMarks}</g>
+    <g class="tutorial-hand-layer">${tutorialSvg}</g>
   </svg>`;
 }
 
-function doubleTimeButton(): string {
-  if (!canControl()) return '';
-  return `<button type="button" id="double-time" class="${
-    doubleTime ? 'is-on' : ''
-  }" aria-pressed="${doubleTime ? 'true' : 'false'}" title="Stamina extras for every unit in your army">Double time</button>`;
+function dockIcon(kind: 'energy' | 'double' | 'rest' | 'special' | 'end'): string {
+  return actionGlyphSvg(kind, { className: 'dock-ico' });
 }
 
-function endTurnButton(): string {
-  if (!canControl()) return '';
-  return `<button type="button" id="end-turn" class="play-end-turn">End turn</button>`;
-}
-
-function playEndCluster(): string {
-  const extra = doubleTimeButton();
-  const end = endTurnButton();
-  if (!extra && !end) return '';
-  return `<div class="play-end-cluster">${extra}${end}</div>`;
+function dockButton(
+  id: string,
+  label: string,
+  enabled: boolean,
+  opts: {
+    pressed?: boolean;
+    title?: string;
+    className?: string;
+    icon: 'energy' | 'double' | 'rest' | 'special' | 'end';
+  },
+): string {
+  const on = !!opts.pressed && enabled;
+  const cls = ['dock-btn', opts.className ?? '', on ? 'is-on' : ''].filter(Boolean).join(' ');
+  const title = opts.title ? ` title="${escapeHtml(opts.title)}"` : '';
+  const pressed = opts.pressed !== undefined ? ` aria-pressed="${on ? 'true' : 'false'}"` : '';
+  return `<button type="button" id="${id}" class="${cls}"${pressed}${title}${
+    enabled ? '' : ' disabled'
+  }>${dockIcon(opts.icon)}<span class="dock-label">${label}</span></button>`;
 }
 
 function canRest(pieceId: string): boolean {
@@ -3162,7 +3557,11 @@ function canOfferSecondAction(piece: Piece): boolean {
 
 function setDoubleTime(on: boolean): void {
   doubleTime = on;
-  if (on) secondActionArmed = false;
+  setMarchDoubleTime(on);
+  if (on) {
+    secondActionArmed = false;
+    syncMarchSpend(selectedId, false);
+  }
   persistDoubleTime();
   hoverHex = null;
   hoverPath = [];
@@ -3173,6 +3572,13 @@ function setDoubleTime(on: boolean): void {
 
 function setSecondActionArmed(on: boolean): void {
   secondActionArmed = on;
+  syncMarchSpend(selectedId, on);
+  const piece = selectedId ? getPiece(state, selectedId) : null;
+  const marchNow = !!(on && piece?.walkTo && piece.spendMarch);
+  if (marchNow && piece?.walkTo) {
+    void commitMarch(piece.id, piece.walkTo, true);
+    return;
+  }
   hoverHex = null;
   hoverPath = [];
   commitPath = [];
@@ -3244,14 +3650,13 @@ function renderActionBar(): string {
     !(state.scoutPieceId && state.scoutPieceId !== piece.id)
   ) {
     if (piece.walkTo) {
-      hint = `March ${piece.walkTo.col},${piece.walkTo.row} · click again to cancel`;
+      hint = `March ${piece.walkTo.col},${piece.walkTo.row} · click the destination again to cancel`;
     } else if (!hint && UNIT_STATS[piece.type].move > 0 && !isSleeping(piece)) {
       hint = 'Click a tile to march';
     }
   }
 
   const left = state.scoutActionsLeft ?? 0;
-  const offerSecond = canOfferSecondAction(piece);
   const scoutUi =
     state.scoutPieceId && canControl()
       ? `<button type="button" id="skip-scout">${
@@ -3268,32 +3673,21 @@ function renderActionBar(): string {
         ? `<span class="action-flag">empty</span>`
         : '';
 
-  const restUi =
-    canRest(piece.id) && !energyFull(piece)
-      ? `<button type="button" id="rest-unit">Rest</button>`
+  const cancelMarch =
+    piece.walkTo && piece.side === state.turn && canControl() && !choosing
+      ? `<button type="button" id="cancel-march">Cancel march</button>`
       : '';
+
+  const restReady = canRest(piece.id) && !energyFull(piece);
   const restNote =
-    restUi &&
+    restReady &&
     staminaMax(piece) > 0 &&
     state.terrain[piece.row]?.[piece.col] !== 'water'
       ? 'one idle turn = gain 1 stamina'
       : '';
-  const restBlock = restUi
-    ? `<div class="action-rest">${restUi}${
-        restNote ? `<span class="action-bar-hint rest-note">${restNote}</span>` : ''
-      }</div>`
-    : '';
-
-  const secondActionUi = offerSecond
-    ? `<button type="button" id="second-action" class="${
-        secondActionArmed ? 'is-on' : ''
-      }" aria-pressed="${
-        secondActionArmed ? 'true' : 'false'
-      }" title="Spend 1 stamina for another action">${formatCopyHtml('[energy] Spend stamina')}</button>`
-    : '';
 
   return `
-    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restUi ? ' has-rest' : ''}">
+    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restReady ? ' has-rest' : ''}">
       <div class="action-bar-piece">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
@@ -3304,12 +3698,38 @@ function renderActionBar(): string {
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${pieceShotPipsHtml(piece)}
       </div>
-      ${secondActionUi}
-      ${restBlock}
+      ${cancelMarch}
       ${scoutUi}
       ${extra}
       ${hint ? `<span class="action-bar-hint">${hint}</span>` : ''}
+      ${restNote ? `<span class="action-bar-hint rest-note">${restNote}</span>` : ''}
     </div>`;
+}
+
+/** Five actions, always in this order. Disabled until that action is legal. */
+function renderUnitDock(): string {
+  const piece = selectedId ? getPiece(state, selectedId) : null;
+  const yours = canControl();
+  const spend = !!(piece && canOfferSecondAction(piece));
+  const rest = !!(piece && canRest(piece.id) && !energyFull(piece));
+  return `<div class="unit-dock" role="toolbar" aria-label="Unit actions">
+    ${dockButton('second-action', 'Spend energy', spend, {
+      icon: 'energy',
+      pressed: secondActionArmed,
+      title: 'Spend 1 stamina for another action',
+    })}
+    ${dockButton('double-time', 'Double time', yours, {
+      icon: 'double',
+      pressed: doubleTime,
+      title: 'Stamina extras for every unit in your army',
+    })}
+    ${dockButton('rest-unit', 'Rest', rest, {
+      icon: 'rest',
+      title: 'Skip this activation. An idle turn restores 1 stamina',
+    })}
+    ${dockButton('special-action', 'Special', false, { icon: 'special', title: 'No special' })}
+    ${dockButton('end-turn', 'End turn', yours, { icon: 'end', className: 'play-end-turn' })}
+  </div>`;
 }
 
 function statRow(label: string, value: string, note = '', warn = false): string {
@@ -3470,7 +3890,7 @@ function renderSidebar(): string {
     const extraNotes: string[] = [];
     if (s.passWater && s.passUnits) extraNotes.push('Move onto water; pathing through pieces');
     else {
-      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; turn-start stamina penalty or 2 HP; no regen)');
+      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 energy with 2 HP or less; turn-start stamina penalty or 2 HP; no regen)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (s.charge > 0) extraNotes.push(
@@ -3500,7 +3920,7 @@ function renderSidebar(): string {
     }
     if (isNeutralSide(piece.side)) {
       extraNotes.push(
-        'Neutral — not in any army. A General that walks onto this hex converts it, no damage',
+        'Neutral — not in any army. Any unit that walks onto this hex converts it, no damage',
       );
     }
     extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
@@ -3564,7 +3984,7 @@ function renderSidebar(): string {
             <span class="l-shoot-range">Shoot range</span>
           </div>
           <dl class="rules">
-            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
+            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 energy and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; palisade and forest block straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units, palisades and forest; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
@@ -3575,7 +3995,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. A General that walks onto it converts it to that army, no damage. Other units cannot occupy the hex. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -3735,7 +4155,7 @@ function renderEndOverlay(): string {
 
   return `
     <div class="end-overlay ${tone}" role="dialog" aria-label="${title}">
-      <div class="end-card ${tone} side-${winnerSide}">
+      <div class="end-card ${tone} side-${winnerSide}${currentPopupAudio() ? ' has-narration' : ''}">
         <div class="end-burst" aria-hidden="true"></div>
         <svg class="end-icon" viewBox="-10 -10 20 20" width="72" height="72" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(winnerSide)}" />
@@ -3750,6 +4170,7 @@ function renderEndOverlay(): string {
           ${nextBtn}
           ${inList ? `${rematchBtn}${startBtn}` : `${startBtn}${rematchBtn}`}
         </div>
+        ${popupAudioButton()}
       </div>
     </div>`;
 }
@@ -3761,7 +4182,7 @@ function renderStartOverlay(): string {
   const title = saved ? levelLabel(saved) : 'Level';
   return `
     <div class="end-overlay briefing" role="dialog" aria-label="${escapeHtml(title)}">
-      <div class="end-card briefing">
+      <div class="end-card briefing${currentPopupAudio() ? ' has-narration' : ''}">
         <h2 class="end-title">${escapeHtml(title)}</h2>
         ${text ? `<p class="end-sub level-copy">${formatCopyHtml(text)}</p>` : ''}
         <div class="end-actions">
@@ -3772,6 +4193,7 @@ function renderStartOverlay(): string {
               : ''
           }
         </div>
+        ${popupAudioButton()}
       </div>
     </div>`;
 }
@@ -3807,7 +4229,7 @@ function renderEditorBoardPopup(): string {
         <label class="board-edit">
           <span class="sr-only">Message</span>
           <textarea id="board-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(tok.text ?? '')}</textarea>
-          <p class="muted board-hint">Wrap a unit or tile-token name in [brackets] to show its icon.</p>
+          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes.</p>
         </label>
         <div class="end-actions">
           <button type="button" id="board-save">Save</button>
@@ -3817,8 +4239,18 @@ function renderEditorBoardPopup(): string {
     </div>`;
 }
 
+function armTutorialHands(text: string): void {
+  if (!copyMentionsTutorial(text)) return;
+  const spots = state.tokens
+    .filter((t) => t.type === 'tutorial')
+    .map((t) => ({ col: t.col, row: t.row }));
+  tutorialHands = spots.length ? spots : null;
+}
+
 function closeBoardPopup() {
+  const text = boardPopup?.text ?? '';
   boardPopup = null;
+  armTutorialHands(text);
   const actingId = state.scoutPieceId;
   void (async () => {
     if (actingId) await settleUnarmedStaminaExtra(actingId);
@@ -3889,7 +4321,7 @@ function renderEditorStoryPopup(): string {
         <label class="board-edit">
           <span class="sr-only">Message</span>
           <textarea id="story-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(story?.text ?? '')}</textarea>
-          <p class="muted board-hint">Wrap a unit or tile-token name in [brackets] to show its icon. Leave the message empty to remove the token.</p>
+          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes. Leave the message empty to remove the token.</p>
         </label>
         <label class="board-edit">
           <span class="board-when-label">When</span>
@@ -4027,8 +4459,8 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   if (UNIT_STATS[piece.type].move <= 0) return false;
   if (state.scoutPieceId && state.scoutPieceId !== piece.id) return false;
   if (eq(hex, { col: piece.col, row: piece.row })) return false;
-  if (!marchRoute(state, piece, hex)) return false;
   const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
+  if (!cancel && !marchRoute(state, piece, hex)) return false;
   const acting = !cancel && canActWithSelected() && selectedId === piece.id;
   void commitMarch(piece.id, cancel ? null : hex, acting);
   return true;
@@ -4062,6 +4494,10 @@ async function commitMarch(pieceId: string, dest: Hex | null, stepNow: boolean):
 
 function onHexClick(col: number, row: number) {
   if (briefingBlocks() || boardBlocks() || animating || aiThinking) return;
+  if (tutorialHands) {
+    tutorialHands = null;
+    queueMicrotask(() => render());
+  }
   const hex = { col, row };
   const rawOcc = state.pieces.find((p) => p.col === col && p.row === row);
   const occ =
@@ -4095,9 +4531,7 @@ function onHexClick(col: number, row: number) {
       return;
     }
     if (canMove) {
-      const blocker = pieceAt(state, hex);
-      const melee = !!blocker && !!piece && blocker.id !== piece.id;
-      if (!melee && piece && trySetMarch(piece, hex)) return;
+      if (piece && trySetMarch(piece, hex)) return;
       commitPath = drawnPathTo(hex);
       void tryAct(hex, 'move');
       return;
@@ -4232,6 +4666,10 @@ function bindBoardOnly() {
   svg.querySelectorAll<SVGGElement>('.hex-rotate-btn').forEach((g) => {
     g.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (tutorialHands) {
+        tutorialHands = null;
+        queueMicrotask(() => render());
+      }
       const piece = selectedId ? getPiece(state, selectedId) : null;
       const col = Number(g.dataset.col);
       const row = Number(g.dataset.row);
@@ -4383,7 +4821,7 @@ function mapPickTitle(kind: MapPickKind): string {
 
 function mapPickMetaLine(l: SavedLevel, kind: MapPickKind, index: number, maps: SavedLevel[]): string {
   if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return 'Locked';
-  return `${l.cols}×${l.rows}`;
+  return l.hexRadius > 0 ? `R${l.hexRadius}` : `${l.cols}×${l.rows}`;
 }
 
 let randomMapThumb: {
@@ -4445,7 +4883,7 @@ function renderMapPickOpt(l: SavedLevel, kind: MapPickKind, index: number, maps:
   } title="${locked ? `${name} — locked` : `Play ${name}`}" aria-label="${locked ? `${name} (locked)` : `${name}${starBit}`}">
     ${renderLevelThumb(l)}
     <span class="map-pick-copy">
-      <span class="start-opt-name">${lock}${name}</span>
+      <span class="start-opt-name">${lock}${name}${levelAudioNotes(l)}</span>
       ${levelTeaserHtml(l)}
       <span class="start-opt-meta">${mapPickMetaLine(l, kind, index, maps)}</span>
       ${bestStarsHtml(l.id)}
@@ -4930,12 +5368,16 @@ function renderArmySelectPanel(): string {
     (c) =>
       `<option value="${c}"${editorUnitCategory === c ? ' selected' : ''}>${eraIsWip(c) ? `${UNIT_CATEGORY_LABEL[c]} (under construction)` : UNIT_CATEGORY_LABEL[c]}</option>`,
   ).join('');
-  const unitBrushes = catUnits
-    .map(
-      (t) =>
-        `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${unitBrushIconSvg(t)}<span>${escapeHtml(UNIT_STATS[t].name)}</span></button>`,
-    )
-    .join('');
+  const unitButton = (t: UnitType) =>
+    `<button type="button" class="brush unit${editorBrush === t ? ' active' : ''}" data-brush="${t}">${unitBrushIconSvg(t)}<span>${escapeHtml(UNIT_STATS[t].name)}</span></button>`;
+  const unitGroups = UNIT_CLASSES.map((cls) => {
+    const units = catUnits.filter((t) => UNIT_STATS[t].unitClass === cls);
+    if (!units.length) return '';
+    return `<div class="editor-unit-group">
+      <span class="editor-unit-group-label">${UNIT_CLASS_LABEL[cls]}</span>
+      <div class="editor-unit-group-units">${units.map(unitButton).join('')}</div>
+    </div>`;
+  }).join('');
   return `
     <div class="editor-top-army">
     <section class="editor-panel editor-panel-army">
@@ -4964,8 +5406,7 @@ function renderArmySelectPanel(): string {
         <select id="editor-unit-cat">${eraOpts}</select>
       </label>
       <div class="editor-army">
-        ${catUnits.length ? '' : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
-        ${unitBrushes}
+        ${catUnits.length ? unitGroups : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
       </div>
     </section>
     <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase ${TRASH_ICON_SVG}</button>
@@ -4979,6 +5420,7 @@ function renderLevelThumb(lvl: {
   terrain: SavedLevel['terrain'];
   tokens?: SavedLevel['tokens'];
   armies?: SavedLevel['armies'];
+  hexRadius?: number;
 }): string {
   const ori = lvl.orientation;
   const cols = lvl.cols;
@@ -4993,10 +5435,18 @@ function renderLevelThumb(lvl: {
   const w = pad * 2 + extent.w;
   const h = pad * 2 + extent.h;
   let hexes = '';
+  const thumbRadius = lvl.hexRadius ?? 0;
+  const thumbDisk = thumbRadius > 0 ? hexDisk(thumbRadius, ori) : null;
+  const thumbCenter = thumbDisk
+    ? thumbDisk.cols === cols && thumbDisk.rows === rows
+      ? thumbDisk.center
+      : { col: Math.floor((cols - 1) / 2), row: Math.floor((rows - 1) / 2) }
+    : null;
   for (let row = 0; row < rows; row++) {
     const line = lvl.terrain[row];
     if (!line) continue;
     for (let col = 0; col < cols; col++) {
+      if (thumbCenter && distance({ col, row }, thumbCenter, ori) > thumbRadius) continue;
       const terrain = line[col] ?? 'land';
       const { x, y } = hexToPixel({ col, row }, size, ori);
       const cx = x + pad;
@@ -5053,10 +5503,25 @@ function levelTeaserHtml(l: SavedLevel): string {
   return t ? `<span class="level-teaser">${formatCopyHtml(t)}</span>` : '';
 }
 
+function levelAudioNotes(l: SavedLevel): string {
+  const slots = [
+    ['intro', l.startAudio],
+    ['victory', l.winAudio],
+    ['lose', l.loseAudio],
+  ] as const;
+  const labels = slots
+    .filter(([, file]) => sanitizeLevelAudio(file))
+    .map(([label]) => label);
+  if (!labels.length) return '';
+  const note = `<svg class="level-note" viewBox="0 0 10 14" width="11" height="14" aria-hidden="true"><path fill="currentColor" d="M2.15.8h1.25v8.05a2.05 2.05 0 1 1-1.25-1.9V2.05H2.15V.8z"/><path fill="currentColor" d="M3.4.9 8.7 2.2v1.35L3.4 2.25V.9z"/></svg>`;
+  return `<span class="level-notes" title="${labels.join(', ')}" aria-label="${labels.join(', ')} narration">${labels.map(() => note).join('')}</span>`;
+}
+
 function levelMetaLine(l: SavedLevel): string {
   const armyN = Array.isArray(l.armies) ? l.armies.length : null;
   const army = armyN === null ? 'stock armies' : `${armyN} pcs`;
-  return `${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${l.cols}×${l.rows} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.maxTurns > 0 ? ` · ${l.maxTurns}t` : ''} · ${army}${l.id === defaultLevelId ? ' · default' : ''}`;
+  const size = l.hexRadius > 0 ? `R${l.hexRadius}` : `${l.cols}×${l.rows}`;
+  return `${LEVEL_CATEGORY_LABEL[l.category]} · <span class="period-tag" data-period="${l.period}">${PERIOD_LABEL[l.period]}</span> · ${size} · ${l.orientation === 'flat' ? 'flat' : 'point'}${l.unitsPerTurn > 1 ? ` · ${l.unitsPerTurn}u` : ''}${l.maxTurns > 0 ? ` · ${l.maxTurns}t` : ''} · ${army}${l.id === defaultLevelId ? ' · default' : ''}`;
 }
 
 function renderLevelRow(l: SavedLevel): string {
@@ -5075,7 +5540,7 @@ function renderLevelRow(l: SavedLevel): string {
     <button type="button" class="level-open" data-edit-level="${l.id}">
       ${renderLevelThumb(l)}
       <span class="level-copy">
-        <span class="level-name">${escapeHtml(levelLabel(l))}</span>
+        <span class="level-name">${escapeHtml(levelLabel(l))}${levelAudioNotes(l)}</span>
         ${levelTeaserHtml(l)}
         <span class="level-details">
           <span class="lvl-meta">${levelMetaLine(l)}</span>
@@ -5141,6 +5606,136 @@ function renderLevelsOverview(): string {
         ${body}
       </div>
     </div>`;
+}
+
+function editorAudioFile(slot: EditorAudioSlot): string {
+  if (slot === 'start') return editorStartAudio;
+  if (slot === 'win') return editorWinAudio;
+  return editorLoseAudio;
+}
+
+function setEditorAudioFile(slot: EditorAudioSlot, file: string): void {
+  const clean = sanitizeLevelAudio(file);
+  if (slot === 'start') editorStartAudio = clean;
+  else if (slot === 'win') editorWinAudio = clean;
+  else editorLoseAudio = clean;
+  if (editorAudioPlaying === slot) haltLevelAudio();
+}
+
+function levelAudioEl(): HTMLAudioElement {
+  if (!levelAudio) {
+    levelAudio = new Audio();
+    levelAudio.preload = 'none';
+    levelAudio.addEventListener('ended', () => {
+      editorAudioPlaying = null;
+      if (screen === 'editor') render();
+    });
+    levelAudio.addEventListener('error', () => {
+      if (!editorAudioPlaying) return;
+      editorAudioPlaying = null;
+      if (screen === 'editor') render();
+    });
+  }
+  return levelAudio;
+}
+
+function haltLevelAudio(): void {
+  levelAudio?.pause();
+  editorAudioPlaying = null;
+}
+
+function toggleLevelAudio(slot: EditorAudioSlot): void {
+  const file = editorAudioFile(slot);
+  const url = levelAudioUrl(file);
+  if (!url) return;
+  if (editorAudioPlaying === slot) {
+    haltLevelAudio();
+    render();
+    return;
+  }
+  const el = levelAudioEl();
+  editorAudioPlaying = slot;
+  el.src = url;
+  void el.play().catch(() => {
+    if (editorAudioPlaying === slot) editorAudioPlaying = null;
+    if (screen === 'editor') render();
+  });
+  render();
+}
+
+async function openLevelAudioPick(slot: EditorAudioSlot): Promise<void> {
+  if (editorAudioPick === slot) {
+    editorAudioPick = null;
+    editorAudioError = '';
+    render();
+    return;
+  }
+  editorAudioPick = slot;
+  editorAudioError = '';
+  render();
+  try {
+    editorAudioFiles = await listLevelAudio();
+  } catch {
+    editorAudioFiles = editorAudioFiles ?? [];
+    editorAudioError = 'Could not list audio files';
+  }
+  if (editorAudioPick === slot && screen === 'editor') render();
+}
+
+function levelAudioPicker(slot: EditorAudioSlot): string {
+  const current = editorAudioFile(slot);
+  const files = editorAudioFiles;
+  const list =
+    files == null
+      ? `<p class="muted">Loading…</p>`
+      : files.length
+        ? files
+            .map(
+              (f) =>
+                `<button type="button" class="level-audio-file${f === current ? ' active' : ''}" data-audio-choose="${escapeHtml(f)}" data-audio-slot="${slot}">${escapeHtml(f)}</button>`,
+            )
+            .join('')
+        : `<p class="muted">No files in audio/</p>`;
+  const err = editorAudioError
+    ? `<p class="muted level-audio-err">${escapeHtml(editorAudioError)}</p>`
+    : '';
+  return `<div class="level-audio-pick" data-audio-pick="${slot}">
+    ${err}
+    <div class="level-audio-files">${list}</div>
+    <label class="level-audio-upload">Upload
+      <input type="file" accept=".mp3,.wav,.ogg,.m4a,audio/*" data-audio-upload="${slot}" />
+    </label>
+  </div>`;
+}
+
+function levelCopyField(
+  slot: EditorAudioSlot,
+  id: string,
+  label: string,
+  placeholder: string,
+  rows: number,
+  value: string,
+): string {
+  const file = editorAudioFile(slot);
+  const playing = editorAudioPlaying === slot;
+  const playBtn = file
+    ? `<button type="button" class="level-audio-play${playing ? ' active' : ''}" data-audio-play="${slot}" aria-pressed="${playing ? 'true' : 'false'}">${playing ? 'Stop' : 'Play'}</button>`
+    : '';
+  const clearBtn = file
+    ? `<button type="button" class="level-audio-clear" data-audio-clear="${slot}" aria-label="Unlink ${label} audio">×</button>`
+    : '';
+  return `<div class="editor-cat level-copy-field">
+    <div class="level-copy-head">
+      <label for="${id}">${label}</label>
+      <span class="level-audio-actions">
+        ${playBtn}
+        <button type="button" class="level-audio-link${file ? ' linked' : ''}${editorAudioPick === slot ? ' active' : ''}" data-audio-link="${slot}" title="${escapeHtml(file || 'Link an audio file')}">${escapeHtml(file || 'Link audio')}</button>
+        ${clearBtn}
+      </span>
+    </div>
+    ${editorAudioPick === slot ? levelAudioPicker(slot) : ''}
+    <textarea id="${id}" maxlength="${LEVEL_TEXT_MAX}" rows="${rows}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value)}</textarea>
+  </div>`;
 }
 
 function renderEditorBar(): string {
@@ -5253,16 +5848,10 @@ function renderEditorBar(): string {
           <label class="editor-cat level-copy-field">Teaser text
             <textarea id="editor-teaser-text" maxlength="${TEASER_TEXT_MAX}" rows="2" placeholder="Shown on map lists under the title">${escapeHtml(editorTeaserText)}</textarea>
           </label>
-          <label class="editor-cat level-copy-field">Start text
-            <textarea id="editor-start-text" maxlength="${LEVEL_TEXT_MAX}" rows="6" placeholder="Shown at the start of the level">${escapeHtml(editorStartText)}</textarea>
-          </label>
-          <label class="editor-cat level-copy-field">Winning text
-            <textarea id="editor-win-text" maxlength="${LEVEL_TEXT_MAX}" rows="4" placeholder="Shown when you win">${escapeHtml(editorWinText)}</textarea>
-          </label>
-          <label class="editor-cat level-copy-field">Losing text
-            <textarea id="editor-lose-text" maxlength="${LEVEL_TEXT_MAX}" rows="4" placeholder="Shown when you lose">${escapeHtml(editorLoseText)}</textarea>
-          </label>
-          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [hp], [arrow]… — name in brackets becomes that item's icon.</p>
+          ${levelCopyField('start', 'editor-start-text', 'intro', 'Shown at the start of the level', 6, editorStartText)}
+          ${levelCopyField('win', 'editor-win-text', 'victory', 'Shown when you win', 4, editorWinText)}
+          ${levelCopyField('lose', 'editor-lose-text', 'lose', 'Shown when you lose', 4, editorLoseText)}
+          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. Paint Tutorial tokens, then [tutorial] in a message points bouncing hands at them after it closes, until the next map click.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
             <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken (not just kills). Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
@@ -5275,8 +5864,16 @@ function renderEditorBar(): string {
             ${starRuleEditorRow(3, editorStar3)}
           </div>
           <div class="editor-grid">
-            <label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
-            <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>
+            <label class="chk">
+              <input type="checkbox" id="editor-hex"${editorHex ? ' checked' : ''} />
+              Hex
+            </label>
+            ${
+              editorHex
+                ? `<label>R <input type="number" id="editor-radius" min="1" max="10" value="${editorRadius}" title="Tiles from the center to the edge" /></label>`
+                : `<label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
+            <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>`
+            }
             <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
             <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
           </div>
@@ -5481,12 +6078,15 @@ function renderUnitEditor(): string {
   const shown = UNIT_TYPES.filter(
     (type) => UNIT_STATS[type].category === unitEditorCategory,
   );
-  const cards = shown
-    .map((type) => {
+  const cardOf = (type: UnitType): string => {
       const s = UNIT_STATS[type];
       const catOpts = UNIT_CATEGORIES.map(
         (c) =>
           `<option value="${c}"${s.category === c ? ' selected' : ''}>${eraIsWip(c) ? `${UNIT_CATEGORY_LABEL[c]} (under construction)` : UNIT_CATEGORY_LABEL[c]}</option>`,
+      ).join('');
+      const classOpts = UNIT_CLASSES.map(
+        (c) =>
+          `<option value="${c}"${s.unitClass === c ? ' selected' : ''}>${UNIT_CLASS_LABEL[c]}</option>`,
       ).join('');
       const kitOpts = STOCK_UNIT_TYPES.map(
         (r) =>
@@ -5518,7 +6118,7 @@ function renderUnitEditor(): string {
           <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
         </svg>
         <span class="unit-card-title">${escapeHtml(s.name)}</span>
-        <span class="lvl-meta unit-card-meta">${hpPipsHtml(s.hp, s.hp, 'catalog')} · ${s.value}</span>
+        <span class="lvl-meta unit-card-meta">${UNIT_CLASS_LABEL[s.unitClass]} · ${hpPipsHtml(s.hp, s.hp, 'catalog')} · ${s.value}</span>
       </summary>
       <div class="unit-card-body">
       <header>
@@ -5527,6 +6127,9 @@ function renderUnitEditor(): string {
           <span class="lvl-meta">${escapeHtml(s.chess)}${copied ? ' · copy' : ''}</span>
         </div>
         <div class="unit-card-selects">
+          <label class="unit-cat">Type
+            <select data-unit-class="${type}">${classOpts}</select>
+          </label>
           <label class="unit-cat">Kit
             <select data-unit-kit="${type}">${kitOpts}</select>
           </label>
@@ -5601,8 +6204,15 @@ function renderUnitEditor(): string {
       </div>
       </details>
     </article>`;
-    })
-    .join('');
+  };
+  const groups = UNIT_CLASSES.map((cls) => {
+    const types = shown.filter((t) => UNIT_STATS[t].unitClass === cls);
+    if (!types.length) return '';
+    return `<section class="unit-class-group">
+      <h3 class="unit-class-label">${UNIT_CLASS_LABEL[cls]}</h3>
+      <div class="unit-class-cards">${types.map(cardOf).join('')}</div>
+    </section>`;
+  }).join('');
 
   const empty = shown.length
     ? ''
@@ -5623,7 +6233,7 @@ function renderUnitEditor(): string {
             : 'Custom stats · saved in this browser'
         }</p>
       </div>
-      <div class="unit-cards">${cards}</div>
+      <div class="unit-cards">${groups}</div>
       ${empty}
       <div class="editor-save">
         <button type="button" id="units-reset" class="ghost">Reset to stock</button>
@@ -5648,7 +6258,7 @@ function renderUnitEditor(): string {
           <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
           <dd><strong>Move cap</strong> total steps this activation, actions and stamina extras included (0 = none; scout stock 3). Cannot go past it</dd>
           <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
-          <dd><strong>Move to water</strong> stop on water hexes (no stamina to enter; that move ends momentum). From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
+          <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 energy and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
@@ -5885,6 +6495,14 @@ function bindUnitEditorEvents() {
       render();
     });
   });
+  app.querySelectorAll<HTMLSelectElement>('[data-unit-class]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const type = el.dataset.unitClass as UnitType | undefined;
+      if (!type) return;
+      patchUnitClass(type, sanitizeUnitClass(el.value));
+      render();
+    });
+  });
   app.querySelectorAll<HTMLSelectElement>('[data-unit-cat]').forEach((el) => {
     el.addEventListener('change', () => {
       const type = el.dataset.unitCat as UnitType | undefined;
@@ -6019,6 +6637,7 @@ function bindEditorEvents() {
   const commitGridSize = () => {
     const colsEl = app.querySelector<HTMLInputElement>('#editor-cols');
     const rowsEl = app.querySelector<HTMLInputElement>('#editor-rows');
+    editorRectRows = rowsEl ? Number(rowsEl.value) : currentGrid().rows;
     applyEditorGrid(
       colsEl ? Number(colsEl.value) : currentGrid().cols,
       rowsEl ? Number(rowsEl.value) : currentGrid().rows,
@@ -6026,6 +6645,22 @@ function bindEditorEvents() {
   };
   app.querySelector('#editor-cols')?.addEventListener('change', commitGridSize);
   app.querySelector('#editor-rows')?.addEventListener('change', commitGridSize);
+  app.querySelector('#editor-hex')?.addEventListener('change', (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    if (on === editorHex) return;
+    if (on) {
+      const { cols, rows } = currentGrid();
+      editorRectRows = rows;
+      editorRadius = Math.max(1, Math.floor(cols / 2));
+      applyHexBoard();
+      return;
+    }
+    applyRectBoard(editorRadius * 2, editorRectRows);
+  });
+  app.querySelector('#editor-radius')?.addEventListener('change', (e) => {
+    editorRadius = Math.max(1, Math.min(10, Math.floor(Number((e.target as HTMLInputElement).value)) || 1));
+    applyHexBoard();
+  });
   app.querySelectorAll<HTMLButtonElement>('[data-ori]').forEach((btn) => {
     btn.addEventListener('click', () => {
       applyEditorOrientation(btn.dataset.ori as HexOrientation);
@@ -6079,6 +6714,83 @@ function bindEditorEvents() {
   bindLevelText('#editor-lose-text', (v) => {
     editorLoseText = v;
   });
+  const audioSlot = (raw: string | undefined): EditorAudioSlot | null =>
+    raw === 'start' || raw === 'win' || raw === 'lose' ? raw : null;
+  app.querySelectorAll<HTMLButtonElement>('[data-audio-link]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slot = audioSlot(btn.dataset.audioLink);
+      if (slot) void openLevelAudioPick(slot);
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-audio-play]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slot = audioSlot(btn.dataset.audioPlay);
+      if (slot) toggleLevelAudio(slot);
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-audio-clear]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slot = audioSlot(btn.dataset.audioClear);
+      if (!slot) return;
+      setEditorAudioFile(slot, '');
+      editorAudioPick = null;
+      markEditorDirty();
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-audio-choose]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slot = audioSlot(btn.dataset.audioSlot);
+      const file = btn.dataset.audioChoose ?? '';
+      if (!slot || !sanitizeLevelAudio(file)) return;
+      setEditorAudioFile(slot, file);
+      editorAudioPick = null;
+      editorAudioError = '';
+      markEditorDirty();
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLInputElement>('[data-audio-upload]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const slot = audioSlot(input.dataset.audioUpload);
+      const file = input.files?.[0];
+      if (!slot || !file) return;
+      void uploadLevelAudio(file)
+        .then(async (name) => {
+          setEditorAudioFile(slot, name);
+          editorAudioFiles = await listLevelAudio().catch(() => editorAudioFiles);
+          editorAudioPick = null;
+          editorAudioError = '';
+          markEditorDirty();
+          if (screen === 'editor') render();
+        })
+        .catch((err: unknown) => {
+          editorAudioError = err instanceof Error ? err.message : 'upload failed';
+          if (screen === 'editor') render();
+        });
+    });
+  });
+  audioPickAbort?.abort();
+  audioPickAbort = null;
+  if (editorAudioPick) {
+    audioPickAbort = new AbortController();
+    app.addEventListener(
+      'click',
+      (e) => {
+        const t = e.target;
+        if (!(t instanceof Element)) return;
+        if (t.closest('.level-audio-pick, [data-audio-link], .level-audio-actions')) return;
+        editorAudioPick = null;
+        editorAudioError = '';
+        render();
+      },
+      { signal: audioPickAbort.signal },
+    );
+  }
   app.querySelectorAll<HTMLElement>('[data-star][data-star-field]').forEach((el) => {
     el.addEventListener('change', () => {
       if (el instanceof HTMLSelectElement && el.dataset.starField === 'metric') {
@@ -6324,6 +7036,10 @@ function bindLevelsEvents() {
         editorStartText = '';
         editorWinText = '';
         editorLoseText = '';
+        editorStartAudio = '';
+        editorWinAudio = '';
+        editorLoseAudio = '';
+        editorAudioPick = null;
         editorStar2 = { ...DEFAULT_STAR_2 };
         editorStar3 = { ...DEFAULT_STAR_3 };
       }
@@ -6453,9 +7169,15 @@ function bindEvents() {
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   bindBoardPopup();
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
+    const intro = levelCopy('start');
     briefingOpen = false;
+    armTutorialHands(intro);
     render();
     void maybeAi();
+  });
+  app.querySelector('#popup-audio')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePopupAudio();
   });
   app.querySelector('#briefing-skip')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#open-levels')?.addEventListener('click', () => {
@@ -6466,6 +7188,18 @@ function bindEvents() {
   });
   app.querySelector('#rest-unit')?.addEventListener('click', () => {
     void restSelected();
+  });
+  app.querySelector('#cancel-march')?.addEventListener('click', () => {
+    if (!selectedId || animating || !canControl()) return;
+    const piece = getPiece(state, selectedId);
+    if (!piece?.walkTo) return;
+    state = setWalkOrder(state, selectedId, null);
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    pendingHex = null;
+    refreshHighlights();
+    render();
   });
   app.querySelector('#double-time')?.addEventListener('click', () => {
     setDoubleTime(!doubleTime);
@@ -6516,6 +7250,11 @@ function bindEvents() {
 }
 
 function render() {
+  if (screen !== 'editor') {
+    editorAudioPick = null;
+    if (editorAudioPlaying) haltLevelAudio();
+  }
+  syncPopupNarration();
   maybeRecordLevelWin();
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
@@ -6662,11 +7401,13 @@ function render() {
         <div class="turns-left-slot">${turnsLeftHtml()}</div>
         ${renderBoard()}
         ${renderHexChoice()}
-        ${playEndCluster()}
         ${state.winner ? renderEndOverlay() : renderStartOverlay()}
         ${renderBoardPopup()}
       </div>
-      ${renderActionBar()}
+      <div class="play-dock">
+        ${renderActionBar()}
+        ${renderUnitDock()}
+      </div>
     </div>
     ${renderSidebar()}
   `;

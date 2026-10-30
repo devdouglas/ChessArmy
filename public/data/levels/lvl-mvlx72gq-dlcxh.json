@@ -68,6 +68,9 @@
     "startText": "Anthony returned from the fields to find three men hurrying away from his house. They were sweating, badly dressed and moving with the speed of men who had just remembered an appointment elsewhere.",
     "winText": "The three fellows discovered that Anthony's hands were better suited to violence than to harvesting. Unfortunately, there was little satisfaction in the victory. \nThe wine was gone, the house was a ruin, and his wife had already begun explaining why this was somehow his fault.",
     "loseText": "A proper Roman fist is not merely an ornament at the end of one's arm. Close the distance, face your opponent and strike at the right moment. Anthony has already lost his wife. There is no need to lose a fight as well.",
+    "startAudio": "An-unexpected-visit-intro.mp3",
+    "winAudio": "An-unexpected-visit-victory.mp3",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -195,7 +198,7 @@
         }
     ],
     "sort": 1,
-    "updatedAt": 1793127921128,
+    "updatedAt": 1793195702056,
     "armies": [
         {
             "type": "peasant",

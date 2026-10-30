@@ -114,6 +114,9 @@
     "startText": "\"Soldiers must learn to do several things at once,\" he said. \"Especially when someone is trying to kill them.\"\n\nAnthony was ordered across the water, managing his equipment while keeping enough breath in his lungs to remain alive.",
     "winText": "Anthony crossed the water, recovered his breath and dealt with the scarecrows. His instructor grunted approvingly. It was not a warm expression of pride, but in the Roman army a grunt was practically a love poem.",
     "loseText": "The river has claimed better men, though admittedly not many of them were carrying quite so much equipment. Coordinate your actions, watch your stamina and rest before your lungs begin to negotiate directly with the gods.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "casualties",
         "op": "eq",
@@ -145,7 +148,7 @@
         }
     ],
     "sort": 5,
-    "updatedAt": 1793132391757,
+    "updatedAt": 1793341808397,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
@@ -163,7 +166,8 @@
             "type": "archer",
             "col": 2,
             "row": 9,
-            "side": "red"
+            "side": "red",
+            "facing": 1
         },
         {
             "type": "u-mvgpbg68f593",

@@ -157,6 +157,9 @@
     "startText": "",
     "winText": "",
     "loseText": "",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",

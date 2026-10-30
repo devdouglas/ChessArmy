@@ -91,9 +91,12 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "New armour, a proper sword and permission to hit things.",
-    "startText": "Anthony's training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked short but had a good grip. Or maybe his hands are just big.\n\nThe armour was less comfortable. It was also smellier than he had expected.\nHis instructor explained the essentials. The armour for keeping one's organs where nature had put them.\n\nThat night Anthony recognizes the 3 guys at the tavern. They fall asleep down the road.\n\nAt last, Anthony understood the signs.",
-    "winText": "The scarecrows fell. Anthony tested the edge of his gladius, adjusted his armour and tried to look like a man who had always belonged in the army.\n\nFor the first time, he almost succeeded.",
+    "startText": "Anthony’s training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked a little short, but sat nicely in his hand. Then again, Anthony had large hands, or so he liked to believe.\n\nThe armour was less comfortable. It was also considerably smellier than he had expected, though the quartermaster assured him this was perfectly normal.\n\nHis instructor explained the essentials. The gladius was for stabbing the enemy at close quarters, and the armour for keeping one’s organs where nature had put them.\n\nThat evening, Anthony spotted three familiar faces in a tavern. They were the very fellows who had fondled his wife while he was out tending the fields. They were drinking merrily, quite unaware that fate had brought them together again.\n\nLater that night, Anthony followed them down the road until they collapsed into a drunken sleep.\n\nStill wearing his armour, Anthony regarded the three sleeping men. He took this as a sign from the gods. They had given him a sword, protective clothing and three men who were too drunk to run away.\n\nWho was he to argue with divine providence?",
+    "winText": "The gods had provided the sword, the armour and the drunken idiots. He had merely connected the pieces.\n\nFor the first time in years, Anthony went to sleep a satisfied man. His wife was still gone, of course, but at least he had a decent story to tell at the tavern.",
     "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
+    "startAudio": "The-glories-of-rome-intro.mp3",
+    "winAudio": "The-glories-of-rome-victory.mp3",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -157,7 +160,7 @@
         }
     ],
     "sort": 4,
-    "updatedAt": 1793131974515,
+    "updatedAt": 1793195702056,
     "armies": [
         {
             "type": "u-mvr2vokzh3n3",

@@ -16,10 +16,12 @@ import {
   sanitizeClimbLevel,
   sanitizeShootArc,
   sanitizeUnitCategory,
+  sanitizeUnitClass,
   defaultSight,
   statsOf,
   type ShootArc,
   type UnitCategory,
+  type UnitClass,
   type UnitRole,
   type UnitStats,
   type UnitTraits,
@@ -168,6 +170,7 @@ export function sanitizeUnitStats(
     chess,
     category: sanitizeUnitCategory(s.category ?? d.category),
     role: dRole,
+    unitClass: sanitizeUnitClass(s.unitClass, d.unitClass),
     passWater: mobility.passWater,
     canHide: bool(s.canHide, d.canHide),
     climbLevel: mobility.climbLevel,
@@ -369,6 +372,7 @@ export function unitStatsAreStock(): boolean {
       a.name === b.name &&
       a.category === b.category &&
       a.role === b.role &&
+      a.unitClass === b.unitClass &&
       INT_FIELDS.every((k) => a[k] === b[k]) &&
       TRAIT_FIELDS.every((k) => a[k] === b[k]) &&
       a.passWater === b.passWater &&
@@ -379,6 +383,15 @@ export function unitStatsAreStock(): boolean {
       abilitiesEqual(a.abilities, b.abilities)
     );
   });
+}
+
+export function patchUnitClass(type: UnitType, unitClass: UnitClass): void {
+  const next = sanitizeUnitStats(type, {
+    ...statsOf(type),
+    unitClass: sanitizeUnitClass(unitClass),
+  });
+  Object.assign(UNIT_STATS[type], next);
+  persistUnitStats();
 }
 
 export function patchUnitCategory(type: UnitType, category: UnitCategory): void {

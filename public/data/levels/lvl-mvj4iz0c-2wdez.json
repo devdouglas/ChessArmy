@@ -1,12 +1,21 @@
 {
     "id": "lvl-mvj4iz0c-2wdez",
-    "name": "A Farmer's Lot",
+    "name": "The Smell of Greatness",
     "cols": 7,
-    "rows": 6,
+    "rows": 7,
     "orientation": "flat",
     "terrain": [
         [
+            "land",
+            "land",
+            "land",
             "high",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
             "high",
             "high",
             "water",
@@ -17,7 +26,7 @@
         [
             "high",
             "high",
-            "land",
+            "high",
             "land",
             "water",
             "water",
@@ -65,9 +74,12 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Three scarecrows. One farmer. A life of limitless promise.",
-    "startText": "Anthony had spent twenty-seven years cultivating the land, mending fences and wondering why the gods had given him such powerful arms if all they were meant to do was carry manure.\n\nHe dreamed of the army. There, a man could win glory, see the world and eat at somebody else's expense.\n\nFor now, there were three scarecrows to deal with, a hill to climb and a pond to cross. A hero has to begin somewhere.",
+    "startText": "Anthony woke beneath an olive tree, with a stiff neck, a dry mouth and a great deal of work waiting for him.\n\nHe had spent seven years cultivating the land, mending fences and wondering why the gods had given him such powerful arms if all they were meant to do was carry manure.\n\nHe dreamed of the army. There, a man could win glory, see the world and eat at somebody else's expense.\n\nFor now, there were three scarecrows to deal with, a hill to climb and a pond to cross. A hero has to begin somewhere.",
     "winText": "Three scarecrows lay in the dirt, and Anthony's fields were once again free of imaginary birds. He rested beneath a tree and considered the morning's work. It was the most fighting he'd done in years.\n\nPerhaps soldiering would suit him after all.",
     "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your stamina. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
+    "startAudio": "A-Farmers-Lot-Intro.mp3",
+    "winAudio": "A-farmers-lot-victory.mp3",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lte",
@@ -94,63 +106,62 @@
         {
             "type": "board",
             "col": 4,
-            "row": 5,
-            "text": "Anthony is low on [energy], stomac empty and head fuzzy from last night out. Now he is going to teach those scarecrows what it means to be scared."
+            "row": 6,
+            "text": "Anthony is low on [energy] and [hp], stomac empty and head fuzzy from last night out. Now he is going to teach those scarecrows what it means to be scared. [tutorial]"
         },
         {
             "type": "board",
             "col": 1,
-            "row": 2,
-            "text": "The scarecrow up that hill will need some more energy [energy]. A good rest by the tree, or just anywhere, will replenish energy if needed."
+            "row": 3,
+            "text": "Climbing up the hill will use some energy [energy]. A good rest will replenish energy at the end of the turn[rest]. [tutorial]"
         },
         {
             "type": "board",
             "col": 4,
-            "row": 2,
-            "text": "Now, crossing that pond looks tiring. It would be a good time to rest to gain some [energy]! \nAnthony heard people talk about a guy who did this ... but they were surely not talking about him."
+            "row": 3,
+            "text": "Now, crossing that pond looks tiring. It would be a good time to rest [rest] to gain some [energy]! \nAnthony heard people talk about a guy who did this ... but they were surely not talking about him. [tutorial]"
         },
         {
             "type": "board",
-            "col": 0,
-            "row": 4,
+            "col": 2,
+            "row": 6,
             "text": "Note from the creator: This is not this kind of game where your first activity is chopping down trees with your bare fist to build tools. Nice try though. However, you did learn you can break thinks with enough resolve!"
         },
         {
             "type": "tree",
-            "col": 0,
-            "row": 4
+            "col": 2,
+            "row": 6
         }
     ],
     "sort": 0,
-    "updatedAt": 1793126866290,
+    "updatedAt": 1793346267385,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
             "col": 6,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
+            "row": 4,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 1,
             "row": 1,
             "side": "blue",
             "facing": 2
         },
         {
-            "type": "u-mvgpbg68f593",
-            "col": 0,
-            "row": 0,
-            "side": "blue",
-            "facing": 2
-        },
-        {
-            "type": "peasant",
-            "col": 5,
-            "row": 5,
-            "side": "red",
-            "facing": 4
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 1,
-            "row": 3,
-            "side": "blue",
-            "facing": 2
+            "type": "u-mvun2x81vsl5",
+            "col": 3,
+            "row": 6,
+            "side": "red"
         }
     ]
 }

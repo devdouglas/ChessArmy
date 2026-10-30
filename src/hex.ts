@@ -47,6 +47,45 @@ export function distance(a: Hex, b: Hex, o: HexOrientation): number {
   return cubeDistance(offsetToCube(a, o), offsetToCube(b, o));
 }
 
+export type HexDisk = {
+  radius: number;
+  cols: number;
+  rows: number;
+  center: Hex;
+  cells: Hex[];
+};
+
+/** Hexagon of `radius` tiles from the center to the edge, packed into a rectangle. */
+export function hexDisk(radius: number, o: HexOrientation): HexDisk {
+  const r = Math.max(0, Math.floor(radius));
+  const raw: Hex[] = [];
+  for (let q = -r; q <= r; q++) {
+    const r0 = Math.max(-r, -q - r);
+    const r1 = Math.min(r, -q + r);
+    for (let rr = r0; rr <= r1; rr++) {
+      raw.push(cubeToOffset({ q, r: rr, s: -q - rr }, o));
+    }
+  }
+  let minC = 0;
+  let minR = 0;
+  let maxC = 0;
+  let maxR = 0;
+  for (const h of raw) {
+    if (h.col < minC) minC = h.col;
+    if (h.row < minR) minR = h.row;
+    if (h.col > maxC) maxC = h.col;
+    if (h.row > maxR) maxR = h.row;
+  }
+  const origin = cubeToOffset({ q: 0, r: 0, s: 0 }, o);
+  return {
+    radius: r,
+    cols: maxC - minC + 1,
+    rows: maxR - minR + 1,
+    center: { col: origin.col - minC, row: origin.row - minR },
+    cells: raw.map((h) => ({ col: h.col - minC, row: h.row - minR })),
+  };
+}
+
 /** Cube steps, CCW from +q (pointy east / flat SE). */
 export const CUBE_DIRS: Cube[] = [
   { q: 1, r: 0, s: -1 },

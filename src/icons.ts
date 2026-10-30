@@ -486,6 +486,7 @@ export function tokenGlyphSvg(
       <path class="flag-cloth" d="M0.35 -6.85 L7.4 -4.15 L0.35 -1.15 Z"/>
     </g>`;
   }
+  if (type === 'tutorial') return tutorialHandSvg(size);
   if (type === 'board') {
     return `<g class="token-board" transform="scale(${s})">
       <ellipse cx="0" cy="6.35" rx="3.1" ry="1.05" fill="#1a1410" opacity="0.32"/>
@@ -497,6 +498,22 @@ export function tokenGlyphSvg(
     </g>`;
   }
   return '';
+}
+
+/** Index finger pointing down. Catalog glyph and the post-message map hand. */
+export function tutorialHandSvg(size = 16): string {
+  const s = size / 18;
+  return `<g class="token-tutorial" transform="scale(${s.toFixed(3)})">
+    <g fill="#f7f1e4" stroke="#1a1410" stroke-width="1.15" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M-4.6 -8.2 H4.6 V-5.2 A2 2 0 0 1 2.6 -3.2 H-2.6 A2 2 0 0 1 -4.6 -5.2 Z"/>
+      <rect x="-4.55" y="-6.15" width="2.05" height="3.15" rx="1"/>
+      <rect x="-2.15" y="-7.15" width="2.05" height="3.7" rx="1"/>
+      <rect x="0.25" y="-6.45" width="2.05" height="3.2" rx="1"/>
+      <rect x="2.45" y="-5.35" width="1.85" height="2.35" rx="0.9"/>
+      <rect x="-1.2" y="-2.15" width="2.4" height="10.5" rx="1.2"/>
+    </g>
+    <rect x="-0.62" y="5.55" width="1.24" height="1.7" rx="0.45" fill="#e4cbb8" stroke="#1a1410" stroke-width="0.7"/>
+  </g>`;
 }
 
 /** Red prohibition overlay — Do not touch, painted onto another token. */
@@ -601,6 +618,55 @@ export function staminaEmptyMarkSvg(
       <path d="M ${(-inset).toFixed(2)} ${inset.toFixed(2)} L ${inset.toFixed(2)} ${(-inset).toFixed(2)}"
         fill="none" stroke="${stroke}" stroke-width="${slash.toFixed(2)}" stroke-linecap="round"/>
     </g>`;
+}
+
+export type ActionGlyphId = 'energy' | 'double' | 'rest' | 'special' | 'end';
+
+/** Same drawing as the bottom action buttons. */
+export function actionGlyphSvg(
+  kind: ActionGlyphId,
+  opts: { className?: string; label?: string; em?: string } = {},
+): string {
+  const drawn = actionGlyphDrawn(kind);
+  const cls = opts.className ?? 'copy-icon action';
+  const a11y = opts.label
+    ? ` role="img" aria-label="${opts.label}"`
+    : ' aria-hidden="true"';
+  const size = opts.em ? ` width="${opts.em}" height="${opts.em}"` : '';
+  return `<svg class="${cls}" viewBox="${drawn.viewBox}"${size}${a11y}>${drawn.inner}</svg>`;
+}
+
+function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string } {
+  if (kind === 'energy') {
+    return {
+      viewBox: '-5 -7 10 14',
+      inner: `<path fill="currentColor" d="${STAMINA_BOLT}"/>`,
+    };
+  }
+  if (kind === 'double') {
+    return {
+      viewBox: '-12 -7 24 14',
+      inner: `<path fill="currentColor" d="${STAMINA_BOLT}" transform="translate(-4.4 0) scale(0.92)"/>
+       <path fill="currentColor" d="${STAMINA_BOLT}" transform="translate(4.4 0) scale(0.92)"/>`,
+    };
+  }
+  if (kind === 'rest') {
+    return {
+      viewBox: '0 0 24 24',
+      inner: `<text x="8" y="17" fill="currentColor" font-size="12" font-weight="800" font-family="inherit">Z</text>
+       <text x="16" y="9" fill="currentColor" font-size="8" font-weight="800" font-family="inherit">z</text>`,
+    };
+  }
+  if (kind === 'special') {
+    return {
+      viewBox: '0 0 24 24',
+      inner: `<path fill="currentColor" d="M12 2.2 L14.4 9 H21.5 L15.7 13.2 L17.9 20.2 L12 16.1 L6.1 20.2 L8.3 13.2 L2.5 9 H9.6 Z"/>`,
+    };
+  }
+  return {
+    viewBox: '0 0 24 24',
+    inner: `<path fill="currentColor" d="M5 3 H7.2 V21 H5 Z M7.2 4.2 H18.5 L15.2 9 L18.5 13.8 H7.2 Z"/>`,
+  };
 }
 
 /** Inline stamina bolt for copy / glyph catalog. */

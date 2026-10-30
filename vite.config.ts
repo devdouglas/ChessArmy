@@ -70,7 +70,12 @@ function createPhpMiddleware(docRoot: string, base: string) {
       env[`HTTP_${key.toUpperCase().replace(/-/g, '_')}`] = header;
     }
 
-    const php = spawn(PHP_CGI, ['-d', 'cgi.force_redirect=0', '-f', script], {
+    const php = spawn(PHP_CGI, [
+      '-d', 'cgi.force_redirect=0',
+      '-d', 'upload_max_filesize=16M',
+      '-d', 'post_max_size=16M',
+      '-f', script,
+    ], {
       env,
       windowsHide: true,
     });

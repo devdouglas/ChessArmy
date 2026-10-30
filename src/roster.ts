@@ -81,6 +81,56 @@ export function isKnownUnit(t: unknown): t is UnitType {
   return typeof t === 'string' && UNIT_TYPES.includes(t);
 }
 
+/** Combat type. Separate from kit (`role`) and era (`category`). */
+export type UnitClass = 'melee' | 'ranged' | 'hero' | 'mounted' | 'other';
+
+export const UNIT_CLASSES: UnitClass[] = ['melee', 'ranged', 'hero', 'mounted', 'other'];
+
+export const UNIT_CLASS_LABEL: Record<UnitClass, string> = {
+  melee: 'Melee',
+  ranged: 'Ranged',
+  hero: 'Hero',
+  mounted: 'Mounted',
+  other: 'Other',
+};
+
+export function isUnitClass(v: unknown): v is UnitClass {
+  return typeof v === 'string' && (UNIT_CLASSES as readonly string[]).includes(v);
+}
+
+export function sanitizeUnitClass(v: unknown, fallback: UnitClass = 'other'): UnitClass {
+  return isUnitClass(v) ? v : fallback;
+}
+
+export const STOCK_UNIT_CLASS: Record<UnitRole, UnitClass> = {
+  soldier: 'melee',
+  scout: 'mounted',
+  bazooka: 'ranged',
+  sniper: 'ranged',
+  archer: 'ranged',
+  javelin: 'ranged',
+  horsearcher: 'mounted',
+  chariotarcher: 'mounted',
+  cohort: 'melee',
+  hoplite: 'melee',
+  elephant: 'mounted',
+  barbarian: 'melee',
+  catapult: 'ranged',
+  tank: 'other',
+  general: 'hero',
+  tower: 'ranged',
+  dummy: 'other',
+  peasant: 'melee',
+  dude: 'melee',
+  wolf: 'melee',
+  fighter: 'other',
+  gunship: 'other',
+  bomber: 'other',
+  frigate: 'other',
+  cruiser: 'other',
+  dreadnought: 'other',
+};
+
 export type UnitCategory = 'modern' | 'ancient' | 'futuristic';
 
 export const UNIT_CATEGORIES: UnitCategory[] = ['modern', 'ancient', 'futuristic'];
@@ -245,6 +295,8 @@ export type UnitStats = UnitTraits & {
   category: UnitCategory;
   /** Kit + glyph. Copies keep the source kit unless changed. */
   role: UnitRole;
+  /** Melee, ranged, hero, mounted, or other. */
+  unitClass: UnitClass;
   /** Stop on / enter water. From water: 1 hex. Turn-start: 1 stamina or 2 HP. No regen in water. */
   passWater: boolean;
   /** Hide from enemies while on a hide token (forest). Breaks after move, attack, or being hit. */
@@ -396,12 +448,16 @@ export function defaultSight(move: number, shoot: number): number {
 }
 
 export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
-  raw: Record<UnitRole, Omit<UnitStats, 'sight'>>,
+  raw: Record<UnitRole, Omit<UnitStats, 'sight' | 'unitClass'>>,
 ): Record<UnitRole, UnitStats> => {
   const out = {} as Record<UnitRole, UnitStats>;
   for (const role of STOCK_UNIT_TYPES) {
     const s = raw[role];
-    out[role] = { ...s, sight: defaultSight(s.move, s.shoot) };
+    out[role] = {
+      ...s,
+      unitClass: STOCK_UNIT_CLASS[role],
+      sight: defaultSight(s.move, s.shoot),
+    };
   }
   return out;
 })({

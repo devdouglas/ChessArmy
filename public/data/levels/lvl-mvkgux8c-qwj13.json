@@ -94,6 +94,9 @@
     "startText": "By the end of the week, Anthony's domestic difficulties had become public entertainment. His wife had left, the neighbours had developed a remarkable interest in avoiding him, and the village elders had suggested that he might do everyone a favour by finding employment elsewhere.\n\nAnthony took this as a sign.\n\nHe would enlist as the army offered steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n\nThe recruiting officer listened to Anthony's ambitions with the expression of a man who had heard every possible lie before breakfast.\n\n\"Can you throw a javelin?\"\n\nAnthony said he could.\n\nThe officer pointed to the targets.",
     "winText": "The javelin struck its target. The recruiting officer nodded, as though this had been the result he expected all along.\n\nAnthony had been accepted into the army. At last, a respectable career lay before him.\n\nIt was not necessarily a career he would enjoy.",
     "loseText": "A javelin is not a walking stick, and throwing it at random is not a recognised military discipline. The officer walks away as he has other recruits to disappoint.",
+    "startAudio": "The-army-wants-you-intro.mp3",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "casualties",
         "op": "lte",
@@ -125,7 +128,7 @@
         }
     ],
     "sort": 3,
-    "updatedAt": 1793128950021,
+    "updatedAt": 1793195702056,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

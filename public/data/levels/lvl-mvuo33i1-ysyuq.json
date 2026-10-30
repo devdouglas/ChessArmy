@@ -1,0 +1,215 @@
+{
+    "id": "lvl-mvuo33i1-ysyuq",
+    "name": "Over the Hill and Far from Glory",
+    "cols": 9,
+    "rows": 9,
+    "orientation": "flat",
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water"
+        ],
+        [
+            "plateau",
+            "plateau",
+            "high",
+            "high",
+            "high",
+            "water",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "plateau",
+            "plateau",
+            "plateau",
+            "high",
+            "high",
+            "water",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "plateau",
+            "plateau",
+            "plateau",
+            "high",
+            "high",
+            "land",
+            "water",
+            "land",
+            "water"
+        ],
+        [
+            "plateau",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "maxTurns": 0,
+    "teaserText": "Three scarecrows. One farmer. A life of limitless promise.",
+    "startText": "Anthony woke beneath an olive tree, with a stiff neck, a dry mouth and a great deal of work waiting for him.\n\nHe had spent seven years cultivating the land, mending fences and wondering why the gods had given him such powerful arms if all they were meant to do was carry manure.\n\nHe dreamed of the army. There, a man could win glory, see the world and eat at somebody else's expense.\n\nFor now, there were three scarecrows to deal with, a hill to climb and a pond to cross. A hero has to begin somewhere.",
+    "winText": "Three scarecrows lay in the dirt, and Anthony's fields were once again free of imaginary birds. He rested beneath a tree and considered the morning's work. It was the most fighting he'd done in years.\n\nPerhaps soldiering would suit him after all.",
+    "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your stamina. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
+    "startAudio": "A-Farmers-Lot-Intro.mp3",
+    "winAudio": "A-farmers-lot-victory.mp3",
+    "loseAudio": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lte",
+        "value": 4
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "flag",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "house",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "board",
+            "col": 1,
+            "row": 4,
+            "text": "Running down hills will grant you extra movement points"
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 2
+        }
+    ],
+    "sort": 14,
+    "updatedAt": 1793346781449,
+    "armies": [
+        {
+            "type": "u-mvun2x81vsl5",
+            "col": 4,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 6,
+            "row": 1,
+            "side": "blue"
+        }
+    ]
+}

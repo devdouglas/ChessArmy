@@ -23,7 +23,13 @@ export const EXPERIMENTAL_RULES = [
     id: 'walk-orders',
     label: 'Walk to destination orders',
     blurb:
-      'Select a unit, then hover or click any tile it can reach. The route lights up white. It walks that route at its move speed — when you click, and again each later turn you give it no other order — until it arrives. Click the destination again to cancel.',
+      'Select a unit, then hover or click a tile it can reach, including an enemy or a palisade/tree. The route lights up white. It walks at its move speed — when you click, and again each later turn you give it no other order. A blocked destination is melee each turn until that unit dies or the token breaks, then it takes the hex. Click the destination again to cancel.',
+  },
+  {
+    id: 'auto-walk',
+    label: 'Auto walk',
+    blurb:
+      'The turn ends by itself once every unit without a walk destination has acted. Units that already have a destination march on that end-of-turn. If the whole side already has destinations, the turn passes immediately.',
   },
 ] as const;
 
@@ -35,6 +41,7 @@ const DEFAULTS: Flags = {
   'block-red-move': true,
   'block-red-shoot': true,
   'walk-orders': false,
+  'auto-walk': false,
 };
 
 const RULE_IDS: ExperimentalRuleId[] = EXPERIMENTAL_RULES.map((r) => r.id);

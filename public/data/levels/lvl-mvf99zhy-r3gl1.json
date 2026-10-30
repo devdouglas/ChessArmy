@@ -94,6 +94,9 @@
     "startText": "A few villagers gathered to hear the wolf tale, including a fair red-haired woman who seemed almost impressed. Encouraged by this rare development, Anthony declared that if barbarians ever threatened the settlement, he would chase them back to whatever hole they had crawled out of.\n\nThe gods, who have a poor sense of humour, chose that moment to sound the alarm.\n\nBarbarians were raiding the outskirts, frightening the livestock and setting fire to whatever looked flammable. Anthony's friends looked at him expectantly. The woman was watching too.\n\nThreatening barbarians was easy. Facing them, less so...\n\nStill, there was no going back now. He gathered his friends and a handful of men, then set out to deal with the raiders.\n\nTheir leader strode ahead of the others chasing some farmers, shouting orders and looking altogether too pleased with himself.\n\nAnthony decided that killing him would be a fine way to end the argument. It might even impress the woman. Provided he survived it.",
     "winText": "The barbarian leader fell, and the attack lost its force. The surviving raiders fled, taking their wounded pride with them.\n\nAnthony's men cheered. His commander praised his discipline and leadership.\n\nAnthony smiled modestly, the way a man does when he has every intention of remembering this moment whenever anyone asks him to carry something heavy.",
     "loseText": "A handful of brave men is still only a handful of men. Protect your position, support your soldiers and look for the enemy leader. Courage is admirable, but it is not a substitute for knowing where everyone has gone.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",

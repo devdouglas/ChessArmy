@@ -212,6 +212,9 @@
     "startText": "The day history changed forever",
     "winText": "",
     "loseText": "They are superior in numbers... find their weak spot.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",

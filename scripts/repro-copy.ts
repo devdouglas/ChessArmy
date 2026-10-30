@@ -62,6 +62,30 @@ function assert(cond: unknown, msg: string) {
   assert(tags.includes('Tree'), 'tree in catalog');
   assert(tags.includes('Forest'), 'forest in catalog');
   assert(tags.includes('Board'), 'board in catalog');
+  assert(tags.includes('Tutorial'), 'tutorial in catalog');
+  assert(groups.some((g) => g.id === 'actions'), 'actions group');
+  assert(tags.includes('spend energy'), 'spend energy in catalog');
+  assert(tags.includes('double time'), 'double time in catalog');
+  assert(tags.includes('rest'), 'rest in catalog');
+  assert(tags.includes('special'), 'special in catalog');
+  assert(tags.includes('end turn'), 'end turn in catalog');
+}
+
+{
+  const html = formatCopyHtml('[spend energy] [double time] [Rest] [special] [end turn] [spend]');
+  assert(html.includes('aria-label="Spend energy"'), `spend glyph, got ${html}`);
+  assert(html.includes('aria-label="Double time"'), 'double glyph');
+  assert(html.includes('aria-label="Rest"'), 'rest glyph');
+  assert(html.includes('aria-label="Special"'), 'special glyph');
+  assert(html.includes('aria-label="End turn"'), 'end glyph');
+  assert((html.match(/aria-label="Spend energy"/g) ?? []).length === 2, 'spend alias');
+  assert(!html.includes('[spend energy]'), 'action tags eaten');
+}
+
+{
+  const html = formatCopyHtml('then [tutorial]');
+  assert(html.includes('token-tutorial'), `tutorial hand, got ${html}`);
+  assert(!html.includes('[tutorial]'), 'tutorial tag eaten');
 }
 
 console.log('copy: [name] swaps to unit/token icons; unknown stays text');

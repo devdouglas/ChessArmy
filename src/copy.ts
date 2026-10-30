@@ -14,12 +14,14 @@ import {
   type UnitType,
 } from './engine';
 import {
+  actionGlyphSvg,
   hudArrowIconSvg,
   hudEnergyIconSvg,
   hudPipIconSvg,
   noTouchMarkSvg,
   pieceIconSvg,
   tokenGlyphSvg,
+  type ActionGlyphId,
 } from './icons';
 
 type HudGlyphId = 'energy' | 'hp' | 'units' | 'arrow';
@@ -40,6 +42,24 @@ const HUD_GLYPHS: {
     aliases: ['shot', 'shots', 'projectile', 'projectiles', 'ammo'],
   },
 ];
+
+const ACTION_GLYPHS: {
+  id: ActionGlyphId;
+  tag: string;
+  label: string;
+  aliases: string[];
+}[] = [
+  { id: 'energy', tag: 'spend energy', label: 'Spend energy', aliases: ['spend', 'second action'] },
+  { id: 'double', tag: 'double time', label: 'Double time', aliases: ['double'] },
+  { id: 'rest', tag: 'rest', label: 'Rest', aliases: [] },
+  { id: 'special', tag: 'special', label: 'Special', aliases: [] },
+  { id: 'end', tag: 'end turn', label: 'End turn', aliases: ['end'] },
+];
+
+function wrapAction(id: ActionGlyphId, catalog = false): string {
+  const row = ACTION_GLYPHS.find((a) => a.id === id)!;
+  return actionGlyphSvg(id, { label: row.label, em: catalog ? '1.85em' : '1.2em' });
+}
 
 function wrapHud(id: HudGlyphId, catalog = false): string {
   const em = catalog ? '1.85em' : '1.2em';
@@ -95,6 +115,11 @@ export function copyGlyphGroups(): CopyGlyphGroup[] {
     label: h.label,
     icon: wrapHud(h.id, true),
   }));
+  const actions: CopyGlyph[] = ACTION_GLYPHS.map((a) => ({
+    tag: a.tag,
+    label: a.label,
+    icon: wrapAction(a.id, true),
+  }));
   const tokens: CopyGlyph[] = TOKEN_TYPES.map((t) => ({
     tag: TOKEN_LABEL[t],
     label: TOKEN_LABEL[t],
@@ -102,6 +127,7 @@ export function copyGlyphGroups(): CopyGlyphGroup[] {
   }));
   const groups: CopyGlyphGroup[] = [
     { id: 'hud', label: 'Icons', glyphs: hud },
+    { id: 'actions', label: 'Actions', glyphs: actions },
     { id: 'tokens', label: 'Tokens', glyphs: tokens },
   ];
   for (const cat of UNIT_CATEGORIES) {
@@ -131,6 +157,11 @@ function lookupCopyIcon(raw: string): string | null {
       return wrapHud(h.id);
     }
   }
+  for (const a of ACTION_GLYPHS) {
+    if (normKey(a.tag) === key || a.aliases.some((alias) => normKey(alias) === key)) {
+      return wrapAction(a.id);
+    }
+  }
   for (const t of TOKEN_TYPES) {
     if (normKey(t) === key) return wrapToken(t);
   }
@@ -152,6 +183,14 @@ function lookupCopyIcon(raw: string): string | null {
     }
   }
   return null;
+}
+
+/** True when the copy includes a `[tutorial]` glyph. */
+export function copyMentionsTutorial(text: string): boolean {
+  return text.split(/(\[[^\[\]]+\])/g).some((part) => {
+    const m = /^\[([^\[\]]+)\]$/.exec(part);
+    return !!m && normKey(m[1]) === 'tutorial';
+  });
 }
 
 /** Escape copy, swapping `[hoplite]` / `[pikes]` for that item's icon. */

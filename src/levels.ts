@@ -66,6 +66,8 @@ export type SavedLevel = {
   rows: number;
   /** Default pointy for levels saved before this field existed. */
   orientation: HexOrientation;
+  /** 0 = rectangle. Otherwise tiles from the center to the edge. */
+  hexRadius: number;
   /** terrain[row][col] */
   terrain: Terrain[][];
   /** Stamped armies. Missing = spawn stock on Play. Empty = no pieces. */
@@ -94,6 +96,10 @@ export type SavedLevel = {
   winText: string;
   /** Shown on defeat (Blue wins). Empty = stock lose copy. */
   loseText: string;
+  /** Narration in `data/audio/`. Empty = none. */
+  startAudio: string;
+  winAudio: string;
+  loseAudio: string;
   /** Extra stars (2 and 3). Star 1 is always a win. */
   star2: StarRule;
   star3: StarRule;
@@ -243,6 +249,26 @@ export function sanitizeTeaserText(raw: unknown): string {
   return sanitizeLevelText(raw).slice(0, TEASER_TEXT_MAX);
 }
 
+/** Basename of a file in `data/audio/`. Empty if it is not a safe audio name. */
+export function sanitizeHexRadius(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(10, n);
+}
+
+export function sanitizeLevelAudio(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const base = raw.replace(/\\/g, '/').split('/').pop() ?? '';
+  if (!/^[A-Za-z0-9][A-Za-z0-9._ -]{0,120}\.(mp3|wav|ogg|m4a)$/i.test(base)) return '';
+  return base;
+}
+
+export function levelAudioUrl(file: string): string {
+  const name = sanitizeLevelAudio(file);
+  if (!name) return '';
+  return `${import.meta.env.BASE_URL}data/audio/${encodeURIComponent(name)}`;
+}
+
 export { emptyTerrain, cloneTerrain };
 
 function uid(): string {
@@ -380,6 +406,7 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         orientation: l.orientation === 'flat' ? 'flat' : DEFAULT_ORIENTATION,
         cols,
         rows,
+        hexRadius: sanitizeHexRadius((l as SavedLevel & { hexRadius?: unknown }).hexRadius),
         terrain: lifted.terrain,
         category: sanitizeCategory(l.category),
         period: sanitizePeriod(l.period),
@@ -394,6 +421,9 @@ function normalizeLevels(levels: SavedLevel[]): SavedLevel[] {
         startText: sanitizeLevelText(l.startText),
         winText: sanitizeLevelText(l.winText),
         loseText: sanitizeLevelText(l.loseText),
+        startAudio: sanitizeLevelAudio(l.startAudio),
+        winAudio: sanitizeLevelAudio(l.winAudio),
+        loseAudio: sanitizeLevelAudio(l.loseAudio),
         star2: sanitizeStarRule(
           (l as SavedLevel & { star2?: unknown }).star2,
           DEFAULT_STAR_2,
@@ -531,18 +561,23 @@ export function saveLevel(
     startText?: string;
     winText?: string;
     loseText?: string;
+    startAudio?: string;
+    winAudio?: string;
+    loseAudio?: string;
   },
   stars?: { star2?: StarRule; star3?: StarRule },
   armyControls?: Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[],
   maxTurns?: number,
   aiStyles?: Partial<Record<Side, AiStyle>>,
+  hexRadius = 0,
 ): SavedLevel {
   const levels = listLevels();
   const trimmed = name.trim() || 'Untitled';
   const now = Date.now();
   const cols = terrain[0]?.length ?? COLS;
   const rows = terrain.length;
+  const radius = sanitizeHexRadius(hexRadius);
   const stamped = sanitizeArmies(armies ?? [], cols, rows) ?? [];
   const prevIdx = existingId ? levels.findIndex((l) => l.id === existingId) : -1;
   const prev = prevIdx >= 0 ? levels[prevIdx] : undefined;
@@ -560,6 +595,7 @@ export function saveLevel(
       cols,
       rows,
       orientation,
+      hexRadius: radius,
       terrain: lifted.terrain,
       armies: stamped,
       category: nextCat,
@@ -571,6 +607,9 @@ export function saveLevel(
       startText: sanitizeLevelText(texts?.startText ?? prev.startText),
       winText: sanitizeLevelText(texts?.winText ?? prev.winText),
       loseText: sanitizeLevelText(texts?.loseText ?? prev.loseText),
+      startAudio: sanitizeLevelAudio(texts?.startAudio ?? prev.startAudio),
+      winAudio: sanitizeLevelAudio(texts?.winAudio ?? prev.winAudio),
+      loseAudio: sanitizeLevelAudio(texts?.loseAudio ?? prev.loseAudio),
       star2: sanitizeStarRule(stars?.star2 ?? prev.star2, DEFAULT_STAR_2),
       star3: sanitizeStarRule(stars?.star3 ?? prev.star3, DEFAULT_STAR_3),
       armyControls: sanitizeArmyControls(armyControls ?? prev.armyControls),
@@ -591,6 +630,7 @@ export function saveLevel(
     cols,
     rows,
     orientation,
+    hexRadius: radius,
     terrain: lifted.terrain,
     armies: stamped,
     category: createdCat,
@@ -602,6 +642,9 @@ export function saveLevel(
     startText: sanitizeLevelText(texts?.startText),
     winText: sanitizeLevelText(texts?.winText),
     loseText: sanitizeLevelText(texts?.loseText),
+    startAudio: sanitizeLevelAudio(texts?.startAudio),
+    winAudio: sanitizeLevelAudio(texts?.winAudio),
+    loseAudio: sanitizeLevelAudio(texts?.loseAudio),
     star2: sanitizeStarRule(stars?.star2, DEFAULT_STAR_2),
     star3: sanitizeStarRule(stars?.star3, DEFAULT_STAR_3),
     armyControls: sanitizeArmyControls(armyControls),

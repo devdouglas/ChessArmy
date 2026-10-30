@@ -154,9 +154,12 @@
     "unitsPerTurn": 5,
     "maxTurns": 0,
     "teaserText": "A hero is a man who survives long enough to tell the story.",
-    "startText": "Anthony was granted leave to return to his village with several fellow soldiers. He expected a hero's welcome. He had prepared a modest speech in which he intended to mention his victories and omit his failures.\n\nAnthony, who had been making a steady effort to reduce the amount of wine in his flask, decided to step behind a tree to attend to a private matter.\n\nIt was then that the wolves appeared.\n\nTheir instructor had once explained that animals, like soldiers, depended upon leadership. Break the leader, and the rest might lose heart.\n\nAnthony looked at the largest wolf.\n\n\"Let us hope,\" he said, trying to nock it with what remained of his dignity, \"that this one is as stupid as the others.\" Reaching for an arrow. It slipped from his fingers.",
+    "startText": "Anthony was granted leave to return to his village with several fellow soldiers. He expected a hero's welcome. He had prepared a modest speech in which he intended to mention his victories and omit his failures.\n\nAnthony, who had been making a steady effort to reduce the amount of wine in his flask, decided to step behind a tree to attend to a private matter.\n\nPants down, it was then that the wolf appeared.",
     "winText": "The great alpha wolf fell, and the pack scattered into the woods. Anthony's companions congratulated him with enough enthusiasm to ensure he would have a splendid story to tell.\n\nBy the time they reached the village, Anthony had killed an entire pack single-handedly, armed only with courage and a small detachment of friends.\n\nThe children stared in awe, the men clapped him on the back, and even a few women looked impressed. They were hardly the beauties of Rome, but Anthony was not one to be choosy. Soldiering, it seemed, had its advantages.",
     "loseText": "Wolves are dangerous in a pack, but even wolves have a chain of command. Watch for the leader and bring it down. The others may decide that discretion is preferable to becoming a collection of pelts.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -532,7 +535,7 @@
         }
     ],
     "sort": 7,
-    "updatedAt": 1793170244955,
+    "updatedAt": 1793194513469,
     "armies": [
         {
             "type": "dude",

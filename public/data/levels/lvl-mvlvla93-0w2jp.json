@@ -113,6 +113,9 @@
     "startText": "Anthony had become increasingly concerned about the army's habit of solving problems by arranging for large numbers of men to stab one another.\n\nHis instructor assured him that this was not the whole of military strategy.\n\n\"Sometimes,\" he explained, \"you win by making the enemy move where you want him to move. Sometimes you frighten him. Sometimes you make him think he is about to be surrounded. And sometimes you allow him to discover that he would rather be somewhere else.\"\n\nAnthony considered this.\n\nIt sounded much more sensible than standing in front of a Greek spear and hoping for the best.\n\nThe exercise was simple: position the men, force the enemy to lose confidence and break his formation. A rout could achieve what a costly fight might not.\n\nAnthony was pleased to learn that there were circumstances in which making the other fellow run away counted as a victory.",
     "winText": "The enemy broke formation and fled. Anthony's men stood largely intact, and nobody had to spend the evening explaining to a surgeon where his nose used to be.\n\nHis instructor looked satisfied.\n\n\"Remember this,\" he said. \"The dead cannot enjoy victory. The living can spend it.\"\n\nAnthony decided that strategy was a fine invention.",
     "loseText": "You do not have to kill every enemy to defeat him. Use positioning and pressure to break the formation and force a rout. A battlefield is not a contest to discover which side can produce the most widows.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",
@@ -182,8 +185,8 @@
             "row": 8
         }
     ],
-    "sort": 11,
-    "updatedAt": 1793043696158,
+    "sort": 10,
+    "updatedAt": 1793173530206,
     "armies": [
         {
             "type": "cohort",

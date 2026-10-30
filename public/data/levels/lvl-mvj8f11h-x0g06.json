@@ -102,6 +102,9 @@
     "startText": "Anthony slept badly that night. He had lost his peace, most of his wine and whatever remained of his confidence in married life.\n\nBy dawn, he had decided to take revenge.\n\nThe three fellows had vanished, naturally. Cowards tend to be surprisingly good at this.\n\nHis father had taught him to shoot, although mostly at rabbits. Anthony now intended to practise the finer points of military archery: finding the high ground, judging the distance and making sure the arrow travelled towards the intended victim.\n\nThe last point was considered particularly important by the neighbours.",
     "winText": "The arrows struck near their feet and Anthony felt better. \n\nHis neighbours, watching from behind their fences, felt less certain about the general state of public safety.",
     "loseText": "The bow is a weapon, not a means of expressing one's feelings to the countryside. Take the high ground, judge your distance and aim carefully. The gods have given you two eyes for a reason, though they have clearly not promised you much wisdom.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
     "star2": {
         "metric": "turns",
         "op": "lt",

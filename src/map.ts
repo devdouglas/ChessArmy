@@ -30,7 +30,15 @@ import {
   withStory,
   type PieceStory,
 } from './engine';
-import { defaultFacing, isHexDir, neighbors, type HexDir, type HexOrientation } from './hex';
+import {
+  defaultFacing,
+  distance,
+  hexDisk,
+  isHexDir,
+  neighbors,
+  type HexDir,
+  type HexOrientation,
+} from './hex';
 
 export const COLS = 11;
 export const ROWS = 11;
@@ -730,6 +738,7 @@ function freshGame(
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[] | null,
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
+  hexRadius = 0,
 ): GameState {
   idSeq = 0;
   const custom = armies && armies.length > 0;
@@ -737,14 +746,29 @@ function freshGame(
   const t = lifted.terrain;
   const rows = t.length;
   const cols = t[0]?.length ?? COLS;
-  const merged = custom
-    ? lifted.tokens
-    : [...lifted.tokens, ...setupWallTokens(cols, rows)];
-  const inBounds = (p: ArmyStamp) =>
-    p.col >= 0 && p.col < cols && p.row >= 0 && p.row < rows;
-  const pieces = custom
-    ? piecesFromStamps(armies.filter(inBounds))
-    : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)];
+  const radius = Math.max(0, Math.floor(hexRadius) || 0);
+  const disk = radius > 0 ? hexDisk(radius, orientation) : null;
+  const center =
+    disk && disk.cols === cols && disk.rows === rows
+      ? disk.center
+      : disk
+        ? { col: Math.floor((cols - 1) / 2), row: Math.floor((rows - 1) / 2) }
+        : null;
+  const onBoard = (p: { col: number; row: number }) =>
+    p.col >= 0 &&
+    p.col < cols &&
+    p.row >= 0 &&
+    p.row < rows &&
+    (!center || distance(p, center, orientation) <= radius);
+  const merged = (custom ? lifted.tokens : [...lifted.tokens, ...setupWallTokens(cols, rows)]).filter(
+    onBoard,
+  );
+  const inBounds = onBoard;
+  const pieces = (
+    custom
+      ? piecesFromStamps(armies.filter(inBounds))
+      : [...spawnArmy('red', cols, rows), ...spawnArmy('blue', cols, rows)]
+  ).filter(onBoard);
   const king = (side: Side) => hasGeneral(pieces, side);
   const hadKing = emptyHadKing();
   const casualties = emptySideCounts();
@@ -754,6 +778,8 @@ function freshGame(
     cols,
     rows,
     orientation,
+    hexRadius: radius,
+    hexCenter: center ?? undefined,
     terrain: t,
     tokens: sanitizeTokens(merged, cols, rows),
     pieces,
@@ -811,6 +837,7 @@ export function createStateFromTerrain(
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   tokens?: TileToken[] | null,
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
+  hexRadius = 0,
 ): GameState {
   return freshGame(
     terrain,
@@ -822,5 +849,6 @@ export function createStateFromTerrain(
     controls,
     tokens,
     aiStyles,
+    hexRadius,
   );
 }
