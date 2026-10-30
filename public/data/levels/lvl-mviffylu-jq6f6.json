@@ -4,6 +4,7 @@
     "cols": 9,
     "rows": 10,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "land",
@@ -251,8 +252,8 @@
             "row": 9
         }
     ],
-    "sort": 6,
-    "updatedAt": 1793205122285,
+    "sort": 7,
+    "updatedAt": 1793360461235,
     "armies": [
         {
             "type": "javelin",
@@ -264,8 +265,7 @@
             "type": "u-mvr2vokzh3n3",
             "col": 3,
             "row": 8,
-            "side": "red",
-            "facing": 3
+            "side": "red"
         },
         {
             "type": "u-mvr2vokzh3n3",

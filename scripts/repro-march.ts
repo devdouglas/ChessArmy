@@ -10,10 +10,12 @@ import {
   setMarchDoubleTime,
   setWalkOrder,
   staminaLeft,
+  allLegalActions,
+  applyAction,
   type GameState,
 } from '../src/engine';
 import { isExperimentalOn, resetExperimental, setExperimental } from '../src/experimental';
-import { defaultFacing, neighborInDir } from '../src/hex';
+import { defaultFacing, neighborInDir, type HexDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 import { UNIT_STATS } from '../src/roster';
 
@@ -123,48 +125,35 @@ try {
   foe.col = fightLine.path[0]!.col;
   foe.row = fightLine.path[0]!.row;
   foe.hp = 3;
-  let fightState = setWalkOrder(fight, fightLine.piece.id, fightLine.path[0]!);
-  const fighter = getPiece(fightState, fightLine.piece.id)!;
-  const fightRoute = marchRoute(fightState, fighter, fightLine.path[0]!)!;
-  assert(fightRoute.length === 1, 'enemy hex is a march destination');
-  for (const hp of [2, 1]) {
-    fightState = passTurn(fightState);
-    const still = getPiece(fightState, foe.id)!;
-    assert(still.hp === hp, `melee chips the defender to ${hp}, got ${still.hp}`);
-    const red = getPiece(fightState, fighter.id)!;
-    assert(red.col === fightLine.piece.col && red.row === fightLine.piece.row, 'survivor keeps the attacker off the hex');
-    assert(red.walkTo, 'order stays until the defender dies');
-    fightState = passTurn(fightState);
-  }
-  fightState = passTurn(fightState);
-  assert(!getPiece(fightState, foe.id), 'third strike kills');
-  const taker = getPiece(fightState, fighter.id)!;
-  assert(taker.col === foe.col && taker.row === foe.row, 'kill takes the destination');
-  assert(!taker.walkTo, 'order clears once the hex is taken');
+  const fighterId = fightLine.piece.id;
+  assert(marchRoute(fight, fightLine.piece, fightLine.path[0]!) === null, 'no march onto a melee hex');
+  const refused = setWalkOrder(fight, fighterId, fightLine.path[0]!);
+  assert(!getPiece(refused, fighterId)!.walkTo, 'melee hex is not stored as a march');
+  assert(
+    !refused.log.some((l) => l.includes('march ordered')),
+    'clicking a melee hex does not log a march',
+  );
+  let struck = applyAction(fight, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
+  assert(getPiece(struck, foe.id)!.hp === 2, 'first melee chips the defender');
+  assert(struck.turn === 'red' && struck.staminaBonus, 'spend energy keeps a second melee');
+  assert(getPiece(struck, fighterId)!.col === fightLine.piece.col, 'a living defender keeps you off the hex');
+  struck = applyAction(struck, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
+  assert(getPiece(struck, foe.id)!.hp === 1, 'the second action melees again');
+  assert(!struck.staminaBonus, 'the second strike spends the extra');
+  assert(!struck.log.some((l) => l.includes('march ordered')), 'the second melee is not a march');
 
   const wood = board();
   const woodLine = forward(wood, 1);
   const gate = woodLine.path[0]!;
   wood.tokens = [...wood.tokens, { type: 'palisade', col: gate.col, row: gate.row, hp: 3 }];
-  let woodState = setWalkOrder(wood, woodLine.piece.id, gate);
-  const chopper = getPiece(woodState, woodLine.piece.id)!;
-  assert(marchRoute(woodState, chopper, gate)?.length === 1, 'palisade is a march destination');
-  woodState = passTurn(woodState);
-  woodState = passTurn(woodState);
-  woodState = passTurn(woodState);
-  const gateTok = woodState.tokens.find((t) => t.col === gate.col && t.row === gate.row && t.type === 'palisade');
-  assert(gateTok?.hp === 1, `two strikes leave the palisade on 1, got ${gateTok?.hp}`);
-  const chopperMid = getPiece(woodState, chopper.id)!;
-  assert(chopperMid.col === woodLine.piece.col && chopperMid.walkTo, 'palisade holds until it breaks');
-  woodState = passTurn(woodState);
-  woodState = passTurn(woodState);
-  assert(
-    !woodState.tokens.some((t) => t.type === 'palisade' && t.col === gate.col && t.row === gate.row),
-    'third strike breaks the palisade',
-  );
-  const chopperDone = getPiece(woodState, chopper.id)!;
-  assert(chopperDone.col === gate.col && chopperDone.row === gate.row, 'breaking it takes the hex');
-  assert(!chopperDone.walkTo, 'order clears once the token is gone');
+  const chopper = wood.pieces.find((p) => p.side === 'red')!;
+  assert(marchRoute(wood, chopper, gate) === null, 'no march onto a palisade');
+  const woodOrder = setWalkOrder(wood, chopper.id, gate);
+  assert(!getPiece(woodOrder, chopper.id)!.walkTo, 'a palisade is not a march order');
+  const chopped = applyAction(wood, { kind: 'move', pieceId: chopper.id, to: gate });
+  const gateTok = chopped.tokens.find((t) => t.col === gate.col && t.row === gate.row && t.type === 'palisade');
+  assert(gateTok?.hp === 2, `melee chips the palisade, got ${gateTok?.hp}`);
+  assert(getPiece(chopped, chopper.id)!.col === chopper.col, 'a standing palisade keeps you off the hex');
 
   const rush = board();
   const rushLine = forward(rush, 2);
@@ -173,17 +162,19 @@ try {
   rushee.col = rushLine.path[1]!.col;
   rushee.row = rushLine.path[1]!.row;
   rushee.hp = 1;
-  const rushState = performMarch(
-    setWalkOrder(rush, rushLine.piece.id, rushLine.path[1]!),
-    rushLine.piece.id,
-  );
+  assert(marchRoute(rush, rushLine.piece, rushLine.path[1]!) === null, 'a kill hex is not a march');
+  const rushState = applyAction(rush, {
+    kind: 'move',
+    pieceId: rushLine.piece.id,
+    to: rushLine.path[1]!,
+  });
   const rushed = getPiece(rushState, rushLine.piece.id)!;
   assert(
     rushed.col === rushee.col && rushed.row === rushee.row,
-    'in-range march walks up and takes the kill',
+    'an in-range melee walks up and takes the kill',
   );
-  assert(!getPiece(rushState, rushee.id), 'in-range march kills on the way in');
-  assert(!rushed.walkTo, 'order clears after the kill');
+  assert(!getPiece(rushState, rushee.id), 'the melee kills on the way in');
+  assert(!rushed.walkTo, 'the kill does not leave a march order');
 
   const squad = board();
   squad.unitsPerTurn = 4;
@@ -396,6 +387,43 @@ try {
   );
   assert(staminaLeft(after) === 0, 'the extra hex spends 1 stamina');
   assert(!after.spendMarch, 'the spend is consumed');
+  assert(
+    boosted.log.some((l) => l.includes('spends energy')),
+    'spend energy is logged',
+  );
+
+  const jav = createStateFromTerrain(
+    emptyTerrain(10, 8),
+    'jav',
+    'flat',
+    [
+      { type: 'javelin', col: 5, row: 5, side: 'red' },
+      { type: 'dummy', col: 0, row: 0, side: 'blue' },
+    ],
+  );
+  const javPiece = jav.pieces.find((p) => p.side === 'red')!;
+  const javFace = defaultFacing('red');
+  const javStep = neighborInDir({ col: javPiece.col, row: javPiece.row }, javFace, jav.orientation);
+  const javFoeHex = neighborInDir(javStep, ((javFace + 2) % 6) as HexDir, jav.orientation);
+  const javFoe = jav.pieces.find((p) => p.side === 'blue')!;
+  javFoe.col = javFoeHex.col;
+  javFoe.row = javFoeHex.row;
+  javPiece.spendMarch = true;
+  const javHeld = performMarch(setWalkOrder(jav, javPiece.id, javStep), javPiece.id);
+  const javHeldPiece = getPiece(javHeld, javPiece.id)!;
+  assert(javHeldPiece.col === javStep.col && javHeldPiece.row === javStep.row, 'one-tile spend still walks one');
+  assert(javHeld.turn === 'red', 'one-tile spend does not end the action');
+  assert(javHeld.staminaBonus, 'the second action stays armed');
+  assert(staminaLeft(javHeldPiece) === 1, 'the first tile does not spend the energy');
+  const javFollow = allLegalActions(javHeld);
+  assert(
+    javFollow.some((a) => a.kind === 'move' && a.pieceId === javPiece.id),
+    'second action can move',
+  );
+  assert(
+    javFollow.some((a) => a.kind === 'shoot' && a.pieceId === javPiece.id),
+    'second action can shoot',
+  );
   assert(after.walkTo, 'a longer order stays');
 
   const queued = setWalkOrder(spendBoard, spender.id, spendPath[3]!);
@@ -436,6 +464,10 @@ try {
     'double time spends the whole pool (move 1 + 2 stamina)',
   );
   assert(staminaLeft(dtAtPiece) === 0, 'double time leaves no stamina');
+  assert(
+    dtState.log.filter((l) => l.includes('double time')).length === 2,
+    'each double time spend is logged',
+  );
   dtState = passTurn(dtState);
   assert(dtState.turn === 'red', 'without auto walk the next red turn is waiting');
   dtAtPiece = getPiece(dtState, dtPiece.id)!;

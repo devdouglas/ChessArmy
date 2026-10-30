@@ -292,6 +292,8 @@ import {
   staminaEmptyMarkSvg,
   staminaHexMarkSvg,
   actionGlyphSvg,
+  tutorialHandSvg,
+  type ActionGlyphId,
   staminaPipsHtml,
   unitTokenGlyphSvg,
   pieceShotPipsHtml,
@@ -299,7 +301,7 @@ import {
   unitQuotaPipsHtml,
   starGlyphSvg,
 } from './icons';
-import { copyGlyphGroups, copyMentionsTutorial, formatCopyHtml } from './copy';
+import { copyGlyphGroups, copyMentionedActions, copyMentionsTutorial, formatCopyHtml } from './copy';
 import {
   CLAMP,
   copyUnit,
@@ -411,6 +413,8 @@ let briefingOpen = false;
 let boardPopup: { text: string; title?: string } | null = null;
 /** Bouncing hands on Tutorial tokens after a message with [tutorial] closes. */
 let tutorialHands: Hex[] | null = null;
+/** Dock buttons named in that same message (`[rest]`, `[end turn]`, …). */
+let tutorialDock: ActionGlyphId[] | null = null;
 /** Editor: hex whose board text is being edited. */
 let editorBoardHex: Hex | null = null;
 let editorStoryHex: Hex | null = null;
@@ -787,6 +791,7 @@ function startMatch(reshuffleRandom = true) {
   briefingOpen = false;
   boardPopup = null;
   tutorialHands = null;
+  tutorialDock = null;
   if (activeLevelId) {
     const lvl = getLevel(activeLevelId);
     if (lvl) {
@@ -1333,6 +1338,7 @@ function showStart() {
   briefingOpen = false;
   boardPopup = null;
   tutorialHands = null;
+  tutorialDock = null;
   editorBoardHex = null;
   editorStoryHex = null;
   randomSetup = null;
@@ -1604,6 +1610,7 @@ function beginEditorSession(): void {
   briefingOpen = false;
   boardPopup = null;
   tutorialHands = null;
+  tutorialDock = null;
   editorBoardHex = null;
   editorStoryHex = null;
   screen = 'editor';
@@ -2462,6 +2469,48 @@ function restDestHighlights(pieceId: string): Highlight[] {
   return list.filter((h) => h.kind === 'rest');
 }
 
+/** Hexes that draw the empty-energy mark for this unit. */
+function emptyEnergyKeys(pieceId: string): Set<string> {
+  const marks = new Set<string>();
+  if (screen === 'editor' || !canControl()) return marks;
+  const actor = getPiece(state, pieceId);
+  if (!actor) return marks;
+  const fromHeight = terrainHeight(state.terrain[actor.row]?.[actor.col] ?? 'land');
+  const viewers = viewingSides(state);
+  const occupied = (hex: Hex) => {
+    const p = pieceAt(state, hex);
+    return !!p && pieceVisible(state, p, viewers);
+  };
+  const showExtras = extrasVisible(actor);
+  for (const hl of restDestHighlights(pieceId)) {
+    const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
+    if (terrain === 'water' && refusesWaterJump(actor)) {
+      if (!hl.extra || showExtras) marks.add(key(hl.hex));
+      continue;
+    }
+    const blocked =
+      occupied(hl.hex) ||
+      terrainHeight(terrain) > fromHeight ||
+      isWall(state, hl.hex) ||
+      isPalisade(state, hl.hex) ||
+      isForest(state, hl.hex);
+    if (blocked || (doubleTime && !isElevatedTerrain(terrain))) marks.add(key(hl.hex));
+  }
+  return marks;
+}
+
+/** Hostile or palisade/tree hex this unit would melee. Not a walk destination. */
+function meleeRangeHex(actor: Piece, hex: Hex): boolean {
+  if (UNIT_STATS[actor.type].meleeDamage <= 0) return false;
+  const occ = pieceAt(state, hex);
+  if (occ && occ.id !== actor.id) {
+    if (!pieceVisible(state, occ, viewingSides(state))) return false;
+    if (isNeutralSide(occ.side)) return false;
+    return !sameTeam(state, occ.side, actor.side);
+  }
+  return isPalisade(state, hex);
+}
+
 function actingHighlights(pieceId: string): Highlight[] {
   const piece = getPiece(state, pieceId);
   if (!piece) return [];
@@ -2819,17 +2868,6 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   if (kind === 'move' && !canMove) return;
   if (kind === 'shoot' && !canShoot) return;
 
-  if (kind === 'move' && isExperimentalOn('walk-orders')) {
-    const piece = getPiece(state, selectedId);
-    const occupied = pieceAt(state, hex);
-    const fight = (!!occupied && occupied.id !== selectedId) || isPalisade(state, hex);
-    if (piece && fight && marchRoute(state, piece, hex)) {
-      pendingHex = null;
-      void commitMarch(piece.id, hex, true);
-      return;
-    }
-  }
-
   const action: Action =
     kind === 'move'
       ? { kind: 'move', pieceId: selectedId, to: hex, path: committedPathTo(hex) }
@@ -2878,6 +2916,7 @@ function canRotate(pieceId: string): boolean {
   if (!UNIT_STATS[piece.type].hexArmor) return false;
   if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  if (state.downhillMove && state.scoutPieceId === piece.id) return false;
   if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible(piece)) {
     return false;
   }
@@ -3074,6 +3113,9 @@ function renderBoard(): string {
   const fromHeight = actor
     ? terrainHeight(state.terrain[actor.row]?.[actor.col] ?? 'land')
     : 0;
+  if (!editing && selectedId && canControl()) {
+    for (const k of emptyEnergyKeys(selectedId)) restSet.add(k);
+  }
   // Climb marks only. Same height or lower is not a climb, even on a hill.
   const restBusy = (hex: Hex) => {
     const occ = seenOcc(hex);
@@ -3087,22 +3129,6 @@ function renderBoard(): string {
       isForest(state, hex)
     );
   };
-  const showExtras = actor ? extrasVisible(actor) : false;
-  if (!editing && selectedId && canControl()) {
-    for (const hl of restDestHighlights(selectedId)) {
-      const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
-      // Water only while this unit is selected and that hex is a move it could take.
-      // The extra ring stays hidden until Spend energy / Double time, same as other moves.
-      if (terrain === 'water' && actor && refusesWaterJump(actor)) {
-        if (!hl.extra || showExtras) restSet.add(key(hl.hex));
-        continue;
-      }
-      // Double time still ghosts flat extra-moves. Same-or-lower high ground does not.
-      if (restBusy(hl.hex) || (doubleTime && !isElevatedTerrain(terrain))) {
-        restSet.add(key(hl.hex));
-      }
-    }
-  }
 
   const splashSet = new Set<string>();
   const pathSet = new Set<string>();
@@ -3188,12 +3214,13 @@ function renderBoard(): string {
         hexes += `<polygon class="hex-rock-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
         hexes += `<polygon class="hex-rock-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
       }
+      const meleeHex = !editing && !!actor && meleeRangeHex(actor, hex);
       const mv = moveMap.get(k);
-      if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
-      else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+      if (!meleeHex && mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
+      else if (!meleeHex && mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
       else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
 
-      if (pathSet.has(k)) {
+      if (!meleeHex && pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
         const via = !!(pathVia && eq(pathVia, hex) && !end);
         hlOverlays += `<polygon class="hl-tint path${pathKind === 'stamina' ? ' stamina' : ''}${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
@@ -3201,10 +3228,11 @@ function renderBoard(): string {
           hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
         }
       }
-      if (marchSet.has(k)) {
+      if (!meleeHex && marchSet.has(k)) {
         const end = !!(marchEnd && eq(marchEnd, hex));
         hlOverlays += `<polygon class="hl-tint path march${end ? ' path-end' : ''}" points="${pts}" />`;
       } else if (
+        !meleeHex &&
         !editing &&
         isExperimentalOn('walk-orders') &&
         state.pieces.some(
@@ -3241,9 +3269,12 @@ function renderBoard(): string {
   if (canActWithSelected()) {
     for (const hl of allHl) {
       if (hl.kind !== 'stamina') continue;
+      if (actor && meleeRangeHex(actor, hl.hex)) continue;
       staminaMarkHexes.add(key(hl.hex));
     }
-    if (pathKind === 'stamina' && hoverHex) staminaMarkHexes.add(key(hoverHex));
+    if (pathKind === 'stamina' && hoverHex && !(actor && meleeRangeHex(actor, hoverHex))) {
+      staminaMarkHexes.add(key(hoverHex));
+    }
   }
   for (const k of staminaMarkHexes) {
     const hex = parseKey(k);
@@ -3275,6 +3306,13 @@ function renderBoard(): string {
   for (const t of drawTokens) {
     const banned = tokenIsNoTouch(t);
     if (!editing && t.type === 'notouch') continue;
+    if (
+      !editing &&
+      t.type === 'tutorial' &&
+      !tutorialHands?.some((h) => h.col === t.col && h.row === t.row)
+    ) {
+      continue;
+    }
     const { x, y } = pixelOf({ col: t.col, row: t.row });
     const owner = flagOwnerForDraw(t);
     const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
@@ -3292,11 +3330,8 @@ function renderBoard(): string {
             : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
     const read = t.type === 'board' && t.read ? ' read' : '';
-    const bounce =
-      !editing &&
-      t.type === 'tutorial' &&
-      !!tutorialHands?.some((h) => h.col === t.col && h.row === t.row);
-    const body = bounce ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
+    const armed = !editing && t.type === 'tutorial';
+    const body = armed ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
     if (t.type === 'forest') forestSvg += g;
     else if (t.type === 'house') houseSvg += g;
@@ -3527,9 +3562,12 @@ function dockButton(
   const cls = ['dock-btn', opts.className ?? '', on ? 'is-on' : ''].filter(Boolean).join(' ');
   const title = opts.title ? ` title="${escapeHtml(opts.title)}"` : '';
   const pressed = opts.pressed !== undefined ? ` aria-pressed="${on ? 'true' : 'false'}"` : '';
-  return `<button type="button" id="${id}" class="${cls}"${pressed}${title}${
+  const cue = tutorialDock?.includes(opts.icon)
+    ? `<span class="dock-tutorial" aria-hidden="true"><svg class="tutorial-hand" viewBox="-8 -10 16 21" width="44" height="58">${tutorialHandSvg(18)}</svg></span>`
+    : '';
+  return `<span class="dock-slot">${cue}<button type="button" id="${id}" class="${cls}"${pressed}${title}${
     enabled ? '' : ' disabled'
-  }>${dockIcon(opts.icon)}<span class="dock-label">${label}</span></button>`;
+  }>${dockIcon(opts.icon)}<span class="dock-label">${label}</span></button></span>`;
 }
 
 function canRest(pieceId: string): boolean {
@@ -3593,7 +3631,6 @@ function renderActionBar(): string {
   }
 
   const s = UNIT_STATS[piece.type];
-  const previewOnly = piece.side !== state.turn || !canControl();
   const { canMove, canShoot } = availableActions(piece.id);
   const pending =
     pendingHex && canActWithSelected() ? hexActions(piece.id, pendingHex) : null;
@@ -3622,8 +3659,10 @@ function renderActionBar(): string {
     hint = piece.actedThisTurn || piece.movedThisTurn
       ? 'Already acted this turn'
       : 'Resting this turn';
+  } else if (state.downhillMove && state.scoutPieceId === piece.id) {
+    hint = 'Downhill — one more move';
   } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    hint = '';
+    hint = 'Second action — move, shoot, or skip';
   } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
     hint = 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
@@ -3636,8 +3675,6 @@ function renderActionBar(): string {
       : isReloading(piece)
         ? "Reloading — can't shoot"
         : 'No moves or shots';
-  } else if (previewOnly) {
-    hint = 'Range preview';
   } else {
     hint = '';
   }
@@ -3651,8 +3688,6 @@ function renderActionBar(): string {
   ) {
     if (piece.walkTo) {
       hint = `March ${piece.walkTo.col},${piece.walkTo.row} · click the destination again to cancel`;
-    } else if (!hint && UNIT_STATS[piece.type].move > 0 && !isSleeping(piece)) {
-      hint = 'Click a tile to march';
     }
   }
 
@@ -3660,9 +3695,11 @@ function renderActionBar(): string {
   const scoutUi =
     state.scoutPieceId && canControl()
       ? `<button type="button" id="skip-scout">${
-          state.staminaBonus
-            ? 'Skip second action'
-            : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
+          state.downhillMove
+            ? 'Skip downhill move'
+            : state.staminaBonus
+              ? 'Skip second action'
+              : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
         }</button>`
       : '';
 
@@ -3682,8 +3719,10 @@ function renderActionBar(): string {
   const restNote =
     restReady &&
     staminaMax(piece) > 0 &&
+    staminaLeft(piece) <= 0 &&
+    UNIT_STATS[piece.type].staminaRegen > 0 &&
     state.terrain[piece.row]?.[piece.col] !== 'water'
-      ? 'one idle turn = gain 1 stamina'
+      ? 'one idle turn = gain 1 energy'
       : '';
 
   return `
@@ -3693,7 +3732,7 @@ function renderActionBar(): string {
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
-        <span>${s.name}${previewOnly ? ' · preview' : ''}</span>
+        <span>${s.name}</span>
         ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side, hasUnitToken(piece, 'general'))}
         ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
         ${pieceShotPipsHtml(piece)}
@@ -3823,10 +3862,8 @@ function renderSidebar(): string {
     const moreRows = [
       statRow(
         'Move',
-        String(s.move > 0 ? s.move + elev : 0),
-        [moveNote, elev === 2 ? '+2 from plateau' : elev === 1 ? '+1 from high' : '']
-          .filter(Boolean)
-          .join(' · '),
+        String(s.move),
+        moveNote,
       ),
       statRow(
         'Shoot',
@@ -3926,8 +3963,6 @@ function renderSidebar(): string {
     extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
     if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
-    const previewOnly = piece.side !== state.turn || !canControl();
-
     detail = `
       <section class="ability">
         <header class="ability-head">
@@ -3937,9 +3972,7 @@ function renderSidebar(): string {
           </svg>
           <div>
             <h3>${s.name}</h3>
-            <p class="ability-sub">${piece.side.toUpperCase()} · ${escapeHtml(s.chess)} · val ${combatValue(piece)}${
-              previewOnly ? ' · preview' : ''
-            }</p>
+            <p class="ability-sub">${piece.side.toUpperCase()} · ${escapeHtml(s.chess)} · val ${combatValue(piece)}</p>
           </div>
         </header>
         <dl class="stat-grid">${vitals.join('')}</dl>
@@ -3987,7 +4020,7 @@ function renderSidebar(): string {
             <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 energy and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; palisade and forest block straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units, palisades and forest; walls / higher ground still block</dd></div>
-            <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to move and shoot; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below</dd></div>
+            <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to shoot only; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below. Standing height does not add move. A step down one level grants one more move</dd></div>
             <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same wall rules, house graphic — paint onto a unit in the editor to garrison them. That unit can leave; afterwards nobody can enter</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
@@ -3995,7 +4028,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold block first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value, and the General ability — killing that piece can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -4229,7 +4262,7 @@ function renderEditorBoardPopup(): string {
         <label class="board-edit">
           <span class="sr-only">Message</span>
           <textarea id="board-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(tok.text ?? '')}</textarea>
-          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes.</p>
+          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes. [rest] in that message also points one at the Rest button.</p>
         </label>
         <div class="end-actions">
           <button type="button" id="board-save">Save</button>
@@ -4245,6 +4278,15 @@ function armTutorialHands(text: string): void {
     .filter((t) => t.type === 'tutorial')
     .map((t) => ({ col: t.col, row: t.row }));
   tutorialHands = spots.length ? spots : null;
+  const dock = copyMentionedActions(text);
+  tutorialDock = dock.length ? dock : null;
+}
+
+function clearTutorialCue(): void {
+  if (!tutorialHands && !tutorialDock) return;
+  tutorialHands = null;
+  tutorialDock = null;
+  queueMicrotask(() => render());
 }
 
 function closeBoardPopup() {
@@ -4321,7 +4363,7 @@ function renderEditorStoryPopup(): string {
         <label class="board-edit">
           <span class="sr-only">Message</span>
           <textarea id="story-text" maxlength="${BOARD_TEXT_MAX}" rows="6" placeholder="[hoplite] and [pikes] become icons">${escapeHtml(story?.text ?? '')}</textarea>
-          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes. Leave the message empty to remove the token.</p>
+          <p class="muted board-hint">Wrap a name in [brackets] for its icon. [tutorial] drops bouncing hands on Tutorial tokens after this closes. [rest] in that message also points one at the Rest button. Leave the message empty to remove the token.</p>
         </label>
         <label class="board-edit">
           <span class="board-when-label">When</span>
@@ -4458,6 +4500,9 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   if (piece.side !== state.turn || isSleeping(piece)) return false;
   if (UNIT_STATS[piece.type].move <= 0) return false;
   if (state.scoutPieceId && state.scoutPieceId !== piece.id) return false;
+  // The armed second action is a normal move or shot, not another march order.
+  if (piece.movedThisTurn || hasActed(state, piece.id)) return false;
+  if (state.staminaBonus && state.scoutPieceId === piece.id) return false;
   if (eq(hex, { col: piece.col, row: piece.row })) return false;
   const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
   if (!cancel && !marchRoute(state, piece, hex)) return false;
@@ -4494,10 +4539,7 @@ async function commitMarch(pieceId: string, dest: Hex | null, stepNow: boolean):
 
 function onHexClick(col: number, row: number) {
   if (briefingBlocks() || boardBlocks() || animating || aiThinking) return;
-  if (tutorialHands) {
-    tutorialHands = null;
-    queueMicrotask(() => render());
-  }
+  clearTutorialCue();
   const hex = { col, row };
   const rawOcc = state.pieces.find((p) => p.col === col && p.row === row);
   const occ =
@@ -4567,6 +4609,11 @@ function onHexClick(col: number, row: number) {
 
   // Shoot-range / preview tints are not actions — keep the piece selected
   if (selectedId && highlights.some((h) => eq(h.hex, hex))) {
+    return;
+  }
+
+  // Empty-energy mark: the move needs stamina. Keep this unit selected.
+  if (selectedId && emptyEnergyKeys(selectedId).has(key(hex))) {
     return;
   }
 
@@ -4666,10 +4713,7 @@ function bindBoardOnly() {
   svg.querySelectorAll<SVGGElement>('.hex-rotate-btn').forEach((g) => {
     g.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (tutorialHands) {
-        tutorialHands = null;
-        queueMicrotask(() => render());
-      }
+      clearTutorialCue();
       const piece = selectedId ? getPiece(state, selectedId) : null;
       const col = Number(g.dataset.col);
       const row = Number(g.dataset.row);
@@ -5471,6 +5515,7 @@ function renderLevelThumb(lvl: {
   let forest = '';
   let houses = '';
   for (const t of lvl.tokens ?? []) {
+    if (t.type === 'tutorial') continue;
     const { x, y } = hexToPixel({ col: t.col, row: t.row }, size, ori);
     const garrison =
       t.type === 'house' &&
@@ -5851,7 +5896,7 @@ function renderEditorBar(): string {
           ${levelCopyField('start', 'editor-start-text', 'intro', 'Shown at the start of the level', 6, editorStartText)}
           ${levelCopyField('win', 'editor-win-text', 'victory', 'Shown when you win', 4, editorWinText)}
           ${levelCopyField('lose', 'editor-lose-text', 'lose', 'Shown when you lose', 4, editorLoseText)}
-          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. Paint Tutorial tokens, then [tutorial] in a message points bouncing hands at them after it closes, until the next map click.</p>
+          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. [tutorial] in a message points bouncing hands at painted Tutorial tokens after it closes. The same message's [rest], [spend energy], [double time], [special], or [end turn] points a hand at that button. The next map click hides them.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
             <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken (not just kills). Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
@@ -6255,7 +6300,7 @@ function renderUnitEditor(): string {
           <dd><strong>Abilities</strong> granted independently of kit. General (star): all generals on a side must fall to lose by command — one of several is not enough. Pieces can also gain/lose abilities in play</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
-          <dd><strong>Range</strong> hexes in a straight line per action. Hill +1, plateau +2, mountain +3 while standing there</dd>
+          <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
           <dd><strong>Move cap</strong> total steps this activation, actions and stamina extras included (0 = none; scout stock 3). Cannot go past it</dd>
           <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 energy and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
@@ -7186,6 +7231,13 @@ function bindEvents() {
   app.querySelector('#skip-scout')?.addEventListener('click', () => {
     void skipScout();
   });
+  app.querySelector('.unit-dock')?.addEventListener(
+    'click',
+    () => {
+      clearTutorialCue();
+    },
+    true,
+  );
   app.querySelector('#rest-unit')?.addEventListener('click', () => {
     void restSelected();
   });

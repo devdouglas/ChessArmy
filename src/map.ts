@@ -788,6 +788,8 @@ function freshGame(
     scoutPieceId: null,
     scoutMoveSpent: null,
     staminaBonus: false,
+    downhillMove: false,
+    downhillQueued: 0,
     winner: null,
     controls: controls ? sanitizeArmyControls(controls) : defaultArmyControls(),
     aiStyles: aiStyles ? sanitizeAiStyles(aiStyles) : defaultAiStyles(),

@@ -4,6 +4,7 @@
     "cols": 11,
     "rows": 11,
     "orientation": "flat",
+    "hexRadius": 5,
     "terrain": [
         [
             "land",
@@ -75,21 +76,21 @@
             "land",
             "land",
             "water",
-            "water",
-            "high",
-            "high",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
             "plateau",
             "high",
             "high",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
             "high",
             "land",
             "land",
@@ -123,8 +124,8 @@
             "land"
         ],
         [
-            "high",
-            "high",
+            "land",
+            "land",
             "high",
             "high",
             "high",
@@ -132,8 +133,8 @@
             "high",
             "high",
             "high",
-            "high",
-            "high"
+            "land",
+            "land"
         ],
         [
             "land",
@@ -210,11 +211,6 @@
         },
         {
             "type": "palisade",
-            "col": 7,
-            "row": 6
-        },
-        {
-            "type": "palisade",
             "col": 8,
             "row": 7
         },
@@ -245,31 +241,6 @@
         },
         {
             "type": "forest",
-            "col": 3,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 1
-        },
-        {
-            "type": "forest",
-            "col": 1,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 0,
-            "row": 1
-        },
-        {
-            "type": "forest",
-            "col": 0,
-            "row": 2
-        },
-        {
-            "type": "forest",
             "col": 0,
             "row": 4
         },
@@ -310,37 +281,7 @@
         },
         {
             "type": "forest",
-            "col": 1,
-            "row": 1
-        },
-        {
-            "type": "forest",
-            "col": 4,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 0,
-            "row": 0
-        },
-        {
-            "type": "forest",
             "col": 5,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 6,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 7,
             "row": 0
         },
         {
@@ -362,31 +303,6 @@
             "type": "forest",
             "col": 6,
             "row": 3
-        },
-        {
-            "type": "forest",
-            "col": 8,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 9,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 10,
-            "row": 1
-        },
-        {
-            "type": "forest",
-            "col": 9,
-            "row": 1
-        },
-        {
-            "type": "forest",
-            "col": 10,
-            "row": 2
         },
         {
             "type": "forest",
@@ -417,16 +333,6 @@
             "type": "forest",
             "col": 1,
             "row": 6
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 6
-        },
-        {
-            "type": "forest",
-            "col": 8,
-            "row": 1
         },
         {
             "type": "forest",
@@ -475,31 +381,6 @@
         },
         {
             "type": "forest",
-            "col": 10,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 0,
-            "row": 10
-        },
-        {
-            "type": "forest",
-            "col": 1,
-            "row": 10
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 10
-        },
-        {
-            "type": "forest",
-            "col": 3,
-            "row": 10
-        },
-        {
-            "type": "forest",
             "col": 4,
             "row": 10
         },
@@ -514,28 +395,18 @@
             "row": 10
         },
         {
-            "type": "forest",
+            "type": "palisade",
             "col": 7,
-            "row": 10
+            "row": 5
         },
         {
-            "type": "forest",
+            "type": "palisade",
             "col": 8,
-            "row": 10
-        },
-        {
-            "type": "forest",
-            "col": 9,
-            "row": 10
-        },
-        {
-            "type": "forest",
-            "col": 10,
-            "row": 10
+            "row": 6
         }
     ],
-    "sort": 7,
-    "updatedAt": 1793194513469,
+    "sort": 9,
+    "updatedAt": 1793360785194,
     "armies": [
         {
             "type": "dude",
@@ -592,18 +463,6 @@
         },
         {
             "type": "wolf",
-            "col": 0,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "wolf",
-            "col": 3,
-            "row": 0,
-            "side": "blue"
-        },
-        {
-            "type": "wolf",
             "col": 1,
             "row": 2,
             "side": "blue"
@@ -617,7 +476,7 @@
         {
             "type": "wolf",
             "col": 10,
-            "row": 0,
+            "row": 7,
             "side": "blue"
         }
     ]

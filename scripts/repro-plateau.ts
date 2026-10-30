@@ -4,9 +4,11 @@ import {
   legalHighlights,
   passTurn,
   pathForMove,
+  performMarch,
   staminaLeft,
   type GameState,
 } from '../src/engine';
+import { resetExperimental, setExperimental } from '../src/experimental';
 import { neighborInDir, type Hex, type HexDir } from '../src/hex';
 import { UNIT_STATS } from '../src/roster';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
@@ -124,17 +126,23 @@ try {
   }
 
   {
+    UNIT_STATS.soldier.stamina = 0;
     const ridge = [plateau, step(plateau, dir, 1), step(plateau, dir, 2), step(plateau, dir, 3)];
     const s = make(plateau, { high: [high], plateau: ridge });
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
-    assert(walkOnto(s, p.id, ridge[3]), 'plateau +2 move: range 1 walks 3 along the ridge');
-    assert(!walkOnto(s, p.id, step(plateau, dir, 4)), 'plateau +2 move does not walk 4');
+    assert(walkOnto(s, p.id, ridge[1]), 'plateau adds no move: range 1 walks 1 along the ridge');
+    assert(!walkOnto(s, p.id, ridge[2]), 'plateau does not walk 2');
+    assert(!walkOnto(s, p.id, ridge[3]), 'plateau does not walk 3');
+    UNIT_STATS.soldier.stamina = saved.stamina;
   }
 
   {
+    UNIT_STATS.soldier.stamina = 0;
     const s = make(high, { high: [high, step(high, 0, 1), step(high, 0, 2)] });
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
-    assert(walkOnto(s, p.id, step(high, 0, 2)), 'high +1 move: range 1 walks 2 along the ridge');
+    assert(walkOnto(s, p.id, step(high, 0, 1)), 'high adds no move: range 1 walks 1 along the ridge');
+    assert(!walkOnto(s, p.id, step(high, 0, 2)), 'high does not walk 2');
+    UNIT_STATS.soldier.stamina = saved.stamina;
   }
 
   UNIT_STATS.soldier.shoot = 4;
@@ -185,7 +193,7 @@ try {
     UNIT_STATS.soldier.stamina = 0;
     const s = make(from, { water: [wet] });
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
-    assert(walkOnto(s, p.id, wet), 'can enter water with 0 stamina');
+    assert(!walkOnto(s, p.id, wet), '0 stamina and low hp cannot enter water');
     UNIT_STATS.soldier.stamina = saved.stamina;
   }
 
@@ -304,7 +312,93 @@ try {
     assert(walkOnto(s, p.id, peak), 'climb 3 plateau→mountain');
     UNIT_STATS.soldier.climbLevel = savedClimb;
   }
+
+  {
+    const s = make(high, { high: [high] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    const land = from;
+    const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: land });
+    const live = moved.pieces.find((x) => x.id === p.id)!;
+    assert(live.col === land.col && live.row === land.row, 'cohort stepped hill→land');
+    assert(moved.downhillMove, 'hill→land grants one more move');
+    assert(!moved.staminaBonus, 'the downhill move is not a stamina buy');
+    assert(staminaLeft(live) === 1, 'stepping down does not spend energy');
+    assert(moved.turn === 'red', 'downhill keeps the cohort’s turn');
+    assert(
+      moved.log.some((l) => l.includes('downhill move')),
+      'logs the downhill move',
+    );
+    const further = step(land, ((dir + 3) % 6) as HexDir, 1);
+    const foe = step(land, 1, 1);
+    assert(walkOnto(moved, p.id, further), 'extra move reaches the next land hex');
+    assert(!shootAt(moved, p.id, foe), 'downhill extra cannot shoot');
+    const done = applyAction(moved, { kind: 'move', pieceId: p.id, to: further });
+    const parked = done.pieces.find((x) => x.id === p.id)!;
+    assert(parked.col === further.col && parked.row === further.row, 'took the extra land hex');
+    assert(staminaLeft(parked) === 1, 'the extra land hex did not spend energy');
+  }
+
+  {
+    const s = make(high, { high: [high, step(high, 0, 1)] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    p.stamina = 0;
+    const along = step(high, 0, 1);
+    const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: along });
+    assert(!moved.downhillMove, 'same height grants nothing');
+    assert(moved.turn === 'blue', 'flat step still ends the activation');
+  }
+
+  {
+    const s = make(plateau, { high: [high], plateau: [plateau] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    p.stamina = 0;
+    const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: high });
+    assert(moved.downhillMove, 'plateau→hill grants one more move');
+    assert(moved.turn === 'red', 'plateau drop keeps the turn');
+  }
+
+  {
+    const wet = step(high, 1, 1);
+    const s = make(high, { high: [high], water: [wet] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: wet });
+    const live = moved.pieces.find((x) => x.id === p.id)!;
+    assert(live.col === wet.col && live.row === wet.row, 'hill can still step into water');
+    assert(!moved.downhillMove, 'water entry does not grant a downhill move');
+    assert(moved.turn === 'blue', 'water entry still ends the activation');
+  }
+
+  {
+    setExperimental('walk-orders', true);
+    const s = make(high, { high: [high] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    p.stamina = 0;
+    p.walkTo = from;
+    const moved = performMarch(s, p.id);
+    const live = moved.pieces.find((x) => x.id === p.id)!;
+    assert(live.col === from.col && live.row === from.row, 'march steps hill→land');
+    assert(moved.downhillMove, 'a downhill march leaves the extra move');
+    assert(moved.turn === 'red', 'downhill march does not end the turn');
+    resetExperimental();
+  }
+
+  {
+    const foe = step(from, 1, 1);
+    const s = make(high, { high: [high] }, 'scout', foe);
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'scout')!;
+    p.stamina = 0;
+    const stepped = applyAction(s, { kind: 'move', pieceId: p.id, to: from });
+    assert(!stepped.downhillMove, 'own actions come before the downhill move');
+    assert(stepped.downhillQueued === 1, 'the drop is queued');
+    assert(stepped.turn === 'red', 'scout still has an action');
+    assert(shootAt(stepped, p.id, foe), 'queued drop does not strip the scout shot');
+    const further = step(from, ((dir + 3) % 6) as HexDir, 1);
+    const second = applyAction(stepped, { kind: 'move', pieceId: p.id, to: further });
+    assert(second.downhillMove, 'the downhill move is paid after the scout’s own actions');
+    assert(second.turn === 'red', 'the paid downhill move stays this turn');
+  }
 } finally {
+  resetExperimental();
   Object.assign(UNIT_STATS.soldier, {
     shoot: saved.shoot,
     shootMin: saved.shootMin,
@@ -315,4 +409,4 @@ try {
   UNIT_STATS.scout.move = saved.move;
 }
 
-console.log('plateau +2: walk only via high, shoot tax +2');
+console.log('plateau: no standing move bonus, downhill step grants one move, shoot tax +2');

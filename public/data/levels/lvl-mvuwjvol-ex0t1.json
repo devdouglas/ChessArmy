@@ -1,0 +1,331 @@
+{
+    "id": "lvl-mvuwjvol-ex0t1",
+    "name": "Boys to soldiers",
+    "cols": 9,
+    "rows": 12,
+    "orientation": "flat",
+    "hexRadius": 0,
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "maxTurns": 0,
+    "teaserText": "Fully suited up",
+    "startText": "Here is a Javelin",
+    "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
+    "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
+    "star2": {
+        "metric": "casualties",
+        "op": "lte",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 9
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 9
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 10
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 11
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 10
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 11
+        }
+    ],
+    "sort": 8,
+    "updatedAt": 1793361375126,
+    "armies": [
+        {
+            "type": "cohort",
+            "col": 3,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 5,
+            "row": 10,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 4,
+            "row": 8,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 7,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
+        }
+    ]
+}

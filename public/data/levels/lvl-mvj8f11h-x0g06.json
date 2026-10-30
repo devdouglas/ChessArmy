@@ -2,9 +2,21 @@
     "id": "lvl-mvj8f11h-x0g06",
     "name": "A Man With a Bow",
     "cols": 9,
-    "rows": 8,
+    "rows": 9,
     "orientation": "flat",
+    "hexRadius": 4,
     "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "plateau",
+            "land",
+            "land",
+            "land"
+        ],
         [
             "land",
             "land",
@@ -20,7 +32,7 @@
             "land",
             "land",
             "plateau",
-            "plateau",
+            "land",
             "water",
             "water",
             "water",
@@ -86,11 +98,11 @@
             "land",
             "land",
             "land",
+            "land",
             "water",
-            "water",
-            "water",
-            "water",
-            "water",
+            "land",
+            "land",
+            "land",
             "land"
         ]
     ],
@@ -131,36 +143,21 @@
         {
             "type": "notouch",
             "col": 6,
-            "row": 3
+            "row": 4
         },
         {
             "type": "notouch",
             "col": 4,
-            "row": 3
+            "row": 4
         },
         {
             "type": "notouch",
             "col": 5,
-            "row": 5
-        },
-        {
-            "type": "notouch",
-            "col": 6,
-            "row": 7
-        },
-        {
-            "type": "notouch",
-            "col": 7,
-            "row": 7
+            "row": 6
         },
         {
             "type": "notouch",
             "col": 5,
-            "row": 0
-        },
-        {
-            "type": "notouch",
-            "col": 4,
             "row": 1
         },
         {
@@ -170,7 +167,7 @@
         },
         {
             "type": "notouch",
-            "col": 3,
+            "col": 4,
             "row": 3
         },
         {
@@ -185,13 +182,13 @@
         },
         {
             "type": "notouch",
-            "col": 5,
-            "row": 4
+            "col": 3,
+            "row": 6
         },
         {
             "type": "notouch",
-            "col": 7,
-            "row": 0
+            "col": 5,
+            "row": 5
         },
         {
             "type": "notouch",
@@ -199,142 +196,116 @@
             "row": 1
         },
         {
-            "type": "forest",
-            "col": 0,
-            "row": 7
-        },
-        {
-            "type": "forest",
-            "col": 1,
-            "row": 7
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 7
+            "type": "notouch",
+            "col": 7,
+            "row": 2
         },
         {
             "type": "board",
             "col": 1,
-            "row": 4,
+            "row": 5,
             "text": "Some obstacles or 'higher ground' block line of sight."
         },
         {
             "type": "notouch",
             "col": 6,
-            "row": 6
+            "row": 7
         },
         {
             "type": "notouch",
             "col": 6,
-            "row": 5
-        },
-        {
-            "type": "notouch",
-            "col": 7,
-            "row": 4
-        },
-        {
-            "type": "notouch",
-            "col": 8,
-            "row": 5
-        },
-        {
-            "type": "notouch",
-            "col": 7,
             "row": 6
-        },
-        {
-            "type": "house",
-            "col": 8,
-            "row": 6,
-            "noTouch": true
         },
         {
             "type": "palisade",
             "col": 8,
-            "row": 3
+            "row": 4
         },
         {
             "type": "forest",
             "col": 8,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 8,
-            "row": 1
+            "row": 2
         },
         {
             "type": "notouch",
             "col": 1,
-            "row": 2
+            "row": 3
         },
         {
             "type": "notouch",
             "col": 0,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 2,
             "row": 2
         },
         {
             "type": "notouch",
             "col": 2,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 2,
-            "row": 0
-        },
-        {
-            "type": "notouch",
-            "col": 3,
             "row": 1
         },
         {
             "type": "board",
             "col": 2,
-            "row": 2,
+            "row": 3,
             "text": "These rocks are too high from this side. There must be a way to climb to higher ground",
             "noTouch": true
         },
         {
             "type": "notouch",
             "col": 6,
-            "row": 2
+            "row": 3
         },
         {
             "type": "notouch",
             "col": 6,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 7,
             "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "house",
+            "col": 8,
+            "row": 5
         }
     ],
-    "sort": 2,
-    "updatedAt": 1793128448028,
+    "sort": 3,
+    "updatedAt": 1793356636170,
     "armies": [
         {
-            "type": "archer",
-            "col": 1,
-            "row": 6,
-            "side": "red"
-        },
-        {
             "type": "peasant",
-            "col": 3,
+            "col": 1,
             "row": 2,
-            "side": "blue",
-            "facing": 3
-        },
-        {
-            "type": "peasant",
-            "col": 1,
-            "row": 1,
             "side": "blue",
             "facing": 2
         },
         {
             "type": "peasant",
             "col": 7,
-            "row": 5,
+            "row": 6,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 3,
+            "row": 2,
             "side": "blue",
             "facing": 2
         }

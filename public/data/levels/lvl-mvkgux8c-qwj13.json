@@ -1,24 +1,38 @@
 {
     "id": "lvl-mvkgux8c-qwj13",
     "name": "The Army Wants You",
-    "cols": 8,
-    "rows": 8,
+    "cols": 9,
+    "rows": 9,
     "orientation": "flat",
+    "hexRadius": 4,
     "terrain": [
         [
             "land",
             "land",
-            "high",
-            "plateau",
-            "plateau",
-            "water",
-            "water",
-            "water"
-        ],
-        [
-            "land",
             "land",
             "high",
+            "rock",
+            "plateau",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "plateau",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
             "high",
             "water",
             "water",
@@ -33,19 +47,22 @@
             "water",
             "water",
             "water",
+            "water",
             "water"
         ],
         [
             "land",
             "land",
             "land",
+            "land",
             "water",
             "water",
             "water",
-            "water",
+            "land",
             "land"
         ],
         [
+            "land",
             "land",
             "plateau",
             "land",
@@ -59,17 +76,8 @@
             "land",
             "land",
             "land",
+            "land",
             "water",
-            "water",
-            "water",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
             "water",
             "water",
             "water",
@@ -83,7 +91,19 @@
             "water",
             "water",
             "water",
-            "water"
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land"
         ]
     ],
     "category": "tutorial",
@@ -122,37 +142,95 @@
     "tokens": [
         {
             "type": "board",
+            "col": 4,
+            "row": 1,
+            "text": "Anthony realizes his javelins will not reach his target, even from this height. But with all his training he has [energy] [energy] [energy] to spend and 6 of [hp]. He can make it... right?"
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 8
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 7
+        },
+        {
+            "type": "board",
             "col": 3,
-            "row": 0,
-            "text": "Anthony realizes his javelins will not reach his target, even from this height. But with all his training he has [energy] [engery] [energy] to spend and tons of [hp]. He can make it... right?"
+            "row": 4,
+            "text": "Swimming costs [energy] at the start of your turn. If you have no more energy you will lose [hp][hp]"
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 3
         }
     ],
-    "sort": 3,
-    "updatedAt": 1793195702056,
+    "sort": 4,
+    "updatedAt": 1793358349668,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
-            "col": 7,
-            "row": 5,
+            "col": 8,
+            "row": 6,
             "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 3,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "javelin",
+            "col": 2,
+            "row": 7,
+            "side": "red"
         },
         {
             "type": "peasant",
             "col": 3,
-            "row": 2,
-            "side": "blue"
-        },
-        {
-            "type": "peasant",
-            "col": 1,
-            "row": 2,
-            "side": "blue"
-        },
-        {
-            "type": "javelin",
-            "col": 1,
-            "row": 6,
-            "side": "red"
+            "row": 0,
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

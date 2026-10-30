@@ -4,6 +4,7 @@
     "cols": 11,
     "rows": 11,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "land",
@@ -207,8 +208,8 @@
             "row": 3
         }
     ],
-    "sort": 12,
-    "updatedAt": 1793043696158,
+    "sort": 14,
+    "updatedAt": 1793360785194,
     "armies": [
         {
             "type": "archer",

@@ -4,6 +4,7 @@
     "cols": 9,
     "rows": 10,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "land",

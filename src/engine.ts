@@ -789,6 +789,10 @@ export type GameState = {
   scoutMoveSpent: number | null;
   /** Locked piece's leftover action is a stamina buy (after a non-stamina move). */
   staminaBonus: boolean;
+  /** Locked piece's leftover action is a free move from stepping one level down. */
+  downhillMove: boolean;
+  /** One-level drops already taken whose free move is still owed. */
+  downhillQueued: number;
   winner: Side | null;
   log: string[];
   /** Who drives each color. */
@@ -1392,12 +1396,12 @@ function inWater(state: GameState, h: Hex): boolean {
   return terrainAt(state, h) === 'water';
 }
 
-/** Standing elevation added to a move action from `at` (hill +1, plateau +2, mountain +3). Water is always 1 hex. Move 0 stays planted. */
+/** Move range from `at`. Water is always 1 hex. Move 0 stays planted. Height does not add steps. */
 function moveRangeAt(state: GameState, piece: Piece, at: Hex): number {
   const move = statsOf(piece.type).move;
   if (move <= 0) return 0;
   if (inWater(state, at)) return 1;
-  return move + hexHeight(state, at);
+  return move;
 }
 
 /** Steps still allowed this activation when Move cap is set. `null` = no cap. */
@@ -1433,10 +1437,7 @@ function activationMoveRange(state: GameState, piece: Piece): number {
   if (stats.move <= 0) return 0;
   const from = { col: piece.col, row: piece.row };
   if (inWater(state, from)) return capMoveRange(state, piece, 1);
-  const elev = hexHeight(state, from);
-  // Stamina extra is a fresh line of `move` (leftover steps don't carry)
-  // but still cannot exceed the remaining turn cap.
-  return capMoveRange(state, piece, stats.move + elev);
+  return capMoveRange(state, piece, stats.move);
 }
 
 function destLandsBeyond(state: GameState, piece: Piece, dest: Hex): boolean {
@@ -2134,6 +2135,8 @@ function clearScoutLock(state: GameState): void {
   state.scoutPieceId = null;
   state.scoutMoveSpent = null;
   state.staminaBonus = false;
+  state.downhillMove = false;
+  state.downhillQueued = 0;
 }
 
 const WATER_DROWN_HP = 2;
@@ -2242,6 +2245,14 @@ export function setMarchDoubleTime(on: boolean): void {
   marchDoubleTime = on;
 }
 
+/** One log line per stamina point spent on Spend energy or Double time. */
+function logStaminaAction(state: GameState, piece: Piece, times = 1): void {
+  const line = marchDoubleTime
+    ? `${unitLog(piece)} double time`
+    : `${unitLog(piece)} spends energy`;
+  for (let i = 0; i < times; i++) state.log.push(line);
+}
+
 export function takeQueuedMarches(): MarchAnim[] {
   const q = queuedMarches;
   queuedMarches = [];
@@ -2328,15 +2339,15 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
   if (!inBounds(state, goal) || eq(start, goal)) return null;
   if (isSleeping(piece) || statsOf(piece.type).move <= 0) return null;
   const combatGoal = marchCombatAt(state, piece, goal);
-  if (!combatGoal) {
-    const goalOcc = pieceAt(state, goal);
-    if (goalOcc && goalOcc.id !== piece.id) return null;
-    const tGoal = terrainAt(state, goal);
-    const stats = statsOf(piece.type);
-    if (isWall(state, goal) || isPalisade(state, goal)) return null;
-    if (tGoal === 'water' && !stats.passWater) return null;
-    if (terrainHeight(tGoal) > stats.climbLevel) return null;
-  }
+  // A melee hex is an attack, not a destination you can queue.
+  if (combatGoal) return null;
+  const goalOcc = pieceAt(state, goal);
+  if (goalOcc && goalOcc.id !== piece.id) return null;
+  const tGoal = terrainAt(state, goal);
+  const stats = statsOf(piece.type);
+  if (isWall(state, goal) || isPalisade(state, goal)) return null;
+  if (tGoal === 'water' && !stats.passWater) return null;
+  if (terrainHeight(tGoal) > stats.climbLevel) return null;
 
   type Node = { hex: Hex; facing: HexDir; prev: Node | null };
   const startNode: Node = { hex: start, facing: facingOf(piece), prev: null };
@@ -2531,10 +2542,13 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     if (taken.length > bounds[i]!) used += 1;
   }
   piece.spendMarch = undefined;
+  let spent = 0;
   for (let i = 0; i < used && staminaLeft(piece) > 0; i++) {
     spendStamina(piece);
+    spent += 1;
     state.fxStamina = [...(state.fxStamina ?? []), { id: piece.id, kind: 'spend' }];
   }
+  if (spent > 0) logStaminaAction(state, piece, spent);
   if (climbed && canSpendStamina(piece)) spendStamina(piece);
   markMoved(piece);
   if (arrived) piece.walkTo = undefined;
@@ -2550,11 +2564,21 @@ export function performMarch(state: GameState, pieceId: string): GameState {
   const next = cloneState(state);
   const piece = getPiece(next, pieceId);
   if (!piece || !marchEligible(next, piece)) return next;
+  const armedExtra = !!piece.spendMarch || marchDoubleTime;
   const anim = applyOneMarch(next, piece);
   if (!anim) return next;
   queuedMarches.push(anim);
   const live = getPiece(next, pieceId);
-  if (live) finishActivation(next, live);
+  if (!live) return next;
+  // Spend energy / double time that this step did not already walk stays a
+  // separate action: another move, or a shot.
+  const enteredWater =
+    terrainAt(next, anim.from) !== 'water' && terrainAt(next, anim.stop) === 'water';
+  const dropped = downSteps(next, anim.from, anim.path, anim.stop);
+  // A one-level drop leaves another move even when spend-energy was not armed.
+  if (dropped > 0 || (armedExtra && !live.staminaUsedThisTurn)) {
+    afterAction(next, live, 'move', enteredWater, dropped);
+  } else finishActivation(next, live);
   return next;
 }
 
@@ -2760,11 +2784,34 @@ function checkWin(state: GameState): void {
   if (holder) state.winner = holder;
 }
 
+/** Steps whose destination is exactly one height below the hex they left. */
+function downSteps(state: GameState, from: Hex, path: Hex[], stop: Hex): number {
+  let n = 0;
+  let prev = from;
+  for (const h of walkedHexes(from, path, stop)) {
+    if (hexHeight(state, prev) - hexHeight(state, h) === 1) n += 1;
+    prev = h;
+  }
+  return n;
+}
+
+/** Pay one owed downhill move. Move only — it does not spend stamina and cannot shoot. */
+function payDownhill(state: GameState, piece: Piece): void {
+  state.downhillQueued = Math.max(0, (state.downhillQueued ?? 0) - 1);
+  state.scoutPieceId = piece.id;
+  state.scoutActionsLeft = 1;
+  state.staminaBonus = false;
+  state.downhillMove = true;
+  state.log.push(`${unitLog(piece)} downhill move`);
+  checkWin(state);
+}
+
 function afterAction(
   state: GameState,
   piece: Piece,
   kind: 'move' | 'shoot' | 'rotate',
   enteredWater = false,
+  downCount = 0,
 ): void {
   markActed(piece);
 
@@ -2775,8 +2822,46 @@ function afterAction(
     return;
   }
 
-  if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    if (!piece.staminaUsedThisTurn) spendStamina(piece);
+  const spendingBonus = state.staminaBonus && state.scoutPieceId === piece.id;
+  if (spendingBonus && !piece.staminaUsedThisTurn) {
+    spendStamina(piece);
+    logStaminaAction(state, piece);
+  }
+
+  // Hill→land, plateau→hill, mountain→plateau. Flat ground and climbs do not.
+  // A drop of 2+ cannot be stepped. Own leftover actions resolve before the free move.
+  const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
+  if (kind === 'move' && downCount > 0) {
+    const leftover = spendingBonus || inDownhill ? 0 : leftoverActionPoints(state, piece);
+    state.downhillQueued = (state.downhillQueued ?? 0) + downCount;
+    if (leftover > 0) {
+      state.downhillMove = false;
+      state.scoutPieceId = piece.id;
+      state.scoutActionsLeft = leftover;
+      state.staminaBonus = false;
+      checkWin(state);
+      return;
+    }
+    payDownhill(state, piece);
+    return;
+  }
+
+  if ((state.downhillQueued ?? 0) > 0 && state.scoutPieceId === piece.id && !spendingBonus) {
+    const leftover = leftoverActionPoints(state, piece);
+    if (leftover > 0) {
+      state.downhillMove = false;
+      state.scoutActionsLeft = leftover;
+      state.staminaBonus = false;
+      checkWin(state);
+      return;
+    }
+    payDownhill(state, piece);
+    return;
+  }
+
+  if (state.downhillMove) state.downhillMove = false;
+
+  if (spendingBonus) {
     finishActivation(state, piece);
     return;
   }
@@ -2790,12 +2875,9 @@ function afterAction(
     return;
   }
 
-  // Unused stamina after every action point is spent buys one extra action.
-  if (
-    (kind === 'move' || kind === 'rotate') &&
-    !piece.staminaUsedThisTurn &&
-    canSpendStamina(piece)
-  ) {
+  // Unused stamina after the action points are spent buys one extra action.
+  // A shot spends those points the same way a move does.
+  if (!piece.staminaUsedThisTurn && canSpendStamina(piece)) {
     state.scoutPieceId = piece.id;
     state.scoutActionsLeft = 1;
     state.staminaBonus = true;
@@ -3154,14 +3236,16 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     }
   }
 
-  // Shoot — show full LOS range; only enemy (or splash aim) is actionable
+  // Shoot — show full LOS range; only enemy (or splash aim) is actionable.
+  // The downhill grant is a move, not a shot.
   if (
+    (state.downhillMove && state.scoutPieceId === piece.id) ||
     stats.shoot <= 0 ||
     isReloading(piece) ||
     isDepleted(piece) ||
     fromTerrain === 'water'
   ) {
-    return out; // move highlights only while reloading / empty / in water / no gun
+    return out; // move highlights only while reloading / empty / in water / no gun / downhill
   }
 
   const shootRange = stats.shoot + terrainHeight(fromTerrain);
@@ -3244,6 +3328,7 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   if (isSleeping(piece)) return state;
   if (hasActed(next, piece.id)) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
+  if (next.downhillMove && next.scoutPieceId === piece.id) return state;
   const prevCovered = hexDamageCoveredKeys(next, piece);
   piece.facing = dir;
   next.log.push(`${unitLog(piece)} turns`);
@@ -3390,7 +3475,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     const bounced = !eq(plan.stop, action.to);
-    const staminaTag = hit.kind === 'stamina' ? ' (stamina)' : '';
+    const staminaTag = hit.kind === 'stamina' && !hit.extra ? ' (stamina)' : '';
     const brokePal =
       plan.palisadeHits.some((p) => p.destroyed) && plan.hits.length === 0;
     const converted = plan.converts.length > 0 && plan.hits.length === 0;
@@ -3445,13 +3530,17 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
     piece.facing = plan.facing;
     if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);
-    if (hit.kind === 'stamina') spendStamina(piece);
+    if (hit.kind === 'stamina') {
+      spendStamina(piece);
+      if (hit.extra) logStaminaAction(next, piece);
+    }
     markMoved(piece);
     if (statsOf(piece.type).moveBudget > 0) {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
-    afterAction(next, piece, 'move', enteredWater);
+    const dropped = downSteps(next, fromHex, walkPath, plan.stop);
+    afterAction(next, piece, 'move', enteredWater, dropped);
     return next;
   }
 
@@ -3575,7 +3664,7 @@ export function allLegalActions(state: GameState): Action[] {
       }
       // shoot-range / rest are display-only
     }
-    if (statsOf(p.type).hexArmor) {
+    if (statsOf(p.type).hexArmor && !(state.downhillMove && state.scoutPieceId === p.id)) {
       const cur = facingOf(p);
       for (let d = 0; d < 6; d++) {
         if (d === cur) continue;

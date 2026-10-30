@@ -1,4 +1,4 @@
-import { copyGlyphGroups, formatCopyHtml } from '../src/copy';
+import { copyGlyphGroups, copyMentionedActions, formatCopyHtml } from '../src/copy';
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -86,6 +86,12 @@ function assert(cond: unknown, msg: string) {
   const html = formatCopyHtml('then [tutorial]');
   assert(html.includes('token-tutorial'), `tutorial hand, got ${html}`);
   assert(!html.includes('[tutorial]'), 'tutorial tag eaten');
+  assert(copyMentionedActions('Press [rest] now [tutorial]').join() === 'rest', 'rest button cue');
+  assert(
+    copyMentionedActions('[spend energy] and [end]').join() === 'energy,end',
+    'spend and end cues',
+  );
+  assert(copyMentionedActions('[energy] [tutorial]').length === 0, 'hud energy is not the button');
 }
 
 console.log('copy: [name] swaps to unit/token icons; unknown stays text');

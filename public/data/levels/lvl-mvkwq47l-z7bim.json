@@ -4,6 +4,7 @@
     "cols": 16,
     "rows": 11,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "water",

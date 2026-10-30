@@ -4,6 +4,7 @@
     "cols": 9,
     "rows": 9,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "land",
@@ -185,8 +186,8 @@
             "row": 8
         }
     ],
-    "sort": 10,
-    "updatedAt": 1793173530206,
+    "sort": 12,
+    "updatedAt": 1793360785194,
     "armies": [
         {
             "type": "cohort",

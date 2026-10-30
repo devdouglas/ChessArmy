@@ -1,31 +1,54 @@
 {
     "id": "lvl-mvhz8dwn-z1uwo",
     "name": "No Rest for the Recruit",
-    "cols": 8,
-    "rows": 10,
+    "cols": 11,
+    "rows": 11,
     "orientation": "flat",
+    "hexRadius": 5,
     "terrain": [
         [
-            "high",
-            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "plateau",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
             "high",
             "high",
             "plateau",
             "water",
             "high",
-            "high"
+            "land",
+            "land",
+            "land"
         ],
         [
-            "high",
-            "high",
-            "high",
-            "high",
-            "plateau",
+            "land",
             "water",
             "high",
-            "high"
+            "water",
+            "high",
+            "water",
+            "water",
+            "water",
+            "high",
+            "water",
+            "land"
         ],
         [
+            "water",
+            "water",
+            "water",
             "water",
             "water",
             "water",
@@ -37,20 +60,26 @@
         ],
         [
             "water",
+            "land",
             "high",
+            "land",
             "water",
+            "land",
             "water",
+            "land",
             "water",
-            "water",
-            "water",
+            "land",
             "water"
         ],
         [
+            "water",
+            "water",
             "land",
+            "water",
             "land",
+            "water",
             "land",
-            "land",
-            "land",
+            "water",
             "land",
             "land",
             "land"
@@ -63,39 +92,54 @@
             "water",
             "water",
             "water",
-            "water"
-        ],
-        [
             "water",
             "water",
             "water",
-            "water",
-            "water",
-            "water",
-            "water",
-            "water"
+            "land"
         ],
         [
             "land",
             "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "water",
+            "water"
+        ],
+        [
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
             "land",
             "land",
+            "water"
+        ],
+        [
             "land",
             "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
             "land",
             "land"
         ],
         [
-            "water",
-            "water",
-            "water",
-            "water",
-            "water",
-            "water",
-            "water",
-            "water"
-        ],
-        [
+            "land",
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -142,38 +186,40 @@
     "tokens": [
         {
             "type": "board",
-            "col": 4,
+            "col": 5,
             "row": 9,
             "text": "Sometimes you will need multiple units to get the job done. You will need to play all units to finish your turn or click 'end turn'. \nTip: Ending a turn without playing a unit counts as a 'rest' action for that unit."
         }
     ],
-    "sort": 5,
-    "updatedAt": 1793341808397,
+    "sort": 6,
+    "updatedAt": 1793359744734,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
-            "col": 6,
+            "col": 7,
             "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "cohort",
-            "col": 5,
-            "row": 9,
-            "side": "red"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "archer",
-            "col": 2,
+            "col": 3,
             "row": 9,
             "side": "red",
             "facing": 1
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 2,
-            "row": 0,
-            "side": "blue"
+            "col": 4,
+            "row": 1,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvuvhfewwv97",
+            "col": 6,
+            "row": 10,
+            "side": "red"
         }
     ]
 }

@@ -4,6 +4,7 @@
     "cols": 7,
     "rows": 7,
     "orientation": "flat",
+    "hexRadius": 3,
     "terrain": [
         [
             "land",
@@ -113,7 +114,7 @@
             "type": "board",
             "col": 1,
             "row": 3,
-            "text": "Climbing up the hill will use some energy [energy]. A good rest will replenish energy at the end of the turn[rest]. [tutorial]"
+            "text": "Climbing up the hill will use some energy [energy]. Press [rest] to recover. [tutorial]"
         },
         {
             "type": "board",
@@ -134,7 +135,7 @@
         }
     ],
     "sort": 0,
-    "updatedAt": 1793346267385,
+    "updatedAt": 1793348552222,
     "armies": [
         {
             "type": "u-mvgpbg68f593",

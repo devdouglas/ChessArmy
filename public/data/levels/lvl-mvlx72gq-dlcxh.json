@@ -1,16 +1,30 @@
 {
     "id": "lvl-mvlx72gq-dlcxh",
     "name": "An Unexpected Visit",
-    "cols": 7,
-    "rows": 6,
+    "cols": 9,
+    "rows": 9,
     "orientation": "flat",
+    "hexRadius": 4,
     "terrain": [
         [
+            "land",
+            "land",
+            "land",
+            "high",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
             "high",
             "high",
             "high",
             "water",
             "water",
+            "land",
             "land",
             "land"
         ],
@@ -18,6 +32,19 @@
             "high",
             "high",
             "high",
+            "high",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "high",
+            "high",
+            "water",
             "water",
             "water",
             "water",
@@ -27,13 +54,17 @@
             "high",
             "high",
             "high",
+            "land",
+            "land",
             "land",
             "water",
             "water",
             "water"
         ],
         [
-            "high",
+            "land",
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -48,9 +79,24 @@
             "land",
             "land",
             "land",
+            "land",
+            "land",
             "land"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -96,139 +142,164 @@
     "tokens": [
         {
             "type": "notouch",
-            "col": 2,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 2,
-            "row": 0
-        },
-        {
-            "type": "notouch",
-            "col": 4,
-            "row": 0
-        },
-        {
-            "type": "notouch",
-            "col": 4,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 5,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 6,
+            "col": 3,
             "row": 2
         },
         {
             "type": "notouch",
             "col": 3,
-            "row": 0
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 2
         },
         {
             "type": "palisade",
-            "col": 3,
-            "row": 4,
+            "col": 4,
+            "row": 6,
             "noTouch": true
         },
         {
             "type": "palisade",
-            "col": 3,
+            "col": 4,
+            "row": 7,
+            "noTouch": true
+        },
+        {
+            "type": "palisade",
+            "col": 6,
             "row": 5,
             "noTouch": true
         },
         {
-            "type": "palisade",
-            "col": 5,
-            "row": 3,
-            "noTouch": true
-        },
-        {
             "type": "tree",
-            "col": 6,
-            "row": 4,
+            "col": 7,
+            "row": 5,
             "noTouch": true
         },
         {
             "type": "house",
-            "col": 4,
-            "row": 5
+            "col": 5,
+            "row": 6
         },
         {
             "type": "tree",
-            "col": 1,
-            "row": 3,
+            "col": 2,
+            "row": 5,
             "noTouch": true
         },
         {
-            "type": "board",
-            "col": 5,
-            "row": 5,
-            "text": "Anthony is sobering up feeling more energized. Those men however look like they are not."
+            "type": "notouch",
+            "col": 2,
+            "row": 4
         },
         {
             "type": "notouch",
             "col": 1,
-            "row": 2
+            "row": 4
         },
         {
             "type": "notouch",
-            "col": 0,
+            "col": 3,
             "row": 3
         },
         {
             "type": "notouch",
             "col": 2,
-            "row": 2
-        },
-        {
-            "type": "notouch",
-            "col": 1,
-            "row": 1
+            "row": 3
         },
         {
             "type": "board",
-            "col": 2,
-            "row": 1,
+            "col": 3,
+            "row": 2,
             "text": "Every turn you start in the water you need [energy]. If you do not have enough energy, you will lose [hp]. \nJumping from this cliff looks fun but make sure you have enough energy to cross the stream or even climb ack up."
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 8
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 8
         }
     ],
-    "sort": 1,
-    "updatedAt": 1793195702056,
+    "sort": 2,
+    "updatedAt": 1793355583731,
     "armies": [
         {
             "type": "peasant",
-            "col": 6,
-            "row": 1,
+            "col": 7,
+            "row": 2,
             "side": "blue",
             "facing": 2
         },
         {
             "type": "peasant",
-            "col": 0,
-            "row": 1,
+            "col": 1,
+            "row": 2,
             "side": "blue",
             "facing": 2
         },
         {
             "type": "peasant",
-            "col": 6,
+            "col": 1,
             "row": 5,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvun2x81vsl5",
+            "col": 6,
+            "row": 7,
             "side": "red",
             "unitTokens": [
                 "general"
-            ]
-        },
-        {
-            "type": "peasant",
-            "col": 0,
-            "row": 4,
-            "side": "blue",
-            "facing": 2
+            ],
+            "facing": 3
         }
     ]
 }

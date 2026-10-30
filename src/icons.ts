@@ -504,15 +504,15 @@ export function tokenGlyphSvg(
 export function tutorialHandSvg(size = 16): string {
   const s = size / 18;
   return `<g class="token-tutorial" transform="scale(${s.toFixed(3)})">
-    <g fill="#f7f1e4" stroke="#1a1410" stroke-width="1.15" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M-4.6 -8.2 H4.6 V-5.2 A2 2 0 0 1 2.6 -3.2 H-2.6 A2 2 0 0 1 -4.6 -5.2 Z"/>
-      <rect x="-4.55" y="-6.15" width="2.05" height="3.15" rx="1"/>
-      <rect x="-2.15" y="-7.15" width="2.05" height="3.7" rx="1"/>
-      <rect x="0.25" y="-6.45" width="2.05" height="3.2" rx="1"/>
-      <rect x="2.45" y="-5.35" width="1.85" height="2.35" rx="0.9"/>
-      <rect x="-1.2" y="-2.15" width="2.4" height="10.5" rx="1.2"/>
+    <g fill="#f7f1e4" stroke="#1a1410" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M-6.3 -8.6 H6.1 V-5.1 A2.4 2.4 0 0 1 3.6 -2.8 H-3.8 A2.4 2.4 0 0 1 -6.3 -5.1 Z"/>
+      <rect x="-6.05" y="-6.5" width="3.25" height="3.7" rx="1.45"/>
+      <rect x="-2.7" y="-7.7" width="3.3" height="4.5" rx="1.5"/>
+      <rect x="0.65" y="-6.85" width="3.25" height="3.85" rx="1.45"/>
+      <rect x="3.55" y="-5.35" width="2.7" height="2.85" rx="1.25"/>
+      <rect x="-0.7" y="-2.15" width="4.9" height="11.15" rx="2.2"/>
     </g>
-    <rect x="-0.62" y="5.55" width="1.24" height="1.7" rx="0.45" fill="#e4cbb8" stroke="#1a1410" stroke-width="0.7"/>
+    <rect x="0.6" y="6.15" width="2.3" height="2.05" rx="0.7" fill="#e4cbb8" stroke="#1a1410" stroke-width="0.65"/>
   </g>`;
 }
 
@@ -583,6 +583,10 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
         fill="#111" font-size="${fs}" font-weight="700">${n}</text>
     </g>`;
 }
+
+/** Heart, viewBox roughly -6..6 × -5.4..5.2. */
+export const HP_HEART =
+  'M0 4.7 C0 4.7 -5.2 1.15 -5.2 -1.55 C-5.2 -3.55 -3.55 -4.85 -1.9 -4.85 C-0.95 -4.85 -0.25 -4.3 0 -3.35 C0.25 -4.3 0.95 -4.85 1.9 -4.85 C3.55 -4.85 5.2 -3.55 5.2 -1.55 C5.2 1.15 0 4.7 0 4.7 Z';
 
 /** Lightning bolt, viewBox roughly -5..5 × -7..7. */
 export const STAMINA_BOLT =
@@ -674,11 +678,12 @@ export function hudEnergyIconSvg(em = '1.2em'): string {
   return `<svg class="copy-icon hud energy" viewBox="-5 -7 10 14" width="${em}" height="${em}" role="img" aria-label="Energy"><path fill="#f0d060" d="${STAMINA_BOLT}"/></svg>`;
 }
 
-/** Inline HP / units pip for copy / glyph catalog. */
+/** Inline HP heart / units pip for copy / glyph catalog. */
 export function hudPipIconSvg(kind: 'hp' | 'units', em = '1.2em'): string {
-  const fill = kind === 'hp' ? 'var(--piece-red)' : 'var(--piece-blue)';
-  const label = kind === 'hp' ? 'HP' : 'Units';
-  return `<svg class="copy-icon hud pip" viewBox="0 0 8 12" width="0.58em" height="${em}" role="img" aria-label="${label}"><rect x="0.4" y="0.4" width="7.2" height="11.2" rx="1" fill="${fill}"/></svg>`;
+  if (kind === 'hp') {
+    return `<svg class="copy-icon hud heart" viewBox="-6 -6 12 12" width="${em}" height="${em}" role="img" aria-label="HP"><path fill="var(--piece-red)" d="${HP_HEART}"/></svg>`;
+  }
+  return `<svg class="copy-icon hud pip" viewBox="0 0 8 12" width="0.58em" height="${em}" role="img" aria-label="Units"><rect x="0.4" y="0.4" width="7.2" height="11.2" rx="1" fill="var(--piece-blue)"/></svg>`;
 }
 
 /** Inline shot arrow for copy / glyph catalog. */
@@ -754,14 +759,22 @@ function factionBlockPips(
   return `<span class="${kind}-pips ${side}" aria-label="${label} ${on} of ${max}">${bits}</span>`;
 }
 
-/** Remaining / max HP as faction-colored blocks. First pip is gold if a General token. */
+/** Remaining / max HP as hearts. First heart is gold if a General token. */
 export function hpPipsHtml(
   left: number,
   max: number,
   side: Affiliation | 'catalog',
   generalFirst = false,
 ): string {
-  return factionBlockPips('hp', left, max, side, 'HP', generalFirst);
+  if (max <= 0) return '';
+  const on = Math.max(0, Math.min(max, Math.floor(left)));
+  const regularOn = generalFirst ? Math.max(0, on - 1) : on;
+  const hearts = Array.from({ length: max }, (_, i) => {
+    const isGen = generalFirst && i === 0;
+    const filled = isGen ? on > 0 : generalFirst ? i - 1 < regularOn : i < on;
+    return `<svg class="hp-pip ${filled ? 'on' : 'off'}${isGen ? ' general' : ''}" viewBox="-6 -6 12 12" aria-hidden="true"><path d="${HP_HEART}"/></svg>`;
+  }).join('');
+  return `<span class="hp-pips ${side}" aria-label="HP ${on} of ${max}">${hearts}</span>`;
 }
 
 /** Remaining activations this turn as faction-colored blocks. */

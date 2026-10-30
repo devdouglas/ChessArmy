@@ -121,6 +121,24 @@ function assert(cond: unknown, msg: string): void {
 }
 
 {
+  const t = emptyTerrain(8, 10);
+  const from = { col: 3, row: 2 };
+  const tgt = neighborInDir(from, 1, 'pointy');
+  let s = createStateFromTerrain(t, 'repro-shoot-bonus', 'pointy', [
+    { type: 'soldier', col: from.col, row: from.row, side: 'red' },
+    { type: 'general', col: 1, row: 1, side: 'red' },
+    { type: 'soldier', col: tgt.col, row: tgt.row, side: 'blue' },
+    { type: 'general', col: 1, row: 9, side: 'blue' },
+  ]);
+  s.unitsPerTurn = 1;
+  const id = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!.id;
+  s = applyAction(s, { kind: 'shoot', pieceId: id, at: tgt });
+  assert(s.turn === 'red', 'last unit shot still offers the stamina extra');
+  assert(s.staminaBonus, 'shot does not skip the stamina action');
+  assert(staminaLeft(getPiece(s, id)!) === 1, 'shot does not spend stamina until the extra');
+}
+
+{
   let { s, id } = make(1, 'soldier');
   getPiece(s, id)!.stamina = 0;
   s = restPiece(s, id);

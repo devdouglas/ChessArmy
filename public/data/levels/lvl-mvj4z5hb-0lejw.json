@@ -4,13 +4,14 @@
     "cols": 8,
     "rows": 8,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "water",
             "water",
             "rock",
             "rock",
-            "high",
+            "rock",
             "high",
             "land",
             "land"
@@ -148,19 +149,19 @@
         },
         {
             "type": "board",
-            "col": 3,
-            "row": 4,
-            "text": "The armor makes quick turning around hard. Rotating towards a red side is considered an action. A minor annoyance unless you are cornered or feeling a pointy stick in your back."
+            "col": 5,
+            "row": 2,
+            "text": "Use energy before your turn to double your actions. Use [energy] to move to a weaker spot and hit the enemy from the side."
         },
         {
             "type": "board",
-            "col": 5,
-            "row": 2,
-            "text": "Use energy before your turn to double your actions. Move twice to maneuvre or hit the enemy twice."
+            "col": 2,
+            "row": 4,
+            "text": "The armor makes quick turning around hard. Rotating towards a red side is considered an action. A minor annoyance unless you are cornered or feeling a pointy stick in your back."
         }
     ],
-    "sort": 4,
-    "updatedAt": 1793195702056,
+    "sort": 5,
+    "updatedAt": 1793359232458,
     "armies": [
         {
             "type": "u-mvr2vokzh3n3",
@@ -179,8 +180,7 @@
             "row": 1,
             "side": "blue",
             "unitTokens": [
-                "sleep",
-                "exhausted"
+                "sleep"
             ]
         },
         {
@@ -194,7 +194,7 @@
             "facing": 4
         },
         {
-            "type": "u-mvr2vokzh3n3",
+            "type": "u-mvuvhfewwv97",
             "col": 3,
             "row": 6,
             "side": "red"

@@ -193,6 +193,21 @@ export function copyMentionsTutorial(text: string): boolean {
   });
 }
 
+/** Action buttons named in the copy. `[rest]` → the Rest dock button. */
+export function copyMentionedActions(text: string): ActionGlyphId[] {
+  const found: ActionGlyphId[] = [];
+  for (const part of text.split(/(\[[^\[\]]+\])/g)) {
+    const m = /^\[([^\[\]]+)\]$/.exec(part);
+    if (!m) continue;
+    const key = normKey(m[1]);
+    const hit = ACTION_GLYPHS.find(
+      (a) => normKey(a.tag) === key || a.aliases.some((alias) => normKey(alias) === key),
+    );
+    if (hit && !found.includes(hit.id)) found.push(hit.id);
+  }
+  return found;
+}
+
 /** Escape copy, swapping `[hoplite]` / `[pikes]` for that item's icon. */
 export function formatCopyHtml(text: string): string {
   return text

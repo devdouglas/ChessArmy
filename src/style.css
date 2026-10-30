@@ -2068,7 +2068,7 @@ button.primary:focus-visible {
 }
 
 .hp-pips.catalog .hp-pip.on {
-  background: var(--ink);
+  fill: var(--ink);
 }
 
 .unit-card > details > summary::after {
@@ -3482,6 +3482,12 @@ svg.board .hex {
   vertical-align: -0.12em;
 }
 
+.copy-icon.hud.heart {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.16em;
+}
+
 .copy-icon.action {
   width: auto;
   height: 1.15em;
@@ -4375,7 +4381,7 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
 }
 
 .play-dock .action-bar-piece .hp-pip {
-  width: 0.72rem;
+  width: 1.08rem;
   height: 1.08rem;
 }
 
@@ -4454,7 +4460,6 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   vertical-align: middle;
 }
 
-.hp-pip,
 .units-pip {
   display: block;
   width: 0.48rem;
@@ -4463,44 +4468,58 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   flex: 0 0 auto;
 }
 
-.hp-pip.off,
+.hp-pip {
+  display: block;
+  width: 0.78rem;
+  height: 0.78rem;
+  flex: 0 0 auto;
+}
+
 .units-pip.off {
   background: #4a5248;
 }
 
-.hp-pips.red .hp-pip.on,
+.hp-pip.off {
+  fill: #4a5248;
+}
+
 .units-pips.red .units-pip.on {
   background: var(--piece-red);
 }
-.hp-pips.blue .hp-pip.on,
+.hp-pips.red .hp-pip.on {
+  fill: var(--piece-red);
+}
 .units-pips.blue .units-pip.on {
   background: var(--piece-blue);
 }
-.hp-pips.yellow .hp-pip.on,
+.hp-pips.blue .hp-pip.on {
+  fill: var(--piece-blue);
+}
 .units-pips.yellow .units-pip.on {
   background: var(--piece-yellow);
 }
-.hp-pips.purple .hp-pip.on,
+.hp-pips.yellow .hp-pip.on {
+  fill: var(--piece-yellow);
+}
 .units-pips.purple .units-pip.on {
   background: var(--piece-purple);
 }
-.hp-pips.neutral .hp-pip.on,
+.hp-pips.purple .hp-pip.on {
+  fill: var(--piece-purple);
+}
 .units-pips.neutral .units-pip.on {
   background: var(--piece-neutral);
 }
+.hp-pips.neutral .hp-pip.on {
+  fill: var(--piece-neutral);
+}
 
-.hp-pips .hp-pip.on.general,
-.hp-pips.red .hp-pip.on.general,
-.hp-pips.blue .hp-pip.on.general,
-.hp-pips.yellow .hp-pip.on.general,
-.hp-pips.purple .hp-pip.on.general {
-  background: #f0d060;
-  box-shadow: inset 0 0 0 1px #8a6820;
+.hp-pips .hp-pip.on.general {
+  fill: #f0d060;
 }
 
 .hp-pips .hp-pip.off.general {
-  background: #3a3830;
-  box-shadow: inset 0 0 0 1px #8a7030;
+  fill: #6a6248;
 }
 
 .action-bar-hint {
@@ -4545,7 +4564,22 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   padding-bottom: calc(9.2rem + var(--safe-b));
 }
 
+.play-dock,
+.unit-dock {
+  overflow: visible;
+}
+
+.dock-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  overflow: visible;
+}
+
 .unit-dock .dock-btn {
+  flex: 1 1 auto;
+  width: 100%;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4564,6 +4598,22 @@ svg.board:has(.hl-tint.path) .hl-tint.stamina {
   border: 1px solid #3d4a40;
   background: #2a332c;
   color: #d5e0d4;
+}
+
+.dock-tutorial {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 4;
+  transform: translate(-50%, -78%);
+  opacity: 1;
+  pointer-events: none;
+  line-height: 0;
+}
+
+.dock-tutorial .tutorial-hand {
+  display: block;
+  overflow: visible;
 }
 
 .unit-dock .dock-ico {

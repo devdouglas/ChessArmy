@@ -1,9 +1,10 @@
 {
     "id": "lvl-mvf99zhy-r3gl1",
     "name": "A Small Matter of Barbarians",
-    "cols": 8,
-    "rows": 8,
+    "cols": 9,
+    "rows": 9,
     "orientation": "flat",
+    "hexRadius": 4,
     "terrain": [
         [
             "land",
@@ -12,23 +13,37 @@
             "land",
             "land",
             "land",
-            "water",
-            "water"
-        ],
-        [
-            "water",
-            "water",
             "land",
             "land",
-            "land",
-            "land",
-            "water",
-            "water"
+            "land"
         ],
         [
             "land",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
             "land",
             "water",
+            "land"
+        ],
+        [
+            "water",
+            "land",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -43,19 +58,11 @@
             "land",
             "land",
             "land",
+            "land",
             "land"
         ],
         [
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "high"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -73,9 +80,22 @@
             "land",
             "land",
             "land",
+            "land",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
             "land"
         ],
         [
+            "land",
             "land",
             "land",
             "land",
@@ -122,21 +142,6 @@
     "tokens": [
         {
             "type": "forest",
-            "col": 0,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 1,
-            "row": 0
-        },
-        {
-            "type": "forest",
-            "col": 2,
-            "row": 0
-        },
-        {
-            "type": "forest",
             "col": 2,
             "row": 1
         },
@@ -147,8 +152,13 @@
         },
         {
             "type": "forest",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "forest",
             "col": 4,
-            "row": 0
+            "row": 1
         },
         {
             "type": "forest",
@@ -156,88 +166,118 @@
             "row": 0
         },
         {
-            "type": "tree",
-            "col": 1,
-            "row": 4
+            "type": "forest",
+            "col": 6,
+            "row": 1
         },
         {
             "type": "tree",
             "col": 2,
-            "row": 6
+            "row": 5
         },
         {
-            "type": "notouch",
-            "col": 1,
-            "row": 4
+            "type": "tree",
+            "col": 3,
+            "row": 6
         },
         {
             "type": "notouch",
             "col": 2,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 3,
             "row": 6
+        },
+        {
+            "type": "forest",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "tree",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 4
         }
     ],
-    "sort": 8,
-    "updatedAt": 1793134104243,
+    "sort": 10,
+    "updatedAt": 1793361710611,
     "armies": [
         {
             "type": "archer",
-            "col": 5,
-            "row": 6,
+            "col": 6,
+            "row": 7,
             "side": "red"
         },
         {
             "type": "peasant",
-            "col": 4,
+            "col": 5,
             "row": 3,
             "side": "red"
         },
         {
             "type": "peasant",
-            "col": 3,
-            "row": 4,
+            "col": 4,
+            "row": 5,
             "side": "red"
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 3,
-            "row": 0,
+            "col": 4,
+            "row": 1,
             "side": "yellow",
             "unitTokens": [
                 "general"
             ]
         },
         {
-            "type": "dude",
-            "col": 5,
-            "row": 7,
-            "side": "red",
-            "unitTokens": [
-                "general"
-            ]
-        },
-        {
             "type": "javelin",
-            "col": 4,
+            "col": 5,
             "row": 7,
             "side": "red"
         },
         {
             "type": "barbarian",
-            "col": 4,
+            "col": 5,
             "row": 1,
             "side": "yellow"
         },
         {
             "type": "barbarian",
-            "col": 3,
-            "row": 1,
+            "col": 4,
+            "row": 2,
             "side": "yellow"
         },
         {
             "type": "u-mvr2vokzh3n3",
-            "col": 3,
-            "row": 6,
+            "col": 4,
+            "row": 7,
             "side": "red"
+        },
+        {
+            "type": "u-mvuvhfewwv97",
+            "col": 7,
+            "row": 6,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ],
+            "facing": 3
+        },
+        {
+            "type": "javelin",
+            "col": 4,
+            "row": 0,
+            "side": "yellow",
+            "unitTokens": [
+                "exhausted"
+            ]
         }
     ]
 }

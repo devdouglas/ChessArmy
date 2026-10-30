@@ -4,6 +4,7 @@
     "cols": 11,
     "rows": 11,
     "orientation": "pointy",
+    "hexRadius": 0,
     "terrain": [
         [
             "plateau",

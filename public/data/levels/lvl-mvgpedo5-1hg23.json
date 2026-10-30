@@ -4,6 +4,7 @@
     "cols": 7,
     "rows": 7,
     "orientation": "flat",
+    "hexRadius": 0,
     "terrain": [
         [
             "land",
@@ -103,8 +104,8 @@
         "purple": "aggressive"
     },
     "tokens": [],
-    "sort": 9,
-    "updatedAt": 1793134104243,
+    "sort": 11,
+    "updatedAt": 1793360785194,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
