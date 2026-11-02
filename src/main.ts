@@ -25,6 +25,7 @@ import {
   passTurn,
   canOrderMarch,
   marchRoute,
+  plusStepPlan,
   performMarch,
   setMarchDoubleTime,
   setWalkOrder,
@@ -2895,6 +2896,59 @@ function committedPathTo(hex: Hex): Hex[] {
   return drawnPathTo(hex);
 }
 
+function plusOnlyHex(hex: Hex): boolean {
+  const marked = highlights.some((h) => h.kind === 'plus' && eq(h.hex, hex));
+  if (!marked) return false;
+  return !highlights.some(
+    (h) =>
+      (h.kind === 'move' || h.kind === 'stamina' || (h.kind === 'charge' && !h.unpaid)) &&
+      eq(h.hex, hex),
+  );
+}
+
+/** Walk the downhill step, then the free +1, in this turn. No energy, no march. */
+async function tryPlusStep(hex: Hex) {
+  if (!canActWithSelected() || !selectedId || animating) return;
+  const plan = plusStepPlan(state, selectedId, hex);
+  if (!plan) return;
+  const actingId = selectedId;
+  pendingHex = null;
+  hoverHex = null;
+  hoverPath = [];
+  commitPath = [];
+  await playAnimatedAction({
+    kind: 'move',
+    pieceId: actingId,
+    to: plan.landing,
+    path: plan.landingPath,
+  });
+  const still = getPiece(state, actingId);
+  if (still && state.downhillMove && state.scoutPieceId === actingId && eq(
+    { col: still.col, row: still.row },
+    plan.landing,
+  )) {
+    await playAnimatedAction({
+      kind: 'move',
+      pieceId: actingId,
+      to: hex,
+      path: plan.bonusPath,
+    });
+  }
+  await settleUnarmedStaminaExtra(actingId);
+  if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
+    selectedId = actingId;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+    render();
+  } else {
+    retainSelection(actingId);
+    render();
+    await maybeAi();
+  }
+}
+
 async function tryAct(hex: Hex, kind: ActionMode) {
   if (!canActWithSelected() || !selectedId) return;
 
@@ -3148,11 +3202,15 @@ function renderBoard(): string {
   // energy bolts and they flash while the unit stays selected.
   const allHl = !editing && selectedId && canControl() ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina' | 'charge'>();
+  const plusMove = new Set<string>();
+  const plusOnly = new Set<string>();
   const restSet = new Set<string>();
   const shootRange = new Set<string>();
   const shootTarget = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
+    if (hl.kind === 'plus') plusOnly.add(k);
+    if (hl.kind === 'move' && hl.plus) plusMove.add(k);
     if (hl.kind === 'move' || hl.kind === 'stamina' || (hl.kind === 'charge' && !hl.unpaid)) {
       moveMap.set(k, hl.kind);
     } else if (hl.kind === 'shoot') shootTarget.add(k);
@@ -3200,7 +3258,12 @@ function renderBoard(): string {
         splashSet.add(key(n));
       }
     }
+    const plusPlan =
+      sel && highlights.some((h) => h.kind === 'plus' && eq(h.hex, hoverHex!))
+        ? plusStepPlan(state, sel.id, hoverHex)
+        : null;
     const previewMarch =
+      !plusPlan &&
       marchOn &&
       sel &&
       !hasAbility(sel, 'charge') &&
@@ -3208,7 +3271,11 @@ function renderBoard(): string {
       canOrderMarch(state, sel, hoverHex, doubleTime)
         ? marchRoute(state, sel, hoverHex)
         : null;
-    if (previewMarch?.length) {
+    if (plusPlan) {
+      pathKind = 'move';
+      hoverPath = [...plusPlan.landingPath, ...plusPlan.bonusPath];
+      for (const h of hoverPath) pathSet.add(key(h));
+    } else if (previewMarch?.length) {
       for (const h of previewMarch) marchSet.add(key(h));
       marchEnd = previewMarch[previewMarch.length - 1] ?? null;
     } else {
@@ -3285,7 +3352,9 @@ function renderBoard(): string {
       const meleeHex = !editing && !!actor && meleeRangeHex(actor, hex);
       const mv = moveMap.get(k);
       const enemyMelee = meleeHex && (mv === 'move' || mv === 'stamina' || mv === 'charge');
-      if (enemyMelee) hlOverlays += `<polygon class="hl-tint melee" points="${pts}" />`;
+      const plusTile = plusMove.has(k) || (plusOnly.has(k) && !moveMap.has(k));
+      if (enemyMelee && !plusTile) hlOverlays += `<polygon class="hl-tint melee" points="${pts}" />`;
+      else if (plusTile) hlOverlays += `<polygon class="hl-tint plus" points="${pts}" />`;
       else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
       else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
@@ -3378,6 +3447,7 @@ function renderBoard(): string {
     }
   }
   for (const k of restSet) {
+    if (plusOnly.has(k) && !moveMap.has(k)) continue;
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
     const occ = seenOcc(hex);
@@ -3385,6 +3455,16 @@ function renderBoard(): string {
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
     staminaMarks += `<g class="need-rest-mark${busy ? '' : ' ghost'}">${staminaEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
+  }
+  const plusFont = Math.max(10, HEX_SIZE * 0.36);
+  const plusLabel = new Set(plusMove);
+  for (const k of plusOnly) {
+    if (!moveMap.has(k)) plusLabel.add(k);
+  }
+  for (const k of plusLabel) {
+    const hex = parseKey(k);
+    const { x, y } = pixelOf(hex);
+    staminaMarks += `<text class="hl-plus-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${plusFont.toFixed(1)}">+1</text>`;
   }
 
   let tokensSvg = '';
@@ -3779,14 +3859,13 @@ function renderActionBar(): string {
   }
 
   const left = state.scoutActionsLeft ?? 0;
+  const downhillNow = state.downhillMove && state.scoutPieceId === piece.id;
   const scoutUi =
-    state.scoutPieceId && canControl()
+    state.scoutPieceId && canControl() && !downhillNow
       ? `<button type="button" id="skip-scout">${
-          state.downhillMove
-            ? 'Skip downhill move'
-            : state.staminaBonus
-              ? 'Skip second action'
-              : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
+          state.staminaBonus
+            ? 'Skip second action'
+            : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
         }</button>`
       : '';
 
@@ -4661,6 +4740,10 @@ function onHexClick(col: number, row: number) {
   // Own piece selected + can act → resolve by what that hex allows
   if (canActWithSelected() && selectedId) {
     const piece = getPiece(state, selectedId);
+    if (piece && plusOnlyHex(hex)) {
+      void tryPlusStep(hex);
+      return;
+    }
     const { canMove, canShoot, canCharge } = hexActions(selectedId, hex);
     if (!canMove && !canShoot && !canCharge && piece) {
       const dir = redZoneDir(piece, hex);
@@ -4860,7 +4943,10 @@ function bindBoardOnly() {
     const sel = selectedId ? getPiece(state, selectedId) : null;
     const moveHover = highlights.some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+        (h.kind === 'move' ||
+          h.kind === 'stamina' ||
+          h.kind === 'charge' ||
+          h.kind === 'plus') &&
         eq(h.hex, hex),
     );
     const splashHover =
@@ -4890,7 +4976,7 @@ function paintBoardHover(next: Hex | null) {
     next &&
     highlights.some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge' || h.kind === 'plus') &&
         eq(h.hex, next),
     )
   );

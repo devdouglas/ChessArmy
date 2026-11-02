@@ -195,17 +195,6 @@
         },
         {
             "type": "tree",
-            "col": 7,
-            "row": 5,
-            "noTouch": true
-        },
-        {
-            "type": "house",
-            "col": 5,
-            "row": 6
-        },
-        {
-            "type": "tree",
             "col": 2,
             "row": 5,
             "noTouch": true
@@ -265,10 +254,20 @@
             "type": "notouch",
             "col": 4,
             "row": 8
+        },
+        {
+            "type": "house",
+            "col": 7,
+            "row": 5
+        },
+        {
+            "type": "tree",
+            "col": 5,
+            "row": 6
         }
     ],
     "sort": 2,
-    "updatedAt": 1793355583731,
+    "updatedAt": 1793644646745,
     "armies": [
         {
             "type": "peasant",

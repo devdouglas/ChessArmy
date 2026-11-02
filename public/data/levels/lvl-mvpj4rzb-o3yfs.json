@@ -179,7 +179,7 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "aggressive",
+        "blue": "defensive",
         "yellow": "defensive",
         "purple": "aggressive"
     },
@@ -405,8 +405,8 @@
             "row": 6
         }
     ],
-    "sort": 9,
-    "updatedAt": 1793360785194,
+    "sort": 12,
+    "updatedAt": 1793650787739,
     "armies": [
         {
             "type": "dude",

@@ -1,0 +1,341 @@
+{
+    "id": "lvl-mvzn9c9m-caq7z",
+    "name": "Training day",
+    "cols": 13,
+    "rows": 7,
+    "orientation": "flat",
+    "hexRadius": 0,
+    "terrain": [
+        [
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land"
+        ],
+        [
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water",
+            "land",
+            "water"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "high",
+            "high",
+            "high",
+            "land",
+            "high",
+            "high",
+            "high",
+            "land",
+            "high",
+            "high"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 0
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 5
+        },
+        {
+            "type": "palisade",
+            "col": 12,
+            "row": 6
+        }
+    ],
+    "sort": 9,
+    "updatedAt": 1793650782264,
+    "armies": [
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 6,
+            "side": "red",
+            "facing": 3
+        },
+        {
+            "type": "javelin",
+            "col": 6,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "exhausted"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "exhausted"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 0,
+            "side": "blue",
+            "unitTokens": [
+                "exhausted"
+            ],
+            "facing": 0
+        }
+    ]
+}

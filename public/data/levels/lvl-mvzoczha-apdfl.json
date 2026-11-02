@@ -1,0 +1,360 @@
+{
+    "id": "lvl-mvzoczha-apdfl",
+    "name": "Gladiator 2",
+    "cols": 9,
+    "rows": 9,
+    "orientation": "flat",
+    "hexRadius": 4,
+    "terrain": [
+        [
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high"
+        ],
+        [
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 5,
+    "maxTurns": 0,
+    "teaserText": "",
+    "startText": "",
+    "winText": "",
+    "loseText": "",
+    "startAudio": "",
+    "winAudio": "",
+    "loseAudio": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 6
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-ally"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "aggressive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 4
+        },
+        {
+            "type": "wall",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 5
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 2,
+            "row": 7
+        },
+        {
+            "type": "wall",
+            "col": 3,
+            "row": 7
+        },
+        {
+            "type": "wall",
+            "col": 5,
+            "row": 7
+        },
+        {
+            "type": "wall",
+            "col": 6,
+            "row": 7
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "palisade",
+            "col": 7,
+            "row": 4
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 5,
+            "row": 1
+        }
+    ],
+    "sort": 18,
+    "updatedAt": 1793650769280,
+    "armies": [
+        {
+            "type": "u-mvuvhfewwv97",
+            "col": 4,
+            "row": 5,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
+        },
+        {
+            "type": "javelin",
+            "col": 3,
+            "row": 5,
+            "side": "red"
+        },
+        {
+            "type": "javelin",
+            "col": 5,
+            "row": 5,
+            "side": "red",
+            "facing": 3
+        },
+        {
+            "type": "wolf",
+            "col": 3,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "wolf",
+            "col": 4,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "wolf",
+            "col": 5,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "barbarian",
+            "col": 0,
+            "row": 4,
+            "side": "yellow"
+        },
+        {
+            "type": "barbarian",
+            "col": 4,
+            "row": 8,
+            "side": "yellow"
+        },
+        {
+            "type": "barbarian",
+            "col": 8,
+            "row": 4,
+            "side": "yellow"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 3,
+            "row": 4,
+            "side": "purple",
+            "unitTokens": [
+                "neutral"
+            ]
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 5,
+            "row": 4,
+            "side": "purple",
+            "unitTokens": [
+                "neutral"
+            ]
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 4,
+            "row": 6,
+            "side": "purple"
+        }
+    ]
+}

@@ -25,7 +25,7 @@
             "land",
             "land",
             "land",
-            "land",
+            "high",
             "land"
         ],
         [
@@ -34,10 +34,10 @@
             "high",
             "high",
             "land",
-            "land",
-            "land",
-            "water",
-            "water"
+            "high",
+            "high",
+            "high",
+            "high"
         ],
         [
             "plateau",
@@ -46,29 +46,29 @@
             "high",
             "high",
             "water",
-            "water",
-            "water",
-            "water"
-        ],
-        [
-            "plateau",
-            "plateau",
-            "plateau",
-            "high",
-            "high",
-            "water",
-            "water",
-            "water",
-            "water"
-        ],
-        [
-            "plateau",
-            "plateau",
-            "plateau",
-            "high",
-            "high",
             "land",
+            "land",
+            "high"
+        ],
+        [
+            "rock",
+            "plateau",
+            "plateau",
             "water",
+            "high",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "rock",
+            "plateau",
+            "plateau",
+            "high",
+            "water",
+            "land",
+            "land",
             "land",
             "water"
         ],
@@ -87,9 +87,9 @@
             "land",
             "land",
             "high",
-            "land",
-            "land",
-            "land",
+            "high",
+            "high",
+            "high",
             "land",
             "land",
             "land"
@@ -99,7 +99,7 @@
             "land",
             "land",
             "land",
-            "land",
+            "high",
             "land",
             "land",
             "land",
@@ -112,7 +112,7 @@
     "maxTurns": 0,
     "teaserText": "Three scarecrows. One farmer. A life of limitless promise.",
     "startText": "Anthony remembers he forgot something and rushes home. He uses the hills to make some speed. [tutorial]",
-    "winText": "Three scarecrows lay in the dirt, and Anthony's fields were once again free of imaginary birds. He rested beneath a tree and considered the morning's work. It was the most fighting he'd done in years.\n\nPerhaps soldiering would suit him after all.",
+    "winText": "Anthony came at him so fast he did not see him coming. But no time for questions. There is more activity in the front of the house.",
     "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your stamina. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
     "startAudio": "A-Farmers-Lot-Intro.mp3",
     "winAudio": "A-farmers-lot-victory.mp3",
@@ -135,37 +135,82 @@
     },
     "aiStyles": {
         "red": "aggressive",
-        "blue": "defensive",
+        "blue": "aggressive",
         "yellow": "aggressive",
         "purple": "aggressive"
     },
     "tokens": [
-        {
-            "type": "flag",
-            "col": 4,
-            "row": 0
-        },
         {
             "type": "house",
             "col": 5,
             "row": 0
         },
         {
-            "type": "tutorial",
+            "type": "tree",
+            "col": 6,
+            "row": 5
+        },
+        {
+            "type": "tree",
+            "col": 3,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 2
+        },
+        {
+            "type": "board",
+            "col": 4,
+            "row": 7,
+            "text": "Know how to navigate your terrain. Climbing hills costs [energy]. But running down to lower grounds grands you extra movement.\nJumpng in the water will end your turn."
+        },
+        {
+            "type": "board",
             "col": 0,
-            "row": 4
+            "row": 4,
+            "text": "You can see your house from up here. Somebody is roaming around the house. If he doesnt see you coming you can sucker punch him down and then ask him some questions."
+        },
+        {
+            "type": "palisade",
+            "col": 2,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 1
         }
     ],
     "sort": 1,
-    "updatedAt": 1793431641020,
+    "updatedAt": 1793644538587,
     "armies": [
-        {
-            "type": "u-mvun2x81vsl5",
-            "col": 4,
-            "row": 7,
-            "side": "red",
-            "facing": 3
-        },
         {
             "type": "peasant",
             "col": 6,
@@ -173,7 +218,14 @@
             "side": "blue",
             "unitTokens": [
                 "exhausted"
-            ]
+            ],
+            "facing": 0
+        },
+        {
+            "type": "u-mvun2x81vsl5",
+            "col": 4,
+            "row": 8,
+            "side": "red"
         }
     ]
 }

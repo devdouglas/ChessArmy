@@ -847,9 +847,11 @@ export type Action =
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
-  | { kind: 'move'; hex: Hex; cost: number }
+  | { kind: 'move'; hex: Hex; cost: number; plus?: boolean }
+  /** Downhill +1, shown only. Not a destination of this action. */
+  | { kind: 'plus'; hex: Hex; cost: number }
   /** Walk that spends 1 stamina (climb, or the extra straight-line action). */
-  | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean }
+  | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean; beyondPlus?: boolean }
   /** Would be a stamina walk if the pool weren't empty — display only. */
   | { kind: 'rest'; hex: Hex; cost: number; extra?: boolean }
   /** Crash through enemies. `extra` is past the normal move (spends 1). `unpaid` is that same tile with no energy left — display only. */
@@ -2454,7 +2456,7 @@ export function canOrderMarch(
   if (!marchRoute(state, piece, goal)) return false;
   for (const h of rangeHighlights(state, piece.id)) {
     if (!eq(h.hex, goal)) continue;
-    if (h.kind === 'move') return false;
+    if (h.kind === 'move' || h.kind === 'plus') return false;
     if (h.kind === 'stamina' && (!h.extra || doubleTime)) return false;
   }
   return true;
@@ -3261,6 +3263,69 @@ function keepBetterStop(
   out.set(k, stop);
 }
 
+type PlusReach = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
+
+/** Free downhill bonus stops. Not an energy spend. */
+function plusBonusStops(state: GameState, piece: Piece, first: Map<string, StraightStop>): Map<string, PlusReach> {
+  const from: Hex = { col: piece.col, row: piece.row };
+  const fromKey = key(from);
+  const out = new Map<string, PlusReach>();
+  for (const [k, stop] of first) {
+    if (stop.via) continue;
+    const landing = parseKey(k);
+    if (downSteps(state, from, stop.path, landing) <= 0) continue;
+    if (pathEntersWater(state, from, landing, stop.path)) continue;
+    const bonus = straightMoveStops(
+      state,
+      piece,
+      landing,
+      capMoveRange(state, piece, moveRangeAt(state, piece, landing)),
+    );
+    for (const [bk, b] of bonus) {
+      if (bk === fromKey) continue;
+      const held = first.get(bk);
+      if (held && !held.via) continue;
+      const prev = out.get(bk);
+      if (prev && stop.dist >= prev.landingPath.length) continue;
+      out.set(bk, { landing, landingPath: stop.path, bonusPath: b.path });
+    }
+  }
+  return out;
+}
+
+/** One energy action past the free +1. The +1 itself stays free. */
+function energyBeyondPlus(
+  state: GameState,
+  piece: Piece,
+  first: Map<string, StraightStop>,
+  plus: Map<string, PlusReach>,
+): Map<string, StraightStop> {
+  const startKey = key({ col: piece.col, row: piece.row });
+  const out = new Map<string, StraightStop>();
+  for (const [pk, info] of plus) {
+    const fromPlus = parseKey(pk);
+    const further = straightMoveStops(
+      state,
+      piece,
+      fromPlus,
+      capMoveRange(state, piece, moveRangeAt(state, piece, fromPlus)),
+    );
+    for (const [dk, b] of further) {
+      if (dk === startKey || plus.has(dk) || first.has(dk)) continue;
+      const path = [...info.landingPath, ...info.bonusPath, ...b.path];
+      const prev = out.get(dk);
+      if (prev && prev.dist <= path.length) continue;
+      out.set(dk, {
+        dist: path.length,
+        path,
+        via: fromPlus,
+        firstDist: info.landingPath.length,
+      });
+    }
+  }
+  return out;
+}
+
 function allMoveStops(
   state: GameState,
   piece: Piece,
@@ -3275,11 +3340,61 @@ function allMoveStops(
   for (const [k, stop] of twoActionStops(state, piece, first, charging)) {
     keepBetterStop(out, k, stop);
   }
+  const plus = plusBonusStops(state, piece, first);
+  for (const [k, stop] of energyBeyondPlus(state, piece, first, plus)) {
+    keepBetterStop(out, k, stop);
+  }
   const start = { col: piece.col, row: piece.row };
   for (const k of [...out.keys()]) {
     if (isBlockedFaceRay(piece, start, parseKey(k), state.orientation)) out.delete(k);
   }
   return out;
+}
+
+export type PlusStep = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
+
+/**
+ * Downhill landing that reaches `goal` on the free extra move.
+ * The landing is a normal stop — the second step does not spend energy.
+ */
+export function plusStepPlan(state: GameState, pieceId: string, goal: Hex): PlusStep | null {
+  const piece = getPiece(state, pieceId);
+  if (!piece || isSleeping(piece)) return null;
+  if (state.downhillMove && state.scoutPieceId === piece.id) return null;
+  const from: Hex = { col: piece.col, row: piece.row };
+  if (eq(from, goal)) return null;
+  const reach = allMoveStops(state, piece);
+  let best: (PlusStep & { first: number; second: number }) | null = null;
+  for (const [k, stop] of reach) {
+    if (stop.via) continue;
+    const landing = parseKey(k);
+    if (downSteps(state, from, stop.path, landing) <= 0) continue;
+    if (pathEntersWater(state, from, landing, stop.path)) continue;
+    const bonus = straightMoveStops(
+      state,
+      piece,
+      landing,
+      capMoveRange(state, piece, moveRangeAt(state, piece, landing)),
+    );
+    const next = bonus.get(key(goal));
+    if (!next) continue;
+    const cand = {
+      landing,
+      landingPath: stop.path,
+      bonusPath: next.path,
+      first: stop.dist,
+      second: next.dist,
+    };
+    if (
+      !best ||
+      cand.first < best.first ||
+      (cand.first === best.first && cand.second < best.second)
+    ) {
+      best = cand;
+    }
+  }
+  if (!best) return null;
+  return { landing: best.landing, landingPath: best.landingPath, bonusPath: best.bonusPath };
 }
 
 /** Move/shoot range for a piece (ignores whose turn it is). */
@@ -3296,15 +3411,30 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   const reach = allMoveStops(state, piece);
   const stamAction = state.staminaBonus && state.scoutPieceId === piece.id;
 
+  const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
+  const plusReach = inDownhill ? new Map<string, PlusReach>() : plusBonusStops(state, piece, reach);
   for (const [k, { dist, path, via }] of reach) {
+    if (plusReach.has(k)) continue;
     const h = parseKey(k);
     const climbs = pathSpendsStamina(state, from, h, path);
     const extra = !!(via || stamAction);
-    if (climbs || extra) {
-      out.push({ kind: 'stamina', hex: h, cost: dist, extra });
+    const pastFree = extra && path.some((step) => plusReach.has(key(step)));
+    if (inDownhill && !via && !climbs) {
+      out.push({ kind: 'move', hex: h, cost: dist, plus: true });
+    } else if (climbs || extra) {
+      out.push({
+        kind: 'stamina',
+        hex: h,
+        cost: dist,
+        extra,
+        beyondPlus: pastFree || undefined,
+      });
     } else {
       out.push({ kind: 'move', hex: h, cost: dist });
     }
+  }
+  if (!inDownhill) {
+    for (const pk of plusReach.keys()) out.push({ kind: 'plus', hex: parseKey(pk), cost: 0 });
   }
 
   if (chargeDamageOf(piece) > 0 && !stamAction) {
@@ -3676,7 +3806,10 @@ function applyActionInner(state: GameState, action: Action): GameState {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
-    const dropped = downSteps(next, fromHex, walkPath, plan.stop);
+    const dropped =
+      hit.kind === 'stamina' && hit.beyondPlus
+        ? 0
+        : downSteps(next, fromHex, walkPath, plan.stop);
     afterAction(next, piece, 'move', enteredWater, dropped);
     return next;
   }

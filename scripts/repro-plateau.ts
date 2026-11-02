@@ -1,10 +1,12 @@
 import {
   applyAction,
+  canOrderMarch,
   hpLeft,
   legalHighlights,
   passTurn,
   pathForMove,
   performMarch,
+  plusStepPlan,
   staminaLeft,
   type GameState,
 } from '../src/engine';
@@ -317,10 +319,38 @@ try {
     const s = make(high, { high: [high] }, 'cohort');
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
     const land = from;
+    const beyond = step(land, ((dir + 3) % 6) as HexDir, 1);
+    const preview = legalHighlights(s, p.id);
+    assert(
+      preview.some(
+        (h) => h.kind === 'plus' && h.hex.col === beyond.col && h.hex.row === beyond.row,
+      ),
+      'the downhill +1 tile is marked before the step',
+    );
+    assert(
+      !preview.some(
+        (h) =>
+          h.kind === 'move' &&
+          !h.plus &&
+          h.hex.col === beyond.col &&
+          h.hex.row === beyond.row,
+      ),
+      'the +1 tile is not a destination of this move',
+    );
     const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: land });
     const live = moved.pieces.find((x) => x.id === p.id)!;
     assert(live.col === land.col && live.row === land.row, 'cohort stepped hill→land');
     assert(moved.downhillMove, 'hill→land grants one more move');
+    assert(
+      legalHighlights(moved, p.id).some(
+        (h) =>
+          h.kind === 'move' &&
+          h.plus &&
+          h.hex.col === beyond.col &&
+          h.hex.row === beyond.row,
+      ),
+      'the granted move is the +1 tile',
+    );
     assert(!moved.staminaBonus, 'the downhill move is not a stamina buy');
     assert(staminaLeft(live) === 1, 'stepping down does not spend energy');
     assert(moved.turn === 'red', 'downhill keeps the cohort’s turn');
@@ -336,6 +366,41 @@ try {
     const parked = done.pieces.find((x) => x.id === p.id)!;
     assert(parked.col === further.col && parked.row === further.row, 'took the extra land hex');
     assert(staminaLeft(parked) === 1, 'the extra land hex did not spend energy');
+    const plan = plusStepPlan(s, p.id, beyond);
+    assert(plan && plan.landing.col === land.col && plan.landing.row === land.row, 'plus click walks via the downhill step');
+    assert(!canOrderMarch(s, p, beyond, false), 'the +1 tile is not a march order');
+    const hopped = applyAction(s, {
+      kind: 'move',
+      pieceId: p.id,
+      to: plan!.landing,
+      path: plan!.landingPath,
+    });
+    const finished = applyAction(hopped, {
+      kind: 'move',
+      pieceId: p.id,
+      to: beyond,
+      path: plan!.bonusPath,
+    });
+    const arrived = finished.pieces.find((x) => x.id === p.id)!;
+    assert(arrived.col === beyond.col && arrived.row === beyond.row, 'plus click lands on the +1 tile this turn');
+    assert(staminaLeft(arrived) === 1, 'plus click spends no energy');
+    assert(!arrived.walkTo, 'plus click does not leave a march');
+    const past = step(beyond, ((dir + 3) % 6) as HexDir, 1);
+    const energy = legalHighlights(s, p.id).find(
+      (h) => h.kind === 'stamina' && h.hex.col === past.col && h.hex.row === past.row,
+    );
+    assert(energy?.kind === 'stamina' && energy.extra && energy.beyondPlus, 'double time reaches one step past the +1');
+    assert(
+      !legalHighlights(s, p.id).some(
+        (h) => h.kind === 'stamina' && h.hex.col === beyond.col && h.hex.row === beyond.row,
+      ),
+      'the free +1 is not an energy tile',
+    );
+    const burned = applyAction(s, { kind: 'move', pieceId: p.id, to: past });
+    const far = burned.pieces.find((x) => x.id === p.id)!;
+    assert(far.col === past.col && far.row === past.row, 'energy step lands past the +1');
+    assert(staminaLeft(far) === 0, 'the step past +1 spends energy');
+    assert(!burned.downhillMove, 'the free +1 is already inside that walk');
   }
 
   {

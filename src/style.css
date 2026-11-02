@@ -3874,6 +3874,20 @@ svg.board .hex {
   fill: var(--stamina);
 }
 
+.hl-tint.plus {
+  fill: rgba(230, 185, 60, 0.46);
+}
+
+.hl-plus-label {
+  fill: #fff6cc;
+  font-weight: 800;
+  font-family: inherit;
+  pointer-events: none;
+  stroke: #3a2e10;
+  stroke-width: 0.45px;
+  paint-order: stroke;
+}
+
 .hl-tint.charge {
   fill: var(--charge);
 }
@@ -3932,7 +3946,8 @@ svg.board .hex {
 
 svg.board:has(.hl-tint.path) .hl-tint.move,
 svg.board:has(.hl-tint.path) .hl-tint.stamina,
-svg.board:has(.hl-tint.path) .hl-tint.charge {
+svg.board:has(.hl-tint.path) .hl-tint.charge,
+svg.board:has(.hl-tint.path) .hl-tint.plus {
   opacity: 0.38;
 }
 
