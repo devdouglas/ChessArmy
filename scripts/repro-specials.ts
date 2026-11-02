@@ -72,9 +72,14 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   s.turn = 'red';
   const tank = s.pieces.find((p) => p.type === 'tank')!;
   tank.staminaUsedThisTurn = true;
+  const charges = legalHighlights(s, tank.id).filter((h) => h.kind === 'charge');
   assert(
-    !legalHighlights(s, tank.id).some((h) => h.kind === 'charge'),
-    'spent energy blocks charge dests',
+    charges.some((h) => h.hex.col === 3 && !h.extra),
+    'spent energy still allows a crash inside the normal move',
+  );
+  assert(
+    charges.some((h) => h.extra && h.unpaid) && !charges.some((h) => h.extra && !h.unpaid),
+    'spent energy leaves extra-reach charge dests unpaid',
   );
 }
 

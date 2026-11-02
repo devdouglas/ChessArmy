@@ -157,7 +157,7 @@
         }
     ],
     "sort": 1,
-    "updatedAt": 1793355388046,
+    "updatedAt": 1793431641020,
     "armies": [
         {
             "type": "u-mvun2x81vsl5",
@@ -170,7 +170,10 @@
             "type": "peasant",
             "col": 6,
             "row": 1,
-            "side": "blue"
+            "side": "blue",
+            "unitTokens": [
+                "exhausted"
+            ]
         }
     ]
 }

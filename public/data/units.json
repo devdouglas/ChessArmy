@@ -1497,14 +1497,12 @@
         "role": "dude",
         "unitClass": "hero",
         "passWater": true,
-        "canHide": true,
+        "canHide": false,
         "climbLevel": 2,
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [
-            "hide"
-        ],
+        "abilities": [],
         "move": 1,
         "sight": 4,
         "shoot": 0,

@@ -78,8 +78,8 @@ assert(!UNIT_STATS.soldier.canHide, 'stock soldier cannot hide');
   p.staminaUsedThisTurn = false;
   const home = applyAction(back, { kind: 'move', pieceId: p.id, to: woods });
   const again = home.pieces.find((x) => x.id === p.id)!;
-  assert(again.revealed, 'hide stays broken after walking back');
-  assert(!isConcealed(home, again), 'revealed unit is visible in forest');
+  assert(!again.revealed, 'entering forest hides them again');
+  assert(isConcealed(home, again), 'hide ability is valid again on forest');
 }
 
 {

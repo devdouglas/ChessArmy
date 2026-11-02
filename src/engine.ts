@@ -594,7 +594,16 @@ export function pieceVisible(state: GameState, piece: Piece, viewers: Side[]): b
 export function revealPiece(piece: Piece): void {
   if (hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden')) {
     piece.revealed = true;
+    // The token only starts them hidden. After the break it does not keep them invisible.
+    dropUnitToken(piece, 'hidden');
   }
+}
+
+/** Hide becomes valid again when the unit steps onto forest from somewhere else. */
+function settleHide(state: GameState, piece: Piece, from: Hex): void {
+  if (!piece.revealed || !hasAbility(piece, 'hide')) return;
+  const at: Hex = { col: piece.col, row: piece.row };
+  if (isHideCover(state, at) && !isHideCover(state, from)) piece.revealed = undefined;
 }
 
 function reveal(piece: Piece): void {
@@ -843,8 +852,8 @@ export type Highlight =
   | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean }
   /** Would be a stamina walk if the pool weren't empty — display only. */
   | { kind: 'rest'; hex: Hex; cost: number; extra?: boolean }
-  /** Energy-spend crash through enemies. */
-  | { kind: 'charge'; hex: Hex; cost: number }
+  /** Crash through enemies. `extra` is past the normal move (spends 1). `unpaid` is that same tile with no energy left — display only. */
+  | { kind: 'charge'; hex: Hex; cost: number; extra?: boolean; unpaid?: boolean }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
@@ -1471,7 +1480,8 @@ export function previewMove(
   const stats = statsOf(piece.type);
   const melee = Math.max(0, stats.meleeDamage);
   const charging = !!opts?.charging;
-  const charge = charging ? chargeDamageOf(piece) : 0;
+  const abilityCharge = chargeDamageOf(piece);
+  const charge = charging ? abilityCharge : 0;
   const path = resolveMovePath(state, piece, to, along, charging);
   const dest = path[path.length - 1];
   const landsBeyond = dest ? destLandsBeyond(state, piece, dest) : false;
@@ -1537,7 +1547,9 @@ export function previewMove(
     }
     const isDest = i === path.length - 1;
     const charging = charge > 0 && !isDest;
+    // A hop (pass through, don't land) still deals charge damage.
     if (!isDest && !charging) {
+      if (abilityCharge > 0) strike(occ, prev, abilityCharge);
       prev = h;
       continue;
     }
@@ -2429,6 +2441,25 @@ export function marchRoute(state: GameState, piece: Piece, goal: Hex): Hex[] | n
   return marchRouteInner(state, piece, goal);
 }
 
+/**
+ * A march order is a destination this action cannot already reach.
+ * Normal move range is never an order. Double time also covers the extra move.
+ */
+export function canOrderMarch(
+  state: GameState,
+  piece: Piece,
+  goal: Hex,
+  doubleTime: boolean,
+): boolean {
+  if (!marchRoute(state, piece, goal)) return false;
+  for (const h of rangeHighlights(state, piece.id)) {
+    if (!eq(h.hex, goal)) continue;
+    if (h.kind === 'move') return false;
+    if (h.kind === 'stamina' && (!h.extra || doubleTime)) return false;
+  }
+  return true;
+}
+
 export function setWalkOrder(state: GameState, pieceId: string, dest: Hex | null): GameState {
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn || state.winner) return state;
@@ -2556,6 +2587,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     piece.col = landed.col;
     piece.row = landed.row;
   }
+  settleHide(state, piece, here);
   piece.facing = facing;
   const arrived = eq(landed, dest);
   if (taken.length && !strike) {
@@ -3275,11 +3307,24 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     }
   }
 
-  if (chargeDamageOf(piece) > 0 && canSpendStamina(piece) && !stamAction) {
-    const charged = allMoveStops(state, piece, true);
-    for (const [k, { dist, path }] of charged) {
+  if (chargeDamageOf(piece) > 0 && !stamAction) {
+    const canPay = canSpendStamina(piece);
+    // Still survey the extra reach when the pool is empty, so those tiles can show the crossed bolt.
+    const survey =
+      canPay || staminaMax(piece) <= 0
+        ? piece
+        : { ...piece, stamina: Math.max(1, staminaLeft(piece)), staminaUsedThisTurn: false };
+    const charged = allMoveStops(state, survey, true);
+    for (const [k, { dist, path, via }] of charged) {
       if (!pathChargesThrough(state, piece, path)) continue;
-      out.push({ kind: 'charge', hex: parseKey(k), cost: dist });
+      const h = parseKey(k);
+      // A crash inside the normal move is just that move. Energy is only the extra reach (or a climb).
+      const needsEnergy = !!via || pathSpendsStamina(state, from, h, path);
+      if (needsEnergy && !canPay) {
+        out.push({ kind: 'charge', hex: h, cost: dist, extra: true, unpaid: true });
+        continue;
+      }
+      out.push({ kind: 'charge', hex: h, cost: dist, extra: needsEnergy || undefined });
     }
   }
 
@@ -3518,7 +3563,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
         );
     if (!hit) return state;
     if (charging) {
-      if (hit.kind !== 'charge' || !canSpendStamina(piece)) return state;
+      if (hit.kind !== 'charge' || hit.unpaid) return state;
+      if (hit.extra && !canSpendStamina(piece)) return state;
     } else if (hit.kind !== 'move' && hit.kind !== 'stamina') {
       return state;
     }
@@ -3611,13 +3657,14 @@ function applyActionInner(state: GameState, action: Action): GameState {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
       applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
+      settleHide(next, piece, fromHex);
     }
     if (piece.walkTo && piece.col === piece.walkTo.col && piece.row === piece.walkTo.row) {
       piece.walkTo = undefined;
     }
     piece.facing = plan.facing;
     if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);
-    if (charging) {
+    if (hit.kind === 'charge' && hit.extra) {
       spendStamina(piece);
       logStaminaAction(next, piece);
     } else if (hit.kind === 'stamina') {
@@ -3749,7 +3796,7 @@ export function allLegalActions(state: GameState): Action[] {
           pieceId: p.id,
           to: h.hex,
         });
-      } else if (h.kind === 'charge') {
+      } else if (h.kind === 'charge' && !h.unpaid) {
         actions.push({ kind: 'charge', pieceId: p.id, to: h.hex });
       } else if (h.kind === 'shoot') {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });

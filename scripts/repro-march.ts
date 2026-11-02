@@ -1,6 +1,7 @@
 import { pickAiAction } from '../src/ai';
 import {
   beginSideTurn,
+  canOrderMarch,
   getPiece,
   isAiControlled,
   marchRoute,
@@ -480,6 +481,37 @@ try {
   );
   assert(staminaLeft(dtAtPiece) === 0, 'the second turn also empties stamina');
   setMarchDoubleTime(false);
+
+  const reach = createStateFromTerrain(
+    emptyTerrain(10, 8),
+    'reach',
+    'flat',
+    [
+      { type: 'peasant', col: 4, row: 4, side: 'red' },
+      { type: 'dummy', col: 0, row: 0, side: 'blue' },
+    ],
+  );
+  const reachPiece = reach.pieces.find((p) => p.side === 'red')!;
+  const reachFace = defaultFacing('red');
+  const reachSteps = [];
+  let reachAt = { col: reachPiece.col, row: reachPiece.row };
+  for (let i = 0; i < 3; i++) {
+    reachAt = neighborInDir(reachAt, reachFace, reach.orientation);
+    reachSteps.push(reachAt);
+  }
+  assert(!canOrderMarch(reach, reachPiece, reachSteps[0]!, false), 'a normal move is not a march');
+  assert(
+    canOrderMarch(reach, reachPiece, reachSteps[1]!, false),
+    'the extra move is a march until double time',
+  );
+  assert(
+    !canOrderMarch(reach, reachPiece, reachSteps[1]!, true),
+    'double time reaches the extra move without an order',
+  );
+  assert(
+    canOrderMarch(reach, reachPiece, reachSteps[2]!, true),
+    'past double time is still a march',
+  );
 } finally {
   UNIT_STATS.soldier.move = savedMove;
   setMarchDoubleTime(false);

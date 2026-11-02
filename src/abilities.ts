@@ -12,11 +12,11 @@ export const ABILITY_LABEL: Record<AbilityId, string> = {
 };
 
 export const ABILITY_BLURB: Record<AbilityId, string> = {
-  hide: 'Hide in forest. Enemies cannot see this unit until it moves, attacks, or is hit.',
+  hide: 'Hide in forest. Enemies cannot see this unit until it moves, attacks, or is hit. Stepping onto forest again hides it.',
   javelin:
     'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
   charge:
-    'Spend unused energy to crash through enemies. Hover shows charge routes. Not legal after energy is spent this round.',
+    'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no energy mark. A destination past that move shows the normal energy bolt and spends 1 when you pick it. With no energy left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. No walk-to orders.',
   trap: 'Plant pikes on the hex this unit faces.',
 };
 

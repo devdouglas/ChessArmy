@@ -3866,6 +3866,10 @@ svg.board .hex {
   fill: var(--move);
 }
 
+.hl-tint.melee {
+  fill: rgba(220, 80, 70, 0.28);
+}
+
 .hl-tint.stamina {
   fill: var(--stamina);
 }

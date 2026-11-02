@@ -7,6 +7,7 @@ import {
   hasAbility,
   javelinIsSpecial,
   canTrap,
+  isConcealed,
   isHideCover,
   applyAction,
   clampMaxTurns,
@@ -22,6 +23,7 @@ import {
   MIN_MAX_TURNS,
   MIN_UNITS_PER_TURN,
   passTurn,
+  canOrderMarch,
   marchRoute,
   performMarch,
   setMarchDoubleTime,
@@ -438,22 +440,14 @@ let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
 let rotatePreviewDir: HexDir | null = null;
-/** Player pref: auto extra-action energy. Off = no auto spend. Default on. */
+/** Auto extra-action energy. Every level starts off; the dock can turn it on for that match. */
 const DOUBLE_TIME_KEY = 'chessarmy-double-time-v1';
-let doubleTime = loadDoubleTime();
+let doubleTime = false;
 /** Player pref: narration on intro / victory / lose popups. Default on. */
 const POPUP_AUDIO_KEY = 'chessarmy-popup-audio-v1';
 let popupAudioOn = loadPopupAudio();
 /** Active special mode for the selected unit (hide / javelin / charge). */
 let specialMode: AbilityId | null = null;
-
-function loadDoubleTime(): boolean {
-  try {
-    return localStorage.getItem(DOUBLE_TIME_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
 
 function persistDoubleTime(): void {
   try {
@@ -785,7 +779,9 @@ function bootState(): GameState {
 }
 
 function startMatch(reshuffleRandom = true) {
-  setMarchDoubleTime(doubleTime);
+  doubleTime = false;
+  setMarchDoubleTime(false);
+  persistDoubleTime();
   specialMode = null;
   clearSelection();
   aiThinking = false;
@@ -2521,16 +2517,14 @@ function emptyEnergyKeys(pieceId: string): Set<string> {
   return marks;
 }
 
-/** Hostile or palisade/tree hex this unit would melee. Not a walk destination. */
+/** Visible enemy this unit can strike. Palisade and tree use the normal move tint. */
 function meleeRangeHex(actor: Piece, hex: Hex): boolean {
   if (UNIT_STATS[actor.type].meleeDamage <= 0) return false;
   const occ = pieceAt(state, hex);
-  if (occ && occ.id !== actor.id) {
-    if (!pieceVisible(state, occ, viewingSides(state))) return false;
-    if (isNeutralSide(occ.side)) return false;
-    return !sameTeam(state, occ.side, actor.side);
-  }
-  return isPalisade(state, hex);
+  if (!occ || occ.id === actor.id) return false;
+  if (!pieceVisible(state, occ, viewingSides(state))) return false;
+  if (isNeutralSide(occ.side)) return false;
+  return !sameTeam(state, occ.side, actor.side);
 }
 
 function actingHighlights(pieceId: string): Highlight[] {
@@ -2550,7 +2544,7 @@ function hexActions(
   return {
     canMove: legal.some((h) => h.kind === 'move' || h.kind === 'stamina'),
     canShoot: legal.some((h) => h.kind === 'shoot'),
-    canCharge: legal.some((h) => h.kind === 'charge'),
+    canCharge: legal.some((h) => h.kind === 'charge' && !h.unpaid),
   };
 }
 
@@ -2566,7 +2560,7 @@ function availableActions(pieceId: string): {
   const canMove = all.some((h) => h.kind === 'move' || h.kind === 'stamina');
   const canShoot =
     !isReloading(piece) && !isDepleted(piece) && all.some((h) => h.kind === 'shoot');
-  const canCharge = all.some((h) => h.kind === 'charge');
+  const canCharge = all.some((h) => h.kind === 'charge' && !h.unpaid);
   return { canMove, canShoot, canCharge };
 }
 
@@ -3159,7 +3153,7 @@ function renderBoard(): string {
   const shootTarget = new Set<string>();
   for (const hl of allHl) {
     const k = key(hl.hex);
-    if (hl.kind === 'move' || hl.kind === 'stamina' || hl.kind === 'charge') {
+    if (hl.kind === 'move' || hl.kind === 'stamina' || (hl.kind === 'charge' && !hl.unpaid)) {
       moveMap.set(k, hl.kind);
     } else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
@@ -3207,14 +3201,20 @@ function renderBoard(): string {
       }
     }
     const previewMarch =
-      marchOn && sel && !splashAim ? marchRoute(state, sel, hoverHex) : null;
+      marchOn &&
+      sel &&
+      !hasAbility(sel, 'charge') &&
+      !splashAim &&
+      canOrderMarch(state, sel, hoverHex, doubleTime)
+        ? marchRoute(state, sel, hoverHex)
+        : null;
     if (previewMarch?.length) {
       for (const h of previewMarch) marchSet.add(key(h));
       marchEnd = previewMarch[previewMarch.length - 1] ?? null;
     } else {
       const destHl = highlights.find(
         (h) =>
-          (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge') &&
+          (h.kind === 'move' || h.kind === 'stamina' || (h.kind === 'charge' && !h.unpaid)) &&
           eq(h.hex, hoverHex!),
       );
       if (sel && destHl) {
@@ -3284,12 +3284,14 @@ function renderBoard(): string {
       }
       const meleeHex = !editing && !!actor && meleeRangeHex(actor, hex);
       const mv = moveMap.get(k);
-      if (!meleeHex && mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
-      else if (!meleeHex && mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
-      else if (!meleeHex && mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
+      const enemyMelee = meleeHex && (mv === 'move' || mv === 'stamina' || mv === 'charge');
+      if (enemyMelee) hlOverlays += `<polygon class="hl-tint melee" points="${pts}" />`;
+      else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
+      else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+      else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
       else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
 
-      if (!meleeHex && pathSet.has(k)) {
+      if (!enemyMelee && pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
         const via = !!(pathVia && eq(pathVia, hex) && !end);
         hlOverlays += `<polygon class="hl-tint path${
@@ -3299,7 +3301,7 @@ function renderBoard(): string {
           hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
         }
       }
-      if (!meleeHex && marchSet.has(k)) {
+      if (!enemyMelee && marchSet.has(k)) {
         const end = !!(marchEnd && eq(marchEnd, hex));
         hlOverlays += `<polygon class="hl-tint path march${end ? ' path-end' : ''}" points="${pts}" />`;
       } else if (
@@ -3339,25 +3341,41 @@ function renderBoard(): string {
   const staminaMarkHexes = new Set<string>();
   if (canActWithSelected()) {
     for (const hl of allHl) {
-      if (hl.kind !== 'stamina' && hl.kind !== 'charge') continue;
+      if (hl.kind !== 'stamina') continue;
       if (actor && meleeRangeHex(actor, hl.hex)) continue;
       staminaMarkHexes.add(key(hl.hex));
     }
     if (
-      (pathKind === 'stamina' || pathKind === 'charge') &&
+      pathKind === 'stamina' &&
       hoverHex &&
       !(actor && meleeRangeHex(actor, hoverHex))
     ) {
       staminaMarkHexes.add(key(hoverHex));
     }
   }
-  for (const k of staminaMarkHexes) {
+  const placeStaminaMark = (k: string, svg: (x: number, y: number, r: number) => string) => {
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
     const occ = seenOcc(hex);
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
-    staminaMarks += staminaHexMarkSvg(x, y + dy, r);
+    staminaMarks += svg(x, y + dy, r);
+  };
+  for (const k of staminaMarkHexes) {
+    placeStaminaMark(k, staminaHexMarkSvg);
+  }
+  // Past the normal move: gold bolt while energy can be spent, crossed bolt once it is gone.
+  if (specialMode === 'charge') {
+    for (const hl of allHl) {
+      if (hl.kind !== 'charge' || !hl.extra) continue;
+      const k = key(hl.hex);
+      if (hl.unpaid) {
+        if (restSet.has(k)) continue;
+        placeStaminaMark(k, (x, y, r) => staminaEmptyMarkSvg(x, y, r));
+      } else if (!(actor && meleeRangeHex(actor, hl.hex))) {
+        placeStaminaMark(k, staminaHexMarkSvg);
+      }
+    }
   }
   for (const k of restSet) {
     const hex = parseKey(k);
@@ -3477,22 +3495,30 @@ function renderBoard(): string {
       !editing && hasActed(state, p.id)
         ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
-    const abilityIcons = abilitiesOf(p)
+    // Hide and exhausted are live statuses in play. Charge is a dock command, not a piece badge.
+    const boardAbilities = abilitiesOf(p).filter((id) => {
+      if (id === 'hide') return false;
+      if (id === 'charge') return editing;
+      return true;
+    });
+    const abilityIcons = boardAbilities
       .map((id, i) =>
         abilityBadgeSvg(id, -pr * 0.65 + i * badgeR * 1.65, pr * 0.7, badgeR),
       )
       .join('');
-    const hideIcons = unitTokensOf(p)
-      .filter(
-        (id) =>
-          id === 'general' ||
-          id === 'hidden' ||
-          id === 'exhausted' ||
-          id === 'story' ||
-          (id === 'neutral' && editing),
-      )
+    const statusMarks: Array<'hidden' | 'exhausted'> = [];
+    if (!editing && isConcealed(state, p)) statusMarks.push('hidden');
+    if (!editing && emptyStamina) statusMarks.push('exhausted');
+    const tokenMarks = unitTokensOf(p).filter(
+      (id) =>
+        id === 'general' ||
+        id === 'story' ||
+        (id === 'neutral' && editing) ||
+        (editing && (id === 'hidden' || id === 'exhausted')),
+    );
+    const hideIcons = [...tokenMarks, ...statusMarks]
       .map((id, i) => {
-        const cx = -pr * 0.65 + (abilitiesOf(p).length + i) * badgeR * 1.65;
+        const cx = -pr * 0.65 + (boardAbilities.length + i) * badgeR * 1.65;
         const cy = pr * 0.7;
         return id === 'general'
           ? generalBadgeSvg(cx, cy, badgeR)
@@ -3814,7 +3840,7 @@ function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (!canControl() || piece.side !== state.turn) return false;
   if (isSleeping(piece) || hasActed(state, piece.id)) return false;
   if (id === 'trap') return canTrap(state, piece.id);
-  if (id === 'charge') return canSpendStamina(piece);
+  if (id === 'charge') return legalHighlights(state, piece.id).some((h) => h.kind === 'charge');
   if (id === 'javelin') return !isReloading(piece) && !isDepleted(piece);
   return true;
 }
@@ -4023,24 +4049,16 @@ function renderSidebar(): string {
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (hasAbility(piece, 'charge')) extraNotes.push(
-      `Charge special: ${Math.max(1, s.charge)} dmg through enemies (armor applies). Only if energy is unused this round; spends 1. A living blocker stops you unless that hit kills it, or you land empty beyond`,
+      `Charge special: ${Math.max(1, s.charge)} dmg through enemies (armor applies). Inside the normal move this spends nothing. Past that move, picking the tile spends 1 energy. A living blocker stops you unless that hit kills it, or you land empty beyond`,
     );
     if (isHouse(state, { col: piece.col, row: piece.row })) {
       extraNotes.push('In a house — after leaving, nobody can enter it again');
     }
-    if (hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden')) {
-      extraNotes.push(
-        piece.revealed
-          ? 'Hide broken (moved, attacked, or was hit)'
-          : hasUnitToken(piece, 'hidden')
-            ? 'Hidden — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range'
-            : 'Can hide in forest — enemies cannot see this unit until it moves, attacks, or is hit. AI camps until a target is in attack range',
-      );
+    if (isConcealed(state, piece)) {
+      extraNotes.push('Hidden — enemies cannot see this unit');
     }
-    if (hasUnitToken(piece, 'exhausted')) {
-      extraNotes.push(
-        'Exhausted — started the match with no stamina (climb / extra move locked until idle regen)',
-      );
+    if (staminaMax(piece) > 0 && staminaLeft(piece) <= 0) {
+      extraNotes.push('Exhausted — no energy until an idle turn on land');
     }
     if (hasUnitToken(piece, 'sleep')) {
       extraNotes.push(
@@ -4120,7 +4138,7 @@ function renderSidebar(): string {
             <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
             <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit — same as Can hide in forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
@@ -4589,6 +4607,8 @@ function bindHexChoice() {
 
 function trySetMarch(piece: Piece, hex: Hex): boolean {
   if (!isExperimentalOn('walk-orders') || !canControl() || state.winner) return false;
+  // Charge units have no walk-to order, so the route is not a command.
+  if (hasAbility(piece, 'charge')) return false;
   if (piece.side !== state.turn || isSleeping(piece)) return false;
   if (UNIT_STATS[piece.type].move <= 0) return false;
   if (state.scoutPieceId && state.scoutPieceId !== piece.id) return false;
@@ -4597,7 +4617,8 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   if (state.staminaBonus && state.scoutPieceId === piece.id) return false;
   if (eq(hex, { col: piece.col, row: piece.row })) return false;
   const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
-  if (!cancel && !marchRoute(state, piece, hex)) return false;
+  // In-range moves, and double time's extra move, are actions — not march orders.
+  if (!cancel && !canOrderMarch(state, piece, hex, doubleTime)) return false;
   const acting = !cancel && canActWithSelected() && selectedId === piece.id;
   void commitMarch(piece.id, cancel ? null : hex, acting);
   return true;
@@ -4849,10 +4870,11 @@ function bindBoardOnly() {
     const zoneHover = !!sel && redZoneDir(sel, hex) != null;
     const marchHover =
       !!sel &&
+      !hasAbility(sel, 'charge') &&
       canControl() &&
       sel.side === state.turn &&
       isExperimentalOn('walk-orders') &&
-      !!marchRoute(state, sel, hex);
+      canOrderMarch(state, sel, hex, doubleTime);
     paintBoardHover(moveHover || splashHover || zoneHover || marchHover ? hex : null);
   });
 }
@@ -6393,7 +6415,7 @@ function renderUnitEditor(): string {
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
           <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
-          <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Owner still sees them</dd>
+          <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Trap replace the Special dock slot (a unit can have several). Command is the General unit token, not an ability</dd>
@@ -6406,7 +6428,7 @@ function renderUnitEditor(): string {
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. Only legal if energy is unused this round; spends 1. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
+          <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. No charge icon on the piece in play. Hopping over a unit still deals charge damage. A unit with Charge cannot be given a walk-to order, and that route does not show on hover. A crash inside the normal move spends nothing and shows no energy mark. A destination past that move shows the normal energy bolt and spends 1 when you pick it. With no energy left, that tile shows the crossed bolt instead. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
