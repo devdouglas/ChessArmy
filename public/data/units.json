@@ -459,7 +459,9 @@
         "passWater": true,
         "climbLevel": 2,
         "canHide": false,
-        "abilities": [],
+        "abilities": [
+            "trap"
+        ],
         "unitClass": "melee",
         "sight": 2
     },

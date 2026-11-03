@@ -736,7 +736,7 @@ export function staminaPipsHtml(left: number, max: number): string {
     const cls = i < on ? 'on' : 'off';
     return `<svg class="stam-pip ${cls}" viewBox="-5 -7 10 14" width="12" height="16" aria-hidden="true"><path d="${STAMINA_BOLT}"/></svg>`;
   }).join('');
-  return `<span class="stam-pips" aria-label="Stamina ${on} of ${max}">${bolts}</span>`;
+  return `<span class="stam-pips" aria-label="Energy ${on} of ${max}">${bolts}</span>`;
 }
 
 /** Arrowhead + shaft, viewBox roughly -4..4 × -7..7. */

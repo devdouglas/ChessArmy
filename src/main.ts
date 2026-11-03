@@ -2451,9 +2451,7 @@ function isExtraStaminaDest(h: Highlight): boolean {
 /** Extra-move dests stay hidden unless Double time. Climbs stay. Specials filter dests. */
 function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
   let out = extrasVisible() ? list : list.filter((h) => !isExtraStaminaDest(h));
-  if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
-  }
+  // Double-time second action keeps shoot (engine already allows it).
   const javelinOn = specialMode === 'javelin' && javelinIsSpecial(piece);
   if (javelinOn) {
     return out.filter((h) => h.kind === 'shoot' || h.kind === 'shoot-range');
@@ -2467,7 +2465,10 @@ function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
         (h.kind === 'move' || h.kind === 'stamina') && isHideCover(state, h.hex),
     );
   }
-  out = out.filter((h) => h.kind !== 'charge');
+  if (specialMode === 'trap' && hasAbility(piece, 'trap')) {
+    return out.filter((h) => h.kind === 'trap');
+  }
+  out = out.filter((h) => h.kind !== 'charge' && h.kind !== 'trap');
   if (javelinIsSpecial(piece)) {
     out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
   }
@@ -2983,12 +2984,12 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   }
 }
 
-async function trapSelected() {
+async function placeTrap(hex: Hex) {
   if (!selectedId || animating || !canControl()) return;
   if (!canTrap(state, selectedId)) return;
   const actingId = selectedId;
   specialMode = null;
-  await playAnimatedAction({ kind: 'trap', pieceId: actingId });
+  await playAnimatedAction({ kind: 'trap', pieceId: actingId, to: hex });
   retainSelection(actingId);
   render();
   await maybeAi();
@@ -3202,6 +3203,7 @@ function renderBoard(): string {
   // energy bolts and they flash while the unit stays selected.
   const allHl = !editing && selectedId && canControl() ? highlights : [];
   const moveMap = new Map<string, 'move' | 'stamina' | 'charge'>();
+  const trapSet = new Set<string>();
   const plusMove = new Set<string>();
   const plusOnly = new Set<string>();
   const restSet = new Set<string>();
@@ -3210,6 +3212,7 @@ function renderBoard(): string {
   for (const hl of allHl) {
     const k = key(hl.hex);
     if (hl.kind === 'plus') plusOnly.add(k);
+    if (hl.kind === 'trap') trapSet.add(k);
     if (hl.kind === 'move' && hl.plus) plusMove.add(k);
     if (hl.kind === 'move' || hl.kind === 'stamina' || (hl.kind === 'charge' && !hl.unpaid)) {
       moveMap.set(k, hl.kind);
@@ -3264,6 +3267,7 @@ function renderBoard(): string {
         : null;
     const previewMarch =
       !plusPlan &&
+      specialMode !== 'trap' &&
       marchOn &&
       sel &&
       !hasAbility(sel, 'charge') &&
@@ -3358,6 +3362,7 @@ function renderBoard(): string {
       else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
       else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
+      else if (trapSet.has(k)) hlOverlays += `<polygon class="hl-tint trap" points="${pts}" />`;
       else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
 
       if (!enemyMelee && pathSet.has(k)) {
@@ -3918,7 +3923,12 @@ function dockSpecials(piece: Piece): AbilityId[] {
 function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (!canControl() || piece.side !== state.turn) return false;
   if (isSleeping(piece) || hasActed(state, piece.id)) return false;
-  if (id === 'trap') return canTrap(state, piece.id);
+  if (id === 'trap') {
+    if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible()) {
+      return false;
+    }
+    return canTrap(state, piece.id);
+  }
   if (id === 'charge') return legalHighlights(state, piece.id).some((h) => h.kind === 'charge');
   if (id === 'javelin') return !isReloading(piece) && !isDepleted(piece);
   return true;
@@ -3939,12 +3949,6 @@ function renderUnitDock(): string {
     ? specials
         .map((id) => {
           const on = specialDockEnabled(piece!, id);
-          if (id === 'trap') {
-            return dockButton(`special-${id}`, ABILITY_LABEL[id], on, {
-              icon: id,
-              title: ABILITY_BLURB[id],
-            });
-          }
           return dockButton(`special-${id}`, ABILITY_LABEL[id], on, {
             icon: id,
             pressed: specialMode === id,
@@ -3957,11 +3961,11 @@ function renderUnitDock(): string {
     ${dockButton('double-time', 'Double time', doubleOn, {
       icon: 'double',
       pressed: doubleTime,
-      title: 'Stamina extras for every unit in your army',
+      title: 'Energy extras for every unit in your army',
     })}
     ${dockButton('rest-unit', 'Rest', rest, {
       icon: 'rest',
-      title: 'Skip this activation. An idle turn restores 1 stamina',
+      title: 'Skip this activation. An idle turn restores 1 energy',
     })}
     ${specialBtns}
     ${dockButton('end-turn', 'End turn', yours, { icon: 'end', className: 'play-end-turn' })}
@@ -4029,7 +4033,7 @@ function renderSidebar(): string {
 
     const vitals = [
       ...(maxSt > 0
-        ? [statRow('Stamina', staminaPipsHtml(curSt, maxSt), stamNote, stamWarn)]
+        ? [statRow('Energy', staminaPipsHtml(curSt, maxSt), stamNote, stamWarn)]
         : []),
       statRow(
         'HP',
@@ -4124,7 +4128,7 @@ function renderSidebar(): string {
     const extraNotes: string[] = [];
     if (s.passWater && s.passUnits) extraNotes.push('Move onto water; pathing through pieces');
     else {
-      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 energy with 2 HP or less; turn-start stamina penalty or 2 HP; no regen)');
+      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 energy with 2 HP or less; turn-start energy penalty or 2 HP; no regen)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (hasAbility(piece, 'charge')) extraNotes.push(
@@ -4141,7 +4145,7 @@ function renderSidebar(): string {
     }
     if (hasUnitToken(piece, 'sleep')) {
       extraNotes.push(
-        'Sleeping — not active until hit. No move, shoot, turn, rest, or stamina',
+        'Sleeping — not active until hit. No move, shoot, turn, rest, or energy',
       );
     }
     if (isNeutralSide(piece.side)) {
@@ -4200,26 +4204,26 @@ function renderSidebar(): string {
           ${moreStats}
           <div class="legend">
             <span class="l-move">Move</span>
-            <span class="l-stamina">Stamina (climb / extra move)</span>
+            <span class="l-stamina">Energy (climb / extra move)</span>
             <span class="l-rest">Need rest</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
           </div>
           <dl class="rules">
-            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 energy and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 stamina penalty (not an action) or 2 HP; leftover stamina can still extra-move. No stamina regen in water, even idle</dd></div>
+            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 energy and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 energy penalty (not an action) or 2 HP; leftover energy can still extra-move. No energy regen in water, even idle</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; palisade and forest block straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units, palisades and forest; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to shoot only; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below. Standing height does not add move. A step down one level grants one more move</dd></div>
-            <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs stamina. Climb level is the max height a unit can occupy</dd></div>
+            <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs energy. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same wall rules, house graphic — paint onto a unit in the editor to garrison them. That unit can leave; afterwards nobody can enter</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
             <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
-            <div><dt>Stamina</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
+            <div><dt>Energy</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 stamina, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 stamina — no climb or extra move until it idles to regen. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no stamina regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap units are immune and can plant or clear them. Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 energy, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 energy — no climb or extra move until it idles to regen. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no energy regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Stamina extra only after all action points are spent</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Energy extra only after all action points are spent</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
         </details>
@@ -4741,6 +4745,14 @@ function onHexClick(col: number, row: number) {
   // Own piece selected + can act → resolve by what that hex allows
   if (canActWithSelected() && selectedId) {
     const piece = getPiece(state, selectedId);
+    if (
+      piece &&
+      specialMode === 'trap' &&
+      highlights.some((h) => h.kind === 'trap' && eq(h.hex, hex))
+    ) {
+      void placeTrap(hex);
+      return;
+    }
     if (piece && plusOnlyHex(hex)) {
       void tryPlusStep(hex);
       return;
@@ -4947,7 +4959,8 @@ function bindBoardOnly() {
         (h.kind === 'move' ||
           h.kind === 'stamina' ||
           h.kind === 'charge' ||
-          h.kind === 'plus') &&
+          h.kind === 'plus' ||
+          h.kind === 'trap') &&
         eq(h.hex, hex),
     );
     const splashHover =
@@ -4956,6 +4969,7 @@ function bindBoardOnly() {
       highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
     const zoneHover = !!sel && redZoneDir(sel, hex) != null;
     const marchHover =
+      specialMode !== 'trap' &&
       !!sel &&
       !hasAbility(sel, 'charge') &&
       canControl() &&
@@ -6408,8 +6422,8 @@ function renderUnitEditor(): string {
           <span class="unit-group-label">Move</span>
           ${unitNumField(type, 'move', 'Range')}
           ${unitNumField(type, 'moveBudget', 'Move cap')}
-          ${unitNumField(type, 'stamina', 'Stamina')}
-          ${unitNumField(type, 'staminaRegen', 'Stam regen')}
+          ${unitNumField(type, 'stamina', 'Energy')}
+          ${unitNumField(type, 'staminaRegen', 'Energy regen')}
           ${unitNumField(type, 'meleeDamage', 'Melee dmg')}
           ${unitNumField(type, 'charge', 'Charge')}
           <label class="chk">
@@ -6500,7 +6514,7 @@ function renderUnitEditor(): string {
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
-          <dd><strong>Actions</strong> action points per activation. All of them spend before a stamina extra</dd>
+          <dd><strong>Actions</strong> action points per activation. All of them spend before an energy extra</dd>
           <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
           <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
@@ -6509,11 +6523,11 @@ function renderUnitEditor(): string {
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
-          <dd><strong>Move cap</strong> total steps this activation, actions and stamina extras included (0 = none; scout stock 3). Cannot go past it</dd>
-          <dd><strong>Stamina</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
-          <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 energy and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 stamina penalty (not an action), or 2 HP if you can't pay — leftover stamina can still buy an extra 1-hex. No regen in water, even idle</dd>
+          <dd><strong>Move cap</strong> total steps this activation, actions and energy extras included (0 = none; scout stock 3). Cannot go past it</dd>
+          <dd><strong>Energy</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
+          <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 energy and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 energy penalty (not an action), or 2 HP if you can't pay — leftover energy can still buy an extra 1-hex. No regen in water, even idle</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
-          <dd><strong>Stam regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
+          <dd><strong>Energy regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
           <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. No charge icon on the piece in play. Hopping over a unit still deals charge damage. A unit with Charge cannot be given a walk-to order, and that route does not show on hover. A crash inside the normal move spends nothing and shows no energy mark. A destination past that move shows the normal energy bolt and spends 1 when you pick it. With no energy left, that tile shows the crossed bolt instead. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
           <dt>Shoot</dt>
@@ -7468,10 +7482,6 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const id = btn.id.slice('special-'.length);
       if (id === 'action') return;
-      if (id === 'trap') {
-        void trapSelected();
-        return;
-      }
       if (isAbilityId(id)) setSpecialMode(id);
     });
   });
@@ -7657,7 +7667,7 @@ function render() {
         <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
         <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
-        <span class="map-hint">mid belt · climb costs stamina · water 1 hex/action, turn-start stamina penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
+        <span class="map-hint">mid belt · climb costs energy · water 1 hex/action, turn-start energy penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
         ${levelSelect}

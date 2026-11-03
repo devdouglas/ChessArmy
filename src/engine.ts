@@ -844,7 +844,7 @@ export type Action =
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
   | { kind: 'rest'; pieceId: string }
-  | { kind: 'trap'; pieceId: string }
+  | { kind: 'trap'; pieceId: string; to: Hex }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
@@ -860,7 +860,9 @@ export type Highlight =
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
-  | { kind: 'shoot-range'; hex: Hex };
+  | { kind: 'shoot-range'; hex: Hex }
+  /** Adjacent hex this unit can step toward. Pike placement. */
+  | { kind: 'trap'; hex: Hex };
 
 /** Ring / hex-face color. Scale is −2..+2. */
 export function armorColor(armor: number): string {
@@ -1339,7 +1341,7 @@ function applyWalkTokens(
     for (const tok of tokensAt(state.tokens, h)) {
       if (tok.type === 'flag') claimFlag(state, piece, tok);
       if (tok.type === 'board') readBoard(state, piece, tok);
-      if (tok.type === 'pikes') {
+      if (tok.type === 'pikes' && !hasAbility(piece, 'trap')) {
         const before = hpLeft(piece);
         const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
         const dealt = before - dmg.remaining;
@@ -1982,10 +1984,22 @@ export function javelinIsSpecial(piece: Piece): boolean {
   return hasAbility(piece, 'javelin') && s.meleeDamage > 0 && s.shoot > 0;
 }
 
-export function trapFrontHex(state: GameState, piece: Piece): Hex | null {
-  const h = neighborInDir({ col: piece.col, row: piece.row }, facingOf(piece), state.orientation);
-  if (!inBounds(state, h)) return null;
-  return h;
+/** Adjacent hexes this unit could step toward. Red faces are not spots. Existing pikes are clearable. */
+export function trapSpots(state: GameState, piece: Piece): Hex[] {
+  if (!hasAbility(piece, 'trap')) return [];
+  const from: Hex = { col: piece.col, row: piece.row };
+  const blocked = blockedWalkDirs(piece);
+  const out: Hex[] = [];
+  for (let d = 0; d < 6; d++) {
+    const dir = d as HexDir;
+    if (blocked.has(dir)) continue;
+    const hex = neighborInDir(from, dir, state.orientation);
+    if (!inBounds(state, hex)) continue;
+    if (!canWalkStep(state, piece, from, from, hex)) continue;
+    if (terrainAt(state, hex) === 'water') continue;
+    out.push(hex);
+  }
+  return out;
 }
 
 export function canTrap(state: GameState, pieceId: string): boolean {
@@ -1993,14 +2007,23 @@ export function canTrap(state: GameState, pieceId: string): boolean {
   if (!piece || piece.side !== state.turn || state.winner) return false;
   if (!hasAbility(piece, 'trap')) return false;
   if (isSleeping(piece)) return false;
-  if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
+  if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
-  const front = trapFrontHex(state, piece);
-  if (!front) return false;
-  if (isWall(state, front)) return false;
-  if (terrainAt(state, front) === 'water') return false;
-  if (tokenOnHex(state.tokens, front, 'pikes')) return false;
-  return true;
+  // Downhill grant is move-only. A leftover / energy second action can trap.
+  if (state.downhillMove && state.scoutPieceId === pieceId) return false;
+  if (
+    !state.scoutPieceId &&
+    (piece.movedThisTurn || piece.actedThisTurn)
+  ) {
+    return false;
+  }
+  if (
+    !state.scoutPieceId &&
+    state.actedIds.length >= clampUnitsPerTurn(state.unitsPerTurn)
+  ) {
+    return false;
+  }
+  return trapSpots(state, piece).length > 0;
 }
 
 export function hasGeneral(pieces: Piece[], side: Side): boolean {
@@ -2220,7 +2243,7 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
     if (staminaMax(p) > 0 && staminaLeft(p) > 0) {
       spendStaminaPool(p);
       state.fxStamina = [...(state.fxStamina ?? []), { id: p.id, kind: 'spend' }];
-      state.log.push(`${unitLog(p)} treads water (−1 stamina)`);
+      state.log.push(`${unitLog(p)} treads water (−1 energy)`);
     } else {
       drowned.push(p);
     }
@@ -2912,7 +2935,7 @@ function payDownhill(state: GameState, piece: Piece): void {
 function afterAction(
   state: GameState,
   piece: Piece,
-  kind: 'move' | 'shoot' | 'rotate',
+  kind: 'move' | 'shoot' | 'rotate' | 'trap',
   enteredWater = false,
   downCount = 0,
 ): void {
@@ -3434,6 +3457,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   const stats = statsOf(piece.type);
   const from: Hex = { col: piece.col, row: piece.row };
   const out: Highlight[] = [];
+  for (const hex of trapSpots(state, piece)) out.push({ kind: 'trap', hex });
 
   const fromTerrain = terrainAt(state, from);
   const reach = allMoveStops(state, piece);
@@ -3721,12 +3745,18 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
   if (action.kind === 'trap') {
     if (!canTrap(next, piece.id)) return state;
-    const front = trapFrontHex(next, piece);
-    if (!front) return state;
+    if (!trapSpots(next, piece).some((h) => eq(h, action.to))) return state;
     reveal(piece);
-    next.tokens = [...next.tokens, { type: 'pikes', col: front.col, row: front.row }];
-    next.log.push(`${unitLog(piece)} plants pikes`);
-    finishActivation(next, piece);
+    if (tokenOnHex(next.tokens, action.to, 'pikes')) {
+      next.tokens = next.tokens.filter(
+        (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
+      );
+      next.log.push(`${unitLog(piece)} clears pikes`);
+    } else {
+      next.tokens = [...next.tokens, { type: 'pikes', col: action.to.col, row: action.to.row }];
+      next.log.push(`${unitLog(piece)} plants pikes`);
+    }
+    afterAction(next, piece, 'trap');
     return next;
   }
 
@@ -3784,7 +3814,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     const bounced = !eq(plan.stop, action.to);
-    const staminaTag = hit.kind === 'stamina' && !hit.extra ? ' (stamina)' : '';
+    const staminaTag = hit.kind === 'stamina' && !hit.extra ? ' (energy)' : '';
     const brokePal =
       plan.palisadeHits.some((p) => p.destroyed) && plan.hits.length === 0;
     const converted = plan.converts.length > 0 && plan.hits.length === 0;
@@ -3990,7 +4020,9 @@ export function allLegalActions(state: GameState): Action[] {
       // shoot-range / rest are display-only
     }
     if (canTrap(state, p.id)) {
-      actions.push({ kind: 'trap', pieceId: p.id });
+      for (const to of trapSpots(state, p)) {
+        actions.push({ kind: 'trap', pieceId: p.id, to });
+      }
     }
     if (statsOf(p.type).hexArmor && !(state.downhillMove && state.scoutPieceId === p.id)) {
       const cur = facingOf(p);

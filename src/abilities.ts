@@ -17,7 +17,7 @@ export const ABILITY_BLURB: Record<AbilityId, string> = {
     'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
   charge:
     'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no energy mark. A destination past that move shows the normal energy bolt and spends 1 when you pick it. With no energy left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. No walk-to orders.',
-  trap: 'Plant pikes on the hex this unit faces.',
+  trap: 'Pick an adjacent hex this unit could step toward. Red faces are not spots. Plants pikes, or clears them if already there. Immune to pikes. Can be a second action.',
 };
 
 export function isAbilityId(raw: unknown): raw is AbilityId {
