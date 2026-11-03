@@ -201,17 +201,41 @@
             "type": "notouch",
             "col": 4,
             "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 6,
+            "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 6
         }
     ],
     "sort": 4,
-    "updatedAt": 1793645024019,
+    "updatedAt": 1793730749670,
     "armies": [
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 8,
-            "row": 6,
-            "side": "blue"
-        },
         {
             "type": "peasant",
             "col": 2,
@@ -231,6 +255,12 @@
             "row": 0,
             "side": "blue",
             "facing": 2
+        },
+        {
+            "type": "peasant",
+            "col": 8,
+            "row": 6,
+            "side": "blue"
         }
     ]
 }

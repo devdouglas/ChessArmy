@@ -285,10 +285,70 @@
             "type": "palisade",
             "col": 12,
             "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 12,
+            "row": 0
+        },
+        {
+            "type": "notouch",
+            "col": 12,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 12,
+            "row": 2
         }
     ],
     "sort": 9,
-    "updatedAt": 1793650782264,
+    "updatedAt": 1793703847477,
     "armies": [
         {
             "type": "archer",
@@ -296,18 +356,6 @@
             "row": 6,
             "side": "red",
             "facing": 3
-        },
-        {
-            "type": "javelin",
-            "col": 6,
-            "row": 6,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 10,
-            "row": 6,
-            "side": "red"
         },
         {
             "type": "cohort",
@@ -336,6 +384,21 @@
                 "exhausted"
             ],
             "facing": 0
+        },
+        {
+            "type": "javelin",
+            "col": 10,
+            "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 6,
+            "side": "red",
+            "unitTokens": [
+                "general"
+            ]
         }
     ]
 }

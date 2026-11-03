@@ -116,7 +116,7 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
-    "teaserText": "",
+    "teaserText": "this time they look sharp and well rested",
     "startText": "",
     "winText": "",
     "loseText": "",
@@ -288,7 +288,7 @@
         }
     ],
     "sort": 11,
-    "updatedAt": 1793650787739,
+    "updatedAt": 1793729610544,
     "armies": [
         {
             "type": "archer",
@@ -296,33 +296,6 @@
             "row": 6,
             "side": "red",
             "facing": 3
-        },
-        {
-            "type": "cohort",
-            "col": 2,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
-        },
-        {
-            "type": "cohort",
-            "col": 10,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
         },
         {
             "type": "javelin",
@@ -338,6 +311,24 @@
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 0,
+            "side": "blue"
         }
     ]
 }
