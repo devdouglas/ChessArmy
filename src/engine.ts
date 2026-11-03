@@ -110,16 +110,17 @@ export function isAffiliation(v: unknown): v is Affiliation {
   return isSide(v) || isNeutralSide(v);
 }
 
-export type ArmyControl = 'player' | 'ai-enemy' | 'ai-ally';
-export const ARMY_CONTROLS: ArmyControl[] = ['player', 'ai-enemy', 'ai-ally'];
+export type ArmyControl = 'player' | 'ai-enemy' | 'ai-ally' | 'ai-hostile';
+export const ARMY_CONTROLS: ArmyControl[] = ['player', 'ai-enemy', 'ai-ally', 'ai-hostile'];
 export const ARMY_CONTROL_LABEL: Record<ArmyControl, string> = {
   player: 'player',
   'ai-enemy': 'ai enemy',
   'ai-ally': 'ai ally',
+  'ai-hostile': 'ai hostile',
 };
 
 export function isArmyControl(v: unknown): v is ArmyControl {
-  return v === 'player' || v === 'ai-enemy' || v === 'ai-ally';
+  return v === 'player' || v === 'ai-enemy' || v === 'ai-ally' || v === 'ai-hostile';
 }
 
 export function defaultArmyControls(): Record<Side, ArmyControl> {
@@ -1452,6 +1453,8 @@ function activationMoveRange(state: GameState, piece: Piece): number {
   if (stats.move <= 0) return 0;
   const from = { col: piece.col, row: piece.row };
   if (inWater(state, from)) return capMoveRange(state, piece, 1);
+  // The downhill grant is one hex, same tile the +1 mark showed.
+  if (state.downhillMove && state.scoutPieceId === piece.id) return capMoveRange(state, piece, 1);
   return capMoveRange(state, piece, stats.move);
 }
 
@@ -2021,7 +2024,13 @@ export function isPlayerControlled(state: GameState, side: Side): boolean {
 
 export function isAiControlled(state: GameState, side: Side): boolean {
   const c = controlOf(state, side);
-  return c === 'ai-enemy' || c === 'ai-ally';
+  return c === 'ai-enemy' || c === 'ai-ally' || c === 'ai-hostile';
+}
+
+/** AI that is not on the player's team. Hostile is its own team, even against other hostiles. */
+function isOpponentAi(state: GameState, side: Side): boolean {
+  const c = controlOf(state, side);
+  return c === 'ai-enemy' || c === 'ai-hostile';
 }
 
 export function participatingSides(state: GameState): Side[] {
@@ -2034,10 +2043,10 @@ export function participatingSides(state: GameState): Side[] {
 }
 
 function coalition(state: GameState, side: Side): string {
-  const vsEnemy = participatingSides(state).some(
-    (s) => controlOf(state, s) === 'ai-enemy',
-  );
-  if (vsEnemy) {
+  // Each hostile army is its own team: players, allies, enemies, and other hostiles.
+  if (controlOf(state, side) === 'ai-hostile') return `hostile-${side}`;
+  const vsFoe = participatingSides(state).some((s) => isOpponentAi(state, s));
+  if (vsFoe) {
     return controlOf(state, side) === 'ai-enemy' ? 'enemy' : 'player';
   }
   return `solo-${side}`;
@@ -2107,7 +2116,7 @@ export function signsOnMap(state: GameState): number {
 }
 
 export function matchHasEnemies(state: GameState): boolean {
-  return participatingSides(state).some((s) => controlOf(state, s) === 'ai-enemy');
+  return participatingSides(state).some((s) => isOpponentAi(state, s));
 }
 
 export function playerTeamWon(state: GameState): boolean {
@@ -2330,13 +2339,21 @@ function marchStepTerrain(state: GameState, piece: Piece, fromHex: Hex, toHex: H
   return true;
 }
 
+/** Own units are never a wall. The march may step through them, not land on them. */
+function friendlyOccupant(state: GameState, piece: Piece, hex: Hex): Piece | undefined {
+  const occ = pieceAt(state, hex);
+  if (!occ || occ.id === piece.id) return undefined;
+  if (!sameTeam(state, piece.side, occ.side)) return undefined;
+  return occ;
+}
+
 /** Tile a standing march can enter. Climbs ignore empty stamina; a lethal water jump does not. */
 function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
   if (!inBounds(state, toHex)) return false;
   if (isWall(state, toHex) || isPalisade(state, toHex)) return false;
   if (!marchStepTerrain(state, piece, fromHex, toHex)) return false;
   const occ = pieceAt(state, toHex);
-  if (occ && occ.id !== piece.id) return false;
+  if (occ && occ.id !== piece.id && !friendlyOccupant(state, piece, toHex)) return false;
   return true;
 }
 
@@ -2554,8 +2571,20 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     }
     if (enteredWater || chargeForest) break;
   }
-  if (!taken.length && !strike) return null;
+  // A chunk that runs out on a friendly stops on the empty hex before them.
+  while (taken.length && friendlyOccupant(state, piece, taken[taken.length - 1]!)) {
+    taken.pop();
+  }
+  if (taken.length) {
+    const prevHex = taken.length > 1 ? taken[taken.length - 2]! : here;
+    const step = dirBetween(prevHex, taken[taken.length - 1]!, state.orientation);
+    if (step !== null) facing = step;
+  } else {
+    facing = facingOf(piece);
+  }
   const approach = taken.length ? taken[taken.length - 1]! : here;
+  if (strike && dirBetween(approach, strike, state.orientation) === null) strike = null;
+  if (!taken.length && !strike) return null;
   let landed = approach;
   if (strike) {
     const took = applyMarchStrike(state, piece, approach, strike);
@@ -2835,11 +2864,15 @@ function checkWin(state: GameState): void {
     return;
   }
   // Vs AI: a dead human is a loss even if an ai-ally still has pieces.
+  // Two foe teams (a hostile and an enemy, or two hostiles) keep fighting.
   if (matchHasEnemies(state)) {
     const humans = parts.filter((s) => isPlayerControlled(state, s));
     if (humans.length && humans.every((s) => sideDefeated(state, s))) {
-      const foe = live.find((s) => controlOf(state, s) === 'ai-enemy');
-      if (foe) {
+      const foeTeams = new Set(
+        live.filter((s) => isOpponentAi(state, s)).map((s) => coalition(state, s)),
+      );
+      const foe = live.find((s) => isOpponentAi(state, s));
+      if (foe && foeTeams.size === 1) {
         state.winner = foe;
         return;
       }
@@ -3265,26 +3298,25 @@ function keepBetterStop(
 
 type PlusReach = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
 
-/** Free downhill bonus stops. Not an energy spend. */
+/** Free downhill bonus: one hex past the drop. A climb is not free. */
 function plusBonusStops(state: GameState, piece: Piece, first: Map<string, StraightStop>): Map<string, PlusReach> {
   const from: Hex = { col: piece.col, row: piece.row };
   const fromKey = key(from);
   const out = new Map<string, PlusReach>();
+  // Own actions resolve before the free hex. Don't mark it until this move would pay it.
+  if (leftoverActionPoints(state, piece) > 0) return out;
   for (const [k, stop] of first) {
     if (stop.via) continue;
     const landing = parseKey(k);
     if (downSteps(state, from, stop.path, landing) <= 0) continue;
     if (pathEntersWater(state, from, landing, stop.path)) continue;
-    const bonus = straightMoveStops(
-      state,
-      piece,
-      landing,
-      capMoveRange(state, piece, moveRangeAt(state, piece, landing)),
-    );
+    const bonus = straightMoveStops(state, piece, landing, 1);
     for (const [bk, b] of bonus) {
       if (bk === fromKey) continue;
       const held = first.get(bk);
       if (held && !held.via) continue;
+      const hex = parseKey(bk);
+      if (pathSpendsStamina(state, landing, hex, b.path)) continue;
       const prev = out.get(bk);
       if (prev && stop.dist >= prev.landingPath.length) continue;
       out.set(bk, { landing, landingPath: stop.path, bonusPath: b.path });
@@ -3293,7 +3325,10 @@ function plusBonusStops(state: GameState, piece: Piece, first: Map<string, Strai
   return out;
 }
 
-/** One energy action past the free +1. The +1 itself stays free. */
+/**
+ * One hex past the free +1, and not still on the landing's ring.
+ * A tile beside a free hex at the same depth stays unmarked.
+ */
 function energyBeyondPlus(
   state: GameState,
   piece: Piece,
@@ -3304,14 +3339,10 @@ function energyBeyondPlus(
   const out = new Map<string, StraightStop>();
   for (const [pk, info] of plus) {
     const fromPlus = parseKey(pk);
-    const further = straightMoveStops(
-      state,
-      piece,
-      fromPlus,
-      capMoveRange(state, piece, moveRangeAt(state, piece, fromPlus)),
-    );
+    const beside = new Set(hexNeighbors(state, info.landing).map((h) => key(h)));
+    const further = straightMoveStops(state, piece, fromPlus, 1);
     for (const [dk, b] of further) {
-      if (dk === startKey || plus.has(dk) || first.has(dk)) continue;
+      if (dk === startKey || plus.has(dk) || first.has(dk) || beside.has(dk)) continue;
       const path = [...info.landingPath, ...info.bonusPath, ...b.path];
       const prev = out.get(dk);
       if (prev && prev.dist <= path.length) continue;
@@ -3361,6 +3392,7 @@ export function plusStepPlan(state: GameState, pieceId: string, goal: Hex): Plus
   const piece = getPiece(state, pieceId);
   if (!piece || isSleeping(piece)) return null;
   if (state.downhillMove && state.scoutPieceId === piece.id) return null;
+  if (leftoverActionPoints(state, piece) > 0) return null;
   const from: Hex = { col: piece.col, row: piece.row };
   if (eq(from, goal)) return null;
   const reach = allMoveStops(state, piece);
@@ -3370,14 +3402,10 @@ export function plusStepPlan(state: GameState, pieceId: string, goal: Hex): Plus
     const landing = parseKey(k);
     if (downSteps(state, from, stop.path, landing) <= 0) continue;
     if (pathEntersWater(state, from, landing, stop.path)) continue;
-    const bonus = straightMoveStops(
-      state,
-      piece,
-      landing,
-      capMoveRange(state, piece, moveRangeAt(state, piece, landing)),
-    );
+    const bonus = straightMoveStops(state, piece, landing, 1);
     const next = bonus.get(key(goal));
     if (!next) continue;
+    if (pathSpendsStamina(state, landing, goal, next.path)) continue;
     const cand = {
       landing,
       landingPath: stop.path,
@@ -3413,12 +3441,30 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
 
   const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
   const plusReach = inDownhill ? new Map<string, PlusReach>() : plusBonusStops(state, piece, reach);
+  const plain = new Map<string, StraightStop>();
+  for (const [k, stop] of reach) if (!stop.via) plain.set(k, stop);
+  const frontier = new Set(energyBeyondPlus(state, piece, plain, plusReach).keys());
+  if (inDownhill) {
+    const beside = new Set(hexNeighbors(state, from).map((h) => key(h)));
+    for (const [fk, stop] of plain) {
+      if (pathSpendsStamina(state, from, parseKey(fk), stop.path)) continue;
+      const further = straightMoveStops(state, piece, parseKey(fk), 1);
+      for (const dk of further.keys()) {
+        if (dk === key(from) || plain.has(dk) || beside.has(dk)) continue;
+        frontier.add(dk);
+      }
+    }
+  }
   for (const [k, { dist, path, via }] of reach) {
     if (plusReach.has(k)) continue;
     const h = parseKey(k);
     const climbs = pathSpendsStamina(state, from, h, path);
     const extra = !!(via || stamAction);
-    const pastFree = extra && path.some((step) => plusReach.has(key(step)));
+    const throughFree = path.some((step) => plusReach.has(key(step)));
+    // Full extra moves that run through the free hex stop at the one-hex frontier.
+    if (throughFree && !frontier.has(k)) continue;
+    if (inDownhill && via && !frontier.has(k)) continue;
+    const pastFree = frontier.has(k) && (throughFree || (inDownhill && !!via));
     if (inDownhill && !via && !climbs) {
       out.push({ kind: 'move', hex: h, cost: dist, plus: true });
     } else if (climbs || extra) {
@@ -3806,9 +3852,16 @@ function applyActionInner(state: GameState, action: Action): GameState {
       next.scoutMoveSpent = (next.scoutMoveSpent ?? 0) + hit.cost;
     }
 
+    const walked = walkedHexes(fromHex, walkPath, plan.stop);
+    const last = walked[walked.length - 1];
+    const beforeLast = walked.length > 1 ? walked[walked.length - 2] : fromHex;
+    const tailDrop =
+      last && hexHeight(next, beforeLast) - hexHeight(next, last) === 1 ? 1 : 0;
+    // The opening drop already paid for the free hex inside this walk.
+    // A later drop, including the energy step, still grants downhill.
     const dropped =
       hit.kind === 'stamina' && hit.beyondPlus
-        ? 0
+        ? tailDrop
         : downSteps(next, fromHex, walkPath, plan.stop);
     afterAction(next, piece, 'move', enteredWater, dropped);
     return next;

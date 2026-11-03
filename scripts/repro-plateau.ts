@@ -401,6 +401,49 @@ try {
     assert(far.col === past.col && far.row === past.row, 'energy step lands past the +1');
     assert(staminaLeft(far) === 0, 'the step past +1 spends energy');
     assert(!burned.downhillMove, 'the free +1 is already inside that walk');
+    assert((burned.downhillQueued ?? 0) === 0, 'a flat energy step does not queue another drop');
+  }
+
+  {
+    const savedMove = UNIT_STATS.cohort.move;
+    UNIT_STATS.cohort.move = 2;
+    const s = make(high, { high: [high] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    const land = from;
+    const one = step(land, ((dir + 3) % 6) as HexDir, 1);
+    const two = step(one, ((dir + 3) % 6) as HexDir, 1);
+    const moved = applyAction(s, { kind: 'move', pieceId: p.id, to: land });
+    const after = legalHighlights(moved, p.id);
+    assert(
+      after.some((h) => h.kind === 'move' && h.plus && h.hex.col === one.col && h.hex.row === one.row),
+      'downhill bonus is the next hex',
+    );
+    assert(
+      !after.some((h) => h.kind === 'move' && h.hex.col === two.col && h.hex.row === two.row),
+      'downhill bonus is not a second hex',
+    );
+    assert(
+      after.some(
+        (h) => h.kind === 'stamina' && h.beyondPlus && h.hex.col === two.col && h.hex.row === two.row,
+      ),
+      'double time is one step past that hex',
+    );
+    UNIT_STATS.cohort.move = savedMove;
+  }
+
+  {
+    const peak = high;
+    const shelf = from;
+    const free = step(shelf, ((dir + 3) % 6) as HexDir, 1);
+    const lower = step(free, ((dir + 3) % 6) as HexDir, 1);
+    const s = make(peak, { rock: [peak], plateau: [shelf, free], high: [lower] }, 'cohort');
+    const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
+    const burned = applyAction(s, { kind: 'move', pieceId: p.id, to: lower });
+    const far = burned.pieces.find((x) => x.id === p.id)!;
+    assert(far.col === lower.col && far.row === lower.row, 'energy step can drop again');
+    assert(staminaLeft(far) === 0, 'the dropping energy step spends energy');
+    assert(burned.downhillMove, 'the drop on the energy step still grants downhill');
+    assert((burned.downhillQueued ?? 0) === 0, 'the opening drop is not granted twice');
   }
 
   {
@@ -452,6 +495,15 @@ try {
     const s = make(high, { high: [high] }, 'scout', foe);
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'scout')!;
     p.stamina = 0;
+    const edge = step(from, ((dir + 3) % 6) as HexDir, 1);
+    const past = step(edge, ((dir + 3) % 6) as HexDir, 1);
+    assert(
+      !legalHighlights(s, p.id).some(
+        (h) => h.kind === 'plus' && h.hex.col === past.col && h.hex.row === past.row,
+      ),
+      'the +1 stays hidden while the scout still has an action',
+    );
+    assert(plusStepPlan(s, p.id, past) === null, 'a +1 click waits until that action is gone');
     const stepped = applyAction(s, { kind: 'move', pieceId: p.id, to: from });
     assert(!stepped.downhillMove, 'own actions come before the downhill move');
     assert(stepped.downhillQueued === 1, 'the drop is queued');
@@ -461,6 +513,12 @@ try {
     const second = applyAction(stepped, { kind: 'move', pieceId: p.id, to: further });
     assert(second.downhillMove, 'the downhill move is paid after the scout’s own actions');
     assert(second.turn === 'red', 'the paid downhill move stays this turn');
+    const bonus = step(further, ((dir + 3) % 6) as HexDir, 1);
+    const paid = legalHighlights(second, p.id);
+    assert(
+      paid.some((h) => h.kind === 'move' && h.plus && h.hex.col === bonus.col && h.hex.row === bonus.row),
+      'the +1 shows once the scout’s own actions are gone',
+    );
   }
 } finally {
   resetExperimental();

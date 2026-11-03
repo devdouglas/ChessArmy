@@ -4257,6 +4257,7 @@ function sideTurnPhrase(side: Side): string {
   }
   const style = AI_STYLE_LABEL[sanitizeAiStyles(state.aiStyles)[side]];
   if (c === 'ai-ally') return `${name} (AI ally · ${style})`;
+  if (c === 'ai-hostile') return `${name} (AI hostile · ${style})`;
   return `${name} (AI · ${style})`;
 }
 
@@ -7611,10 +7612,17 @@ function render() {
     mode === 'hotseat'
       ? ''
       : `<button type="button" id="start-hotseat">Start hotseat</button>`;
+  const hostileMatch = participatingSides(state).some(
+    (s) => state.controls[s] === 'ai-hostile',
+  );
   const modeHint = matchHasEnemies(state)
     ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
-      ? 'vs AI + allies'
-      : 'vs AI'
+      ? hostileMatch
+        ? 'vs hostile + allies'
+        : 'vs AI + allies'
+      : hostileMatch
+        ? 'vs hostile'
+        : 'vs AI'
     : participatingSides(state).filter((s) => isPlayerControlled(state, s))
           .length > 1
       ? 'Hotseat'

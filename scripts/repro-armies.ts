@@ -1,3 +1,4 @@
+import { pickAiAction } from '../src/ai';
 import {
   applyAction,
   isHostile,
@@ -59,6 +60,8 @@ const t = emptyTerrain(8, 10);
     purple: 'ai-enemy',
   });
   const soldier = s.pieces.find((p) => p.type === 'soldier')!;
+  const blue = s.pieces.find((p) => p.side === 'blue')!;
+  blue.hp = 1;
   const after = applyAction(s, {
     kind: 'move',
     pieceId: soldier.id,
@@ -115,6 +118,84 @@ const t = emptyTerrain(8, 10);
   });
   assert(isHostile(s, 'red', 'blue'), 'two players FFA when no enemy pieces');
   assert(!s.winner, 'hotseat not over');
+}
+
+{
+  const s = createStateFromTerrain(t, 'hostile', 'pointy', [
+    { type: 'general', col: 1, row: 8, side: 'red' },
+    { type: 'general', col: 6, row: 8, side: 'yellow' },
+    { type: 'general', col: 1, row: 1, side: 'blue' },
+    { type: 'general', col: 6, row: 1, side: 'purple' },
+  ], {
+    red: 'player',
+    yellow: 'ai-ally',
+    blue: 'ai-hostile',
+    purple: 'ai-enemy',
+  });
+  assert(sameTeam(s, 'red', 'yellow'), 'ally stays with the player against a hostile');
+  assert(isHostile(s, 'blue', 'red'), 'hostile vs player');
+  assert(isHostile(s, 'blue', 'yellow'), 'hostile vs ally');
+  assert(isHostile(s, 'blue', 'purple'), 'hostile vs enemy');
+  assert(!sameTeam(s, 'blue', 'purple'), 'hostile is not on the enemy team');
+  assert(!s.winner, 'hostile match is not over at start');
+}
+
+{
+  const s = createStateFromTerrain(t, 'hostile-vs-hostile', 'pointy', [
+    { type: 'general', col: 1, row: 1, side: 'red' },
+    { type: 'soldier', col: 2, row: 8, side: 'blue' },
+    { type: 'soldier', col: 3, row: 8, side: 'purple' },
+    { type: 'general', col: 6, row: 1, side: 'yellow' },
+  ], {
+    red: 'player',
+    yellow: 'ai-ally',
+    blue: 'ai-hostile',
+    purple: 'ai-hostile',
+  });
+  assert(isHostile(s, 'blue', 'purple'), 'hostile vs other hostile');
+  assert(!sameTeam(s, 'blue', 'purple'), 'two hostiles are not a team');
+  s.turn = 'blue';
+  const act = pickAiAction(s);
+  assert(
+    act?.kind === 'shoot' && act.at.col === 3 && act.at.row === 8,
+    'hostile shoots the other hostile',
+  );
+}
+
+{
+  const s = createStateFromTerrain(t, 'hostile-player-dead', 'pointy', [
+    { type: 'dude', col: 3, row: 5, side: 'red', unitTokens: ['general'] },
+    { type: 'wolf', col: 4, row: 5, side: 'blue' },
+    { type: 'general', col: 0, row: 0, side: 'yellow' },
+    { type: 'general', col: 7, row: 1, side: 'purple' },
+  ], {
+    red: 'player',
+    yellow: 'ai-hostile',
+    blue: 'ai-hostile',
+    purple: 'ai-enemy',
+  });
+  s.turn = 'blue';
+  const killer = s.pieces.find((p) => p.side === 'blue' && p.type === 'wolf')!;
+  const after = applyAction(s, { kind: 'move', pieceId: killer.id, to: { col: 3, row: 5 } });
+  assert(!after.winner, `hostiles keep fighting after the player dies, got ${after.winner}`);
+}
+
+{
+  const s = createStateFromTerrain(t, 'hostile-wins', 'pointy', [
+    { type: 'dude', col: 3, row: 5, side: 'red', unitTokens: ['general'] },
+    { type: 'wolf', col: 4, row: 5, side: 'blue' },
+    { type: 'peasant', col: 7, row: 8, side: 'yellow' },
+  ], {
+    red: 'player',
+    yellow: 'ai-ally',
+    blue: 'ai-hostile',
+    purple: 'ai-enemy',
+  });
+  s.turn = 'blue';
+  const killer = s.pieces.find((p) => p.side === 'blue' && p.type === 'wolf')!;
+  const after = applyAction(s, { kind: 'move', pieceId: killer.id, to: { col: 3, row: 5 } });
+  assert(after.winner === 'blue', `lone hostile wins when the player dies, got ${after.winner}`);
+  assert(!playerTeamWon(after), 'a hostile win is not a player win');
 }
 
 console.log('repro-armies ok');

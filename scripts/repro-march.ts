@@ -96,6 +96,83 @@ try {
     'route does not step on the wall',
   );
 
+  const through = board();
+  const throughLine = forward(through, 3);
+  const walker = throughLine.piece;
+  const friendHex = throughLine.path[0]!;
+  const friend = {
+    ...walker,
+    id: `${walker.id}-friend`,
+    col: friendHex.col,
+    row: friendHex.row,
+    walkTo: undefined,
+  };
+  through.pieces.push(friend);
+  const pastFriend = throughLine.path[2]!;
+  const throughRoute = marchRoute(through, walker, pastFriend)!;
+  assert(
+    throughRoute.some((h) => h.col === friendHex.col && h.row === friendHex.row),
+    'march route steps through a friendly',
+  );
+  const throughState = performMarch(setWalkOrder(through, walker.id, pastFriend), walker.id);
+  const throughAt = getPiece(throughState, walker.id)!;
+  const friendAt = getPiece(throughState, friend.id)!;
+  assert(
+    throughAt.col === throughLine.path[1]!.col && throughAt.row === throughLine.path[1]!.row,
+    'move 2 lands on the empty hex past the friendly',
+  );
+  assert(friendAt.col === friendHex.col && friendAt.row === friendHex.row, 'the friendly stays put');
+  assert(
+    allLegalActions(through).some(
+      (a) => a.kind === 'move' && a.pieceId === walker.id && a.to.col === throughLine.path[1]!.col,
+    ),
+    'a click also walks past the friendly',
+  );
+  assert(
+    !allLegalActions(through).some(
+      (a) => a.kind === 'move' && a.pieceId === walker.id && a.to.col === friendHex.col && a.to.row === friendHex.row,
+    ),
+    'a click cannot stop on the friendly',
+  );
+
+  const crowded = board();
+  const crowdLine = forward(crowded, 4);
+  const crowd = crowdLine.piece;
+  const blockHex = crowdLine.path[1]!;
+  crowded.pieces.push({
+    ...crowd,
+    id: `${crowd.id}-friend`,
+    col: blockHex.col,
+    row: blockHex.row,
+    walkTo: undefined,
+  });
+  const crowdState = performMarch(setWalkOrder(crowded, crowd.id, crowdLine.path[3]!), crowd.id);
+  const crowdAt = getPiece(crowdState, crowd.id)!;
+  assert(
+    crowdAt.col === crowdLine.path[0]!.col && crowdAt.row === crowdLine.path[0]!.row,
+    'a chunk that would end on a friendly stops on the hex before',
+  );
+
+  UNIT_STATS.soldier.move = 1;
+  const short = board();
+  const shortLine = forward(short, 3);
+  const shortWalker = shortLine.piece;
+  short.pieces.push({
+    ...shortWalker,
+    id: `${shortWalker.id}-friend`,
+    col: shortLine.path[0]!.col,
+    row: shortLine.path[0]!.row,
+    walkTo: undefined,
+  });
+  const shortOrder = setWalkOrder(short, shortWalker.id, shortLine.path[2]!);
+  assert(marchRoute(shortOrder, getPiece(shortOrder, shortWalker.id)!, shortLine.path[2]!), 'move 1 still routes through a friendly');
+  const shortState = performMarch(shortOrder, shortWalker.id);
+  const shortAt = getPiece(shortState, shortWalker.id)!;
+  assert(shortAt.col === shortWalker.col && shortAt.row === shortWalker.row, 'move 1 does not land on the friendly');
+  assert(shortAt.walkTo, 'the order stays until there is an empty hex to take');
+  assert(shortState.turn === 'red', 'a blocked step does not spend the turn');
+  UNIT_STATS.soldier.move = 2;
+
   const rested = board();
   const restLine = forward(rested, 3);
   let restState = setWalkOrder(rested, restLine.piece.id, restLine.path[2]!);
