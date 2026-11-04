@@ -4031,6 +4031,10 @@ export function allLegalActions(state: GameState): Action[] {
         actions.push({ kind: 'rotate', pieceId: p.id, dir: d as HexDir });
       }
     }
+    // Park for idle regen. Scout lock / already walked → no Rest (same as the dock).
+    if (!state.scoutPieceId && !p.movedThisTurn) {
+      actions.push({ kind: 'rest', pieceId: p.id });
+    }
   }
   if (state.scoutPieceId && state.scoutActionsLeft) {
     actions.push({ kind: 'skip' });

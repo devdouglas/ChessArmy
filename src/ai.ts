@@ -3,7 +3,8 @@
  * 1 Walking — do-not-touch / flags / pikes / palisades / keep-line / general last.
  * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
  * 3 Targeting — hunt: nearest enemy (Attack); else advance the front; else guard owned flags.
- * 4 Chasing — close on that hunt, prefer high ground.
+ * 4 Chasing — close on that hunt, prefer high ground. Empty energy vs a higher
+ *   hunt → Rest that unit (regen to climb) instead of pacing on flat ground.
  * 5 Defending — smash walls on the path; hold and face only enemies in Sight.
  * 6 Retreating — do not flee the hunt; if not hunting, walk home; avoid skip.
  * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
@@ -42,6 +43,8 @@ import {
   flushLastHiddenArmies,
   hidesHoldLos,
   isConcealed,
+  staminaLeft,
+  staminaMax,
   type Action,
   aiStyleOf,
   type GameState,
@@ -180,6 +183,22 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
     if (!eq(from, far)) return far;
   }
   return null;
+}
+
+/** Empty pool, hunt sits higher, and this unit can idle-regen on land → Rest to climb. */
+function shouldRestToClimb(
+  state: GameState,
+  piece: Piece,
+  me: Side,
+  on: RuleOn,
+): boolean {
+  if (staminaMax(piece) <= 0 || staminaLeft(piece) > 0) return false;
+  if (UNIT_STATS[piece.type].staminaRegen <= 0) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  if (terrainAt(state, from) === 'water') return false;
+  const hunt = huntHex(state, from, me, on);
+  if (!hunt) return false;
+  return terrainHeight(terrainAt(state, hunt)) > terrainHeight(terrainAt(state, from));
 }
 
 function inBoard(state: GameState, h: Hex): boolean {
@@ -691,7 +710,13 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
 
   if (action.kind === 'rest') {
-    score += isHolding(state, piece, me, on) ? 400 : 20;
+    if (shouldRestToClimb(state, piece, me, on)) {
+      // Beat any flat chase — empty energy cannot climb to the hunt.
+      score += 1_500;
+      return score;
+    }
+    // Hold parks on purpose. Otherwise Rest stays below weak walks / skip filler.
+    score += isHolding(state, piece, me, on) ? 400 : -40;
     return score;
   }
 

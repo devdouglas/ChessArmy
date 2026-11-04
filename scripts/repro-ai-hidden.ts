@@ -66,9 +66,12 @@ function campBoard(): GameState {
   const barb = s.pieces.find((p) => p.type === 'barbarian')!;
   assert(isConcealed(s, barb), 'ambusher still hidden');
   const a = pickAiAction(s);
-  assert(a?.kind === 'move' && a.pieceId === barb.id, 'hidden melee when adjacent');
-  if (a.kind !== 'move') throw new Error('narrow');
-  const plan = previewMove(s, barb, a.to);
+  assert(
+    (a?.kind === 'move' || a?.kind === 'charge') && a.pieceId === barb.id,
+    'hidden melee when adjacent',
+  );
+  if (a.kind !== 'move' && a.kind !== 'charge') throw new Error('narrow');
+  const plan = previewMove(s, barb, a.to, undefined, { charging: a.kind === 'charge' });
   assert(
     plan.hits.some((h) => h.id.startsWith('red-soldier')),
     'charge/melee actually hits the adjacent soldier',
