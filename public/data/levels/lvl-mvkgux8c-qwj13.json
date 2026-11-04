@@ -110,8 +110,8 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "The women have had their chance. Perhaps the army has lower standards.",
-    "startText": "By the end of the week, Anthony's domestic difficulties had become public entertainment. His wife had left, the neighbours had developed a remarkable interest in avoiding him, and the village elders had suggested that he might do everyone a favour by finding employment elsewhere.\n\nAnthony took this as a sign.\n\nHe would enlist as the army offered steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n\nThe recruiting officer listened to Anthony's ambitions with the expression of a man who had heard every possible lie before breakfast.\n\n\"Can you throw a javelin?\"\n\nAnthony said he could.\n\nThe officer pointed to the targets.",
+    "teaserText": "Javelins and energy",
+    "startText": "By the end of the week, Anthony's domestic difficulties had become public entertainment. His wife had left, the neighbours had developed a remarkable interest in avoiding him.\n\nThe women have had their chance. Perhaps the army has lower standards.\n\nHe would enlist as the army offered steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n\nThe recruiting officer listened to Anthony's ambitions with the expression of a man who had heard every possible lie before breakfast.\n\n\"Can you throw a javelin?\"\n\nAnthony said he could.\n\nThe officer pointed to the targets.",
     "winText": "The javelin struck its target. The recruiting officer nodded, as though this had been the result he expected all along.\n\nAnthony had been accepted into the army. At last, a respectable career lay before him.\n\nIt was not necessarily a career he would enjoy.",
     "loseText": "A javelin is not a walking stick, and throwing it at random is not a recognised military discipline. The officer walks away as he has other recruits to disappoint.",
     "startAudio": "The-army-wants-you-intro.mp3",
@@ -234,7 +234,7 @@
         }
     ],
     "sort": 4,
-    "updatedAt": 1793730749670,
+    "updatedAt": 1793786568867,
     "armies": [
         {
             "type": "peasant",

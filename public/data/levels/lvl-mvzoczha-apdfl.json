@@ -106,7 +106,7 @@
             "land"
         ]
     ],
-    "category": "tutorial",
+    "category": "campaign",
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
@@ -271,8 +271,8 @@
             "row": 1
         }
     ],
-    "sort": 18,
-    "updatedAt": 1793680264983,
+    "sort": 5,
+    "updatedAt": 1793770878262,
     "armies": [
         {
             "type": "u-mvuvhfewwv97",

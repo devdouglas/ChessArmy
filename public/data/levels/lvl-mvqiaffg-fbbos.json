@@ -154,7 +154,7 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
-    "teaserText": "",
+    "teaserText": "Hiding, Line of sight. Double time.",
     "startText": "",
     "winText": "",
     "loseText": "",
@@ -445,8 +445,8 @@
             "row": 7
         }
     ],
-    "sort": 16,
-    "updatedAt": 1793704679609,
+    "sort": 6,
+    "updatedAt": 1793786666873,
     "armies": [
         {
             "type": "cohort",

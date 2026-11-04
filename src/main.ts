@@ -582,7 +582,7 @@ function computeLayout() {
 }
 
 let { hexSize: HEX_SIZE, pad: PAD, pieceIcon: PIECE_ICON } = computeLayout();
-const MOVE_MS = 300;
+const MOVE_MS = 250;
 const REVEAL_MS = 520;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;

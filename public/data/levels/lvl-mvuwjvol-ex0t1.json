@@ -143,7 +143,7 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "Fully suited up",
+    "teaserText": "Tactical attack",
     "startText": "Here is a Javelin",
     "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
     "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
@@ -294,8 +294,8 @@
             "row": 11
         }
     ],
-    "sort": 8,
-    "updatedAt": 1793374845431,
+    "sort": 9,
+    "updatedAt": 1793786833633,
     "armies": [
         {
             "type": "cohort",

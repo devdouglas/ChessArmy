@@ -1,10 +1,10 @@
 {
     "id": "lvl-mvigma4r-ehvbl",
     "name": "The Greek Question",
-    "cols": 8,
-    "rows": 8,
+    "cols": 11,
+    "rows": 11,
     "orientation": "flat",
-    "hexRadius": 0,
+    "hexRadius": 5,
     "terrain": [
         [
             "land",
@@ -14,13 +14,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land",
@@ -30,13 +23,6 @@
             "land",
             "land",
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -54,13 +40,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land",
@@ -74,9 +53,93 @@
             "land",
             "land",
             "land",
+            "land",
+            "land",
+            "land",
             "land"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
             "land",
             "land",
             "land",
@@ -120,71 +183,172 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
-    "sort": 20,
-    "updatedAt": 1793650753267,
+    "tokens": [
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 2,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 1,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 1,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 1,
+            "row": 4
+        },
+        {
+            "type": "forest",
+            "col": 1,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "forest",
+            "col": 0,
+            "row": 5
+        }
+    ],
+    "sort": 16,
+    "updatedAt": 1793789045049,
     "armies": [
         {
-            "type": "cohort",
-            "col": 1,
-            "row": 6,
-            "side": "red"
+            "type": "hoplite",
+            "col": 4,
+            "row": 5,
+            "side": "blue",
+            "facing": 4
         },
         {
             "type": "hoplite",
-            "col": 1,
-            "row": 3,
+            "col": 5,
+            "row": 5,
             "side": "blue"
         },
         {
             "type": "hoplite",
-            "col": 2,
-            "row": 3,
-            "side": "blue"
+            "col": 6,
+            "row": 5,
+            "side": "blue",
+            "facing": 0
         },
         {
-            "type": "hoplite",
-            "col": 3,
-            "row": 3,
+            "type": "archer",
+            "col": 5,
+            "row": 4,
             "side": "blue"
         },
         {
             "type": "archer",
-            "col": 2,
-            "row": 6,
-            "side": "red"
-        },
-        {
-            "type": "archer",
-            "col": 2,
-            "row": 2,
-            "side": "blue"
-        },
-        {
-            "type": "cohort",
-            "col": 1,
-            "row": 7,
+            "col": 5,
+            "row": 9,
             "side": "red"
         },
         {
             "type": "u-mvf8ty84rdk3",
-            "col": 3,
-            "row": 6,
+            "col": 8,
+            "row": 8,
             "side": "red",
             "unitTokens": [
                 "general"
             ]
         },
         {
-            "type": "hoplite",
-            "col": 4,
-            "row": 3,
-            "side": "blue"
+            "type": "cohort",
+            "col": 6,
+            "row": 9,
+            "side": "red"
         },
         {
-            "type": "u-mvf8ty84rdk3",
-            "col": 0,
-            "row": 0,
+            "type": "cohort",
+            "col": 4,
+            "row": 9,
             "side": "red"
         }
     ]

@@ -110,12 +110,12 @@
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
-    "teaserText": "Three scarecrows. One farmer. A life of limitless promise.",
+    "teaserText": "Uphill and downhill movement and energy preservation",
     "startText": "Anthony remembers he forgot something and rushes home. He uses the hills to make some speed. [tutorial]",
     "winText": "Anthony came at him so fast he did not see him coming. But no time for questions. There is more activity in the front of the house.",
     "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
-    "startAudio": "A-Farmers-Lot-Intro.mp3",
-    "winAudio": "A-farmers-lot-victory.mp3",
+    "startAudio": "",
+    "winAudio": "",
     "loseAudio": "",
     "star2": {
         "metric": "turns",
@@ -206,10 +206,15 @@
             "type": "notouch",
             "col": 2,
             "row": 1
+        },
+        {
+            "type": "flag",
+            "col": 4,
+            "row": 0
         }
     ],
     "sort": 1,
-    "updatedAt": 1793644538587,
+    "updatedAt": 1793786353044,
     "armies": [
         {
             "type": "peasant",

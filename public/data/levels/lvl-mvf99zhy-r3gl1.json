@@ -106,7 +106,7 @@
             "land"
         ]
     ],
-    "category": "tutorial",
+    "category": "campaign",
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
@@ -206,8 +206,8 @@
             "row": 4
         }
     ],
-    "sort": 13,
-    "updatedAt": 1793650787739,
+    "sort": 9,
+    "updatedAt": 1793770981346,
     "armies": [
         {
             "type": "archer",

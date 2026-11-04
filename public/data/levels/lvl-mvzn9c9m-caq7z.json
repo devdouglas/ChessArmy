@@ -23,46 +23,31 @@
         ],
         [
             "water",
-            "land",
             "water",
-            "land",
             "water",
-            "land",
             "water",
-            "land",
             "water",
-            "land",
             "water",
-            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "water",
+            "water",
             "water"
         ],
         [
             "land",
             "land",
+            "water",
             "land",
             "land",
             "land",
+            "water",
             "land",
             "land",
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
+            "water",
             "land",
             "land"
         ],
@@ -97,13 +82,28 @@
             "land"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "high",
+            "land",
+            "land",
+            "high",
+            "high",
+            "land",
+            "land",
+            "high",
+            "land",
+            "land"
+        ],
+        [
             "high",
             "high",
             "land",
             "high",
             "high",
             "high",
-            "land",
+            "high",
             "high",
             "high",
             "high",
@@ -116,7 +116,7 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
-    "teaserText": "",
+    "teaserText": "Alies",
     "startText": "",
     "winText": "",
     "loseText": "",
@@ -136,7 +136,7 @@
     "armyControls": {
         "red": "player",
         "blue": "ai-enemy",
-        "yellow": "ai-enemy",
+        "yellow": "ai-ally",
         "purple": "ai-enemy"
     },
     "aiStyles": {
@@ -347,49 +347,39 @@
             "row": 2
         }
     ],
-    "sort": 9,
-    "updatedAt": 1793703847477,
+    "sort": 11,
+    "updatedAt": 1793789840641,
     "armies": [
-        {
-            "type": "archer",
-            "col": 2,
-            "row": 6,
-            "side": "red",
-            "facing": 3
-        },
         {
             "type": "cohort",
             "col": 2,
             "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
+            "side": "blue"
         },
         {
             "type": "cohort",
             "col": 6,
             "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
+            "side": "blue"
         },
         {
             "type": "cohort",
             "col": 10,
             "row": 0,
             "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ],
             "facing": 0
+        },
+        {
+            "type": "archer",
+            "col": 2,
+            "row": 6,
+            "side": "yellow"
         },
         {
             "type": "javelin",
             "col": 10,
             "row": 6,
-            "side": "red"
+            "side": "yellow"
         },
         {
             "type": "cohort",
