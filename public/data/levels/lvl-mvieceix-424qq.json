@@ -150,7 +150,7 @@
             "high"
         ]
     ],
-    "category": "campaign",
+    "category": "skirmish",
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
@@ -265,8 +265,8 @@
             "row": 0
         }
     ],
-    "sort": 2,
-    "updatedAt": 1793043886489,
+    "sort": 11,
+    "updatedAt": 1793906528294,
     "armies": [
         {
             "type": "archer",

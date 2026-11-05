@@ -117,8 +117,8 @@
     "unitsPerTurn": 5,
     "maxTurns": 0,
     "teaserText": "this time they look sharp and well rested",
-    "startText": "",
-    "winText": "",
+    "startText": "[concerned]Anthony had become increasingly concerned about the army's habit of solving problems by arranging for large numbers of men to stab one another.",
+    "winText": "His instructor assured him that this was not the 'whole' of military strategy. But thats for another day.",
     "loseText": "",
     "startAudio": "",
     "winAudio": "",
@@ -287,8 +287,8 @@
             "row": 6
         }
     ],
-    "sort": 12,
-    "updatedAt": 1793902793099,
+    "sort": 13,
+    "updatedAt": 1793904856217,
     "armies": [
         {
             "type": "archer",

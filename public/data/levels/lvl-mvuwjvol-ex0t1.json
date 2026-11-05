@@ -144,11 +144,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Tactical attack",
-    "startText": "Here is a Javelin",
-    "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
+    "startText": "His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again [aggressive] harder.",
+    "winText": "[victory] Veni, vidi, vici. Now, where's the wine?",
     "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
-    "startAudio": "",
-    "winAudio": "",
+    "startAudio": "Boys to soldiers-intro-mw3vui2p.mp3",
+    "winAudio": "Boys to soldiers-win-mw3w0yfl.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "casualties",
@@ -295,7 +295,7 @@
         }
     ],
     "sort": 8,
-    "updatedAt": 1793902790054,
+    "updatedAt": 1793903842813,
     "armies": [
         {
             "type": "cohort",

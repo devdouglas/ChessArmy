@@ -123,10 +123,10 @@
     "maxTurns": 0,
     "teaserText": "Coordinated combat",
     "startText": "Anthony had become proficient at defeating scarecrows. They never dodged, never complained and never once tried to strike him in the stomach.\n\n[angry drunk]\"Today, you will fight men.\" \n\n[anxious] Anthony looked at the soldiers waiting across the yard. [vulnerable]They had swords, and javelins, and shields and unpleasantly alert expressions.[hmmm]\n\n[critical]He had the sudden suspicion that scarecrows had been invented by a man who wanted recruits to feel good about themselves before presenting them with reality.\n\nThe instructor raised his hand.\n\n[angry drunk]\"Remember what you have learned. And try not to disgrace Rome before lunch.\"",
-    "winText": "Anthony survived the engagement and even managed to strike a few blows of his own. His opponents acknowledged his effort with the traditional military courtesy of trying to hit him again.\n\nThe instructor was satisfied. Anthony was alive. By Roman standards, it had been an excellent lesson.",
+    "winText": "Anthony survived the engagement and [surprised]even managed to strike a few blows of his own. \n\n[pleased]The instructor was satisfied. [surprised]Anthony was alive. [enthousiast]By Roman standards, it had been an excellent lesson.",
     "loseText": "Unlike scarecrows, soldiers move, strike back and have strong opinions about losing. Use your equipment properly, keep your guard up and choose your moments. The army has many traditions, but dying pointlessly is not one of its more celebrated ones.",
-    "startAudio": "",
-    "winAudio": "",
+    "startAudio": "Men- Not Scarecrows-intro-mw3vmm48.mp3",
+    "winAudio": "Men- Not Scarecrows-win-mw3vqphw.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "casualties",
@@ -253,7 +253,7 @@
         }
     ],
     "sort": 7,
-    "updatedAt": 1793903079635,
+    "updatedAt": 1793903386376,
     "armies": [
         {
             "type": "javelin",

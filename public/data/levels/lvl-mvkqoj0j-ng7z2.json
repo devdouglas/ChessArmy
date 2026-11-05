@@ -150,7 +150,7 @@
             "land"
         ]
     ],
-    "category": "campaign",
+    "category": "skirmish",
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
@@ -260,8 +260,8 @@
             "row": 2
         }
     ],
-    "sort": 3,
-    "updatedAt": 1793043886489,
+    "sort": 10,
+    "updatedAt": 1793906501978,
     "armies": [
         {
             "type": "archer",

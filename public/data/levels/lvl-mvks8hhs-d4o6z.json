@@ -1,8 +1,8 @@
 {
     "id": "lvl-mvks8hhs-d4o6z",
     "name": "Your first battle",
-    "cols": 9,
-    "rows": 10,
+    "cols": 11,
+    "rows": 11,
     "orientation": "flat",
     "hexRadius": 0,
     "terrain": [
@@ -15,15 +15,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land"
@@ -31,15 +22,6 @@
         [
             "land",
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -59,15 +41,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land"
@@ -81,20 +54,13 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land"
         ],
         [
+            "high",
+            "high",
             "land",
             "land",
             "land",
@@ -106,6 +72,34 @@
             "land"
         ],
         [
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "high",
+            "high",
             "land",
             "land",
             "land",
@@ -115,6 +109,45 @@
             "land",
             "land",
             "land"
+        ],
+        [
+            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
+            "high",
+            "high"
         ]
     ],
     "category": "campaign",
@@ -150,9 +183,80 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
-    "sort": 0,
-    "updatedAt": 1793043886489,
+    "tokens": [
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 5
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 6
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 7
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 6
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 10,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 9,
+            "row": 1
+        }
+    ],
+    "sort": 6,
+    "updatedAt": 1793906700643,
     "armies": [
         {
             "type": "cohort",
@@ -224,6 +328,15 @@
             "side": "red",
             "unitTokens": [
                 "general"
+            ]
+        },
+        {
+            "type": "javelin",
+            "col": 8,
+            "row": 3,
+            "side": "blue",
+            "unitTokens": [
+                "hidden"
             ]
         }
     ]
