@@ -111,11 +111,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Archery",
-    "startText": "The three fellows had vanished, naturally. Cowards tend to be surprisingly good at this.\n\nAnthony slept badly that night. He had lost his peace, most of his wine and whatever remained of his confidence in married life.\n\nBy dawn, he had decided to take revenge.",
-    "winText": "The arrows struck near their feet and Anthony felt better. \n\nHis neighbours, watching from behind their fences, felt less certain about the general state of public safety.",
+    "startText": "The three fellows had vanished, naturally.[scoffs] \nCowards tend to be surprisingly good at this. [pause] [frustrated] Anthony had lost his peace, most of his wine and whatever little faith he had left in married life. [determined] By sunrise, Anthony had reached for his father's bow. It was time to have a talk with the fellows, [determined] preferably from a distance.",
+    "winText": "[proud] The arrows struck near their feet and Anthony felt better. \n\n[repelled]But by the end of the week, Anthony's domestic difficulties had become public entertainment. His wife had left, the neighbours had developed a remarkable interest in avoiding him.\n\n[disappointed] The women have had their chance. [curious] Perhaps the army has lower standards.",
     "loseText": "The bow is a weapon, not a means of expressing one's feelings to the countryside. Take the high ground, judge your distance and aim carefully. The gods have given you two eyes for a reason, though they have clearly not promised you much wisdom.",
-    "startAudio": "",
-    "winAudio": "",
+    "startAudio": "A Man With a Bow-intro-mw3294a5.mp3",
+    "winAudio": "A Man With a Bow-win-mw32imq7.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "turns",
@@ -280,7 +280,7 @@
         }
     ],
     "sort": 3,
-    "updatedAt": 1793786422446,
+    "updatedAt": 1793854319683,
     "armies": [
         {
             "type": "peasant",

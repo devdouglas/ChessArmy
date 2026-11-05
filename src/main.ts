@@ -111,9 +111,11 @@ import {
   isAiStyle,
   matchHasEnemies,
   participatingSides,
+  playerCasualties,
   playerFlagCaptures,
   playerHpLost,
   playerKills,
+  playerSides,
   livingHostiles,
   signsOnMap,
   signsRead,
@@ -326,6 +328,7 @@ import {
 } from './units';
 import type { AbilityId } from './abilities';
 import {
+  deleteLevelAudio,
   flushStore,
   getServerStatus,
   listLevelAudio,
@@ -334,6 +337,17 @@ import {
   type ServerStatus,
   syncFromServer,
 } from './sync';
+import {
+  DEFAULT_TTS_VOICE_ID,
+  DEFAULT_TTS_VOICE_NAME,
+  generateTts,
+  listTtsVoices,
+  loadTtsVoiceId,
+  saveTtsVoiceId,
+  textForTts,
+  ttsTakeLabel,
+  type TtsVoice,
+} from './tts';
 import {
   bestStarsForLevel,
   clearLevelWins,
@@ -498,6 +512,20 @@ let editorAudioError = '';
 let editorAudioPlaying: EditorAudioSlot | null = null;
 let levelAudio: HTMLAudioElement | null = null;
 let audioPickAbort: AbortController | null = null;
+type EditorTtsTake = { file: string; label: string };
+type EditorTtsState = {
+  slot: EditorAudioSlot;
+  voices: TtsVoice[] | null;
+  voiceId: string;
+  generating: boolean;
+  saving: boolean;
+  takes: EditorTtsTake[];
+  selectedFile: string | null;
+  playingFile: string | null;
+  error: string;
+};
+let editorTts: EditorTtsState | null = null;
+let ttsPreviewAudio: HTMLAudioElement | null = null;
 let editorStar2: StarRule = { ...DEFAULT_STAR_2 };
 let editorStar3: StarRule = { ...DEFAULT_STAR_3 };
 let editorPieces: ArmyStamp[] = [];
@@ -2283,6 +2311,7 @@ function matchStarStats(): StarStats {
   return {
     turns: state.turnNumber,
     casualties: playerHpLost(state),
+    unitsLost: playerCasualties(state),
     kills,
     flags: playerFlagCaptures(state),
     signs: signsRead(state),
@@ -3564,10 +3593,18 @@ function renderBoard(): string {
     const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
     const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
-    const showEmptyStamina = emptyStamina && doubleTime;
+    // Exhausted mark: your eyes only (hotseat: current player), fixed bottom-left.
+    const ownEnergy =
+      editing || (isSide(p.side) && viewingSides(state).includes(p.side));
     const stamCx = -pr * 0.65;
     const stamCy = -pr * 0.7;
-    const staminaMark = showEmptyStamina ? staminaEmptyMarkSvg(stamCx, stamCy, badgeR) : '';
+    const bottomLeft = -pr * 0.65;
+    const bottomY = pr * 0.7;
+    const showExhausted = !editing && emptyStamina && ownEnergy;
+    const exhaustedIcon = showExhausted
+      ? exhaustedBadgeSvg(bottomLeft, bottomY, badgeR)
+      : '';
+    const bottomBadgeOffset = showExhausted ? 1 : 0;
     const reloadIcon = isReloading(p)
       ? reloadBadgeSvg(pr * 0.65, -pr * 0.7, badgeR)
       : '';
@@ -3580,7 +3617,7 @@ function renderBoard(): string {
       !editing && hasActed(state, p.id)
         ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
-    // Hide and exhausted are live statuses in play. Charge is a dock command, not a piece badge.
+    // Hide is a live status in play. Charge is a dock command, not a piece badge.
     const boardAbilities = abilitiesOf(p).filter((id) => {
       if (id === 'hide') return false;
       if (id === 'charge') return editing;
@@ -3588,12 +3625,16 @@ function renderBoard(): string {
     });
     const abilityIcons = boardAbilities
       .map((id, i) =>
-        abilityBadgeSvg(id, -pr * 0.65 + i * badgeR * 1.65, pr * 0.7, badgeR),
+        abilityBadgeSvg(
+          id,
+          bottomLeft + (bottomBadgeOffset + i) * badgeR * 1.65,
+          bottomY,
+          badgeR,
+        ),
       )
       .join('');
-    const statusMarks: Array<'hidden' | 'exhausted'> = [];
+    const statusMarks: Array<'hidden'> = [];
     if (!editing && isConcealed(state, p)) statusMarks.push('hidden');
-    if (!editing && emptyStamina) statusMarks.push('exhausted');
     const tokenMarks = unitTokensOf(p).filter(
       (id) =>
         id === 'general' ||
@@ -3603,8 +3644,9 @@ function renderBoard(): string {
     );
     const hideIcons = [...tokenMarks, ...statusMarks]
       .map((id, i) => {
-        const cx = -pr * 0.65 + (boardAbilities.length + i) * badgeR * 1.65;
-        const cy = pr * 0.7;
+        const cx =
+          bottomLeft + (bottomBadgeOffset + boardAbilities.length + i) * badgeR * 1.65;
+        const cy = bottomY;
         return id === 'general'
           ? generalBadgeSvg(cx, cy, badgeR)
           : id === 'hidden'
@@ -3621,14 +3663,7 @@ function renderBoard(): string {
       : '';
     const maxHp = hpMax(p);
     const hpIcon =
-      maxHp > 1
-        ? hpBadgeSvg(
-            hpLeft(p),
-            showEmptyStamina ? stamCx + badgeR * 1.7 : stamCx,
-            stamCy,
-            badgeR,
-          )
-        : '';
+      maxHp > 1 ? hpBadgeSvg(hpLeft(p), stamCx, stamCy, badgeR) : '';
     const shown = aimedPiece(p);
     const rot = facingRotation(shown);
     const notch = pr + 1.2;
@@ -3649,11 +3684,11 @@ function renderBoard(): string {
             ${pieceIconSvg(p.type, hexed ? Math.round(PIECE_ICON * 1.2) : PIECE_ICON)}
           </g>
         </g>
-        ${staminaMark}
         ${reloadIcon}
         ${hpIcon}
         ${ammoIcon}
         ${actedIcon}
+        ${exhaustedIcon}
         ${abilityIcons}
         ${hideIcons}
         ${sleepMark}
@@ -4246,7 +4281,13 @@ function matchStatsHtml(): string {
   const flagBit = flags.length
     ? `<span class="match-flags">${flagGoalLabel()}</span>`
     : '';
-  return `<span class="match-turn">Turn ${state.turnNumber}</span><span class="match-cas">${cas}</span>${flagBit}`;
+  const youLost = playerCasualties(state);
+  const youHp = playerHpLost(state);
+  const youBit =
+    playerSides(state).length > 0
+      ? `<span class="match-you">You −${youLost} unit${youLost === 1 ? '' : 's'} · ${youHp} HP</span>`
+      : '';
+  return `<span class="match-turn">Turn ${state.turnNumber}</span>${youBit}<span class="match-cas">${cas}</span>${flagBit}`;
 }
 
 function sideTurnPhrase(side: Side): string {
@@ -4395,7 +4436,15 @@ function renderEndOverlay(): string {
         <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
           ${nextBtn}
-          ${inList ? `${rematchBtn}${startBtn}` : `${startBtn}${rematchBtn}`}
+          ${
+            youLost
+              ? inList
+                ? `${startBtn}${rematchBtn}`
+                : `${rematchBtn}${startBtn}`
+              : inList
+                ? `${rematchBtn}${startBtn}`
+                : `${startBtn}${rematchBtn}`
+          }
         </div>
         ${popupAudioButton()}
       </div>
@@ -5917,6 +5966,274 @@ function haltLevelAudio(): void {
   editorAudioPlaying = null;
 }
 
+function editorSlotText(slot: EditorAudioSlot): string {
+  if (slot === 'start') return editorStartText;
+  if (slot === 'win') return editorWinText;
+  return editorLoseText;
+}
+
+function setEditorSlotText(slot: EditorAudioSlot, value: string): void {
+  const v = sanitizeLevelText(value);
+  if (slot === 'start') editorStartText = v;
+  else if (slot === 'win') editorWinText = v;
+  else editorLoseText = v;
+}
+
+function syncEditorSlotTextFromDom(slot: EditorAudioSlot): void {
+  const ttsEl = app.querySelector<HTMLTextAreaElement>('#tts-text');
+  if (ttsEl && editorTts?.slot === slot) {
+    setEditorSlotText(slot, ttsEl.value);
+    return;
+  }
+  const id =
+    slot === 'start' ? 'editor-start-text' : slot === 'win' ? 'editor-win-text' : 'editor-lose-text';
+  const el = app.querySelector<HTMLTextAreaElement>(`#${id}`);
+  if (!el) return;
+  setEditorSlotText(slot, el.value);
+}
+
+function ttsPreviewEl(): HTMLAudioElement {
+  if (!ttsPreviewAudio) {
+    ttsPreviewAudio = new Audio();
+    ttsPreviewAudio.preload = 'auto';
+    ttsPreviewAudio.addEventListener('ended', () => {
+      if (editorTts) editorTts.playingFile = null;
+      if (screen === 'editor' && editorTts) render();
+    });
+    ttsPreviewAudio.addEventListener('error', () => {
+      if (!editorTts) return;
+      editorTts.playingFile = null;
+      if (screen === 'editor') render();
+    });
+  }
+  return ttsPreviewAudio;
+}
+
+function haltTtsPreview(): void {
+  ttsPreviewAudio?.pause();
+  if (editorTts) editorTts.playingFile = null;
+}
+
+function closeEditorTts(): void {
+  if (editorTts) syncEditorSlotTextFromDom(editorTts.slot);
+  haltTtsPreview();
+  editorTts = null;
+}
+
+function ttsFileStem(slot: EditorAudioSlot): string {
+  const label = slot === 'start' ? 'intro' : slot;
+  const raw = (editorName || 'level')
+    .replace(/[^A-Za-z0-9._ -]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  const stem = (raw || 'level').replace(/[. ]+$/g, '');
+  return `${stem}-${label}-${Date.now().toString(36)}`;
+}
+
+/** Push in-memory slot copy into the editor textareas so doSaveLevel reads them. */
+function pushTtsTextIntoEditorFields(): void {
+  if (!editorTts) return;
+  syncEditorSlotTextFromDom(editorTts.slot);
+  const map: Record<EditorAudioSlot, string> = {
+    start: 'editor-start-text',
+    win: 'editor-win-text',
+    lose: 'editor-lose-text',
+  };
+  for (const s of ['start', 'win', 'lose'] as EditorAudioSlot[]) {
+    const el = app.querySelector<HTMLTextAreaElement>(`#${map[s]}`);
+    if (el) el.value = editorSlotText(s);
+  }
+}
+
+async function openEditorTts(slot: EditorAudioSlot): Promise<void> {
+  syncEditorSlotTextFromDom(slot);
+  editorAudioPick = null;
+  editorAudioError = '';
+  haltLevelAudio();
+  haltTtsPreview();
+  editorTts = {
+    slot,
+    voices: null,
+    voiceId: loadTtsVoiceId(),
+    generating: false,
+    saving: false,
+    takes: [],
+    selectedFile: null,
+    playingFile: null,
+    error: '',
+  };
+  render();
+  try {
+    const voices = await listTtsVoices();
+    if (!editorTts || editorTts.slot !== slot) return;
+    editorTts.voices = voices;
+    if (!voices.some((v) => v.id === editorTts!.voiceId)) {
+      const victor =
+        voices.find((v) => /victor/i.test(v.name) && /malevolent|ancient/i.test(v.name)) ??
+        voices.find((v) => v.id === DEFAULT_TTS_VOICE_ID) ??
+        voices[0];
+      if (victor) {
+        editorTts.voiceId = victor.id;
+        saveTtsVoiceId(victor.id);
+      }
+    }
+  } catch (err) {
+    if (!editorTts || editorTts.slot !== slot) return;
+    editorTts.voices = [];
+    editorTts.error = err instanceof Error ? err.message : 'could not list voices';
+  }
+  if (screen === 'editor' && editorTts?.slot === slot) render();
+}
+
+async function runEditorTtsGenerate(): Promise<void> {
+  if (!editorTts || editorTts.generating || editorTts.saving) return;
+  const slot = editorTts.slot;
+  syncEditorSlotTextFromDom(slot);
+  const text = textForTts(editorSlotText(slot));
+  if (!text) {
+    editorTts.error = 'Add some text first';
+    render();
+    return;
+  }
+  editorTts.generating = true;
+  editorTts.error = '';
+  haltTtsPreview();
+  render();
+  try {
+    const blob = await generateTts(text, editorTts.voiceId);
+    if (!editorTts || editorTts.slot !== slot) return;
+    const file = new File([blob], `${ttsFileStem(slot)}.mp3`, { type: 'audio/mpeg' });
+    const name = await uploadLevelAudio(file);
+    if (!editorTts || editorTts.slot !== slot) return;
+    editorTts.takes = [...editorTts.takes, { file: name, label: ttsTakeLabel(editorSlotText(slot)) }];
+    editorTts.selectedFile = name;
+    editorTts.generating = false;
+    editorAudioFiles = await listLevelAudio().catch(() => editorAudioFiles);
+    pushTtsTextIntoEditorFields();
+    await doSaveLevel(false);
+  } catch (err) {
+    if (!editorTts || editorTts.slot !== slot) return;
+    editorTts.generating = false;
+    editorTts.error = err instanceof Error ? err.message : 'generate failed';
+    if (screen === 'editor' && editorTts?.slot === slot) render();
+  }
+}
+
+function toggleTtsTake(file: string): void {
+  if (!editorTts) return;
+  const url = levelAudioUrl(file);
+  if (!url) return;
+  editorTts.selectedFile = file;
+  const el = ttsPreviewEl();
+  if (editorTts.playingFile === file) {
+    el.pause();
+    editorTts.playingFile = null;
+    render();
+    return;
+  }
+  haltLevelAudio();
+  el.src = url;
+  editorTts.playingFile = file;
+  void el.play().catch(() => {
+    if (editorTts) editorTts.playingFile = null;
+    if (screen === 'editor') render();
+  });
+  render();
+}
+
+async function useEditorTtsClip(): Promise<void> {
+  if (!editorTts?.selectedFile || editorTts.saving || editorTts.generating) return;
+  const slot = editorTts.slot;
+  const keep = editorTts.selectedFile;
+  const trash = editorTts.takes.map((t) => t.file).filter((f) => f !== keep);
+  editorTts.saving = true;
+  editorTts.error = '';
+  haltTtsPreview();
+  render();
+  try {
+    syncEditorSlotTextFromDom(slot);
+    setEditorAudioFile(slot, keep);
+    await Promise.all(trash.map((f) => deleteLevelAudio(f).catch(() => undefined)));
+    editorAudioFiles = await listLevelAudio().catch(() => editorAudioFiles);
+    const map: Record<EditorAudioSlot, string> = {
+      start: 'editor-start-text',
+      win: 'editor-win-text',
+      lose: 'editor-lose-text',
+    };
+    for (const s of ['start', 'win', 'lose'] as EditorAudioSlot[]) {
+      const el = app.querySelector<HTMLTextAreaElement>(`#${map[s]}`);
+      if (el) el.value = editorSlotText(s);
+    }
+    closeEditorTts();
+    await doSaveLevel(false);
+  } catch (err) {
+    if (!editorTts || editorTts.slot !== slot) {
+      if (screen === 'editor') render();
+      return;
+    }
+    editorTts.saving = false;
+    editorTts.error = err instanceof Error ? err.message : 'save failed';
+    if (screen === 'editor') render();
+  }
+}
+
+function renderEditorTtsPopup(): string {
+  if (!editorTts) return '';
+  const slot = editorTts.slot;
+  const label = slot === 'start' ? 'intro' : slot;
+  const busy = editorTts.generating || editorTts.saving;
+  const voices = editorTts.voices;
+  const voiceOpts =
+    voices == null
+      ? `<option value="">Loading voices…</option>`
+      : voices.length
+        ? voices
+            .map(
+              (v) =>
+                `<option value="${escapeHtml(v.id)}"${v.id === editorTts!.voiceId ? ' selected' : ''}>${escapeHtml(v.name)}</option>`,
+            )
+            .join('')
+        : `<option value="${escapeHtml(DEFAULT_TTS_VOICE_ID)}">${escapeHtml(DEFAULT_TTS_VOICE_NAME)}</option>`;
+  const err = editorTts.error
+    ? `<p class="muted level-audio-err">${escapeHtml(editorTts.error)}</p>`
+    : '';
+  const takes = editorTts.takes;
+  const takeList = takes.length
+    ? `<ul class="tts-takes">${takes
+        .map((t) => {
+          const selected = t.file === editorTts!.selectedFile;
+          const playing = t.file === editorTts!.playingFile;
+          return `<li class="tts-take${selected ? ' selected' : ''}">
+            <button type="button" class="tts-take-pick" data-tts-select="${escapeHtml(t.file)}" title="${escapeHtml(t.label)}"${busy ? ' disabled' : ''}>${escapeHtml(t.label)}</button>
+            <button type="button" class="ghost tts-take-play" data-tts-play-file="${escapeHtml(t.file)}"${busy ? ' disabled' : ''}>${playing ? 'Stop' : 'Play'}</button>
+          </li>`;
+        })
+        .join('')}</ul>`
+    : '';
+  const rows = slot === 'start' ? 8 : 5;
+  return `
+    <div class="end-overlay briefing tts-overlay" role="dialog" aria-modal="true" aria-label="Generate ${escapeHtml(label)} audio">
+      <div class="end-card briefing tts-card">
+        <h2 class="end-title">Generate ${escapeHtml(label)} audio</h2>
+        <label class="tts-voice">Voice
+          <select id="tts-voice"${busy || voices == null ? ' disabled' : ''}>${voiceOpts}</select>
+        </label>
+        <p class="muted tts-hint">Edit the text, then generate. Game glyphs like [hoplite] are skipped; unknown tags like [whispers] go to ElevenLabs. Generate also saves the level.</p>
+        <label class="tts-text">Text
+          <textarea id="tts-text" maxlength="${LEVEL_TEXT_MAX}" rows="${rows}"${busy ? ' disabled' : ''}>${escapeHtml(editorSlotText(slot))}</textarea>
+        </label>
+        ${err}
+        <div class="end-actions tts-actions">
+          <button type="button" class="primary" id="tts-generate"${busy || voices == null ? ' disabled' : ''}>${editorTts.generating ? 'Generating…' : 'Generate'}</button>
+          <button type="button" class="primary" id="tts-use"${busy || !editorTts.selectedFile ? ' disabled' : ''}>${editorTts.saving ? 'Saving…' : 'Use this clip'}</button>
+          <button type="button" class="ghost" id="tts-cancel"${editorTts.saving ? ' disabled' : ''}>Cancel</button>
+        </div>
+        ${takeList}
+      </div>
+    </div>`;
+}
+
 function toggleLevelAudio(slot: EditorAudioSlot): void {
   const file = editorAudioFile(slot);
   const url = levelAudioUrl(file);
@@ -5943,6 +6260,7 @@ async function openLevelAudioPick(slot: EditorAudioSlot): Promise<void> {
     render();
     return;
   }
+  if (editorTts) closeEditorTts();
   editorAudioPick = slot;
   editorAudioError = '';
   render();
@@ -5997,11 +6315,13 @@ function levelCopyField(
   const clearBtn = file
     ? `<button type="button" class="level-audio-clear" data-audio-clear="${slot}" aria-label="Unlink ${label} audio">×</button>`
     : '';
+  const genActive = editorTts?.slot === slot;
   return `<div class="editor-cat level-copy-field">
     <div class="level-copy-head">
       <label for="${id}">${label}</label>
       <span class="level-audio-actions">
         ${playBtn}
+        <button type="button" class="level-audio-generate${genActive ? ' active' : ''}" data-audio-generate="${slot}">Generate</button>
         <button type="button" class="level-audio-link${file ? ' linked' : ''}${editorAudioPick === slot ? ' active' : ''}" data-audio-link="${slot}" title="${escapeHtml(file || 'Link an audio file')}">${escapeHtml(file || 'Link audio')}</button>
         ${clearBtn}
       </span>
@@ -6127,7 +6447,7 @@ function renderEditorBar(): string {
           <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. [tutorial] in a message points bouncing hands at painted Tutorial tokens after it closes. The same message's [rest], [spend energy], [double time], [special], or [end turn] points a hand at that button. The next map click hides them.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
-            <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken (not just kills). Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
+            <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken. Units lost = your pieces removed. Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
             <div class="star-rule-row locked">
               <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
               <span class="star-rule-n">1</span>
@@ -6990,12 +7310,68 @@ function bindEditorEvents() {
       if (slot) void openLevelAudioPick(slot);
     });
   });
+  app.querySelectorAll<HTMLButtonElement>('[data-audio-generate]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slot = audioSlot(btn.dataset.audioGenerate);
+      if (slot) void openEditorTts(slot);
+    });
+  });
   app.querySelectorAll<HTMLButtonElement>('[data-audio-play]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const slot = audioSlot(btn.dataset.audioPlay);
       if (slot) toggleLevelAudio(slot);
     });
+  });
+  app.querySelector('#tts-cancel')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeEditorTts();
+    render();
+  });
+  app.querySelector('#tts-generate')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void runEditorTtsGenerate();
+  });
+  app.querySelector('#tts-use')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void useEditorTtsClip();
+  });
+  app.querySelector<HTMLSelectElement>('#tts-voice')?.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (!editorTts) return;
+    const id = (e.target as HTMLSelectElement).value;
+    if (!id) return;
+    editorTts.voiceId = id;
+    saveTtsVoiceId(id);
+  });
+  app.querySelector<HTMLTextAreaElement>('#tts-text')?.addEventListener('input', (e) => {
+    if (!editorTts) return;
+    setEditorSlotText(editorTts.slot, (e.target as HTMLTextAreaElement).value);
+    markEditorDirty();
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-tts-select]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!editorTts || editorTts.saving || editorTts.generating) return;
+      const file = btn.dataset.ttsSelect ?? '';
+      if (!sanitizeLevelAudio(file)) return;
+      editorTts.selectedFile = file;
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-tts-play-file]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const file = btn.dataset.ttsPlayFile ?? '';
+      if (sanitizeLevelAudio(file)) toggleTtsTake(file);
+    });
+  });
+  app.querySelector('.tts-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget && editorTts && !editorTts.saving && !editorTts.generating) {
+      closeEditorTts();
+      render();
+    }
   });
   app.querySelectorAll<HTMLButtonElement>('[data-audio-clear]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -7531,6 +7907,7 @@ function render() {
   if (screen !== 'editor') {
     editorAudioPick = null;
     if (editorAudioPlaying) haltLevelAudio();
+    if (editorTts) closeEditorTts();
   }
   syncPopupNarration();
   maybeRecordLevelWin();
@@ -7611,6 +7988,7 @@ function render() {
       </div>
       ${renderEditorBoardPopup()}
       ${renderEditorStoryPopup()}
+      ${renderEditorTtsPopup()}
     `;
     bindEvents();
     return;

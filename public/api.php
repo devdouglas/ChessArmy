@@ -485,18 +485,21 @@ function sanitize_formation(mixed $form): ?array {
 
 function sanitize_star_rule(mixed $raw, array $fallback): array {
     $src = is_array($raw) ? $raw : $fallback;
+    $allowedMetrics = ['turns', 'casualties', 'unitsLost', 'kills', 'flags', 'signs'];
     $metricRaw = $src['metric'] ?? null;
-    if ($metricRaw === 'casualties' || $metricRaw === 'turns') {
+    if (is_string($metricRaw) && in_array($metricRaw, $allowedMetrics, true)) {
         $metric = $metricRaw;
     } else {
-        $metric = ($fallback['metric'] ?? 'turns') === 'casualties' ? 'casualties' : 'turns';
+        $fb = $fallback['metric'] ?? 'turns';
+        $metric = is_string($fb) && in_array($fb, $allowedMetrics, true) ? $fb : 'turns';
     }
-    $op = $src['op'] ?? '';
-    if ($op !== 'lte' && $op !== 'eq' && $op !== 'lt') {
-        $op = ($fallback['op'] ?? 'lt');
-        if ($op !== 'lte' && $op !== 'eq' && $op !== 'lt') {
-            $op = 'lt';
-        }
+    $allowedOps = ['lt', 'lte', 'eq', 'gte', 'gt'];
+    $opRaw = $src['op'] ?? null;
+    if (is_string($opRaw) && in_array($opRaw, $allowedOps, true)) {
+        $op = $opRaw;
+    } else {
+        $fbOp = $fallback['op'] ?? 'lt';
+        $op = is_string($fbOp) && in_array($fbOp, $allowedOps, true) ? $fbOp : 'lt';
     }
     $value = isset($src['value']) && is_numeric($src['value']) ? (int) $src['value'] : (int) ($fallback['value'] ?? 0);
     if ($value < 0) {
@@ -960,6 +963,23 @@ if ($method === 'POST' && isset($_GET['audio'])) {
             fail(403, 'bad key');
         }
     }
+
+    if (isset($_GET['delete'])) {
+        $name = sanitize_audio_file($_GET['delete'] ?? '');
+        if ($name === '') {
+            fail(400, 'bad audio name');
+        }
+        $dest = audio_dir() . '/' . $name;
+        if (is_file($dest) && !@unlink($dest)) {
+            fail(500, 'could not delete audio');
+        }
+        echo json_encode(
+            ['ok' => true, 'file' => $name, 'files' => list_audio_files()],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
+        exit;
+    }
+
     $file = $_FILES['file'] ?? null;
     if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
         fail(400, 'upload failed');

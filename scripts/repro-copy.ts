@@ -20,7 +20,8 @@ function assert(cond: unknown, msg: string) {
 
 {
   const html = formatCopyHtml('a < b and [nope]');
-  assert(html.includes('a &lt; b and [nope]'), `escape unknown, got ${html}`);
+  assert(html === 'a &lt; b and ', `drop unknown tags, got ${html}`);
+  assert(!html.includes('[') && !html.includes(']'), 'no brackets left');
 }
 
 {
@@ -94,4 +95,4 @@ function assert(cond: unknown, msg: string) {
   assert(copyMentionedActions('[energy] [tutorial]').length === 0, 'hud energy is not the button');
 }
 
-console.log('copy: [name] swaps to unit/token icons; unknown stays text');
+console.log('copy: [name] swaps to unit/token icons; unknown tags dropped');

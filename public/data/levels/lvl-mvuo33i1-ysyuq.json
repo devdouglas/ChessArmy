@@ -111,9 +111,9 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Uphill and downhill movement and energy preservation",
-    "startText": "Anthony remembers he forgot something and rushes home. He uses the hills to make some speed. [tutorial]",
+    "startText": "Anthony remembers he forgot something and rushes home. He uses the hills to make some speed.",
     "winText": "Anthony came at him so fast he did not see him coming. But no time for questions. There is more activity in the front of the house.",
-    "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
+    "loseText": "The gods remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
     "startAudio": "",
     "winAudio": "",
     "loseAudio": "",
@@ -214,7 +214,7 @@
         }
     ],
     "sort": 1,
-    "updatedAt": 1793786353044,
+    "updatedAt": 1793801451332,
     "armies": [
         {
             "type": "peasant",

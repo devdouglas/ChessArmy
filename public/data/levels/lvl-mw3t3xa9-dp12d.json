@@ -1,0 +1,235 @@
+{
+    "id": "lvl-mw3t3xa9-dp12d",
+    "name": "The best night cap",
+    "cols": 8,
+    "rows": 8,
+    "orientation": "flat",
+    "hexRadius": 0,
+    "terrain": [
+        [
+            "water",
+            "water",
+            "rock",
+            "rock",
+            "rock",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "water",
+            "water",
+            "rock",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "rock",
+            "land",
+            "rock",
+            "high",
+            "high",
+            "high",
+            "land",
+            "land"
+        ],
+        [
+            "rock",
+            "land",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "rock",
+            "rock",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ]
+    ],
+    "category": "tutorial",
+    "period": "ancient",
+    "unitsPerTurn": 10,
+    "maxTurns": 0,
+    "teaserText": "Armour, melee combat, sidestepping",
+    "startText": "That evening, Anthony spotted three familiar faces in a tavern. They were the very fellows who had fondled his wife while he was out tending the fields. They were drinking merrily, quite unaware that fate had brought them together again.\n\nLater that night, Anthony followed them down the road until they collapsed into a drunken sleep.\n\nStill wearing his armour, Anthony regarded the three sleeping men. He took this as a sign from the gods. They had given him a sword, protective clothing and three men who were too drunk to run away.\n\nWho was he to argue with divine providence?",
+    "winText": "The gods had provided the sword, the armour and the drunken idiots. [smart]He had merely connected the pieces.\n\n[content]For the first time in years, Anthony went to sleep a satisfied man. [accepted]His wife was still gone, [let down]of course, [enthousiastic]but at least he had a decent story to tell at the tavern.",
+    "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
+    "startAudio": "The-glories-of-rome-intro.mp3",
+    "winAudio": "The Glories of Rome-win-mw3sw549.mp3",
+    "loseAudio": "",
+    "star2": {
+        "metric": "turns",
+        "op": "lt",
+        "value": 20
+    },
+    "star3": {
+        "metric": "casualties",
+        "op": "eq",
+        "value": 0
+    },
+    "armyControls": {
+        "red": "player",
+        "blue": "ai-enemy",
+        "yellow": "ai-enemy",
+        "purple": "ai-enemy"
+    },
+    "aiStyles": {
+        "red": "aggressive",
+        "blue": "defensive",
+        "yellow": "aggressive",
+        "purple": "aggressive"
+    },
+    "tokens": [
+        {
+            "type": "tree",
+            "col": 7,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 7,
+            "row": 4
+        },
+        {
+            "type": "palisade",
+            "col": 6,
+            "row": 4
+        },
+        {
+            "type": "board",
+            "col": 2,
+            "row": 6,
+            "text": "Stronger units have different types of armor visualised by colors. Attacking on a green side will cause one regular melee damage. The orange side will cause 2 melee damage. Attacks on the red side does 3 melee damage."
+        },
+        {
+            "type": "board",
+            "col": 5,
+            "row": 2,
+            "text": "Use energy before your turn to double your actions. Use [energy] to move to a weaker spot and hit the enemy from the side."
+        },
+        {
+            "type": "board",
+            "col": 2,
+            "row": 4,
+            "text": "The armor makes quick turning around hard. Rotating towards a red side is considered an action. A minor annoyance unless you are cornered or feeling a pointy stick in your back."
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 0
+        },
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 2
+        },
+        {
+            "type": "forest",
+            "col": 6,
+            "row": 3
+        },
+        {
+            "type": "forest",
+            "col": 7,
+            "row": 3
+        }
+    ],
+    "sort": 18,
+    "updatedAt": 1793898935361,
+    "armies": [
+        {
+            "type": "u-mvr2vokzh3n3",
+            "col": 1,
+            "row": 2,
+            "side": "blue",
+            "unitTokens": [
+                "sleep",
+                "exhausted"
+            ],
+            "facing": 2
+        },
+        {
+            "type": "u-mvr2vokzh3n3",
+            "col": 4,
+            "row": 1,
+            "side": "blue",
+            "unitTokens": [
+                "sleep"
+            ]
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 5,
+            "side": "blue",
+            "facing": 4
+        },
+        {
+            "type": "dude",
+            "col": 0,
+            "row": 7,
+            "side": "red"
+        }
+    ]
+}

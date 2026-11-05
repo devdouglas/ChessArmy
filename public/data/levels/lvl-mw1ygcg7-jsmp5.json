@@ -156,7 +156,7 @@
         "value": 12
     },
     "star3": {
-        "metric": "casualties",
+        "metric": "kills",
         "op": "eq",
         "value": 0
     },
@@ -414,8 +414,8 @@
             "row": 3
         }
     ],
-    "sort": 10,
-    "updatedAt": 1793789115383,
+    "sort": 9,
+    "updatedAt": 1793902790054,
     "armies": [
         {
             "type": "cohort",

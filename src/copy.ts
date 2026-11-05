@@ -212,14 +212,20 @@ export function copyMentionedActions(text: string): ActionGlyphId[] {
   return found;
 }
 
-/** Escape copy, swapping `[hoplite]` / `[pikes]` for that item's icon. */
+/** True for in-game copy glyphs (`[hoplite]`, `[rest]`, `[tutorial]`, …). Unknown tags (e.g. ElevenLabs `[whispers]`) are false. */
+export function isKnownCopyTag(raw: string): boolean {
+  if (normKey(raw) === 'tutorial') return true;
+  return lookupCopyIcon(raw) != null;
+}
+
+/** Escape copy, swapping `[hoplite]` / `[pikes]` for that item's icon. Unknown `[tags]` are dropped. */
 export function formatCopyHtml(text: string): string {
   return text
     .split(/(\[[^\[\]]+\])/g)
     .map((part) => {
       const m = /^\[([^\[\]]+)\]$/.exec(part);
       if (!m) return escapeHtml(part);
-      return lookupCopyIcon(m[1]) ?? escapeHtml(part);
+      return lookupCopyIcon(m[1]) ?? '';
     })
     .join('');
 }

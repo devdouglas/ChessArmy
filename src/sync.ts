@@ -71,6 +71,20 @@ export async function uploadLevelAudio(file: File): Promise<string> {
   return data.file;
 }
 
+export async function deleteLevelAudio(file: string): Promise<void> {
+  const name = file.replace(/\\/g, '/').split('/').pop() ?? '';
+  if (!name) throw new Error('bad audio name');
+  const res = await fetch(`${AUDIO_URL}&delete=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'X-Warchess-Key': SAVE_KEY, Accept: 'application/json' },
+  });
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || 'delete failed');
+  }
+}
+
 let status: ServerStatus = 'checking';
 let timer = 0;
 const listeners = new Set<(s: ServerStatus) => void>();

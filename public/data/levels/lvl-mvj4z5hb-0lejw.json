@@ -1,62 +1,13 @@
 {
     "id": "lvl-mvj4z5hb-0lejw",
-    "name": "The Glories of Rome",
-    "cols": 8,
-    "rows": 8,
+    "name": "Knight in the shi*y armor",
+    "cols": 9,
+    "rows": 9,
     "orientation": "flat",
-    "hexRadius": 0,
+    "hexRadius": 4,
     "terrain": [
         [
-            "water",
-            "water",
-            "rock",
-            "rock",
-            "rock",
-            "high",
             "land",
-            "land"
-        ],
-        [
-            "water",
-            "water",
-            "rock",
-            "high",
-            "high",
-            "high",
-            "land",
-            "land"
-        ],
-        [
-            "rock",
-            "land",
-            "rock",
-            "rock",
-            "high",
-            "high",
-            "land",
-            "land"
-        ],
-        [
-            "rock",
-            "land",
-            "rock",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
-            "rock",
-            "rock",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -74,9 +25,77 @@
             "land",
             "land",
             "land",
+            "land",
             "land"
         ],
         [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
             "land",
             "land",
             "land",
@@ -89,19 +108,19 @@
     ],
     "category": "tutorial",
     "period": "ancient",
-    "unitsPerTurn": 10,
+    "unitsPerTurn": 2,
     "maxTurns": 0,
-    "teaserText": "Armour, melee combat, sidestepping",
-    "startText": "Anthony’s training continued. One morning, the quartermaster issued him a gladius and a suit of armour.\n\nAnthony admired the sword. It looked a little short, but sat nicely in his hand. Then again, Anthony had large hands, or so he liked to believe.\n\nThe armour was less comfortable. It was also considerably smellier than he had expected, though the quartermaster assured him this was perfectly normal.\n\nHis instructor explained the essentials. The gladius was for stabbing the enemy at close quarters, and the armour for keeping one’s organs where nature had put them.\n\nThat evening, Anthony spotted three familiar faces in a tavern. They were the very fellows who had fondled his wife while he was out tending the fields. They were drinking merrily, quite unaware that fate had brought them together again.\n\nLater that night, Anthony followed them down the road until they collapsed into a drunken sleep.\n\nStill wearing his armour, Anthony regarded the three sleeping men. He took this as a sign from the gods. They had given him a sword, protective clothing and three men who were too drunk to run away.\n\nWho was he to argue with divine providence?",
-    "winText": "The gods had provided the sword, the armour and the drunken idiots. He had merely connected the pieces.\n\nFor the first time in years, Anthony went to sleep a satisfied man. His wife was still gone, of course, but at least he had a decent story to tell at the tavern.",
+    "teaserText": "Armour and sidestepping",
+    "startText": "One morning, the quartermaster issued him a gladius and a suit of armour.\n\n[admiration]Anthony admired the sword. [disappointed]It looked a little short, but sat nicely in his hand. Then again, Anthony had large hands, [scoffs] or so he liked to believe.\n\nThe armour was less comfortable. It was also considerably smellier than he had expected, though the quartermaster assured him this was [sarcastic] perfectly normal after what happened to the previous owner.\n\nHis instructor explained the essentials. \n[angry drunk]\"The gladius is for stabbing the enemy, and the armour for keeping one’s organs where nature had put them.\"",
+    "winText": "[trusting] As luck would have it, a dog was sniffing around the camp, looking for a bit of excitement. Anthony took to him immediately. [amazed]Finally, someone who was genuinely pleased to see him.[pause][bark]",
     "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
-    "startAudio": "The-glories-of-rome-intro.mp3",
-    "winAudio": "The-glories-of-rome-victory.mp3",
+    "startAudio": "Knight in the shi-y armor-intro-mw3tpbcn.mp3",
+    "winAudio": "Knight in the shi-y armor-win-mw3v05ww.mp3",
     "loseAudio": "",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 20
+        "metric": "unitsLost",
+        "op": "eq",
+        "value": 0
     },
     "star3": {
         "metric": "casualties",
@@ -122,82 +141,133 @@
     },
     "tokens": [
         {
+            "type": "palisade",
+            "col": 0,
+            "row": 2
+        },
+        {
+            "type": "palisade",
+            "col": 8,
+            "row": 2
+        },
+        {
             "type": "wall",
-            "col": 3,
+            "col": 1,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 4
+        },
+        {
+            "type": "wall",
+            "col": 1,
+            "row": 5
+        },
+        {
+            "type": "wall",
+            "col": 0,
             "row": 6
         },
         {
-            "type": "tree",
+            "type": "wall",
+            "col": 7,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 7,
+            "row": 3
+        },
+        {
+            "type": "wall",
             "col": 7,
             "row": 4
         },
         {
-            "type": "palisade",
+            "type": "wall",
             "col": 7,
-            "row": 4
+            "row": 5
         },
         {
-            "type": "palisade",
+            "type": "wall",
+            "col": 8,
+            "row": 6
+        },
+        {
+            "type": "board",
+            "col": 4,
+            "row": 8,
+            "text": "Stronger units have armor visualised by colors on all exposed sides. \nGreen side = 1 regular melee damage. \nOrange side = x2 damage. \nRed side = x3 damage.\nManoeuvre your units in such a way you expose the their weak sides to your attacking unit."
+        },
+        {
+            "type": "board",
             "col": 6,
-            "row": 4
+            "row": 7,
+            "text": "You have a second unit you can control. Us it to attack or lure the enemy to you!"
         },
         {
             "type": "board",
             "col": 2,
-            "row": 6,
-            "text": "Stronger units have different types of armor visualised by colors. Attacking on a green side will cause one regular melee damage. The orange side will cause 2 melee damage. Attacks on the red side does 3 melee damage."
-        },
-        {
-            "type": "board",
-            "col": 5,
-            "row": 2,
-            "text": "Use energy before your turn to double your actions. Use [energy] to move to a weaker spot and hit the enemy from the side."
-        },
-        {
-            "type": "board",
-            "col": 2,
-            "row": 4,
-            "text": "The armor makes quick turning around hard. Rotating towards a red side is considered an action. A minor annoyance unless you are cornered or feeling a pointy stick in your back."
+            "row": 7,
+            "text": "Armors are cumbersome. Units can not move directly in the red direction without turning first. Thats a very good thing when you are in their backs but not when they are in yours!"
         }
     ],
     "sort": 5,
-    "updatedAt": 1793786621131,
+    "updatedAt": 1793902338792,
     "armies": [
         {
-            "type": "u-mvr2vokzh3n3",
-            "col": 1,
+            "type": "u-mw3t85tpmhz2",
+            "col": 4,
             "row": 2,
-            "side": "blue",
-            "unitTokens": [
-                "sleep",
-                "exhausted"
-            ],
-            "facing": 2
+            "side": "blue"
         },
         {
-            "type": "u-mvr2vokzh3n3",
+            "type": "u-mw3t85tpmhz2",
             "col": 4,
-            "row": 1,
+            "row": 0,
             "side": "blue",
             "unitTokens": [
-                "sleep"
+                "hidden"
             ]
         },
         {
-            "type": "u-mvr2vokzh3n3",
-            "col": 6,
-            "row": 5,
-            "side": "blue",
-            "unitTokens": [
-                "sleep"
-            ],
-            "facing": 4
+            "type": "wolf",
+            "col": 5,
+            "row": 7,
+            "side": "red"
         },
         {
             "type": "u-mvuvhfewwv97",
             "col": 3,
-            "row": 6,
+            "row": 7,
             "side": "red"
+        },
+        {
+            "type": "u-mw3t85tpmhz2",
+            "col": 0,
+            "row": 5,
+            "side": "blue",
+            "unitTokens": [
+                "hidden"
+            ],
+            "facing": 2
+        },
+        {
+            "type": "u-mw3t85tpmhz2",
+            "col": 8,
+            "row": 5,
+            "side": "blue",
+            "unitTokens": [
+                "hidden"
+            ],
+            "facing": 2
         }
     ]
 }

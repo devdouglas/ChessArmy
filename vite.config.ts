@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { Readable } from 'node:stream';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 const PHP_CGI = 'php-cgi';
 
@@ -157,18 +159,142 @@ function phpServer(): Plugin {
   };
 }
 
+function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  if (res.writableEnded) return;
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
+function elevenLabsTts(apiKey: string): Plugin {
+  const mount = (base: string, middlewares: { use: (fn: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    next: (err?: unknown) => void,
+  ) => void) => void }) => {
+    middlewares.use(async (req, res, next) => {
+      const rawUrl = req.url ?? '/';
+      const parsed = new URL(rawUrl, 'http://127.0.0.1');
+      const pathname = stripBase(decodeURIComponent(parsed.pathname), base);
+      if (!pathname.startsWith('/api/tts/')) {
+        next();
+        return;
+      }
+
+      if (!apiKey) {
+        sendJson(res, 503, { ok: false, error: 'ELEVENLABS_API_KEY missing (check .env.local)' });
+        return;
+      }
+
+      const client = new ElevenLabsClient({ apiKey });
+      const method = (req.method ?? 'GET').toUpperCase();
+
+      try {
+        if (method === 'GET' && pathname === '/api/tts/voices') {
+          const page = await client.voices.getAll();
+          const voices = (page.voices ?? [])
+            .map((v) => ({
+              id: String(v.voiceId ?? ''),
+              name: String(v.name ?? '').trim() || String(v.voiceId ?? ''),
+            }))
+            .filter((v) => v.id)
+            .sort((a, b) => a.name.localeCompare(b.name));
+          sendJson(res, 200, { ok: true, voices });
+          return;
+        }
+
+        if (method === 'POST' && pathname === '/api/tts/generate') {
+          const raw = await readRequestBody(req);
+          let payload: { text?: unknown; voiceId?: unknown } = {};
+          try {
+            payload = JSON.parse(raw.toString('utf8')) as typeof payload;
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'invalid json' });
+            return;
+          }
+          const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+          const voiceId = typeof payload.voiceId === 'string' ? payload.voiceId.trim() : '';
+          if (!text) {
+            sendJson(res, 400, { ok: false, error: 'text required' });
+            return;
+          }
+          if (!voiceId || !/^[A-Za-z0-9]{10,64}$/.test(voiceId)) {
+            sendJson(res, 400, { ok: false, error: 'voiceId required' });
+            return;
+          }
+          if (text.length > 5000) {
+            sendJson(res, 400, { ok: false, error: 'text too long' });
+            return;
+          }
+
+          const stream = await client.textToSpeech.convert(voiceId, {
+            text,
+            modelId: 'eleven_v4',
+          });
+          const nodeStream = Readable.fromWeb(stream as import('node:stream/web').ReadableStream);
+          const chunks: Buffer[] = [];
+          for await (const chunk of nodeStream) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          const audio = Buffer.concat(chunks);
+          if (!audio.length) {
+            sendJson(res, 502, { ok: false, error: 'empty audio' });
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Content-Length', String(audio.length));
+          res.end(audio);
+          return;
+        }
+
+        sendJson(res, 404, { ok: false, error: 'not found' });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'tts failed';
+        sendJson(res, 502, { ok: false, error: message });
+      }
+    });
+  };
+
+  return {
+    name: 'elevenlabs-tts',
+    configureServer(server) {
+      mount(server.config.base, server.middlewares);
+    },
+    configurePreviewServer(server) {
+      mount(server.config.base, server.middlewares);
+    },
+  };
+}
+
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as {
   version: string;
 };
 
-export default defineConfig({
-  base: '/warchess/',
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-  },
-  plugins: [phpServer()],
-  server: {
-    port: 5174,
-    strictPort: true,
-  },
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const apiKey = env.ELEVENLABS_API_KEY ?? '';
+
+  return {
+    base: '/warchess/',
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
+    plugins: [elevenLabsTts(apiKey), phpServer()],
+    server: {
+      port: 5174,
+      strictPort: true,
+    },
+  };
 });

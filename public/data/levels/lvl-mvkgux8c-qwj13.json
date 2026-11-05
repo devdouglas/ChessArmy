@@ -1,31 +1,35 @@
 {
     "id": "lvl-mvkgux8c-qwj13",
     "name": "The Army Wants You",
-    "cols": 9,
-    "rows": 9,
+    "cols": 11,
+    "rows": 11,
     "orientation": "flat",
-    "hexRadius": 4,
+    "hexRadius": 5,
     "terrain": [
         [
             "land",
             "land",
             "land",
-            "high",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
             "rock",
-            "plateau",
             "land",
-            "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "high",
-            "plateau",
             "water",
-            "water",
-            "water",
+            "land",
+            "land",
             "land"
         ],
         [
@@ -34,27 +38,46 @@
             "land",
             "land",
             "high",
+            "plateau",
+            "plateau",
             "water",
             "water",
             "water",
-            "water"
+            "land"
         ],
         [
             "land",
             "land",
             "land",
             "land",
+            "high",
+            "high",
             "water",
             "water",
             "water",
             "water",
-            "water"
+            "land"
         ],
         [
             "land",
             "land",
             "land",
             "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
             "water",
             "water",
             "water",
@@ -62,6 +85,7 @@
             "land"
         ],
         [
+            "land",
             "land",
             "land",
             "plateau",
@@ -70,27 +94,6 @@
             "water",
             "water",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "water",
-            "water",
-            "water",
-            "water",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
-            "water",
-            "water",
-            "water",
             "land",
             "land"
         ],
@@ -99,6 +102,47 @@
             "land",
             "land",
             "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
+            "water",
+            "water",
+            "water",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "water",
             "water",
             "land",
             "land",
@@ -111,11 +155,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Javelins and energy",
-    "startText": "By the end of the week, Anthony's domestic difficulties had become public entertainment. His wife had left, the neighbours had developed a remarkable interest in avoiding him.\n\nThe women have had their chance. Perhaps the army has lower standards.\n\nHe would enlist as the army offered steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n\nThe recruiting officer listened to Anthony's ambitions with the expression of a man who had heard every possible lie before breakfast.\n\n\"Can you throw a javelin?\"\n\nAnthony said he could.\n\nThe officer pointed to the targets.",
-    "winText": "The javelin struck its target. The recruiting officer nodded, as though this had been the result he expected all along.\n\nAnthony had been accepted into the army. At last, a respectable career lay before him.\n\nIt was not necessarily a career he would enjoy.",
+    "startText": "[singing optimistic]Aaah the army. They offer steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n[long pause]\nThe recruiting officer listened to Anthony's grand ambitions with the weary expression of a man who had heard a hundred fools promise to conquer the world before breakfast.\n\n[mad drunk officer]\"Can you throw a javelin?\"\n\n[joyfull]Anthony said he could.\n\n[bored]The officer grunts and points to targets [mumbles silently]...[inaudible mambojabmo]",
+    "winText": "[excited] The javelin struck its target. \n\nThe recruiting officer gave a grunt of approval, [sarcastic]as though Anthony had merely managed not to embarrass him.\n\n[enthousiastic]Anthony had been accepted into the army. [optimistic]At last, a respectable career lay before him.\n[long pause]\n[mysterious] Little did he know that the gods had a rather different meaning of glory in mind. [content]And they had a wicked sense of humour.",
     "loseText": "A javelin is not a walking stick, and throwing it at random is not a recognised military discipline. The officer walks away as he has other recruits to disappoint.",
-    "startAudio": "The-army-wants-you-intro.mp3",
-    "winAudio": "",
+    "startAudio": "The Army Wants You-intro-mw3rrz7v.mp3",
+    "winAudio": "The Army Wants You-win-mw3s21h8.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "casualties",
@@ -142,125 +186,168 @@
     "tokens": [
         {
             "type": "board",
-            "col": 4,
-            "row": 1,
+            "col": 5,
+            "row": 2,
             "text": "Anthony realizes his javelins will not reach his target, even from this height. But with all his training he has [energy] [energy] [energy] to spend and 6 of [hp]. He can make it... right?"
         },
         {
             "type": "notouch",
-            "col": 6,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 5,
-            "row": 1
-        },
-        {
-            "type": "notouch",
-            "col": 5,
+            "col": 7,
             "row": 2
         },
         {
             "type": "notouch",
-            "col": 5,
+            "col": 6,
             "row": 3
         },
         {
             "type": "notouch",
-            "col": 4,
+            "col": 6,
             "row": 4
         },
         {
             "type": "notouch",
-            "col": 4,
+            "col": 6,
             "row": 5
         },
         {
             "type": "notouch",
-            "col": 4,
+            "col": 5,
+            "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 5,
             "row": 6
         },
         {
             "type": "notouch",
-            "col": 4,
-            "row": 8
-        },
-        {
-            "type": "notouch",
-            "col": 4,
+            "col": 5,
             "row": 7
         },
         {
+            "type": "notouch",
+            "col": 5,
+            "row": 9
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 8
+        },
+        {
             "type": "board",
-            "col": 3,
-            "row": 4,
+            "col": 4,
+            "row": 6,
             "text": "Swimming costs [energy] at the start of your turn. If you have no more energy you will lose [hp][hp]"
         },
         {
             "type": "notouch",
-            "col": 4,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 8,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 7,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 6,
+            "col": 5,
             "row": 4
         },
         {
             "type": "notouch",
-            "col": 6,
+            "col": 9,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 8,
             "row": 5
         },
         {
             "type": "notouch",
-            "col": 6,
-            "row": 6
+            "col": 7,
+            "row": 5
         },
         {
             "type": "notouch",
             "col": 7,
             "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 7
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 8
+        },
+        {
+            "type": "notouch",
+            "col": 7,
+            "row": 1
+        },
+        {
+            "type": "notouch",
+            "col": 9,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 9,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 5,
+            "row": 10
+        },
+        {
+            "type": "notouch",
+            "col": 8,
+            "row": 9
+        },
+        {
+            "type": "board",
+            "col": 3,
+            "row": 8,
+            "text": "You can activate Double Time [double time] to optionally perform two actions in a single turn. Strike or throw twice in quick succession, or use the extra action to outmanoeuvre your enemy.[tutorial]"
         }
     ],
     "sort": 4,
-    "updatedAt": 1793786568867,
+    "updatedAt": 1793898030163,
     "armies": [
         {
             "type": "peasant",
-            "col": 2,
-            "row": 3,
+            "col": 3,
+            "row": 4,
             "side": "blue",
             "facing": 2
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "peasant",
+            "col": 9,
+            "row": 7,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 4,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 3,
+            "side": "blue"
         },
         {
             "type": "javelin",
             "col": 2,
-            "row": 7,
+            "row": 9,
             "side": "red"
-        },
-        {
-            "type": "peasant",
-            "col": 3,
-            "row": 0,
-            "side": "blue",
-            "facing": 2
-        },
-        {
-            "type": "peasant",
-            "col": 8,
-            "row": 6,
-            "side": "blue"
         }
     ]
 }

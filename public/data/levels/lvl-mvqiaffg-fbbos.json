@@ -150,7 +150,7 @@
             "land"
         ]
     ],
-    "category": "tutorial",
+    "category": "campaign",
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
@@ -162,9 +162,9 @@
     "winAudio": "",
     "loseAudio": "",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "metric": "unitsLost",
+        "op": "eq",
+        "value": 0
     },
     "star3": {
         "metric": "casualties",
@@ -445,8 +445,8 @@
             "row": 7
         }
     ],
-    "sort": 6,
-    "updatedAt": 1793786666873,
+    "sort": 10,
+    "updatedAt": 1793902825696,
     "armies": [
         {
             "type": "cohort",
