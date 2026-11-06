@@ -292,6 +292,9 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     plugins: [elevenLabsTts(apiKey), phpServer()],
+    build: {
+      sourcemap: false,
+    },
     server: {
       port: 5174,
       strictPort: true,
