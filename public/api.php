@@ -485,7 +485,7 @@ function sanitize_formation(mixed $form): ?array {
 
 function sanitize_star_rule(mixed $raw, array $fallback): array {
     $src = is_array($raw) ? $raw : $fallback;
-    $allowedMetrics = ['turns', 'casualties', 'unitsLost', 'kills', 'flags', 'signs'];
+    $allowedMetrics = ['turns', 'casualties', 'unitsLost', 'alliesLost', 'kills', 'flags', 'signs'];
     $metricRaw = $src['metric'] ?? null;
     if (is_string($metricRaw) && in_array($metricRaw, $allowedMetrics, true)) {
         $metric = $metricRaw;

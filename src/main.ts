@@ -111,6 +111,8 @@ import {
   isAiStyle,
   matchHasEnemies,
   participatingSides,
+  allyCasualties,
+  allySides,
   playerCasualties,
   playerFlagCaptures,
   playerHpLost,
@@ -2312,6 +2314,7 @@ function matchStarStats(): StarStats {
     turns: state.turnNumber,
     casualties: playerHpLost(state),
     unitsLost: playerCasualties(state),
+    alliesLost: allyCasualties(state),
     kills,
     flags: playerFlagCaptures(state),
     signs: signsRead(state),
@@ -4283,9 +4286,13 @@ function matchStatsHtml(): string {
     : '';
   const youLost = playerCasualties(state);
   const youHp = playerHpLost(state);
+  const alliesLost = allyCasualties(state);
+  const hasAllies = allySides(state).length > 0;
   const youBit =
     playerSides(state).length > 0
-      ? `<span class="match-you">You −${youLost} unit${youLost === 1 ? '' : 's'} · ${youHp} HP</span>`
+      ? `<span class="match-you">You −${youLost} unit${youLost === 1 ? '' : 's'} · ${youHp} HP${
+          hasAllies ? ` · allies −${alliesLost}` : ''
+        }</span>`
       : '';
   return `<span class="match-turn">Turn ${state.turnNumber}</span>${youBit}<span class="match-cas">${cas}</span>${flagBit}`;
 }
@@ -6447,7 +6454,7 @@ function renderEditorBar(): string {
           <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. [tutorial] in a message points bouncing hands at painted Tutorial tokens after it closes. The same message's [rest], [spend energy], [double time], [special], or [end turn] points a hand at that button. The next map click hides them.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
-            <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken. Units lost = your pieces removed. Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
+            <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken. Units lost = your pieces removed. Allies lost = AI ally pieces removed. Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
             <div class="star-rule-row locked">
               <span class="star-rule-mark">${starGlyphSvg('on', 15)}</span>
               <span class="star-rule-n">1</span>

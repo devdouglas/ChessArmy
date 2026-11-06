@@ -1,6 +1,6 @@
 {
     "id": "lvl-mvzn9c9m-caq7z",
-    "name": "Training day",
+    "name": "A FRIEND IN NEED",
     "cols": 13,
     "rows": 7,
     "orientation": "flat",
@@ -116,20 +116,20 @@
     "period": "ancient",
     "unitsPerTurn": 5,
     "maxTurns": 0,
-    "teaserText": "Alies",
-    "startText": "",
-    "winText": "",
-    "loseText": "",
-    "startAudio": "",
-    "winAudio": "",
+    "teaserText": "Fighting with allies",
+    "startText": "Anthony looked left and right. [concerned]Two poor recruits in light armour were facing heavily armoured opponents.\n\nHe considered helping. [opportunistic]After all, saving a man's hide was often the quickest way to get him to buy a round. Assuming he kept it, of course.",
+    "winText": "[singing]Anthony had gained two grateful companions and, more importantly, two potential drinking partners. [proud]A fine day's work.",
+    "loseText": "The recruits were beaten, and Anthony gained nothing but a bruised ego.",
+    "startAudio": "A FRIEND IN NEED-intro-mw4wj2kw.mp3",
+    "winAudio": "A FRIEND IN NEED-win-mw4wlhzz.mp3",
     "loseAudio": "",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "metric": "alliesLost",
+        "op": "lte",
+        "value": 1
     },
     "star3": {
-        "metric": "casualties",
+        "metric": "alliesLost",
         "op": "eq",
         "value": 0
     },
@@ -213,11 +213,6 @@
         },
         {
             "type": "palisade",
-            "col": 4,
-            "row": 6
-        },
-        {
-            "type": "palisade",
             "col": 8,
             "row": 0
         },
@@ -245,11 +240,6 @@
             "type": "palisade",
             "col": 8,
             "row": 5
-        },
-        {
-            "type": "palisade",
-            "col": 8,
-            "row": 6
         },
         {
             "type": "palisade",
@@ -348,7 +338,7 @@
         }
     ],
     "sort": 11,
-    "updatedAt": 1793903901082,
+    "updatedAt": 1793965469777,
     "armies": [
         {
             "type": "cohort",
@@ -382,7 +372,7 @@
             "side": "yellow"
         },
         {
-            "type": "cohort",
+            "type": "u-mw4vuw6xnwnt",
             "col": 6,
             "row": 6,
             "side": "red",

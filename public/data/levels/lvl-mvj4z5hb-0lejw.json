@@ -220,7 +220,7 @@
         }
     ],
     "sort": 5,
-    "updatedAt": 1793904195390,
+    "updatedAt": 1793946335415,
     "armies": [
         {
             "type": "u-mw3t85tpmhz2",
@@ -241,7 +241,10 @@
             "type": "wolf",
             "col": 5,
             "row": 7,
-            "side": "red"
+            "side": "red",
+            "unitTokens": [
+                "neutral"
+            ]
         },
         {
             "type": "u-mvuvhfewwv97",

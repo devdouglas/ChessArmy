@@ -8,17 +8,17 @@
     "terrain": [
         [
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
+            "high",
             "land"
         ],
         [
@@ -117,19 +117,19 @@
     "unitsPerTurn": 5,
     "maxTurns": 0,
     "teaserText": "",
-    "startText": "",
-    "winText": "",
-    "loseText": "",
-    "startAudio": "",
-    "winAudio": "",
+    "startText": "[shouting] \"Stick together!\" said one.\n\n[determined] \"Watch each other's backs!\" added the other.\n\n[focused] Anthony nodded. [thinking]Perhaps those midnight tactics they'd perfected at the tavern will come in handy... wait... what did I have todo first?",
+    "winText": "The three companions stood victorious, bruised but breathing.\n\n[cheerful] \"Well, my face is still handsome enough for the ladies,\" said one.\n\nAnthony spat out a tooth. [spit] [drunk confidence mumbling] \"Speak for yourself. I feel mine has never looked better!\"",
+    "loseText": "Those midnight tactics need more perfecting at the tavern.",
+    "startAudio": "Training day 2-intro-mw4xa10p.mp3",
+    "winAudio": "Training day 2-win-mw4xhb0r.mp3",
     "loseAudio": "",
     "star2": {
-        "metric": "turns",
-        "op": "lt",
-        "value": 6
+        "metric": "unitsLost",
+        "op": "lte",
+        "value": 1
     },
     "star3": {
-        "metric": "casualties",
+        "metric": "unitsLost",
         "op": "eq",
         "value": 0
     },
@@ -184,11 +184,6 @@
         {
             "type": "palisade",
             "col": 4,
-            "row": 0
-        },
-        {
-            "type": "palisade",
-            "col": 4,
             "row": 1
         },
         {
@@ -210,16 +205,6 @@
             "type": "palisade",
             "col": 4,
             "row": 5
-        },
-        {
-            "type": "palisade",
-            "col": 4,
-            "row": 6
-        },
-        {
-            "type": "palisade",
-            "col": 8,
-            "row": 0
         },
         {
             "type": "palisade",
@@ -245,11 +230,6 @@
             "type": "palisade",
             "col": 8,
             "row": 5
-        },
-        {
-            "type": "palisade",
-            "col": 8,
-            "row": 6
         },
         {
             "type": "palisade",
@@ -285,44 +265,67 @@
             "type": "palisade",
             "col": 12,
             "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 4
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 5
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 5
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 4
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 3
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 2
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 1
+        },
+        {
+            "type": "wall",
+            "col": 8,
+            "row": 1
         }
     ],
     "sort": 12,
-    "updatedAt": 1793903901082,
+    "updatedAt": 1793970599271,
     "armies": [
         {
             "type": "archer",
             "col": 2,
             "row": 6,
             "side": "red",
-            "facing": 3
-        },
-        {
-            "type": "cohort",
-            "col": 2,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
-        },
-        {
-            "type": "cohort",
-            "col": 10,
-            "row": 0,
-            "side": "blue",
-            "unitTokens": [
-                "exhausted"
-            ]
+            "facing": 4
         },
         {
             "type": "javelin",
@@ -331,13 +334,31 @@
             "side": "red"
         },
         {
-            "type": "u-mvuvhfewwv97",
+            "type": "u-mw4vuw6xnwnt",
             "col": 6,
             "row": 6,
             "side": "red",
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "cohort",
+            "col": 2,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 6,
+            "row": 0,
+            "side": "blue"
+        },
+        {
+            "type": "cohort",
+            "col": 10,
+            "row": 0,
+            "side": "blue"
         }
     ]
 }

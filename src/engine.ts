@@ -2106,6 +2106,20 @@ export function playerCasualties(state: GameState): number {
   return playerSides(state).reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
 }
 
+/** Same-team sides that are not player-controlled (ai allies). */
+export function allySides(state: GameState): Side[] {
+  const us = playerSides(state);
+  if (!us.length) return [];
+  return participatingSides(state).filter(
+    (s) => !isPlayerControlled(state, s) && us.some((p) => sameTeam(state, s, p)),
+  );
+}
+
+/** Ally pieces removed this match. */
+export function allyCasualties(state: GameState): number {
+  return allySides(state).reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
+}
+
 export function playerHpLost(state: GameState): number {
   const lost = state.hpLost ?? emptySideCounts();
   return playerSides(state).reduce((n, s) => n + (lost[s] ?? 0), 0);

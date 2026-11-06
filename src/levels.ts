@@ -110,6 +110,7 @@ export const STAR_METRICS = [
   'turns',
   'casualties',
   'unitsLost',
+  'alliesLost',
   'kills',
   'flags',
   'signs',
@@ -123,6 +124,7 @@ export const STAR_METRIC_LABEL: Record<StarMetric, string> = {
   turns: 'Turns',
   casualties: 'HP lost',
   unitsLost: 'Units lost',
+  alliesLost: 'Allies lost',
   kills: 'Units killed',
   flags: 'Flags captured',
   signs: 'Signs read',
@@ -149,9 +151,14 @@ export function sanitizeStarOp(raw: unknown): StarOp {
   return isStarOp(raw) ? raw : 'lt';
 }
 
-/** Turns / HP lost / units lost: keep under. Kills / flags / signs: reach at least. */
+/** Turns / HP lost / units lost / allies lost: keep under. Kills / flags / signs: reach at least. */
 export function starMetricIsLoss(metric: StarMetric): boolean {
-  return metric === 'turns' || metric === 'casualties' || metric === 'unitsLost';
+  return (
+    metric === 'turns' ||
+    metric === 'casualties' ||
+    metric === 'unitsLost' ||
+    metric === 'alliesLost'
+  );
 }
 
 export function sanitizeStarRule(raw: unknown, fallback: StarRule): StarRule {
@@ -171,6 +178,7 @@ export type StarStats = {
   turns: number;
   casualties: number;
   unitsLost: number;
+  alliesLost: number;
   kills: number;
   flags: number;
   signs: number;
@@ -235,6 +243,9 @@ export function starRuleLabel(rule: StarRule): string {
   }
   if (rule.metric === 'unitsLost' && rule.op === 'eq' && rule.value === 0) {
     return 'No units lost';
+  }
+  if (rule.metric === 'alliesLost' && rule.op === 'eq' && rule.value === 0) {
+    return 'No allies lost';
   }
   return `${STAR_METRIC_LABEL[rule.metric]} ${starOpLabel(rule.op)} ${rule.value}`;
 }
