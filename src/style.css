@@ -3231,6 +3231,12 @@ button.primary:focus-visible {
   color: var(--purple);
 }
 
+.match-rogue {
+  margin-right: 0.55rem;
+  font-weight: 600;
+  color: var(--sel);
+}
+
 .match-cas,
 .match-you {
   margin-left: 0.55rem;

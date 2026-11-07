@@ -196,7 +196,7 @@
         }
     ],
     "sort": 16,
-    "updatedAt": 1793904052646,
+    "updatedAt": 1794069091479,
     "armies": [
         {
             "type": "u-mvr2vokzh3n3",
@@ -226,15 +226,15 @@
             "facing": 4
         },
         {
-            "type": "dude",
-            "col": 0,
-            "row": 7,
-            "side": "red"
-        },
-        {
             "type": "wolf",
             "col": 0,
             "row": 6,
+            "side": "red"
+        },
+        {
+            "type": "u-mw4vuw6xnwnt",
+            "col": 0,
+            "row": 7,
             "side": "red"
         }
     ]

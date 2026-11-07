@@ -267,6 +267,15 @@ import {
 } from './formations';
 import { pickAiAction } from './ai';
 import {
+  ROGUE_GOAL,
+  advanceRogueRun,
+  createRogueRun,
+  rogueArmyStamps,
+  rogueBattleLabel,
+  survivorTypes,
+  type RogueRun,
+} from './roguelite';
+import {
   AI_RULE_CATEGORIES,
   AI_RULE_CATEGORY_LABEL,
   aiChecklistAreStock,
@@ -429,6 +438,8 @@ let screen: Screen = 'start';
 let selectedPeriod: Period = getSelectedPeriod();
 let randomSetup: RandomSetup | null = null;
 let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
+/** Active roguelite run (null = normal play). */
+let rogueRun: RogueRun | null = null;
 const RANDOM_UNITS_PER_TURN = 6;
 let state: GameState = bootState();
 let briefingOpen = false;
@@ -685,6 +696,9 @@ function applyHotseatTint() {
 
 function matchAiStyles(lvl?: SavedLevel | null): Record<Side, AiStyle> {
   if (lvl) return sanitizeAiStyles(lvl.aiStyles);
+  if (rogueRun && mode !== 'hotseat') {
+    return { ...defaultAiStyles(), blue: rogueRun.aiStyle };
+  }
   if (randomArmies && mode !== 'hotseat') {
     return { ...defaultAiStyles(), blue: randomArmies.aiStyle };
   }
@@ -713,6 +727,7 @@ function formationByPickId(id: string, cols: number, rows: number) {
 }
 
 function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
+  if (rogueRun) return rogueArmyStamps(rogueRun, cols, rows);
   if (randomArmies) {
     return [
       ...stampFormation(
@@ -732,6 +747,37 @@ function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
   return (
     defaultArmyStamps(cols, rows, selectedPeriod) ?? bothStockStamps(cols, rows)
   );
+}
+
+function startRogueRun() {
+  if (eraPlayLocked() || !randomModesUnlocked()) return;
+  rogueRun = createRogueRun(selectedPeriod, 'aggressive');
+  randomArmies = null;
+  randomSetup = null;
+  mapPick = null;
+  playlist = null;
+  mode = 'ai';
+  screen = 'play';
+  activeLevelId = null;
+  setActiveLevelId(null);
+  startMatch(true);
+}
+
+function advanceRogueBattle() {
+  if (!rogueRun || !state.winner || !playerTeamWon(state)) return;
+  if (rogueRun.battle >= ROGUE_GOAL) {
+    rogueRun = null;
+    showStart();
+    return;
+  }
+  const next = advanceRogueRun(rogueRun, survivorTypes(state.pieces, 'red'));
+  if (!next) {
+    rogueRun = null;
+    showStart();
+    return;
+  }
+  rogueRun = next;
+  startMatch(true);
 }
 
 function openRandomSetup(kind: MapPickKind) {
@@ -757,6 +803,7 @@ function confirmRandomSetup() {
   if (!randomSetup) return;
   if (eraPlayLocked()) return;
   if (!randomArmyChoices().length) return;
+  rogueRun = null;
   randomArmies = {
     yoursId: randomSetup.yoursId,
     theirsId: randomSetup.theirsId,
@@ -1371,6 +1418,7 @@ function showStart() {
   editorBoardHex = null;
   editorStoryHex = null;
   randomSetup = null;
+  rogueRun = null;
   screen = 'start';
   playlist = null;
   mapPick = null;
@@ -1392,6 +1440,28 @@ function tutorialMaps(): SavedLevel[] {
 function tutorialDone(): boolean {
   const maps = tutorialMaps();
   return maps.length === 0 || maps.every((l) => hasWonLevel(l.id));
+}
+
+/** Wins needed in this era's tutorials before Randomised / Roguelite open. */
+const TUTORIALS_FOR_RANDOM = 10;
+
+function tutorialsWonCount(): number {
+  return tutorialMaps().filter((l) => hasWonLevel(l.id)).length;
+}
+
+/** Randomised Battle + Roguelite: open after N tutorial wins (or if there are fewer tutorials, all of them). */
+function randomModesUnlocked(): boolean {
+  const maps = tutorialMaps();
+  if (!maps.length) return true;
+  const need = Math.min(TUTORIALS_FOR_RANDOM, maps.length);
+  return tutorialsWonCount() >= need;
+}
+
+function randomModesLockTitle(): string {
+  const maps = tutorialMaps();
+  const need = Math.min(TUTORIALS_FOR_RANDOM, maps.length || TUTORIALS_FOR_RANDOM);
+  const have = tutorialsWonCount();
+  return `Clear ${need} ${TUTORIAL_PLAY_TITLE} (${have}/${need})`;
 }
 
 function eraPlayLocked(period: Period = selectedPeriod): boolean {
@@ -1464,6 +1534,8 @@ function startPickedMap(id: string, kind: MapPickKind) {
   if (index < 0) return;
   if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return;
   mapPick = null;
+  rogueRun = null;
+  randomArmies = null;
   mode = kind === 'hotseat' ? 'hotseat' : 'ai';
   playlist = null;
   screen = 'play';
@@ -1477,6 +1549,8 @@ function startPlaylist(kind: PlaylistKind) {
   if (kind !== 'tutorial' && !tutorialDone()) return;
   const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
+  rogueRun = null;
+  randomArmies = null;
   playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
   mode = 'ai';
   screen = 'play';
@@ -4294,7 +4368,10 @@ function matchStatsHtml(): string {
           hasAllies ? ` · allies −${alliesLost}` : ''
         }</span>`
       : '';
-  return `<span class="match-turn">Turn ${state.turnNumber}</span>${youBit}<span class="match-cas">${cas}</span>${flagBit}`;
+  const rogueBit = rogueRun
+    ? `<span class="match-rogue">${rogueBattleLabel(rogueRun)} · ${rogueRun.playerTypes.length}v${rogueRun.enemyTypes.length}</span>`
+    : '';
+  return `${rogueBit}<span class="match-turn">Turn ${state.turnNumber}</span>${youBit}<span class="match-cas">${cas}</span>${flagBit}`;
 }
 
 function sideTurnPhrase(side: Side): string {
@@ -4355,14 +4432,18 @@ function renderEndOverlay(): string {
   const lastInList = inList && !playlistHasNext();
   const listName = playlist ? LEVEL_CATEGORY_LABEL[playlist.kind] : '';
 
+  const rogueDone = !!rogueRun && youWon && rogueRun.battle >= ROGUE_GOAL;
+  const rogueMid = !!rogueRun && youWon && rogueRun.battle < ROGUE_GOAL;
   const title =
-    youWon && lastInList
-      ? `${listName.toUpperCase()} COMPLETE`
-      : youWon
-        ? 'VICTORY'
-        : youLost
-          ? 'DEFEAT'
-          : `${SIDE_LABEL[state.winner].toUpperCase()} WINS`;
+    rogueDone
+      ? 'ROGUELITE COMPLETE'
+      : youWon && lastInList
+        ? `${listName.toUpperCase()} COMPLETE`
+        : youWon
+          ? 'VICTORY'
+          : youLost
+            ? 'DEFEAT'
+            : `${SIDE_LABEL[state.winner].toUpperCase()} WINS`;
 
   const loser = opposingLoser(state.winner);
   const flags = winByFlags(state);
@@ -4397,36 +4478,60 @@ function renderEndOverlay(): string {
         : `${SIDE_LABEL[state.winner]} destroyed the opposing general.`;
 
   const custom = youWon ? levelCopy('win') : youLost ? levelCopy('lose') : '';
+  const living = rogueRun ? survivorTypes(state.pieces, 'red') : [];
+  const lostForGood =
+    rogueRun && youWon
+      ? Math.max(0, rogueRun.playerTypes.length - living.length)
+      : 0;
   const stock =
-    youWon && lastInList
-      ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
-      : youWon && inList
-        ? `${winHow} ${playlist!.index + 1} / ${playlist!.ids.length}`
-        : youWon
-          ? winHow
-          : youLost
-            ? loseHow
-            : hotseatHow;
+    rogueDone
+      ? `Ten battles cleared. Your final army: ${living.map((t) => UNIT_STATS[t].name).join(', ') || 'none'}.`
+      : rogueMid
+        ? `${winHow} ${rogueBattleLabel(rogueRun!)}. ${
+            lostForGood
+              ? `${lostForGood} unit${lostForGood === 1 ? '' : 's'} lost forever. `
+              : 'No permanent losses. '
+          }Next fight adds one recruit to each side.`
+        : rogueRun && youLost
+          ? `${loseHow} Run over at ${rogueBattleLabel(rogueRun)}.`
+          : youWon && lastInList
+            ? `Cleared all ${playlist!.ids.length} ${listName.toLowerCase()} maps.`
+            : youWon && inList
+              ? `${winHow} ${playlist!.index + 1} / ${playlist!.ids.length}`
+              : youWon
+                ? winHow
+                : youLost
+                  ? loseHow
+                  : hotseatHow;
   const sub = custom || stock;
 
   const winnerSide = state.winner;
   const cat = activeSavedLevel()?.category;
   const sequential = cat === 'tutorial' || cat === 'campaign';
-  const nextBtn = youWon && sequential
-    ? `<button type="button" id="end-next">Continue</button>`
-    : youWon && inList && !lastInList
-      ? `<button type="button" id="end-next">Next map</button>`
-      : '';
-  const rematchBtn =
-    inList && !(youWon && sequential)
+  const nextBtn = rogueMid
+    ? `<button type="button" id="end-rogue-next">Next battle</button>`
+    : youWon && sequential
+      ? `<button type="button" id="end-next">Continue</button>`
+      : youWon && inList && !lastInList
+        ? `<button type="button" id="end-next">Next map</button>`
+        : '';
+  const rematchBtn = rogueRun
+    ? youLost
+      ? `<button type="button" id="end-rogue-retry">Try again</button>`
+      : ''
+    : inList && !(youWon && sequential)
       ? `<button type="button" id="end-rematch">Replay</button>`
       : `<button type="button" id="end-rematch" class="ghost">Replay</button>`;
   const startBtn =
-    youWon && sequential
-      ? ''
-      : inList
-        ? `<button type="button" id="end-start" class="ghost">Start</button>`
-        : `<button type="button" id="end-start">Done</button>`;
+    rogueDone || (rogueRun && youLost)
+      ? `<button type="button" id="end-start"${rogueDone ? '' : ' class="ghost"'}>Done</button>`
+      : rogueMid
+        ? `<button type="button" id="end-start" class="ghost">Abandon</button>`
+        : youWon && sequential
+          ? ''
+          : inList
+            ? `<button type="button" id="end-start" class="ghost">Start</button>`
+            : `<button type="button" id="end-start">Done</button>`;
 
   return `
     <div class="end-overlay ${tone}" role="dialog" aria-label="${title}">
@@ -4445,8 +4550,8 @@ function renderEndOverlay(): string {
           ${nextBtn}
           ${
             youLost
-              ? inList
-                ? `${startBtn}${rematchBtn}`
+              ? inList || rogueRun
+                ? `${rematchBtn}${startBtn}`
                 : `${rematchBtn}${startBtn}`
               : inList
                 ? `${rematchBtn}${startBtn}`
@@ -5320,8 +5425,10 @@ function renderStartScreen(): string {
   const skirmishN = skirmishMaps().length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
   const tutOpen = tutorialDone();
+  const randomOpen = randomModesUnlocked();
   const eraClosed = eraPlayLocked();
   const menuLock = eraClosed || !tutOpen ? lockIconHtml() : '';
+  const randomLock = eraClosed || !randomOpen ? lockIconHtml() : '';
   const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
     eraClosed
       ? ` disabled title="Under construction"`
@@ -5336,6 +5443,18 @@ function renderStartScreen(): string {
         : empty
           ? emptyMeta
           : openMeta;
+  const randomGateAttr = (openTitle: string) =>
+    eraClosed
+      ? ` disabled title="Under construction"`
+      : !randomOpen
+        ? ` disabled title="${randomModesLockTitle()}"`
+        : ` title="${openTitle}"`;
+  const randomGateMeta = (openMeta: string) =>
+    eraClosed
+      ? 'Under construction'
+      : !randomOpen
+        ? `Locked · ${randomModesLockTitle()}`
+        : openMeta;
   const tutorialTitle = eraClosed
     ? 'Under construction'
     : tutorialN
@@ -5370,9 +5489,13 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${menuLock}Skirmish vs AI</span>
             <span class="start-opt-meta">${gateMeta(false, '', skirmishN ? `${mapWord(skirmishN)} · pick a map` : 'Randomised map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="random"${gateAttr(false, '', 'Generated map vs AI. Pick two armies and the enemy AI.')}>
-            <span class="start-opt-name">${menuLock}Randomised Battle</span>
-            <span class="start-opt-meta">${gateMeta(false, '', 'Generated map · vs AI')}</span>
+          <button type="button" class="start-opt" data-start="random"${randomGateAttr('Generated map vs AI. Pick two armies and the enemy AI.')}>
+            <span class="start-opt-name">${randomLock}Randomised Battle</span>
+            <span class="start-opt-meta">${randomGateMeta('Generated map · vs AI')}</span>
+          </button>
+          <button type="button" class="start-opt" data-start="roguelite"${randomGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Each win adds a recruit to both sides.')}>
+            <span class="start-opt-name">${randomLock}Roguelite</span>
+            <span class="start-opt-meta">${randomGateMeta(`Win ${ROGUE_GOAL} · permanent losses · growing armies`)}</span>
           </button>
         </div>
         <div class="start-tools">
@@ -5411,17 +5534,18 @@ function bindToolbarEvents() {
           kind === 'tutorial' ||
           kind === 'historical' ||
           kind === 'ai' ||
-          kind === 'random')
+          kind === 'random' ||
+          kind === 'roguelite')
       ) {
         return;
       }
       if (
         !tutorialDone() &&
-        (kind === 'campaign' ||
-          kind === 'historical' ||
-          kind === 'ai' ||
-          kind === 'random')
+        (kind === 'campaign' || kind === 'historical' || kind === 'ai')
       ) {
+        return;
+      }
+      if (!randomModesUnlocked() && (kind === 'random' || kind === 'roguelite')) {
         return;
       }
       if (kind === 'historical') startPlaylist(kind);
@@ -5429,6 +5553,7 @@ function bindToolbarEvents() {
       else if (kind === 'tutorial') showMapPick('tutorial');
       else if (kind === 'ai') showMapPick('ai');
       else if (kind === 'random') openRandomSetup('ai');
+      else if (kind === 'roguelite') startRogueRun();
       else if (kind === 'editor') enterLevels(true);
       else if (kind === 'experimental') enterExperimental();
     });
@@ -7816,6 +7941,8 @@ function bindEvents() {
   });
   app.querySelector('#end-rematch')?.addEventListener('click', () => reset(false));
   app.querySelector('#end-next')?.addEventListener('click', () => skipBriefing());
+  app.querySelector('#end-rogue-next')?.addEventListener('click', () => advanceRogueBattle());
+  app.querySelector('#end-rogue-retry')?.addEventListener('click', () => startRogueRun());
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   bindBoardPopup();
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
