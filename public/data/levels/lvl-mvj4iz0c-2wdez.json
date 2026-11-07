@@ -75,11 +75,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Basic movement and melee attacks",
-    "startText": "Anthony woke next to a pile of dung, with a stiff neck, a dry mouth and a great deal of work waiting for him.\n\nHe had spent seven years cultivating the land, mending fences and wondering why the gods had given him such powerful arms if all they were meant to do was carry manure.\n\nHe dreamed of the army. There, a man could win glory, see the world and eat at somebody else's expense.\n\nFor now, there is some wood to chop, a hill to climb, a pond to cross and 2 scarecrows to deal with. A hero has to begin somewhere.",
-    "winText": "Three scarecrows lay in the dirt, and Anthony's fields were once again free of imaginary birds. He rested beneath a tree and considered the morning's work. It was the most fighting he'd done in years.\n\nPerhaps soldiering would suit him after all.",
+    "startText": "[sleepy] Anthony woke next to a pile of dung, with a stiff neck, a dry mouth and a list of chores from his wife. Seven years of farming, and he still wondered why the gods had given him such powerful arms if all they were meant to do was carry manure.\n[dreamy] He just dreamt of the army where, a man could win glory, see the world [enthousiastic]and eat at somebody else's expense.\nFor now, there was wood to chop, a hill to climb, a stream to cross and two scarecrows to deal with.\n[determined][aaah]A hero had to start somewhere.",
+    "winText": "[proud]Two scarecrows lay in the dirt, and Anthony's fields were once again free of imaginary foes. \nHe rested beneath a tree, rather pleased with the morning's work. It was the most fighting he'd done in years.\n\n[dreamy]Perhaps soldiering would suit him after all.",
     "loseText": "The scarecrows remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
-    "startAudio": "A-Farmers-Lot-Intro.mp3",
-    "winAudio": "A-farmers-lot-victory.mp3",
+    "startAudio": "The Smell of Greatness-intro-mw5yow6x.mp3",
+    "winAudio": "The Smell of Greatness-win-mw5yui6h.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "turns",
@@ -135,7 +135,7 @@
         }
     ],
     "sort": 0,
-    "updatedAt": 1793786261727,
+    "updatedAt": 1794029537213,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
