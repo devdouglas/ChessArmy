@@ -10,14 +10,22 @@ Stock numbers below are the built-in roster. **Units** can override them live; a
 
 Home screen, filtered by era (**Ancient** / **Modern** / **Futuristic**). Modern and Futuristic are marked under construction.
 
+Unlocks are per era:
+
+- **Campaign**, **Historical Battle**, and **Skirmish vs AI** stay locked until **every** tutorial map in this era is cleared.
+- **Randomised Battle** and **Roguelite** open after **10** tutorial wins in this era (or after all of them, if the era has fewer than 10 tutorials).
+
 | Option | What it does |
 |--------|----------------|
-| **Campaign** | Saved campaign maps vs AI, editor order. Win one to unlock the next. Locked until Tutorial is finished. |
-| **Tutorial** | Same lockstep vs AI. Always open (if the era has tutorial maps). |
-| **Historical Battle** | Historical maps in editor order, vs AI, no lock. Locked until Tutorial is finished. |
-| **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. Locked until Tutorial is finished. |
-| **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. Locked until Tutorial is finished. |
+| **Anthony's Lessons** (Tutorial) | Same lockstep vs AI. Always open (if the era has tutorial maps). The home screen calls this **Anthony's Lessons**; the editor category stays Tutorial. Finish one to unlock the next. |
+| **Campaign** | Saved campaign maps vs AI, editor order. Win one to unlock the next. Locked until every tutorial map in this era is cleared. |
+| **Historical Battle** | Historical maps in editor order, vs AI, no sequence lock. Locked until every tutorial map in this era is cleared. |
+| **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. Locked until every tutorial map in this era is cleared. |
+| **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. Unlocks after 10 tutorial wins in this era (or all of them, if fewer than 10). |
+| **Roguelite** | A 10-battle run on generated maps. Starts 2v2 from the era's combat units. Player units that die stay gone; after each win both sides gain one random recruit. Unlocks on the same rule as Randomised Battle. |
 | **Editor** | Levels, units, AI checklist. |
+
+Start-screen tools also include **Experimental features**.
 
 **Start hotseat** (in-match, next to Restart level): same map, both sides human, no AI. Page background tints to the active colour on each turn switch.
 
@@ -46,7 +54,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 - A side activates up to **units per turn** pieces, then the turn passes. Played pieces get a check. **End turn** skips leftovers (also how you idle-regen when the cap is 1).
 - Saved maps set their own cap (default 1). Randomised battles use **6**.
 - **Max turns** (0 = none) counts full rounds, same clock as stars.
-- Select a piece: **green** move, **gold** stamina, **red** shot. Dual hex: **Shoot**, or click again to move. Empty shoot-range shows a white transparent crosshair.
+- Select a piece: **green** move, **gold** energy, **red** shot. Dual hex: **Shoot**, or click again to move. Empty shoot-range shows a white transparent crosshair.
 - **Rest** — idle this activation (regen).
 - **Skip** — scout leftover action.
 - **Turn** (hex-armor units) — face a new hex without walking.
@@ -57,9 +65,9 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Move** is a straight-line range. Standing on a hill/plateau/mountain adds **+1 / +2 / +3**. **Move cap** limits total steps this activation (0 = none; scout stock 3). Height only changes **±1** per step. **Climb level** is the max occupiable height (0 land … 3 mountain).
 
-**Stamina** (pool):
+**Energy** (pool):
 
-- Spend 1 to **climb**, to **stay in water** at turn start, or after **every action point** is spent take a **second straight-line** action (new direction OK). Unused steps of an action are lost. Units with extra actions (scout) use those first; stamina extra is last.
+- Spend 1 to **climb**, to **stay in water** at turn start, or after **every action point** is spent take a **second straight-line** action (new direction OK). Unused steps of an action are lost. Units with extra actions (scout) use those first; energy extra is last.
 - Climbing or entering water ends momentum (no chained extra action through that hex).
 - Empty pool: bolt badge on the piece.
 - **Regen**: consecutive own turns per point. Any action resets the countdown (that End still counts). The point only lands if the unit did **nothing** that turn (**Rest** counts as idle), **on land** — never in water. 0 = never.
@@ -67,7 +75,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 **Water:**
 
 - Entering from land ends the activation. From water: **1 hex** per action, cannot shoot.
-- Turn start in water: **−1 stamina** (not an action), or **2 HP** if you cannot pay. Leftover stamina can still buy an extra 1-hex. No regen in water.
+- Turn start in water: **−1 energy** (not an action), or **2 HP** if you cannot pay. Leftover energy can still buy an extra 1-hex. No regen in water.
 
 **Melee:** bump an occupied hex. A kill takes the spot; otherwise stop on the hex before. **0 melee** cannot bump. Melee damage floors at **1** even if armor would soak it.
 
@@ -89,7 +97,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Can hide:** invisible to enemies while on a hide token (forest). Owner still sees them. Moving, attacking, or taking a hit breaks hide for the rest of the match. Stock **Barbarian** has this on.
 
-**Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** stamina, and **+1** value.
+**Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** energy, and **+1** value.
 
 ---
 
@@ -122,7 +130,7 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
-**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 stamina**, **+1** value. All generals on a side must fall to lose by command.
+**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 energy**, **+1** value. All generals on a side must fall to lose by command.
 
 **Unit token — Hidden:** starts the match invisible to enemies (any hex). Same reveal rules as **Can hide**: moving, attacking, or taking a hit breaks it for the rest of the match. Owner still sees them. AI always camps while concealed — no walking until they can shoot/melee, or until they are provoked (hit → revealed). If a side's remaining pieces are all still hidden, they all break cover; an AI side then switches to **aggressive**. If every living piece on the board is hidden, everyone unhides.
 
@@ -143,17 +151,17 @@ Live in **Units**. Kit sets icon + pathing through pieces / infantry; **water** 
 | Cohort | 1 | 1 arch | HP 2, hex armor | 2 |
 | Hoplite | 1 | — | HP 2, hex armor | 2 |
 | Elephant | 2 | — | HP 3, melee 2, charge 1, armor 1, no climb | 8 |
-| Barbarian | 2 | — | HP 2, melee 2, charge 1, stamina 2, can hide | 3 |
+| Barbarian | 2 | — | HP 2, melee 2, charge 1, energy 2, can hide | 3 |
 | Peasant | 1 | — | | 0 |
 | Dude | 1 | — | peasant with a hat, glyph kit | 0 |
-| Wolf | 2 | — | through pieces, melee 2, charge 1, stamina 2, can hide, glyph kit | 3 |
+| Wolf | 2 | — | through pieces, melee 2, charge 1, energy 2, can hide, glyph kit | 3 |
 | Catapult | 1 | 5 arch, min 2 | melee 0, splash, CD 2, no climb | 6 |
 
 ### Modern
 
 | Unit | Move | Shoot | Notes | Val |
 |------|------|-------|-------|-----|
-| Soldier | 1 | 2 | infantry, stamina 1 / regen 1 | 1 |
+| Soldier | 1 | 2 | infantry, energy 1 / regen 1 | 1 |
 | Scout | 2 | 3 | water, through pieces, 2 actions, move cap 3 | 3 |
 | Bazooka | 1 | 4 | splash, CD 2 | 3 |
 | Sniper | 1 | 6 | | 5 |
@@ -173,7 +181,7 @@ Flyers: climb mountain, water OK. Some pass through pieces (fighter, gunship, fr
 | Bomber | 1 | 4 arch, min 2 | splash, CD 2 | 5 |
 | Frigate | 2 | 2 | HP 2, charge 1, through pieces | 4 |
 | Cruiser | 2 | 3 | HP 3, armor 1 | 7 |
-| Dreadnought | 1 | 4, min 2 | HP 4, armor 2, splash, no stamina | 10 |
+| Dreadnought | 1 | 4, min 2 | HP 4, armor 2, splash, no energy | 10 |
 
 **Copy** a unit to make a custom id (`u-…`): rename, recategorize, switch kit. Delete copies only.
 
