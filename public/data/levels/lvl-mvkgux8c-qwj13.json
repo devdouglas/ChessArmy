@@ -72,7 +72,7 @@
             "land"
         ],
         [
-            "land",
+            "rock",
             "land",
             "land",
             "land",
@@ -155,7 +155,7 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Javelins and energy",
-    "startText": "[singing optimistic]Aaah the army. They offer steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n[long pause]\nThe recruiting officer listened to Anthony's grand ambitions with the weary expression of a man who had heard a hundred fools promise to conquer the world before breakfast.\n\n[mad drunk officer]\"Can you throw a javelin?\"\n\n[joyfull]Anthony said he could.\n\n[bored]The officer grunts and points to targets [mumbles silently]...[inaudible mambojabmo]",
+    "startText": "[singing optimistic]Aaah the army. They offer steady meals, regular wages and the opportunity to meet entirely new people who disliked him.\n[long pause]\nThe recruiting officer listened to Anthony's grand ambitions with the weary expression of a man who had heard a hundred fools promise to conquer the world before breakfast.\n\n[mad drunk officer]\"Can you throw a long stick?\"\n\n[joyfull]Anthony said he could.\n\n[bored]The officer grunts and points to targets [mumbles silently]...[inaudible mambojabmo]",
     "winText": "[excited] The javelin struck its target. \n\nThe recruiting officer gave a grunt of approval, [sarcastic]as though Anthony had merely managed not to embarrass him.\n\n[enthousiastic]Anthony had been accepted into the army. [optimistic]At last, a respectable career lay before him.\n[long pause]\n[mysterious] Little did he know that the gods had a rather different meaning of glory in mind. [content]And they had a wicked sense of humour.",
     "loseText": "A javelin is not a walking stick, and throwing it at random is not a recognised military discipline. The officer walks away as he has other recruits to disappoint.",
     "startAudio": "The Army Wants You-intro-mw3rrz7v.mp3",
@@ -305,11 +305,81 @@
             "type": "board",
             "col": 3,
             "row": 8,
-            "text": "You can activate Double Time [double time] to optionally perform two actions in a single turn. Strike or throw twice in quick succession, or use the extra action to outmanoeuvre your enemy.[tutorial]"
+            "text": "You can activate [javelin] [tutorial] to stay at a distance. Double tap the [javelin] to keep it active as long as you need it."
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 3,
+            "row": 1
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 8
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 10
+        },
+        {
+            "type": "palisade",
+            "col": 4,
+            "row": 9
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 8
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 10
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 4,
+            "row": 7
+        },
+        {
+            "type": "wall",
+            "col": 3,
+            "row": 6
+        },
+        {
+            "type": "wall",
+            "col": 0,
+            "row": 5
         }
     ],
     "sort": 4,
-    "updatedAt": 1793898030163,
+    "updatedAt": 1794419135408,
     "armies": [
         {
             "type": "peasant",
@@ -347,7 +417,15 @@
             "type": "javelin",
             "col": 2,
             "row": 9,
-            "side": "red"
+            "side": "red",
+            "facing": 3
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 5,
+            "row": 0,
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

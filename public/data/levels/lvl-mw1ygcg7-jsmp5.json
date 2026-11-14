@@ -139,7 +139,7 @@
             "land"
         ]
     ],
-    "category": "tutorial",
+    "category": "skirmish",
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 0,
@@ -414,18 +414,12 @@
             "row": 3
         }
     ],
-    "sort": 10,
-    "updatedAt": 1793905924321,
+    "sort": 12,
+    "updatedAt": 1794422355288,
     "armies": [
         {
             "type": "cohort",
             "col": 3,
-            "row": 10,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 5,
             "row": 10,
             "side": "red"
         },
@@ -440,6 +434,12 @@
             "col": 6,
             "row": 2,
             "side": "blue"
+        },
+        {
+            "type": "u-mw4vuw6xnwnt",
+            "col": 5,
+            "row": 10,
+            "side": "red"
         }
     ]
 }

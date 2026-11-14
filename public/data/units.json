@@ -42,6 +42,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "melee",
         "sight": 2
     },
@@ -88,6 +89,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "mounted",
         "sight": 3
     },
@@ -134,6 +136,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 4
     },
@@ -180,6 +183,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 5
     },
@@ -226,6 +230,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 5
     },
@@ -272,8 +277,10 @@
         "climbLevel": 2,
         "canHide": true,
         "abilities": [
-            "hide"
+            "hide",
+            "javelin"
         ],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 3
     },
@@ -320,6 +327,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "mounted",
         "sight": 4
     },
@@ -333,7 +341,7 @@
         "shootMin": 1,
         "shootArc": "straight",
         "actions": 1,
-        "shootCooldown": 1,
+        "shootCooldown": 0,
         "value": 4,
         "moveBudget": 0,
         "stamina": 3,
@@ -349,8 +357,8 @@
         "armorFront": 0,
         "armorFrontLeft": 0,
         "armorFrontRight": 0,
-        "armorFlankLeft": -2,
-        "armorFlankRight": -2,
+        "armorFlankLeft": -1,
+        "armorFlankRight": -1,
         "armorRear": -2,
         "hexDamage": true,
         "damageFront": 0,
@@ -366,6 +374,7 @@
         "climbLevel": 1,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "mounted",
         "sight": 4
     },
@@ -414,6 +423,7 @@
         "abilities": [
             "javelin"
         ],
+        "recruitable": true,
         "unitClass": "melee",
         "sight": 3
     },
@@ -462,6 +472,7 @@
         "abilities": [
             "trap"
         ],
+        "recruitable": true,
         "unitClass": "melee",
         "sight": 2
     },
@@ -511,6 +522,7 @@
             "charge",
             "javelin"
         ],
+        "recruitable": true,
         "unitClass": "mounted",
         "sight": 3
     },
@@ -559,6 +571,7 @@
         "abilities": [
             "hide"
         ],
+        "recruitable": true,
         "unitClass": "melee",
         "sight": 2
     },
@@ -605,6 +618,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 6
     },
@@ -651,6 +665,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 4
     },
@@ -697,6 +712,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "hero",
         "sight": 3
     },
@@ -743,6 +759,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "ranged",
         "sight": 6
     },
@@ -789,6 +806,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "recruitable": false,
         "unitClass": "other",
         "sight": 1
     },
@@ -835,6 +853,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": false,
         "unitClass": "melee",
         "sight": 2
     },
@@ -883,6 +902,7 @@
         "abilities": [
             "hide"
         ],
+        "recruitable": false,
         "unitClass": "hero",
         "sight": 4
     },
@@ -931,6 +951,7 @@
         "abilities": [
             "hide"
         ],
+        "recruitable": true,
         "unitClass": "melee",
         "sight": 3
     },
@@ -977,6 +998,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 4
     },
@@ -1023,6 +1045,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 4
     },
@@ -1069,6 +1092,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 5
     },
@@ -1115,6 +1139,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 3
     },
@@ -1161,6 +1186,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 4
     },
@@ -1207,6 +1233,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "recruitable": true,
         "unitClass": "other",
         "sight": 5
     },
@@ -1214,6 +1241,7 @@
         "name": "Cavalry",
         "chess": "Knight",
         "category": "ancient",
+        "recruitable": true,
         "role": "scout",
         "unitClass": "mounted",
         "passWater": true,
@@ -1262,6 +1290,7 @@
         "name": "General",
         "chess": "King",
         "category": "ancient",
+        "recruitable": false,
         "role": "general",
         "unitClass": "hero",
         "passWater": true,
@@ -1308,6 +1337,7 @@
         "name": "Scarecrow",
         "chess": "Straw",
         "category": "ancient",
+        "recruitable": false,
         "role": "dummy",
         "unitClass": "other",
         "passWater": false,
@@ -1354,6 +1384,7 @@
         "name": "Tower 2",
         "chess": "—",
         "category": "ancient",
+        "recruitable": false,
         "role": "tower",
         "unitClass": "ranged",
         "passWater": true,
@@ -1400,6 +1431,7 @@
         "name": "Strong peasant",
         "chess": "Levy",
         "category": "ancient",
+        "recruitable": true,
         "role": "peasant",
         "unitClass": "melee",
         "passWater": true,
@@ -1446,6 +1478,7 @@
         "name": "Recruit",
         "chess": "Scutum",
         "category": "ancient",
+        "recruitable": false,
         "role": "cohort",
         "unitClass": "melee",
         "passWater": true,
@@ -1494,6 +1527,7 @@
         "name": "Hangover Anthony",
         "chess": "Chap",
         "category": "ancient",
+        "recruitable": false,
         "role": "dude",
         "unitClass": "hero",
         "passWater": true,
@@ -1540,6 +1574,7 @@
         "name": "Armored Anthony",
         "chess": "Chap",
         "category": "ancient",
+        "recruitable": false,
         "role": "dude",
         "unitClass": "hero",
         "passWater": true,
@@ -1588,6 +1623,7 @@
         "name": "Armored peasant",
         "chess": "Levy",
         "category": "ancient",
+        "recruitable": false,
         "role": "peasant",
         "unitClass": "melee",
         "passWater": true,
@@ -1636,6 +1672,7 @@
         "name": "Cohort Anthony",
         "chess": "Chap",
         "category": "ancient",
+        "recruitable": true,
         "role": "dude",
         "unitClass": "hero",
         "passWater": true,

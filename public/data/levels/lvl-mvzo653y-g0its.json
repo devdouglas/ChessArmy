@@ -111,10 +111,10 @@
     "unitsPerTurn": 5,
     "maxTurns": 0,
     "teaserText": "",
-    "startText": "",
+    "startText": "[groggy] Anthony woke on a hard wooden bench in a cell, with a pounding headache and a mouth like a camel's backside. Outside, he could hear a crowd cheering.\n\n[concerned] His cellmates were a sorry-looking bunch. One wore a helmet that looked suspiciously like a cooking pot, another had a breastplate held together with rope, and the third had somehow managed to lose one sandal but keep two shoulder guards.\n\n[disgusted] The oldest spat on the floor and shoved a dented shield and a rather rusty gladius into Anthony's hands.\n\n[angry drunk] \"Here you are, lad. The shield still works. The sword... well, hit them with the sharp end.\"\n\n[angry] \"Fortuna audaces iuvat! Fortune favours the brave!\"\n\n[deadpan] Anthony wished fortune would occasionally favour the badly equipped as well.",
     "winText": "",
     "loseText": "",
-    "startAudio": "",
+    "startAudio": "Gladiator-intro-mwcigave.mp3",
     "winAudio": "",
     "loseAudio": "",
     "star2": {
@@ -272,7 +272,7 @@
         }
     ],
     "sort": 0,
-    "updatedAt": 1793906357976,
+    "updatedAt": 1794425347305,
     "armies": [
         {
             "type": "u-mvuvhfewwv97",
@@ -328,6 +328,12 @@
             "col": 4,
             "row": 8,
             "side": "blue"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 4,
+            "row": 6,
+            "side": "red"
         }
     ]
 }

@@ -293,6 +293,8 @@ export type UnitStats = UnitTraits & {
   chess: string;
   /** Era roster. Missing on old saves → modern. */
   category: UnitCategory;
+  /** Available as a random recruit in roguelite runs. */
+  recruitable: boolean;
   /** Kit + glyph. Copies keep the source kit unless changed. */
   role: UnitRole;
   /** Melee, ranged, hero, mounted, or other. */
@@ -448,13 +450,15 @@ export function defaultSight(move: number, shoot: number): number {
 }
 
 export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
-  raw: Record<UnitRole, Omit<UnitStats, 'sight' | 'unitClass'>>,
+  raw: Record<UnitRole, Omit<UnitStats, 'sight' | 'unitClass' | 'recruitable'>>,
 ): Record<UnitRole, UnitStats> => {
   const out = {} as Record<UnitRole, UnitStats>;
   for (const role of STOCK_UNIT_TYPES) {
     const s = raw[role];
     out[role] = {
       ...s,
+      recruitable:
+        role !== 'dummy' && (s.meleeDamage > 0 || s.shoot > 0 || s.charge > 0),
       unitClass: STOCK_UNIT_CLASS[role],
       sight: defaultSight(s.move, s.shoot),
     };

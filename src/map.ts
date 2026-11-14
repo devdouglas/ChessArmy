@@ -42,8 +42,9 @@ import {
 
 export const COLS = 11;
 export const ROWS = 11;
-/** Randomised maps are two files wider than the stock grid. */
-export const RANDOM_COLS = COLS + 2;
+/** Randomised / roguelite maps are capped at 10×9. */
+export const RANDOM_COLS = 10;
+export const RANDOM_ROWS = 9;
 export const MIN_COLS = 5;
 export const MAX_COLS = 21;
 export const MIN_ROWS = 5;
@@ -52,15 +53,16 @@ export const DEFAULT_ORIENTATION: HexOrientation = 'pointy';
 /** Randomised maps (skirmish / hotseat) are always flat-top. */
 export const RANDOM_ORIENTATION: HexOrientation = 'flat';
 
-/** Army ranks + the line immediately in front of each army. */
+/** Keep the top and bottom two deployment rows clear. */
 function isClearRow(row: number, rows: number): boolean {
-  return row < 3 || row >= rows - 3;
+  return row < 2 || row >= rows - 2;
 }
 
 export type MapOptions = {
   waterCount: number;
   rockCount: number;
   palisadeCount: number;
+  forestCount: number;
   highCount: number;
   plateauCount: number;
 };
@@ -69,6 +71,7 @@ export const DEFAULT_MAP: MapOptions = {
   waterCount: 8,
   rockCount: 4,
   palisadeCount: 3,
+  forestCount: 4,
   highCount: 6,
   plateauCount: 5,
 };
@@ -122,7 +125,7 @@ export function resizeTerrain(
 
 function eligibleCells(
   cols = RANDOM_COLS,
-  rows = ROWS,
+  rows = RANDOM_ROWS,
 ): { col: number; row: number }[] {
   const cells: { col: number; row: number }[] = [];
   for (let row = 0; row < rows; row++) {
@@ -231,14 +234,30 @@ function palisadeWeight(
   return w;
 }
 
+function tokenClusterWeight(
+  h: { col: number; row: number },
+  keys: Set<string>,
+): number {
+  return neighbors(h, RANDOM_ORIENTATION).some((n) => keys.has(`${n.col},${n.row}`))
+    ? CLUSTER
+    : 1;
+}
+
 type TerrainKey = 'water' | 'rock' | 'high' | 'plateau';
 
-/** Cap counts so they fit the playable belt. Palisades overlay walkable tiles. */
+/** Cap counts so they fit the playable belt. Palisades and forests overlay walkable tiles. */
 export function clampMapOptions(opts: MapOptions): MapOptions {
-  const max = eligibleCells(RANDOM_COLS, ROWS).length;
+  const max = eligibleCells(RANDOM_COLS, RANDOM_ROWS).length;
   let water = Math.max(0, Math.floor(opts.waterCount));
   let rock = Math.max(0, Math.floor(opts.rockCount));
   let palisade = Math.max(0, Math.min(max, Math.floor(opts.palisadeCount)));
+  const forest = Math.max(
+    0,
+    Math.min(
+      max - palisade,
+      Math.floor(opts.forestCount ?? DEFAULT_MAP.forestCount),
+    ),
+  );
   let high = Math.max(0, Math.floor(opts.highCount));
   let plateau = Math.max(0, Math.floor(opts.plateauCount));
   const total = water + rock + high + plateau;
@@ -272,6 +291,7 @@ export function clampMapOptions(opts: MapOptions): MapOptions {
     waterCount: water,
     rockCount: rock,
     palisadeCount: palisade,
+    forestCount: forest,
     highCount: high,
     plateauCount: plateau,
   };
@@ -284,7 +304,14 @@ export function maxTerrainCells(): number {
 function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
   const rows = t.length || ROWS;
   const cols = t[0]?.length ?? RANDOM_COLS;
-  const { waterCount, rockCount, palisadeCount, highCount, plateauCount } =
+  const {
+    waterCount,
+    rockCount,
+    palisadeCount,
+    forestCount,
+    highCount,
+    plateauCount,
+  } =
     clampMapOptions(opts);
   const open = eligibleCells(cols, rows);
   const stamp = (type: Terrain, count: number) => {
@@ -322,7 +349,7 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
     if (!h) break;
     t[h.row][h.col] = 'plateau';
   }
-  const palisades: TileToken[] = [];
+  const tokens: TileToken[] = [];
   const palKeys = new Set<string>();
   const palOpen = eligibleCells(cols, rows).filter(({ col, row }) => {
     const cell = t[row][col];
@@ -333,10 +360,22 @@ function paintTerrain(t: Terrain[][], opts: MapOptions): TileToken[] {
       palisadeWeight(cell, palKeys, cols),
     );
     if (!h) break;
-    palisades.push({ type: 'palisade', col: h.col, row: h.row });
+    tokens.push({ type: 'palisade', col: h.col, row: h.row });
     palKeys.add(`${h.col},${h.row}`);
   }
-  return palisades;
+  const forestKeys = new Set<string>();
+  const forestOpen = eligibleCells(cols, rows).filter(({ col, row }) => {
+    return !palKeys.has(`${col},${row}`) && t[row][col] === 'land';
+  });
+  for (let f = 0; f < forestCount; f++) {
+    const h = takeWeighted(forestOpen, (cell) =>
+      tokenClusterWeight(cell, forestKeys),
+    );
+    if (!h) break;
+    tokens.push({ type: 'forest', col: h.col, row: h.row });
+    forestKeys.add(`${h.col},${h.row}`);
+  }
+  return tokens;
 }
 
 let idSeq = 0;
@@ -838,11 +877,13 @@ export function createInitialState(
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
 ): GameState {
   const clamped = clampMapOptions(opts);
-  const terrain = emptyTerrain(RANDOM_COLS, ROWS);
+  const terrain = emptyTerrain(RANDOM_COLS, RANDOM_ROWS);
   const walls = paintTerrain(terrain, clamped);
+  const beltLo = 2;
+  const beltHi = Math.max(beltLo, RANDOM_ROWS - 3);
   return freshGame(
     terrain,
-    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows 3–7).`,
+    `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows ${beltLo + 1}–${beltHi + 1}).`,
     RANDOM_ORIENTATION,
     armies,
     controls,

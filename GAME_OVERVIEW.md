@@ -50,7 +50,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 ## Board and turns
 
 - Hex grid. Editor default **11×11**, **pointy-top**. Grid size **5–21**.
-- Randomised maps: **13×11**, always **flat-top**.
+- Randomised maps: **10×9**, always **flat-top**.
 - A side activates up to **units per turn** pieces, then the turn passes. Played pieces get a check. **End turn** skips leftovers (also how you idle-regen when the cap is 1).
 - Saved maps set their own cap (default 1). Randomised battles use **6**.
 - **Max turns** (0 = none) counts full rounds, same clock as stars.

@@ -249,9 +249,8 @@ export function sanitizeBoardText(raw: unknown): string {
 }
 
 /**
- * Editor click on a hex that already has a board. Board brush always edits.
- * Terrain brushes too — the editor boots on Land, so old boards were dead clicks.
- * Other token / unit / erase brushes still paint.
+ * Editor click on a hex that already has a board. Board / terrain / unit brushes
+ * open the message. Erase, unit-tokens, and other tile tokens still paint/stack.
  */
 export function editorOpensBoardPopup(
   brush: string,
@@ -260,13 +259,10 @@ export function editorOpensBoardPopup(
 ): boolean {
   if (!hasBoard || !first) return false;
   if (brush === 'board') return true;
-  return (
-    brush === 'land' ||
-    brush === 'water' ||
-    brush === 'rock' ||
-    brush === 'high' ||
-    brush === 'plateau'
-  );
+  if (brush === 'erase' || brush === 'notouch') return false;
+  if (brush.startsWith('unit:')) return false;
+  if (isTokenType(brush)) return false;
+  return true;
 }
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;

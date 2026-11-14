@@ -49,11 +49,11 @@ function board(): GameState {
   assert(editorOpensBoardPopup('board', true, true), 'board brush edits existing');
   assert(editorOpensBoardPopup('land', true, true), 'land click (editor default) edits existing');
   assert(editorOpensBoardPopup('water', true, true), 'terrain click edits existing');
+  assert(editorOpensBoardPopup('soldier', true, true), 'unit brush opens existing board');
   assert(!editorOpensBoardPopup('land', true, false), 'drag does not reopen');
   assert(!editorOpensBoardPopup('land', false, true), 'empty hex does not popup');
   assert(!editorOpensBoardPopup('pikes', true, true), 'other tokens still stack');
   assert(!editorOpensBoardPopup('erase', true, true), 'erase still erases');
-  assert(!editorOpensBoardPopup('soldier', true, true), 'unit brush still paints');
   assert(!editorOpensBoardPopup('unit:general', true, true), 'unit token still stamps');
 }
 

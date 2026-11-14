@@ -3683,6 +3683,90 @@ svg.board .hex {
   z-index: 20;
 }
 
+.end-card.has-rogue-shop {
+  min-width: min(26rem, 94vw);
+}
+
+.rogue-shop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.35rem 0 0.85rem;
+  text-align: left;
+}
+
+.rogue-shop-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.rogue-shop-gold {
+  color: #f0d060;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.rogue-shop-hint,
+.rogue-shop-bought,
+.rogue-shop-empty {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.rogue-shop-offers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.rogue-offer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.55rem 0.35rem;
+  background: #1c221e;
+  border: 1px solid #4a554c;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  min-height: var(--touch);
+}
+
+.rogue-offer:hover:not(:disabled) {
+  border-color: #c9a227;
+}
+
+.rogue-offer.unaffordable,
+.rogue-offer:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rogue-offer-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.rogue-offer-cost {
+  font-size: 0.72rem;
+  color: #f0d060;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 520px) {
+  .rogue-shop-offers {
+    grid-template-columns: 1fr;
+  }
+}
+
 .end-card.random-setup {
   min-width: min(22rem, 92vw);
   text-align: left;
@@ -4678,6 +4762,43 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
   background: color-mix(in srgb, var(--panel) 94%, #000);
   border-top: 1px solid #3a453c;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.other-turn-banner {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.65rem 0.2rem;
+  color: var(--muted);
+  border-bottom: 1px solid #3a453c;
+}
+
+.other-turn-banner .red {
+  color: var(--red);
+}
+.other-turn-banner .blue {
+  color: var(--blue);
+}
+.other-turn-banner .yellow {
+  color: var(--yellow);
+}
+.other-turn-banner .purple {
+  color: var(--purple);
+}
+
+.other-turn-banner.red {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+.other-turn-banner.blue {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+.other-turn-banner.yellow {
+  background: color-mix(in srgb, var(--yellow) 14%, transparent);
+}
+.other-turn-banner.purple {
+  background: color-mix(in srgb, var(--purple) 14%, transparent);
 }
 
 .play-dock .action-bar {

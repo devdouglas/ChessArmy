@@ -170,6 +170,7 @@ export function sanitizeUnitStats(
     name,
     chess,
     category: sanitizeUnitCategory(s.category ?? d.category),
+    recruitable: bool(s.recruitable, d.recruitable),
     role: dRole,
     unitClass: sanitizeUnitClass(s.unitClass, d.unitClass),
     passWater: mobility.passWater,
@@ -372,6 +373,7 @@ export function unitStatsAreStock(): boolean {
     return (
       a.name === b.name &&
       a.category === b.category &&
+      a.recruitable === b.recruitable &&
       a.role === b.role &&
       a.unitClass === b.unitClass &&
       INT_FIELDS.every((k) => a[k] === b[k]) &&

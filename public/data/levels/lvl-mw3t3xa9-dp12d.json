@@ -92,11 +92,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Armour, melee combat, sidestepping",
-    "startText": "That evening, Anthony spotted three familiar faces in a tavern. They were the very fellows who had fondled his wife while he was out tending the fields. They were drinking merrily, quite unaware that fate had brought them together again.\n\nLater that night, Anthony followed them down the road until they collapsed into a drunken sleep.\n\nStill wearing his armour, Anthony regarded the three sleeping men. He took this as a sign from the gods. They had given him a sword, protective clothing and three men who were too drunk to run away.\n\nWho was he to argue with divine providence?",
-    "winText": "The gods had provided the sword, the armour and the drunken idiots. [smart]He had merely connected the pieces.\n\n[content]For the first time in years, Anthony went to sleep a satisfied man. [accepted]His wife was still gone, [let down]of course, [enthousiastic]but at least he had a decent story to tell at the tavern.",
+    "startText": "That evening, Anthony spotted three familiar faces in a tavern. They were the very fellows who had fondled his wife. They were drinking merrily, [malicious]quite unaware that fate had brought them together again.\n[long pause]\n[wispering]Later that night, Anthony followed them down the road until they collapsed into a drunken sleep.\n\nStill wearing his armour, Anthony regarded the three sleeping men. He took this as a sign from the gods! They had given him a sword, protective clothing and three men who were too drunk to run away.\n\n[oportunistic]Who was he to argue with divine providence?",
+    "winText": "The gods had provided the sword, the armour and the drunken idiots. [smart]He had merely connected the pieces.\n\n[content]For the first time in years, Anthony went to sleep a satisfied man. [accepted]His wife was still gone, [let down]of course, [enthousiastic]but at least he had a decent story to tell at the tavern.\n\n[ominous] Little did he know that one of the idiots was the bastard son of a Roman general. And, as it happened, a rather poor swimmer.",
     "loseText": "The sword, javelin and armour each have their purpose. Use the javelin at a distance, the gladius up close, and the armour to keep yourself in one piece. It is a simple system, which is why the army has spent centuries trying to teach it.",
-    "startAudio": "The-glories-of-rome-intro.mp3",
-    "winAudio": "The Glories of Rome-win-mw3sw549.mp3",
+    "startAudio": "The best night cap-intro-mwch78gt.mp3",
+    "winAudio": "The best night cap-win-mwchwzd3.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "turns",
@@ -196,7 +196,7 @@
         }
     ],
     "sort": 16,
-    "updatedAt": 1794069091479,
+    "updatedAt": 1794424391939,
     "armies": [
         {
             "type": "u-mvr2vokzh3n3",

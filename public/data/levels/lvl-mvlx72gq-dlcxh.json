@@ -111,11 +111,11 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Melee with moving targets and swimming",
-    "startText": "Anthony returned from the fields to find three men hurrying away from his house. They were sweating, badly dressed and moving with the speed of men who had just remembered an appointment elsewhere.",
-    "winText": "The three fellows discovered that Anthony's hands were better suited to violence than to harvesting. Unfortunately, there was little satisfaction in the victory. \nThe wine was gone, the house was a ruin, and his wife had already begun explaining why this was somehow his fault.",
-    "loseText": "A proper Roman fist is not merely an ornament at the end of one's arm. Close the distance, face your opponent and strike at the right moment. Anthony has already lost his wife. There is no need to lose a fight as well.",
-    "startAudio": "An-unexpected-visit-intro.mp3",
-    "winAudio": "An-unexpected-visit-victory.mp3",
+    "startText": "Anthony returned home to find three men hurrying away from his house. They were sweating, badly dressed and moving with the speed of men who had just remembered an appointment elsewhere.",
+    "winText": "The three fellows discovered that Anthony's hands were better suited to violence than to harvesting. Unfortunately, there was little satisfaction in the victory. \n[dissapointed]The wine was gone, the house was a ruin, [joking]and his wife had already begun explaining why this was somehow his fault.",
+    "loseText": "A proper Romans fist is not merely an ornament at the end of one's arm. Close the distance and strike at the right moment and rest before swimming.",
+    "startAudio": "An Unexpected Visit-intro-mwc7t97v.mp3",
+    "winAudio": "An Unexpected Visit-win-mwc7uck1.mp3",
     "loseAudio": "",
     "star2": {
         "metric": "turns",
@@ -201,29 +201,14 @@
         },
         {
             "type": "notouch",
-            "col": 2,
-            "row": 4
-        },
-        {
-            "type": "notouch",
             "col": 1,
             "row": 4
-        },
-        {
-            "type": "notouch",
-            "col": 3,
-            "row": 3
-        },
-        {
-            "type": "notouch",
-            "col": 2,
-            "row": 3
         },
         {
             "type": "board",
             "col": 3,
             "row": 2,
-            "text": "Every turn you start in the water you need [energy]. If you do not have enough energy, you will lose [hp]. \nJumping from this cliff looks fun but make sure you have enough energy to cross the stream or even climb ack up."
+            "text": "Every turn you start in the water you need [energy]. If you do not have enough energy, you will lose [hp]. \nJumping from this cliff looks fun but make sure you have enough energy[energy] to cross!"
         },
         {
             "type": "notouch",
@@ -264,21 +249,39 @@
             "type": "tree",
             "col": 5,
             "row": 6
+        },
+        {
+            "type": "notouch",
+            "col": 3,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 4
+        },
+        {
+            "type": "notouch",
+            "col": 4,
+            "row": 3
+        },
+        {
+            "type": "notouch",
+            "col": 2,
+            "row": 2
+        },
+        {
+            "type": "notouch",
+            "col": 1,
+            "row": 2
         }
     ],
     "sort": 2,
-    "updatedAt": 1793786390955,
+    "updatedAt": 1794407935115,
     "armies": [
         {
             "type": "peasant",
             "col": 7,
-            "row": 2,
-            "side": "blue",
-            "facing": 2
-        },
-        {
-            "type": "peasant",
-            "col": 1,
             "row": 2,
             "side": "blue",
             "facing": 2
@@ -298,6 +301,13 @@
             "unitTokens": [
                 "general"
             ]
+        },
+        {
+            "type": "peasant",
+            "col": 2,
+            "row": 1,
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

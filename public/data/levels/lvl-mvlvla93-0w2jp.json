@@ -187,20 +187,8 @@
         }
     ],
     "sort": 14,
-    "updatedAt": 1793904991937,
+    "updatedAt": 1794422722320,
     "armies": [
-        {
-            "type": "cohort",
-            "col": 2,
-            "row": 7,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 2,
-            "row": 1,
-            "side": "red"
-        },
         {
             "type": "cohort",
             "col": 2,
@@ -224,6 +212,19 @@
             "col": 6,
             "row": 7,
             "side": "red"
+        },
+        {
+            "type": "u-mw4vuw6xnwnt",
+            "col": 2,
+            "row": 7,
+            "side": "red"
+        },
+        {
+            "type": "u-mw3t85tpmhz2",
+            "col": 2,
+            "row": 1,
+            "side": "red",
+            "facing": 5
         }
     ]
 }

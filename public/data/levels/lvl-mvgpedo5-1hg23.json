@@ -1,10 +1,10 @@
 {
     "id": "lvl-mvgpedo5-1hg23",
     "name": "A Gift from the Commander",
-    "cols": 7,
-    "rows": 7,
+    "cols": 9,
+    "rows": 9,
     "orientation": "flat",
-    "hexRadius": 0,
+    "hexRadius": 4,
     "terrain": [
         [
             "land",
@@ -13,13 +13,6 @@
             "land",
             "land",
             "land",
-            "land"
-        ],
-        [
-            "land",
-            "land",
-            "land",
-            "land",
             "land",
             "land",
             "land"
@@ -27,13 +20,6 @@
         [
             "land",
             "land",
-            "land",
-            "land",
-            "land",
-            "land",
-            "land"
-        ],
-        [
             "land",
             "land",
             "land",
@@ -49,6 +35,8 @@
             "land",
             "land",
             "land",
+            "land",
+            "land",
             "land"
         ],
         [
@@ -57,6 +45,41 @@
             "land",
             "land",
             "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "high",
+            "high",
             "high",
             "high"
         ],
@@ -65,16 +88,29 @@
             "land",
             "land",
             "land",
+            "land",
             "high",
             "high",
-            "high"
+            "land",
+            "land"
+        ],
+        [
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land",
+            "land"
         ]
     ],
     "category": "tutorial",
     "period": "ancient",
     "unitsPerTurn": 10,
     "maxTurns": 20,
-    "teaserText": "Rome has rewarded you with a horse. The horse has not agreed to this arrangement.",
+    "teaserText": "Chaaaarge!",
     "startText": "[old drunk]\"Good news, Anthony! You've been promoted. You now have a horse... He's stubborn, poorly disciplined and has a tendency to kick his superiors. You'll get along just fine.\"\n\nAnthony had ridden a donkey as a boy, though the donkey had generally been the one making decisions. This horse possessed an expression of profound mistrust.\n\n[confident] Anthony mounted.\n\n[uneasy] The horse shifted.\n\n[hesitant] Anthony reconsidered.\n\n[deadpan] The horse did not.",
     "winText": "Anthony and the horse reached the end of the course without either of them suffering a fatal disappointment. His commander approved, and Anthony began to see the possibilities. A horse could carry him into battle, carry him away from battle and, if properly persuaded, carry him past an unpleasant conversation.",
     "loseText": "A horse is not a cart, and it will not necessarily go where you wish simply because you are sitting on it. Learn to control your mount, keep your balance and watch where you are going. The ground is considerably less forgiving than it looks.",
@@ -103,51 +139,58 @@
         "yellow": "aggressive",
         "purple": "aggressive"
     },
-    "tokens": [],
+    "tokens": [
+        {
+            "type": "palisade",
+            "col": 0,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 2,
+            "row": 6
+        },
+        {
+            "type": "palisade",
+            "col": 2,
+            "row": 7
+        },
+        {
+            "type": "palisade",
+            "col": 1,
+            "row": 6
+        }
+    ],
     "sort": 9,
-    "updatedAt": 1793971701469,
+    "updatedAt": 1794421138068,
     "armies": [
         {
             "type": "u-mvgpbg68f593",
-            "col": 1,
-            "row": 4,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 1,
-            "row": 3,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 2,
-            "row": 4,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 5,
-            "row": 1,
-            "side": "blue"
-        },
-        {
-            "type": "u-mvgpbg68f593",
-            "col": 5,
+            "col": 6,
             "row": 2,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 5,
+            "col": 6,
             "row": 3,
-            "side": "blue"
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 3,
-            "row": 1,
-            "side": "blue"
+            "col": 6,
+            "row": 4,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 4,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvf8ty84rdk3",
@@ -160,15 +203,24 @@
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 3,
-            "row": 4,
-            "side": "blue"
+            "col": 1,
+            "row": 3,
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "u-mvgpbg68f593",
-            "col": 4,
-            "row": 5,
-            "side": "blue"
+            "col": 1,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
+        },
+        {
+            "type": "u-mvgpbg68f593",
+            "col": 2,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
         }
     ]
 }

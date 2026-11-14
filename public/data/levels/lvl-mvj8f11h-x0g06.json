@@ -233,11 +233,6 @@
         },
         {
             "type": "notouch",
-            "col": 0,
-            "row": 3
-        },
-        {
-            "type": "notouch",
             "col": 2,
             "row": 2
         },
@@ -250,7 +245,7 @@
             "type": "board",
             "col": 2,
             "row": 3,
-            "text": "These rocks are too high from this side. There must be a way to climb to higher ground",
+            "text": "These rocks are too high from this side. There must be a way to climb to higher ground.",
             "noTouch": true
         },
         {
@@ -277,18 +272,16 @@
             "type": "house",
             "col": 8,
             "row": 5
+        },
+        {
+            "type": "notouch",
+            "col": 0,
+            "row": 4
         }
     ],
     "sort": 3,
-    "updatedAt": 1793854319683,
+    "updatedAt": 1794418513940,
     "armies": [
-        {
-            "type": "peasant",
-            "col": 1,
-            "row": 2,
-            "side": "blue",
-            "facing": 2
-        },
         {
             "type": "peasant",
             "col": 7,
@@ -301,6 +294,13 @@
             "col": 2,
             "row": 7,
             "side": "red"
+        },
+        {
+            "type": "u-mvlx87f1kk67",
+            "col": 1,
+            "row": 2,
+            "side": "blue",
+            "facing": 2
         },
         {
             "type": "peasant",

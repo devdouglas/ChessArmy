@@ -1,0 +1,16 @@
+node_modules/
+dist/
+wordpress/chessarmy-progress/game/
+.git/
+.vite/
+coverage/
+.cache/
+*.log
+*.tmp
+*.temp
+.DS_Store
+public/data/.lock
+.env
+.env.*
+!.env.example
+*.local

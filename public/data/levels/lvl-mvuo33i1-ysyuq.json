@@ -111,10 +111,10 @@
     "unitsPerTurn": 10,
     "maxTurns": 0,
     "teaserText": "Uphill and downhill movement and energy preservation",
-    "startText": "Anthony remembers he forgot something and rushes home. He uses the hills to make some speed.",
+    "startText": "[oh shit] Anthony remembers he forgot something and rushes home. He uses the hills to make some speed.",
     "winText": "Anthony came at him so fast he did not see him coming. But no time for questions. There is more activity in the front of the house.",
-    "loseText": "The gods remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The pond, incidentally, has no interest in your destiny.",
-    "startAudio": "",
+    "loseText": "The gods remain unimpressed. Move, climb, and keep an eye on your energy. Even a man destined for greatness must occasionally stop to catch his breath. The stream, incidentally, has no interest in your destiny.",
+    "startAudio": "Over the Hill and Far from Glory-intro-mwc7qlps.mp3",
     "winAudio": "",
     "loseAudio": "",
     "star2": {
@@ -179,7 +179,7 @@
             "type": "board",
             "col": 4,
             "row": 7,
-            "text": "Know how to navigate your terrain. Climbing hills costs [energy]. But running down to lower grounds grands you extra movement.\nJumpng in the water will end your turn."
+            "text": "Know how to navigate your terrain. Climbing hills costs [energy]. But running down to lower grounds grands you extra movement.\nJumpng in the water will not only end your turn but drain energy[energy] or health[hp] on your next."
         },
         {
             "type": "board",
@@ -211,10 +211,21 @@
             "type": "flag",
             "col": 4,
             "row": 0
+        },
+        {
+            "type": "board",
+            "col": 7,
+            "row": 3,
+            "text": "Note from the creator: bravo! You attacked this defenceless tree from the firm ground and not the water. I know this because otherwise you would have drowned because of the lack of [energy][tutorial]"
+        },
+        {
+            "type": "tree",
+            "col": 7,
+            "row": 3
         }
     ],
     "sort": 1,
-    "updatedAt": 1793801451332,
+    "updatedAt": 1794407275892,
     "armies": [
         {
             "type": "peasant",

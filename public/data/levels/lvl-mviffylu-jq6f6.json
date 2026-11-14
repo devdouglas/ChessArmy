@@ -253,7 +253,7 @@
         }
     ],
     "sort": 7,
-    "updatedAt": 1793903386376,
+    "updatedAt": 1794419839911,
     "armies": [
         {
             "type": "javelin",
@@ -269,12 +269,6 @@
         },
         {
             "type": "u-mvr2vokzh3n3",
-            "col": 5,
-            "row": 8,
-            "side": "red"
-        },
-        {
-            "type": "u-mvr2vokzh3n3",
             "col": 6,
             "row": 3,
             "side": "blue"
@@ -284,6 +278,12 @@
             "col": 2,
             "row": 1,
             "side": "blue"
+        },
+        {
+            "type": "u-mw4vuw6xnwnt",
+            "col": 5,
+            "row": 8,
+            "side": "red"
         }
     ]
 }

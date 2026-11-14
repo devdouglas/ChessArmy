@@ -177,6 +177,7 @@ import {
   COLS,
   DEFAULT_ARMY_EDGE,
   RANDOM_COLS,
+  RANDOM_ROWS,
   MAX_COLS,
   MAX_ROWS,
   MIN_COLS,
@@ -269,11 +270,17 @@ import { pickAiAction } from './ai';
 import {
   ROGUE_GOAL,
   advanceRogueRun,
+  buyRogueShopOffer,
   createRogueRun,
+  openRogueShop,
   rogueArmyStamps,
   rogueBattleLabel,
+  rogueUnitCost,
+  rogueUnitPool,
   survivorTypes,
+  survivorUnits,
   type RogueRun,
+  type RogueShop,
 } from './roguelite';
 import {
   AI_RULE_CATEGORIES,
@@ -440,6 +447,8 @@ let randomSetup: RandomSetup | null = null;
 let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
 /** Active roguelite run (null = normal play). */
 let rogueRun: RogueRun | null = null;
+/** Post-victory recruit shop for the active run. */
+let rogueShop: RogueShop | null = null;
 const RANDOM_UNITS_PER_TURN = 6;
 let state: GameState = bootState();
 let briefingOpen = false;
@@ -564,6 +573,16 @@ let editorGlyphQuery = '';
 let editorCopyFieldId: string | null = null;
 let editorPainting = false;
 let editorDirty = false;
+/** One snapshot per paint stroke / discrete editor action. */
+type EditorUndoSnap = {
+  terrain: Terrain[][];
+  tokens: TileToken[];
+  pieces: ArmyStamp[];
+};
+const EDITOR_UNDO_MAX = 50;
+let editorUndoStack: EditorUndoSnap[] = [];
+/** Avoid pushing once per hex while dragging. */
+let editorStrokeUndoPushed = false;
 let editorPointerAbort: AbortController | null = null;
 const savedLevelsFilter = getLevelsOverviewFilter();
 let levelsFilter: LevelCategory = savedLevelsFilter.category;
@@ -623,7 +642,7 @@ function computeLayout() {
 }
 
 let { hexSize: HEX_SIZE, pad: PAD, pieceIcon: PIECE_ICON } = computeLayout();
-const MOVE_MS = 250;
+const MOVE_MS = 200;
 const REVEAL_MS = 520;
 const SHOT_FLIGHT_MS = 320;
 const SHOT_IMPACT_MS = 280;
@@ -749,9 +768,15 @@ function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
   );
 }
 
+function clearRogueShop() {
+  rogueShop = null;
+}
+
 function startRogueRun() {
   if (eraPlayLocked() || !randomModesUnlocked()) return;
+  if (!rogueUnitPool(selectedPeriod).length) return;
   rogueRun = createRogueRun(selectedPeriod, 'aggressive');
+  clearRogueShop();
   randomArmies = null;
   randomSetup = null;
   mapPick = null;
@@ -763,16 +788,44 @@ function startRogueRun() {
   startMatch(true);
 }
 
+/** Open the victory shop once (grants +1 gold, rolls 3 offers). */
+function ensureRogueShop() {
+  if (!rogueRun || !state.winner || !playerTeamWon(state)) return;
+  if (rogueRun.battle >= ROGUE_GOAL) return;
+  if (rogueShop) return;
+  const opened = openRogueShop(rogueRun);
+  rogueRun = opened.run;
+  rogueShop = opened.shop;
+}
+
+function buyRogueOffer(index: number) {
+  if (!rogueRun || !rogueShop) return;
+  const next = buyRogueShopOffer(rogueRun, rogueShop, index);
+  if (!next) return;
+  rogueRun = next.run;
+  rogueShop = next.shop;
+  render();
+}
+
 function advanceRogueBattle() {
   if (!rogueRun || !state.winner || !playerTeamWon(state)) return;
   if (rogueRun.battle >= ROGUE_GOAL) {
     rogueRun = null;
+    clearRogueShop();
     showStart();
     return;
   }
-  const next = advanceRogueRun(rogueRun, survivorTypes(state.pieces, 'red'));
+  ensureRogueShop();
+  const purchased = rogueShop?.purchased ?? [];
+  const next = advanceRogueRun(
+    rogueRun,
+    survivorUnits(state.pieces, 'red'),
+    purchased,
+  );
+  clearRogueShop();
   if (!next) {
     rogueRun = null;
+    clearRogueShop();
     showStart();
     return;
   }
@@ -804,6 +857,7 @@ function confirmRandomSetup() {
   if (eraPlayLocked()) return;
   if (!randomArmyChoices().length) return;
   rogueRun = null;
+  clearRogueShop();
   randomArmies = {
     yoursId: randomSetup.yoursId,
     theirsId: randomSetup.theirsId,
@@ -849,7 +903,7 @@ function bootState(): GameState {
   return withLevelRules(
     createInitialState(
       mapOpts,
-      randomMatchArmies(RANDOM_COLS, ROWS),
+      randomMatchArmies(RANDOM_COLS, RANDOM_ROWS),
       matchControls(),
       matchAiStyles(),
     ),
@@ -899,7 +953,7 @@ function startMatch(reshuffleRandom = true) {
     state = withLevelRules(
       createInitialState(
         mapOpts,
-        randomMatchArmies(RANDOM_COLS, ROWS),
+        randomMatchArmies(RANDOM_COLS, RANDOM_ROWS),
         matchControls(),
         matchAiStyles(),
       ),
@@ -1394,12 +1448,14 @@ function readMapInputs(): MapOptions {
   const waterEl = app.querySelector<HTMLInputElement>('#map-water');
   const rockEl = app.querySelector<HTMLInputElement>('#map-rock');
   const palisadeEl = app.querySelector<HTMLInputElement>('#map-palisade');
+  const forestEl = app.querySelector<HTMLInputElement>('#map-forest');
   const highEl = app.querySelector<HTMLInputElement>('#map-high');
   const plateauEl = app.querySelector<HTMLInputElement>('#map-plateau');
   return {
     waterCount: waterEl ? Number(waterEl.value) : mapOpts.waterCount,
     rockCount: rockEl ? Number(rockEl.value) : mapOpts.rockCount,
     palisadeCount: palisadeEl ? Number(palisadeEl.value) : mapOpts.palisadeCount,
+    forestCount: forestEl ? Number(forestEl.value) : mapOpts.forestCount,
     highCount: highEl ? Number(highEl.value) : mapOpts.highCount,
     plateauCount: plateauEl ? Number(plateauEl.value) : mapOpts.plateauCount,
   };
@@ -1419,6 +1475,7 @@ function showStart() {
   editorStoryHex = null;
   randomSetup = null;
   rogueRun = null;
+  clearRogueShop();
   screen = 'start';
   playlist = null;
   mapPick = null;
@@ -1535,6 +1592,7 @@ function startPickedMap(id: string, kind: MapPickKind) {
   if (pickLocks(kind) && !sequenceUnlocked(maps, index)) return;
   mapPick = null;
   rogueRun = null;
+  clearRogueShop();
   randomArmies = null;
   mode = kind === 'hotseat' ? 'hotseat' : 'ai';
   playlist = null;
@@ -1550,6 +1608,7 @@ function startPlaylist(kind: PlaylistKind) {
   const levels = levelsInCategory(kind, selectedPeriod);
   if (!levels.length) return;
   rogueRun = null;
+  clearRogueShop();
   randomArmies = null;
   playlist = { kind, ids: levels.map((l) => l.id), index: 0 };
   mode = 'ai';
@@ -1709,6 +1768,7 @@ function beginEditorSession(): void {
   editorFormationId = STOCK_FORMATION_ID;
   editorFormationName = 'New army';
   editorPainting = false;
+  clearEditorUndo();
   editorPointerAbort?.abort();
   briefingOpen = false;
   boardPopup = null;
@@ -1888,9 +1948,57 @@ function markEditorDirty() {
   if (dirtyHint) dirtyHint.hidden = false;
 }
 
+function clearEditorUndo() {
+  editorUndoStack = [];
+  editorStrokeUndoPushed = false;
+}
+
+function cloneEditorUndoSnap(): EditorUndoSnap {
+  return {
+    terrain: editorTerrain.map((row) => row.slice()),
+    tokens: editorTokens.map((t) => ({ ...t })),
+    pieces: editorPieces.map((p) => ({
+      ...p,
+      unitTokens: p.unitTokens ? [...p.unitTokens] : undefined,
+      story: p.story ? { ...p.story } : undefined,
+    })),
+  };
+}
+
+function syncEditorUndoButton() {
+  const btn = app.querySelector<HTMLButtonElement>('#editor-undo');
+  if (btn) btn.disabled = editorUndoStack.length === 0;
+}
+
+function pushEditorUndo() {
+  editorUndoStack.push(cloneEditorUndoSnap());
+  if (editorUndoStack.length > EDITOR_UNDO_MAX) editorUndoStack.shift();
+  syncEditorUndoButton();
+}
+
+/** First mutation in a drag stroke — one undo step for the whole stroke. */
+function ensureEditorStrokeUndo() {
+  if (editorStrokeUndoPushed) return;
+  pushEditorUndo();
+  editorStrokeUndoPushed = true;
+}
+
+function undoEditor() {
+  const snap = editorUndoStack.pop();
+  if (!snap) return;
+  editorTerrain = snap.terrain;
+  editorTokens = snap.tokens;
+  editorPieces = snap.pieces;
+  editorBoardHex = null;
+  editorStoryHex = null;
+  editorDirty = true;
+  render();
+}
+
 function rotateEditorUnit(idx: number) {
   const p = editorPieces[idx];
   const next = ((facingFromStamp(p) + 1) % 6) as HexDir;
+  ensureEditorStrokeUndo();
   editorPieces[idx] = {
     ...p,
     facing: sanitizeStampFacing(p.side, next),
@@ -1911,6 +2019,7 @@ function paintEditorUnit(col: number, row: number) {
     rotateEditorUnit(idx);
     return;
   }
+  ensureEditorStrokeUndo();
   if (idx >= 0) editorPieces.splice(idx, 1);
   editorPieces.push({
     type: editorBrush,
@@ -1930,6 +2039,7 @@ function paintEditorToken(col: number, row: number) {
     (t) => t.col === col && t.row === row && t.type === editorBrush,
   );
   if (same >= 0) return;
+  ensureEditorStrokeUndo();
   editorTokens.push({ type: editorBrush, col, row });
   markEditorDirty();
   refreshEditorBoard();
@@ -1945,6 +2055,7 @@ function paintEditorNoTouch(col: number, row: number) {
   if (!editorNoTouchStroke) editorNoTouchStroke = has ? 'remove' : 'add';
   if (editorNoTouchStroke === 'add' && has) return;
   if (editorNoTouchStroke === 'remove' && !has) return;
+  ensureEditorStrokeUndo();
   if (editorNoTouchStroke === 'add') {
     editorTokens.push({ type: 'notouch', col, row });
   } else {
@@ -1978,6 +2089,7 @@ function paintEditorUnitToken(col: number, row: number, first = true) {
   if (!editorUnitTokenStroke) editorUnitTokenStroke = has ? 'remove' : 'add';
   if (editorUnitTokenStroke === 'add' && has) return;
   if (editorUnitTokenStroke === 'remove' && !has) return;
+  ensureEditorStrokeUndo();
   const next =
     editorUnitTokenStroke === 'add'
       ? [...cur, kind]
@@ -2010,6 +2122,7 @@ function paintEditorErase(col: number, row: number) {
   const pidx = editorPieces.findIndex((p) => p.col === col && p.row === row);
   const tidx = topTokenIndex(col, row);
   if (pidx < 0 && tidx < 0) return;
+  ensureEditorStrokeUndo();
   if (pidx >= 0) editorPieces.splice(pidx, 1);
   if (tidx >= 0) editorTokens.splice(tidx, 1);
   markEditorDirty();
@@ -2040,10 +2153,6 @@ function paintEditorHex(col: number, row: number, first = true) {
     paintEditorErase(col, row);
     return;
   }
-  if (isUnitBrush(editorBrush)) {
-    paintEditorUnit(col, row);
-    return;
-  }
   if (isUnitTokenBrush(editorBrush)) {
     paintEditorUnitToken(col, row, first);
     return;
@@ -2051,8 +2160,13 @@ function paintEditorHex(col: number, row: number, first = true) {
   const boardTok = editorTokens.find(
     (t) => t.type === 'board' && t.col === col && t.row === row,
   );
+  // Before unit brushes — otherwise a selected soldier eats the click.
   if (editorOpensBoardPopup(editorBrush, !!boardTok, first)) {
     openEditorBoard(col, row);
+    return;
+  }
+  if (isUnitBrush(editorBrush)) {
+    paintEditorUnit(col, row);
     return;
   }
   if (boardTok && editorBrush === 'board') return;
@@ -2078,6 +2192,7 @@ function paintEditorHex(col: number, row: number, first = true) {
   if (!isTerrainBrush(editorBrush)) return;
   const prev = editorTerrain[row][col];
   if (prev === editorBrush) return;
+  ensureEditorStrokeUndo();
   editorTerrain[row][col] = editorBrush;
   markEditorDirty();
 
@@ -2823,13 +2938,33 @@ async function playAnimatedAction(action: Action): Promise<void> {
       if (v) routByHex.set(key(v), h);
     }
     const flashed = new Set<string>();
+    const beforeStep = async (hex: Hex) => {
+      const hit = routByHex.get(key(hex));
+      if (!hit || flashed.has(hit.id)) return;
+      flashed.add(hit.id);
+      await flashDamaged([flashHit(hit)]);
+    };
+    // Kill that takes the hex: bump (melee anim) → death → then step on.
+    // Survivors already bump via stop≠dest; kills used to walk straight onto the corpse.
+    const destVictim = pieceAt(state, action.to);
+    const occupyKill =
+      !!destVictim &&
+      destVictim.id !== piece.id &&
+      eq(plan.stop, action.to) &&
+      plan.hits.some((h) => h.id === destVictim.id && h.fatal);
     if (g) {
-      await animateMoveAlong(g, piece, path, plan.stop, action.to, async (hex) => {
-        const hit = routByHex.get(key(hex));
-        if (!hit || flashed.has(hit.id)) return;
-        flashed.add(hit.id);
-        await flashDamaged([flashHit(hit)]);
-      });
+      if (occupyKill) {
+        const approach =
+          path.length >= 2 ? path[path.length - 2]! : { col: piece.col, row: piece.row };
+        await animateMoveAlong(g, piece, path, approach, action.to, beforeStep);
+        const killHits = plan.hits.filter((h) => h.id === destVictim.id && !flashed.has(h.id));
+        for (const h of killHits) flashed.add(h.id);
+        if (killHits.length) await flashDamaged(killHits.map(flashHit));
+        const stepper: Piece = { ...piece, col: approach.col, row: approach.row };
+        await animateMoveAlong(g, stepper, [action.to], action.to, action.to);
+      } else {
+        await animateMoveAlong(g, piece, path, plan.stop, action.to, beforeStep);
+      }
     } else await wait(MOVE_MS);
     const rest = plan.hits.filter((h) => !flashed.has(h.id));
     if (rest.length) await flashDamaged(rest.map(flashHit));
@@ -4369,7 +4504,7 @@ function matchStatsHtml(): string {
         }</span>`
       : '';
   const rogueBit = rogueRun
-    ? `<span class="match-rogue">${rogueBattleLabel(rogueRun)} · ${rogueRun.playerTypes.length}v${rogueRun.enemyTypes.length}</span>`
+    ? `<span class="match-rogue">${rogueBattleLabel(rogueRun)} · ${rogueRun.playerArmy.length}v${rogueRun.enemyArmy.length} · ${rogueRun.gold}g</span>`
     : '';
   return `${rogueBit}<span class="match-turn">Turn ${state.turnNumber}</span>${youBit}<span class="match-cas">${cas}</span>${flagBit}`;
 }
@@ -4388,6 +4523,16 @@ function sideTurnPhrase(side: Side): string {
   if (c === 'ai-ally') return `${name} (AI ally · ${style})`;
   if (c === 'ai-hostile') return `${name} (AI hostile · ${style})`;
   return `${name} (AI · ${style})`;
+}
+
+/** Dock cue while an AI enemy/ally takes their turn. */
+function renderOtherTurnBanner(): string {
+  if (state.winner) return '';
+  if (!playerSides(state).length) return '';
+  if (isPlayerControlled(state, state.turn)) return '';
+  const side = state.turn;
+  const kind = allySides(state).includes(side) ? 'Ally' : 'Enemy';
+  return `<div class="other-turn-banner ${side}" role="status" aria-live="polite">${kind} <span class="${side}">${SIDE_LABEL[side]}</span> turn</div>`;
 }
 
 function opposingLoser(winner: Side): Side {
@@ -4481,8 +4626,11 @@ function renderEndOverlay(): string {
   const living = rogueRun ? survivorTypes(state.pieces, 'red') : [];
   const lostForGood =
     rogueRun && youWon
-      ? Math.max(0, rogueRun.playerTypes.length - living.length)
+      ? Math.max(0, rogueRun.playerArmy.length - living.length)
       : 0;
+  const shop = rogueMid ? rogueShop : null;
+  const boughtNames =
+    shop?.purchased.map((t) => UNIT_STATS[t].name).join(', ') ?? '';
   const stock =
     rogueDone
       ? `Ten battles cleared. Your final army: ${living.map((t) => UNIT_STATS[t].name).join(', ') || 'none'}.`
@@ -4491,7 +4639,7 @@ function renderEndOverlay(): string {
             lostForGood
               ? `${lostForGood} unit${lostForGood === 1 ? '' : 's'} lost forever. `
               : 'No permanent losses. '
-          }Next fight adds one recruit to each side.`
+          }+1 gold. Buy recruits — leftover coin carries.`
         : rogueRun && youLost
           ? `${loseHow} Run over at ${rogueBattleLabel(rogueRun)}.`
           : youWon && lastInList
@@ -4533,9 +4681,44 @@ function renderEndOverlay(): string {
             ? `<button type="button" id="end-start" class="ghost">Start</button>`
             : `<button type="button" id="end-start">Done</button>`;
 
+  const shopHtml =
+    shop && rogueRun
+      ? `<div class="rogue-shop">
+          <div class="rogue-shop-head">
+            <span class="rogue-shop-gold">${rogueRun.gold} gold</span>
+            ${
+              shop.purchased.length
+                ? `<span class="rogue-shop-bought">Bought: ${escapeHtml(boughtNames)}</span>`
+                : `<span class="rogue-shop-hint">Pick any you can afford</span>`
+            }
+          </div>
+          <div class="rogue-shop-offers">
+            ${
+              shop.offers.length
+                ? shop.offers
+                    .map((type, i) => {
+                      const s = UNIT_STATS[type];
+                      const cost = rogueUnitCost(type);
+                      const can = rogueRun!.gold >= cost;
+                      return `<button type="button" class="rogue-offer${can ? '' : ' unaffordable'}" data-rogue-buy="${i}"${can ? '' : ' disabled'}>
+                        <svg class="side-icon" viewBox="-10 -10 20 20" width="36" height="36" aria-hidden="true">
+                          <circle cx="0" cy="0" r="9.5" fill="${pieceColor('red')}" stroke="${armorColor(s.armor)}" stroke-width="2" />
+                          <g fill="${iconInk('red')}" color="${iconInk('red')}">${pieceIconSvg(type, 16)}</g>
+                        </svg>
+                        <span class="rogue-offer-name">${escapeHtml(s.name)}</span>
+                        <span class="rogue-offer-cost">${cost}g</span>
+                      </button>`;
+                    })
+                    .join('')
+                : `<p class="rogue-shop-empty">Shelf empty — continue when ready.</p>`
+            }
+          </div>
+        </div>`
+      : '';
+
   return `
     <div class="end-overlay ${tone}" role="dialog" aria-label="${title}">
-      <div class="end-card ${tone} side-${winnerSide}${currentPopupAudio() ? ' has-narration' : ''}">
+      <div class="end-card ${tone} side-${winnerSide}${currentPopupAudio() ? ' has-narration' : ''}${shop ? ' has-rogue-shop' : ''}">
         <div class="end-burst" aria-hidden="true"></div>
         <svg class="end-icon" viewBox="-10 -10 20 20" width="72" height="72" aria-hidden="true">
           <circle cx="0" cy="0" r="9.5" fill="${pieceColor(winnerSide)}" />
@@ -4545,6 +4728,7 @@ function renderEndOverlay(): string {
         ${endStarsHtml()}
         ${endBestStarsHtml()}
         <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? formatCopyHtml(custom) : sub}</p>
+        ${shopHtml}
         <p class="end-stats">${matchStatsHtml()}</p>
         <div class="end-actions">
           ${nextBtn}
@@ -4621,6 +4805,7 @@ function renderEditorBoardPopup(): string {
         </label>
         <div class="end-actions">
           <button type="button" id="board-save">Save</button>
+          <button type="button" id="board-delete" class="ghost">Delete</button>
           <button type="button" id="board-cancel" class="ghost">Cancel</button>
         </div>
       </div>
@@ -4684,14 +4869,30 @@ function bindEditorBoardPopup() {
   if (!hex) return;
   const idx = editorBoardIndex(hex);
   const hadText = idx >= 0 && !!sanitizeBoardText(editorTokens[idx].text);
+  const savedText = idx >= 0 ? sanitizeBoardText(editorTokens[idx].text) : '';
   app.querySelector('#board-cancel')?.addEventListener('click', () => {
     if (!hadText) removeEditorBoard(hex);
     closeEditorBoard();
   });
+  app.querySelector('#board-delete')?.addEventListener('click', () => {
+    if (idx >= 0) {
+      pushEditorUndo();
+      removeEditorBoard(hex);
+    }
+    closeEditorBoard();
+  });
   app.querySelector('#board-save')?.addEventListener('click', () => {
     const text = sanitizeBoardText(box?.value ?? '');
-    if (!text) removeEditorBoard(hex);
-    else if (idx >= 0) {
+    if (!text) {
+      if (idx >= 0) {
+        if (hadText) pushEditorUndo();
+        removeEditorBoard(hex);
+      }
+      closeEditorBoard();
+      return;
+    }
+    if (idx >= 0 && text !== savedText) {
+      pushEditorUndo();
       editorTokens[idx] = { ...editorTokens[idx], text };
       markEditorDirty();
     }
@@ -4798,6 +4999,17 @@ function updateChrome() {
   if (goals) goals.outerHTML = starGoalsHtml();
   const slot = app.querySelector('.turns-left-slot');
   if (slot) slot.innerHTML = turnsLeftHtml();
+  const dock = app.querySelector('.play-dock');
+  if (dock) {
+    const next = renderOtherTurnBanner();
+    const cur = dock.querySelector('.other-turn-banner');
+    if (next) {
+      if (cur) cur.outerHTML = next;
+      else dock.insertAdjacentHTML('afterbegin', next);
+    } else if (cur) {
+      cur.remove();
+    }
+  }
 }
 
 function choicePending(): boolean {
@@ -5029,6 +5241,7 @@ function bindEditorBoard() {
     editorPaintKey = null;
     editorUnitTokenStroke = null;
     editorNoTouchStroke = null;
+    editorStrokeUndoPushed = false;
   };
 
   svg.addEventListener(
@@ -5271,7 +5484,7 @@ function randomMapThumbSrc() {
   if (randomMapThumb?.period === selectedPeriod) return randomMapThumb;
   const s = createInitialState(
     DEFAULT_MAP,
-    defaultArmyStamps(RANDOM_COLS, ROWS, selectedPeriod),
+    defaultArmyStamps(RANDOM_COLS, RANDOM_ROWS, selectedPeriod),
   );
   randomMapThumb = {
     period: selectedPeriod,
@@ -5427,8 +5640,10 @@ function renderStartScreen(): string {
   const tutOpen = tutorialDone();
   const randomOpen = randomModesUnlocked();
   const eraClosed = eraPlayLocked();
+  const noRecruits = !rogueUnitPool(selectedPeriod).length;
   const menuLock = eraClosed || !tutOpen ? lockIconHtml() : '';
   const randomLock = eraClosed || !randomOpen ? lockIconHtml() : '';
+  const rogueLock = eraClosed || !randomOpen || noRecruits ? lockIconHtml() : '';
   const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
     eraClosed
       ? ` disabled title="Under construction"`
@@ -5455,6 +5670,18 @@ function renderStartScreen(): string {
       : !randomOpen
         ? `Locked · ${randomModesLockTitle()}`
         : openMeta;
+  const rogueGateAttr = (openTitle: string) =>
+    eraClosed || !randomOpen
+      ? randomGateAttr(openTitle)
+      : noRecruits
+        ? ` disabled title="Enable Recruitable on at least one ${PERIOD_LABEL[selectedPeriod]} unit"`
+        : randomGateAttr(openTitle);
+  const rogueGateMeta = (openMeta: string) =>
+    eraClosed || !randomOpen
+      ? randomGateMeta(openMeta)
+      : noRecruits
+        ? 'No recruitable units'
+        : randomGateMeta(openMeta);
   const tutorialTitle = eraClosed
     ? 'Under construction'
     : tutorialN
@@ -5493,9 +5720,9 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${randomLock}Randomised Battle</span>
             <span class="start-opt-meta">${randomGateMeta('Generated map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="roguelite"${randomGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Each win adds a recruit to both sides.')}>
-            <span class="start-opt-name">${randomLock}Roguelite</span>
-            <span class="start-opt-meta">${randomGateMeta(`Win ${ROGUE_GOAL} · permanent losses · growing armies`)}</span>
+          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Each win grants 1 gold and a shop of 3 random recruits — buy any you can afford. Enemy gains one free unit each battle.')}>
+            <span class="start-opt-name">${rogueLock}Roguelite</span>
+            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · gold shop · permanent losses`)}</span>
           </button>
         </div>
         <div class="start-tools">
@@ -5729,8 +5956,9 @@ function renderMapPanel(): string {
   return `
     <section class="editor-panel editor-panel-map">
       <h3>Tiles</h3>
-      <div class="editor-brushes">
+        <div class="editor-brushes">
         ${brushes}
+        <button type="button" id="editor-undo" class="brush"${editorUndoStack.length ? '' : ' disabled'}>Undo</button>
         <button type="button" id="editor-clear" class="brush erase">Clear board ${TRASH_ICON_SVG}</button>
       </div>
     </section>`;
@@ -6864,6 +7092,10 @@ function renderUnitEditor(): string {
       <div class="unit-fields">
         <div class="unit-group">
           <span class="unit-group-label">Piece</span>
+          <label class="chk">
+            <input type="checkbox" data-unit="${type}" data-field="recruitable"${s.recruitable ? ' checked' : ''} />
+            Recruitable
+          </label>
           ${unitNumField(type, 'hp', 'HP')}
           ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value/weight')}
@@ -7346,8 +7578,10 @@ function bindEditorEvents() {
   );
   app.querySelector('#editor-save')?.addEventListener('click', () => void doSaveLevel(false));
   app.querySelector('#editor-save-as')?.addEventListener('click', () => void doSaveLevel(true));
+  app.querySelector('#editor-undo')?.addEventListener('click', () => undoEditor());
   app.querySelector('#editor-clear')?.addEventListener('click', () => {
     const { cols, rows } = currentGrid();
+    pushEditorUndo();
     editorTerrain = emptyTerrain(cols, rows);
     editorTokens = [];
     editorDirty = true;
@@ -7707,6 +7941,7 @@ function bindEditorEvents() {
     void doSaveFormation(false, true),
   );
   app.querySelector('#army-clear')?.addEventListener('click', () => {
+    pushEditorUndo();
     editorPieces = editorPieces.filter((p) => p.side !== editorArmySide);
     for (const e of ARMY_EDGES) {
       if (editorEdgeOwner[e] === editorArmySide) editorEdgeOwner[e] = null;
@@ -7727,6 +7962,7 @@ function bindEditorEvents() {
     const form =
       id === STOCK_FORMATION_ID ? stockFormation(cols, rows) : getFormation(id);
     if (!form) return;
+    pushEditorUndo();
     const evicted = claimEditorEdge(editorArmySide, editorLoadEdge);
     const added = stampFormation(form, editorArmySide, cols, rows, editorLoadEdge);
     const taken = new Set(added.map((p) => `${p.col},${p.row}`));
@@ -7943,6 +8179,13 @@ function bindEvents() {
   app.querySelector('#end-next')?.addEventListener('click', () => skipBriefing());
   app.querySelector('#end-rogue-next')?.addEventListener('click', () => advanceRogueBattle());
   app.querySelector('#end-rogue-retry')?.addEventListener('click', () => startRogueRun());
+  app.querySelectorAll<HTMLButtonElement>('[data-rogue-buy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.rogueBuy);
+      if (!Number.isFinite(i)) return;
+      buyRogueOffer(i);
+    });
+  });
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   bindBoardPopup();
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
@@ -8028,6 +8271,9 @@ function bindEvents() {
   app.querySelector('#map-palisade')?.addEventListener('change', (e) => {
     mapOpts.palisadeCount = Number((e.target as HTMLInputElement).value);
   });
+  app.querySelector('#map-forest')?.addEventListener('change', (e) => {
+    mapOpts.forestCount = Number((e.target as HTMLInputElement).value);
+  });
   app.querySelector('#map-high')?.addEventListener('change', (e) => {
     mapOpts.highCount = Number((e.target as HTMLInputElement).value);
   });
@@ -8045,6 +8291,15 @@ function render() {
   }
   syncPopupNarration();
   maybeRecordLevelWin();
+  if (
+    screen === 'play' &&
+    rogueRun &&
+    state.winner &&
+    playerTeamWon(state) &&
+    rogueRun.battle < ROGUE_GOAL
+  ) {
+    ensureRogueShop();
+  }
   const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
   applyHotseatTint();
@@ -8179,6 +8434,7 @@ function render() {
         <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
         <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
+        <label>Forests <input type="number" id="map-forest" min="0" max="${maxT}" value="${mapOpts.forestCount}" /></label>
         <span class="map-hint">mid belt · climb costs energy · water 1 hex/action, turn-start energy penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
@@ -8202,6 +8458,7 @@ function render() {
         ${renderBoardPopup()}
       </div>
       <div class="play-dock">
+        ${renderOtherTurnBanner()}
         ${renderActionBar()}
         ${renderUnitDock()}
       </div>
