@@ -807,6 +807,11 @@ export type GameState = {
   aiStyles: Record<Side, AiStyle>;
   /** Snapshot at match start. King-kill win only if that side actually fielded one. */
   hadKing: Record<Side, boolean>;
+  /**
+   * Roguelite: player king-death does not end the match. On that side's next turn,
+   * the strongest living piece inherits the General token.
+   */
+  generalSuccession?: boolean;
   /** True once this side has fielded a non-concealed living piece. Ambush armies stay false. */
   hadVisible: Record<Side, boolean>;
   /** How many pieces this side may activate before the turn ends. Default 1. */
@@ -2033,6 +2038,44 @@ export function noteGenerals(state: GameState): void {
   }
 }
 
+/** Strongest living piece on a side (combat value, then HP, then id). */
+export function strongestPiece(pieces: Piece[], side: Side): Piece | null {
+  const mine = pieces.filter((p) => p.side === side);
+  if (!mine.length) return null;
+  return mine.reduce((best, p) => {
+    const bv = combatValue(best);
+    const pv = combatValue(p);
+    if (pv !== bv) return pv > bv ? p : best;
+    const bh = hpLeft(best);
+    const ph = hpLeft(p);
+    if (ph !== bh) return ph > bh ? p : best;
+    return p.id < best.id ? p : best;
+  });
+}
+
+/**
+ * If this side lost its last General under succession rules, crown the strongest
+ * living piece. Returns the promoted piece, or null when nothing changed.
+ */
+export function maybeSucceedGeneral(state: GameState, side: Side): Piece | null {
+  if (!state.generalSuccession) return null;
+  if (!isPlayerControlled(state, side)) return null;
+  if (!state.hadKing[side]) return null;
+  if (hasGeneral(state.pieces, side)) return null;
+  const pick = strongestPiece(state.pieces, side);
+  if (!pick) return null;
+  pick.unitTokens = [
+    ...unitTokensOf(pick).filter((t) => t !== 'general'),
+    'general',
+  ];
+  pick.hp = Math.min(hpMax(pick), hpLeft(pick) + 1);
+  const stam = pick.stamina ?? staminaMax(pick);
+  pick.stamina = Math.min(staminaMax(pick), stam + 1);
+  noteGenerals(state);
+  state.log.push(`${unitLog(pick)} inherits command`);
+  return pick;
+}
+
 export function controlOf(state: GameState, side: Side): ArmyControl {
   return state.controls?.[side] ?? defaultArmyControls()[side];
 }
@@ -2295,6 +2338,8 @@ function applyTurnLimit(state: GameState): void {
 export function beginSideTurn(state: GameState, newRound = false, _kickoff = false): void {
   if (newRound) state.turnNumber += 1;
   applyTurnLimit(state);
+  if (state.winner) return;
+  maybeSucceedGeneral(state, state.turn);
   if (state.winner) return;
   const queued = state.pendingStaminaFx?.[state.turn] ?? [];
   if (queued.length) {
@@ -2871,7 +2916,11 @@ function finishActivation(state: GameState, piece: Piece): void {
 function sideDefeated(state: GameState, side: Side): boolean {
   const mine = state.pieces.filter((p) => p.side === side);
   if (mine.length === 0) return true;
-  if (state.hadKing[side] && !hasGeneral(mine, side)) return true;
+  if (state.hadKing[side] && !hasGeneral(mine, side)) {
+    // Roguelite player: wait for succession on their next turn.
+    if (state.generalSuccession && isPlayerControlled(state, side)) return false;
+    return true;
+  }
   return false;
 }
 

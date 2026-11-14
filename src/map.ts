@@ -42,9 +42,11 @@ import {
 
 export const COLS = 11;
 export const ROWS = 11;
-/** Randomised / roguelite maps are capped at 10×9. */
+/** Randomised skirmish maps are capped at 10×9 rectangles. */
 export const RANDOM_COLS = 10;
 export const RANDOM_ROWS = 9;
+/** Roguelite battles use a hex disk of this radius. */
+export const ROGUE_HEX_RADIUS = 5;
 export const MIN_COLS = 5;
 export const MAX_COLS = 21;
 export const MIN_ROWS = 5;
@@ -890,6 +892,35 @@ export function createInitialState(
     walls,
     aiStyles,
   );
+}
+
+/** Roguelite: randomised terrain on a flat-top hex disk. */
+export function createRogueInitialState(
+  opts: MapOptions = DEFAULT_MAP,
+  armies?: ArmyStamp[] | null,
+  controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
+  aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
+  radius = ROGUE_HEX_RADIUS,
+): GameState {
+  const disk = hexDisk(radius, RANDOM_ORIENTATION);
+  const clamped = clampMapOptions(opts);
+  const terrain = emptyTerrain(disk.cols, disk.rows);
+  const walls = paintTerrain(terrain, clamped);
+  return freshGame(
+    terrain,
+    `Red moves first. Roguelite hex R${disk.radius}: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau.`,
+    RANDOM_ORIENTATION,
+    armies,
+    controls,
+    walls,
+    aiStyles,
+    disk.radius,
+  );
+}
+
+/** Bounding box + center for a roguelite hex board. */
+export function rogueHexDisk(radius = ROGUE_HEX_RADIUS) {
+  return hexDisk(radius, RANDOM_ORIENTATION);
 }
 
 /** Start a match on a custom (editor) terrain layout. */

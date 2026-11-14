@@ -139,8 +139,10 @@ import {
   type UnitCategory,
   type UnitTokenType,
   type UnitType,
+  hasGeneral,
   hasUnitToken,
   isSleeping,
+  maybeSucceedGeneral,
   unitTokensOf,
   isTokenType,
   isUnitTokenType,
@@ -178,6 +180,8 @@ import {
   DEFAULT_ARMY_EDGE,
   RANDOM_COLS,
   RANDOM_ROWS,
+  ROGUE_HEX_RADIUS,
+  createRogueInitialState,
   MAX_COLS,
   MAX_ROWS,
   MIN_COLS,
@@ -269,6 +273,7 @@ import {
 import { pickAiAction } from './ai';
 import {
   ROGUE_GOAL,
+  ROGUE_STAR_LABELS,
   advanceRogueRun,
   buyRogueShopOffer,
   createRogueRun,
@@ -746,7 +751,7 @@ function formationByPickId(id: string, cols: number, rows: number) {
 }
 
 function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
-  if (rogueRun) return rogueArmyStamps(rogueRun, cols, rows);
+  if (rogueRun) return rogueArmyStamps(rogueRun, cols, rows, ROGUE_HEX_RADIUS);
   if (randomArmies) {
     return [
       ...stampFormation(
@@ -788,12 +793,23 @@ function startRogueRun() {
   startMatch(true);
 }
 
-/** Open the victory shop once (grants +1 gold, rolls 3 offers). */
+/** If the match ended before the player's next turn, crown a general for the next army. */
+function ensureRogueEndSuccession() {
+  if (!rogueRun || !state.generalSuccession) return;
+  for (const s of playerSides(state)) {
+    maybeSucceedGeneral(state, s);
+  }
+}
+
+/** Open the victory shop once (1g per earned star, rolls 3 offers). */
 function ensureRogueShop() {
   if (!rogueRun || !state.winner || !playerTeamWon(state)) return;
   if (rogueRun.battle >= ROGUE_GOAL) return;
   if (rogueShop) return;
-  const opened = openRogueShop(rogueRun);
+  // Stars first (general-alive is pre-succession), then crown a heir for the next fight.
+  const starGold = starKinds().filter((k) => k === 'on').length;
+  ensureRogueEndSuccession();
+  const opened = openRogueShop(rogueRun, starGold);
   rogueRun = opened.run;
   rogueShop = opened.shop;
 }
@@ -915,6 +931,10 @@ function startMatch(reshuffleRandom = true) {
   setMarchDoubleTime(false);
   persistDoubleTime();
   specialMode = null;
+  for (const k of Object.keys(rememberedSelectId) as Side[]) {
+    delete rememberedSelectId[k];
+  }
+  autoSelectedForTurnKey = null;
   clearSelection();
   aiThinking = false;
   animating = false;
@@ -951,12 +971,20 @@ function startMatch(reshuffleRandom = true) {
   if (reshuffleRandom) {
     mapOpts = readMapInputs();
     state = withLevelRules(
-      createInitialState(
-        mapOpts,
-        randomMatchArmies(RANDOM_COLS, RANDOM_ROWS),
-        matchControls(),
-        matchAiStyles(),
-      ),
+      rogueRun
+        ? createRogueInitialState(
+            mapOpts,
+            randomMatchArmies(0, 0),
+            matchControls(),
+            matchAiStyles(),
+            ROGUE_HEX_RADIUS,
+          )
+        : createInitialState(
+            mapOpts,
+            randomMatchArmies(RANDOM_COLS, RANDOM_ROWS),
+            matchControls(),
+            matchAiStyles(),
+          ),
     );
   } else {
     // Keep current terrain layout; respawn armies
@@ -969,6 +997,7 @@ function startMatch(reshuffleRandom = true) {
         matchControls(),
         state.tokens,
         matchAiStyles(),
+        state.hexRadius,
       ),
     );
   }
@@ -985,6 +1014,7 @@ function withLevelRules(s: GameState, lvl?: SavedLevel | null): GameState {
   s.maxTurns = clampMaxTurns(lvl?.maxTurns ?? 0);
   s.aiStyles = sanitizeAiStyles(lvl?.aiStyles ?? s.aiStyles);
   s.actedIds = [];
+  s.generalSuccession = !!rogueRun;
   return s;
 }
 
@@ -2294,6 +2324,15 @@ async function doSaveLevel(asNew: boolean, asDefault = false, thenPlay = false):
   render();
 }
 
+/** Last unit each side had selected — restored at the start of their next turn. */
+const rememberedSelectId: Partial<Record<Side, string>> = {};
+/** `${turnNumber}:${side}` we already ran turn-start auto-select for (avoids re-picking mid-turn). */
+let autoSelectedForTurnKey: string | null = null;
+
+function turnSelectKey(): string {
+  return `${state.turnNumber}:${state.turn}`;
+}
+
 function clearSelection() {
   selectedId = null;
   pendingHex = null;
@@ -2305,7 +2344,7 @@ function clearSelection() {
   specialMode = null;
 }
 
-function livingOnSide(side: Side): { id: string }[] {
+function livingOnSide(side: Side) {
   return state.pieces.filter((p) => p.side === side);
 }
 
@@ -2322,9 +2361,16 @@ function resetAim() {
   rotatePreviewDir = null;
 }
 
+function rememberSelect(id: string | null): void {
+  if (!id) return;
+  const p = getPiece(state, id);
+  if (p && isSide(p.side)) rememberedSelectId[p.side] = id;
+}
+
 /** Last unit on that army stays selected when the activation / turn ends. */
 function retainSelection(actingId: string): void {
   resetAim();
+  rememberSelect(actingId);
   const p = getPiece(state, actingId);
   if (p && isSoloArmy(p.side)) {
     selectedId = actingId;
@@ -2337,6 +2383,7 @@ function retainSelection(actingId: string): void {
 
 function clearSelectionUnlessSolo(): void {
   if (selectedId) {
+    rememberSelect(selectedId);
     const p = getPiece(state, selectedId);
     if (p && isSoloArmy(p.side)) {
       resetAim();
@@ -2347,19 +2394,45 @@ function clearSelectionUnlessSolo(): void {
   clearSelection();
 }
 
-/** When a player side with one unit gets the turn, keep/restore that selection. */
-function ensureSoloTurnSelection(): void {
+/**
+ * Turn start: solo army → select that unit.
+ * Multi → restore the unit selected at the end of the previous turn,
+ * preferring one with no march destination (walkTo) yet.
+ * Mid-turn after an action: do not re-select for multi armies.
+ */
+function ensureTurnSelection(): void {
   if (selectedId && !getPiece(state, selectedId)) {
     selectedId = null;
     highlights = [];
   }
   if (state.winner || !isPlayerControlled(state, state.turn)) return;
   const mine = livingOnSide(state.turn);
-  if (mine.length !== 1) return;
-  if (selectedId !== mine[0].id) {
-    selectedId = mine[0].id;
-    resetAim();
+  if (!mine.length) return;
+
+  if (mine.length === 1) {
+    autoSelectedForTurnKey = turnSelectKey();
+    if (selectedId !== mine[0].id) {
+      selectedId = mine[0].id;
+      rememberSelect(selectedId);
+      resetAim();
+    }
+    refreshHighlights();
+    return;
   }
+
+  // Multi: only auto-select once when this side's turn begins.
+  const key = turnSelectKey();
+  if (autoSelectedForTurnKey === key) return;
+  autoSelectedForTurnKey = key;
+
+  const remembered = mine.find((p) => p.id === rememberedSelectId[state.turn]);
+  if (!remembered) return;
+  // Prefer a unit with no march destination; fall back to the remembered one.
+  const free = mine.filter((p) => !p.walkTo);
+  const pick = !remembered.walkTo ? remembered : (free[0] ?? remembered);
+  selectedId = pick.id;
+  rememberSelect(selectedId);
+  resetAim();
   refreshHighlights();
 }
 
@@ -2513,9 +2586,11 @@ function matchStarStats(): StarStats {
   };
 }
 
+function playerGeneralAlive(): boolean {
+  return playerSides(state).some((s) => hasGeneral(state.pieces, s));
+}
+
 function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' | 'pending' | 'off'] {
-  const { star2, star3 } = levelStars();
-  const stats = matchStarStats();
   const won = playerTeamWon(state);
   const lost = !!state.winner && !won;
   const live = (
@@ -2526,6 +2601,17 @@ function starKinds(): ['on' | 'pending' | 'off', 'on' | 'pending' | 'off', 'on' 
     if (lost) return 'off';
     return possible ? 'pending' : 'off';
   };
+  if (rogueRun) {
+    const gen = playerGeneralAlive();
+    const noLoss = playerCasualties(state) === 0;
+    return [
+      live(won, true),
+      live(won && gen, gen),
+      live(won && noLoss, noLoss),
+    ];
+  }
+  const { star2, star3 } = levelStars();
+  const stats = matchStarStats();
   return [
     live(won, true),
     live(starRuleMet(star2, stats), starRulePossible(star2, stats)),
@@ -2560,10 +2646,17 @@ function flagGoalLabel(): string {
   return `Capture all flags (${held}/${flags.length})`;
 }
 
-function starGoalsHtml(): string {
+function matchStarLabels(): [string, string, string] {
+  if (rogueRun) {
+    return [ROGUE_STAR_LABELS[0], ROGUE_STAR_LABELS[1], ROGUE_STAR_LABELS[2]];
+  }
   const { star2, star3 } = levelStars();
+  return [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
+}
+
+function starGoalsHtml(): string {
   const kinds = starKinds();
-  const labels = [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
+  const labels = matchStarLabels();
   return `<ul class="star-goals" aria-label="Star goals">${labels
     .map(
       (label, i) =>
@@ -2573,14 +2666,13 @@ function starGoalsHtml(): string {
 }
 
 function packedEndStars(): { kind: 'on' | 'off'; label: string }[] {
-  const { star2, star3 } = levelStars();
   const kinds = starKinds();
-  const labels = [flagGoalLabel(), starRuleLabel(star2), starRuleLabel(star3)];
+  const labels = matchStarLabels();
   const earned: { kind: 'on'; label: string }[] = [];
   const missed: { kind: 'off'; label: string }[] = [];
   kinds.forEach((kind, i) => {
-    if (kind === 'on') earned.push({ kind: 'on', label: labels[i] });
-    else missed.push({ kind: 'off', label: labels[i] });
+    if (kind === 'on') earned.push({ kind: 'on', label: labels[i]! });
+    else missed.push({ kind: 'off', label: labels[i]! });
   });
   return [...earned, ...missed];
 }
@@ -2821,6 +2913,7 @@ function selectPiece(id: string | null) {
     syncMarchSpend(selectedId, false);
   }
   selectedId = id;
+  rememberSelect(id);
   pendingHex = null;
   hoverHex = null;
   hoverPath = [];
@@ -3347,11 +3440,11 @@ async function skipScout(nextId?: string) {
 
 async function maybeAi() {
   if (briefingBlocks() || boardBlocks() || state.winner) {
-    ensureSoloTurnSelection();
+    ensureTurnSelection();
     return;
   }
   if (mode === 'hotseat' || isPlayerControlled(state, state.turn)) {
-    ensureSoloTurnSelection();
+    ensureTurnSelection();
     render();
     return;
   }
@@ -3398,7 +3491,7 @@ async function maybeAi() {
   }
 
   aiThinking = false;
-  ensureSoloTurnSelection();
+  ensureTurnSelection();
   render();
 }
 
@@ -4639,7 +4732,7 @@ function renderEndOverlay(): string {
             lostForGood
               ? `${lostForGood} unit${lostForGood === 1 ? '' : 's'} lost forever. `
               : 'No permanent losses. '
-          }+1 gold. Buy recruits — leftover coin carries.`
+          }${starKinds().filter((k) => k === 'on').length} gold from stars. Buy recruits — leftover coin carries.`
         : rogueRun && youLost
           ? `${loseHow} Run over at ${rogueBattleLabel(rogueRun)}.`
           : youWon && lastInList
@@ -5102,7 +5195,7 @@ async function commitMarch(pieceId: string, dest: Hex | null, stepNow: boolean):
   } else {
     retainSelection(pieceId);
   }
-  ensureSoloTurnSelection();
+  ensureTurnSelection();
   render();
   if (dest) await maybeAi();
 }
@@ -5720,9 +5813,9 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${randomLock}Randomised Battle</span>
             <span class="start-opt-meta">${randomGateMeta('Generated map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Each win grants 1 gold and a shop of 3 random recruits — buy any you can afford. Enemy gains one free unit each battle.')}>
+          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Stars pay gold (win / general lives / no losses). General death promotes your strongest unit next turn — wipeout still ends the run. Shop of 3 recruits after each win; enemy gains one free unit.')}>
             <span class="start-opt-name">${rogueLock}Roguelite</span>
-            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · gold shop · permanent losses`)}</span>
+            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · stars→gold · succession`)}</span>
           </button>
         </div>
         <div class="start-tools">
@@ -5956,10 +6049,8 @@ function renderMapPanel(): string {
   return `
     <section class="editor-panel editor-panel-map">
       <h3>Tiles</h3>
-        <div class="editor-brushes">
+      <div class="editor-brushes">
         ${brushes}
-        <button type="button" id="editor-undo" class="brush"${editorUndoStack.length ? '' : ' disabled'}>Undo</button>
-        <button type="button" id="editor-clear" class="brush erase">Clear board ${TRASH_ICON_SVG}</button>
       </div>
     </section>`;
 }
@@ -6090,7 +6181,11 @@ function renderArmySelectPanel(): string {
         ${catUnits.length ? unitGroups : `<span class="lvl-meta">No ${UNIT_CATEGORY_LABEL[editorUnitCategory]} units</span>`}
       </div>
     </section>
-    <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase ${TRASH_ICON_SVG}</button>
+    <div class="editor-brushes editor-erase-row">
+      <button type="button" id="editor-undo" class="brush"${editorUndoStack.length ? '' : ' disabled'}>Undo</button>
+      <button type="button" class="brush erase${editorBrush === 'erase' ? ' active' : ''}" data-brush="erase">Erase unit ${TRASH_ICON_SVG}</button>
+      <button type="button" id="editor-clear" class="brush erase">Clear land tiles ${TRASH_ICON_SVG}</button>
+    </div>
     </div>`;
 }
 
@@ -8252,7 +8347,7 @@ function bindEvents() {
       animating = false;
       if (actingId) retainSelection(actingId);
       else clearSelection();
-      ensureSoloTurnSelection();
+      ensureTurnSelection();
       render();
       void maybeAi();
     })();

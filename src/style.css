@@ -1749,8 +1749,11 @@ button.primary:focus-visible {
   gap: 0.35rem;
 }
 
-.editor-top-army > .brush.erase {
-  align-self: start;
+.editor-erase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .brush.erase .icon-trash {
@@ -2550,7 +2553,7 @@ button.primary:focus-visible {
 
 .editor-brushes .brush,
 .editor-army .brush,
-.editor-top-army > .brush.erase {
+.editor-erase-row .brush {
   background: var(--panel);
   color: var(--ink);
   border: 1px solid #3a453c;

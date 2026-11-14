@@ -3,20 +3,37 @@
 import {
   statsOf,
   unitTokensOf,
+  withStory,
   type AiStyle,
   type Piece,
+  type Side,
   type UnitTokenType,
   type UnitType,
 } from './engine';
-import { placeSlots, RANDOM_COLS, type ArmySlot, type ArmyStamp } from './map';
+import {
+  DEFAULT_ARMY_EDGE,
+  RANDOM_ORIENTATION,
+  ROGUE_HEX_RADIUS,
+  facingFromStamp,
+  rogueHexDisk,
+  sanitizeStampFacing,
+  type ArmyStamp,
+} from './map';
+import { distance } from './hex';
 import { sanitizePeriod, type Period } from './period';
 import { UNIT_STATS, UNIT_TYPES } from './roster';
 
 export const ROGUE_GOAL = 10;
 export const ROGUE_START_COUNT = 2;
-export const ROGUE_GOLD_PER_WIN = 1;
-export const ROGUE_START_GOLD = 2;
+/** Gold at run start. Battles pay 1g per earned star. */
+export const ROGUE_START_GOLD = 0;
 export const ROGUE_SHOP_SIZE = 3;
+/** Roguelite star copy (win / general lives / no losses). */
+export const ROGUE_STAR_LABELS = [
+  'Win',
+  'General survives',
+  'No units lost',
+] as const;
 
 /** Army entry — type plus any kickoff tokens that survive between battles. */
 export type RogueUnit = {
@@ -93,9 +110,14 @@ export function rollRogueShopOffers(
   return offers;
 }
 
-export function openRogueShop(run: RogueRun): { run: RogueRun; shop: RogueShop } {
+/** Victory shop — `starGold` is 1 per earned star this battle. */
+export function openRogueShop(
+  run: RogueRun,
+  starGold: number,
+): { run: RogueRun; shop: RogueShop } {
+  const gain = Math.max(0, Math.floor(starGold));
   return {
-    run: { ...run, gold: run.gold + ROGUE_GOLD_PER_WIN },
+    run: { ...run, gold: run.gold + gain },
     shop: {
       offers: rollRogueShopOffers(run.period),
       purchased: [],
@@ -127,28 +149,116 @@ export function buyRogueShopOffer(
   };
 }
 
-/** Pack units onto back ranks, centered via placeSlots sourceCols. */
-export function packRogueSlots(units: RogueUnit[], width = RANDOM_COLS): ArmySlot[] {
-  const w = Math.max(1, Math.min(width, RANDOM_COLS));
-  return units.map((u, i) => {
-    const fromBack = Math.floor(i / w);
-    const rankStart = fromBack * w;
-    const rankCount = Math.min(w, units.length - rankStart);
-    const centerOffset = Math.floor((w - rankCount) / 2);
-    return {
-      type: u.type,
-      col: centerOffset + (i % w),
-      fromBack,
-      unitTokens: u.unitTokens,
-    };
-  });
+/** Depth from a side's home edge (0 = rim). */
+function edgeDepth(
+  h: { col: number; row: number },
+  side: Side,
+  cols: number,
+  rows: number,
+): number {
+  const edge = DEFAULT_ARMY_EDGE[side];
+  if (edge === 'bottom') return rows - 1 - h.row;
+  if (edge === 'top') return h.row;
+  if (edge === 'left') return h.col;
+  return cols - 1 - h.col;
 }
 
-export function rogueArmyStamps(run: RogueRun, cols: number, rows: number): ArmyStamp[] {
-  const width = Math.min(cols, RANDOM_COLS);
+function edgeAlong(
+  h: { col: number; row: number },
+  side: Side,
+  cols: number,
+  rows: number,
+): number {
+  const edge = DEFAULT_ARMY_EDGE[side];
+  if (edge === 'bottom') return h.col;
+  if (edge === 'top') return cols - 1 - h.col;
+  if (edge === 'left') return h.row;
+  return rows - 1 - h.row;
+}
+
+/** Pack an army onto the hex disk rim (centered on the first full-enough rank). */
+function stampRogueArmy(
+  units: RogueUnit[],
+  side: Side,
+  cols: number,
+  rows: number,
+  radius: number,
+  center: { col: number; row: number },
+): ArmyStamp[] {
+  const onDisk = (h: { col: number; row: number }) =>
+    distance(h, center, RANDOM_ORIENTATION) <= radius;
+  const cells: { col: number; row: number; depth: number; along: number }[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const h = { col, row };
+      if (!onDisk(h)) continue;
+      cells.push({
+        col,
+        row,
+        depth: edgeDepth(h, side, cols, rows),
+        along: edgeAlong(h, side, cols, rows),
+      });
+    }
+  }
+  cells.sort((a, b) => a.depth - b.depth || a.along - b.along);
+
+  const picked: { col: number; row: number }[] = [];
+  let depth = cells[0]?.depth ?? 0;
+  while (picked.length < units.length && depth < Math.max(cols, rows)) {
+    const rank = cells
+      .filter((c) => c.depth === depth)
+      .sort((a, b) => a.along - b.along);
+    const need = units.length - picked.length;
+    if (rank.length >= need) {
+      const start = Math.floor((rank.length - need) / 2);
+      for (let i = 0; i < need; i++) {
+        const c = rank[start + i]!;
+        picked.push({ col: c.col, row: c.row });
+      }
+      break;
+    }
+    depth += 1;
+  }
+  // Overflow: keep taking next rim cells.
+  if (picked.length < units.length) {
+    for (const c of cells) {
+      if (picked.some((p) => p.col === c.col && p.row === c.row)) continue;
+      picked.push({ col: c.col, row: c.row });
+      if (picked.length >= units.length) break;
+    }
+  }
+
+  const facing = facingFromStamp({ side });
+  const out: ArmyStamp[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i]!;
+    const hex = picked[i];
+    if (!hex) break;
+    const packed = withStory(u.unitTokens, undefined);
+    out.push({
+      type: u.type,
+      col: hex.col,
+      row: hex.row,
+      side,
+      unitTokens: packed.unitTokens,
+      facing: sanitizeStampFacing(side, facing),
+    });
+  }
+  return out;
+}
+
+export function rogueArmyStamps(
+  run: RogueRun,
+  cols?: number,
+  rows?: number,
+  radius = ROGUE_HEX_RADIUS,
+): ArmyStamp[] {
+  const disk = rogueHexDisk(radius);
+  const c = cols ?? disk.cols;
+  const r = rows ?? disk.rows;
   return [
-    ...placeSlots(packRogueSlots(run.playerArmy, width), 'red', cols, rows, width),
-    ...placeSlots(packRogueSlots(run.enemyArmy, width), 'blue', cols, rows, width),
+    ...stampRogueArmy(run.playerArmy, 'red', c, r, radius, disk.center),
+    ...stampRogueArmy(run.enemyArmy, 'blue', c, r, radius, disk.center),
   ];
 }
 

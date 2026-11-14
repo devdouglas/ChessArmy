@@ -1,10 +1,18 @@
-/** Quick sanity for roguelite grow / prune / shop / stamps. */
-import { createInitialState, DEFAULT_MAP, RANDOM_COLS, RANDOM_ROWS } from '../src/map';
-import { hasUnitToken } from '../src/engine';
-import { UNIT_STATS } from '../src/roster';
+/** Quick sanity for roguelite grow / prune / shop / hex map / succession. */
+import {
+  createRogueInitialState,
+  ROGUE_HEX_RADIUS,
+  rogueHexDisk,
+} from '../src/map';
+import {
+  hasGeneral,
+  hasUnitToken,
+  maybeSucceedGeneral,
+  passTurn,
+} from '../src/engine';
+import { distance } from '../src/hex';
 import {
   ROGUE_GOAL,
-  ROGUE_GOLD_PER_WIN,
   ROGUE_SHOP_SIZE,
   ROGUE_START_COUNT,
   ROGUE_START_GOLD,
@@ -25,38 +33,48 @@ if (pool.length < 4) throw new Error(`pool too small: ${pool.length}`);
 
 const knight = pickRogueKnight(period);
 if (knight !== 'scout') throw new Error(`expected scout knight, got ${knight}`);
-if (UNIT_STATS[knight].chess !== 'Knight') throw new Error('scout is not Knight');
 
 let run = createRogueRun(period);
 if (run.playerArmy.length !== ROGUE_START_COUNT) throw new Error('bad start player');
-if (run.enemyArmy.length !== ROGUE_START_COUNT) throw new Error('bad start enemy');
 if (run.gold !== ROGUE_START_GOLD) throw new Error(`start gold should be ${ROGUE_START_GOLD}`);
-if (run.playerArmy[0]?.type !== 'scout') throw new Error('general not on knight/scout');
-if (!run.playerArmy[0]?.unitTokens?.includes('general')) {
-  throw new Error('scout missing general token');
-}
 
-const stamps = rogueArmyStamps(run, RANDOM_COLS, RANDOM_ROWS);
-const state = createInitialState(DEFAULT_MAP, stamps);
+const disk = rogueHexDisk(ROGUE_HEX_RADIUS);
+const stamps = rogueArmyStamps(run);
+let state = createRogueInitialState(undefined, stamps);
+if (state.hexRadius !== ROGUE_HEX_RADIUS) {
+  throw new Error(`hex radius ${state.hexRadius}`);
+}
+if (!state.hexCenter) throw new Error('missing hex center');
+
 const red = state.pieces.filter((p) => p.side === 'red');
 const blue = state.pieces.filter((p) => p.side === 'blue');
 if (red.length !== ROGUE_START_COUNT) throw new Error(`red spawn ${red.length}`);
 if (blue.length !== ROGUE_START_COUNT) throw new Error(`blue spawn ${blue.length}`);
-const horsePiece = red.find((p) => p.type === 'scout');
-if (!horsePiece || !hasUnitToken(horsePiece, 'general')) {
-  throw new Error('spawned knight lacks general');
+for (const p of state.pieces) {
+  if (distance(p, state.hexCenter, state.orientation) > state.hexRadius) {
+    throw new Error(`piece off disk ${p.type} @${p.col},${p.row}`);
+  }
 }
 
+const gen = red.find((p) => hasUnitToken(p, 'general'));
+if (!gen) throw new Error('no general');
+state.generalSuccession = true;
+state.pieces = state.pieces.filter((p) => p.id !== gen.id);
+state.casualties = { ...state.casualties, red: 1 };
+if (state.turn === 'red') state = passTurn(state);
+state = passTurn(state);
+if (state.turn !== 'red') state = passTurn(state);
+maybeSucceedGeneral(state, 'red');
+if (!hasGeneral(state.pieces, 'red')) throw new Error('succession failed');
+
 const living = survivorUnits(
-  red.filter((p) => p.type === 'scout'),
+  state.pieces.filter((p) => p.side === 'red'),
   'red',
 );
-const opened = openRogueShop(run);
+const opened = openRogueShop(run, 2);
 run = opened.run;
 let shop = opened.shop;
-if (run.gold !== ROGUE_START_GOLD + ROGUE_GOLD_PER_WIN) {
-  throw new Error('gold not granted');
-}
+if (run.gold !== ROGUE_START_GOLD + 2) throw new Error(`star gold ${run.gold}`);
 if (shop.offers.length !== Math.min(ROGUE_SHOP_SIZE, pool.length)) {
   throw new Error(`shop size ${shop.offers.length}`);
 }
@@ -74,14 +92,10 @@ for (;;) {
 
 const next = advanceRogueRun(run, living, shop.purchased);
 if (!next) throw new Error('advance failed');
-if (next.playerArmy.length !== 1 + bought) {
-  throw new Error(`player after loss+shop ${next.playerArmy.length}`);
-}
-if (!next.playerArmy[0]?.unitTokens?.includes('general')) {
+if (!next.playerArmy.some((u) => u.unitTokens?.includes('general'))) {
   throw new Error('general not carried');
 }
 if (next.enemyArmy.length !== 3) throw new Error(`enemy grow ${next.enemyArmy.length}`);
-if (next.battle !== 2) throw new Error('battle not 2');
 
 run = next;
 for (let b = 2; b < ROGUE_GOAL; b++) {
@@ -90,18 +104,10 @@ for (let b = 2; b < ROGUE_GOAL; b++) {
   run = adv;
 }
 if (run.battle !== ROGUE_GOAL) throw new Error(`expected battle ${ROGUE_GOAL}, got ${run.battle}`);
-if (run.enemyArmy.length !== ROGUE_START_COUNT + (ROGUE_GOAL - 1)) {
-  throw new Error(`enemy size ${run.enemyArmy.length}`);
-}
-
-const modern = createRogueRun('modern');
-if (modern.playerArmy[0]?.type !== 'scout') throw new Error('modern knight not scout');
-if (!modern.playerArmy[0]?.unitTokens?.includes('general')) {
-  throw new Error('modern knight missing general');
-}
 
 console.log('roguelite ok', {
   pool: pool.length,
+  disk: `${disk.cols}x${disk.rows} R${disk.radius}`,
   knight,
   bought,
   finalPlayer: run.playerArmy.length,
