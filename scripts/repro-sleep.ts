@@ -2,10 +2,8 @@ import {
   allLegalActions,
   applyAction,
   hasUnitToken,
-  legalHighlights,
-  passTurn,
-  restPiece,
-  staminaLeft,
+  legalHighlights, passTurn,
+  actionPointsLeft,
   type GameState,
 } from '../src/engine';
 import { neighborInDir } from '../src/hex';
@@ -69,12 +67,12 @@ function board(
     'sleeper has no action',
   );
   assert(pickAiAction(s) == null, 'alone, sleeper does not rest');
-  assert(restPiece(s, sleeper.id) === s, 'rest is illegal while asleep');
-  sleeper.stamina = 0;
+  assert(passTurn(s, sleeper.id) === s, 'rest is illegal while asleep');
+  sleeper.actionPoints = 0;
   const ended = passTurn(s);
   const still = ended.pieces.find((p) => p.id === sleeper.id)!;
   assert(hasUnitToken(still, 'sleep'), 'end turn does not wake');
-  assert(staminaLeft(still) === 0, 'asleep unit does not gain stamina');
+  assert(actionPointsLeft(still) === 0, 'asleep unit does not gain stamina');
 }
 
 {

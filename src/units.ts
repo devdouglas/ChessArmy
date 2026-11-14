@@ -29,7 +29,9 @@ import {
 } from './engine';
 import { notifyPersist } from './persist-hook';
 
-const STORAGE_KEY = 'chessarmy-unit-stats-v1';
+const STORAGE_KEY = 'chessarmy-unit-stats-v2';
+/** Pre-AP rename. Still read so custom units / HP / hex armor are not wiped. */
+const LEGACY_STORAGE_KEY = 'chessarmy-unit-stats-v1';
 const MAX_UNITS = 48;
 
 export type EditableStat = Exclude<
@@ -42,12 +44,11 @@ const INT_FIELDS = [
   'sight',
   'shoot',
   'shootMin',
-  'actions',
+  'actionPointGain',
   'shootCooldown',
   'value',
   'moveBudget',
-  'stamina',
-  'staminaRegen',
+  'actionPoints',
   'ammo',
   'hp',
   'meleeDamage',
@@ -75,12 +76,11 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   sight: { min: 1, max: 16 },
   shoot: { min: 0, max: 12 },
   shootMin: { min: 0, max: 12 },
-  actions: { min: 1, max: 3 },
+  actionPointGain: { min: 1, max: 3 },
   shootCooldown: { min: 0, max: 6 },
   value: { min: 0, max: 999 },
   moveBudget: { min: 0, max: 12 },
-  stamina: { min: 0, max: 8 },
-  staminaRegen: { min: 0, max: 8 },
+  actionPoints: { min: 0, max: 12 },
   ammo: { min: 0, max: 20 },
   hp: { min: 1, max: 10 },
   meleeDamage: { min: 0, max: 10 },
@@ -142,6 +142,24 @@ function waterClimbFrom(
   return { passWater: false, climbLevel: 0 };
 }
 
+/** One-shot migrate from old stamina/actions shape into actionPoints max. */
+function migrateActionPoints(s: LegacyStats & { actionPoints?: unknown; actions?: unknown }, d: UnitStats): number {
+  if (s.actionPoints !== undefined && s.actionPoints !== null) {
+    return clampInt(s.actionPoints, CLAMP.actionPoints.min, CLAMP.actionPoints.max, d.actionPoints);
+  }
+  const oldPool = (s as { stamina?: unknown }).stamina;
+  const oldGain = (s as { actions?: unknown }).actions;
+  const pool =
+    typeof oldPool === 'number'
+      ? oldPool
+      : d.actionPoints === 0
+        ? 0
+        : Math.max(0, d.actionPoints - 1);
+  const gain = typeof oldGain === 'number' ? oldGain : d.actionPointGain;
+  const next = pool === 0 ? 0 : Math.max(pool + 1, gain + 1);
+  return clampInt(next, CLAMP.actionPoints.min, CLAMP.actionPoints.max, d.actionPoints);
+}
+
 export function sanitizeUnitStats(
   type: UnitType,
   raw: Partial<UnitStats> | undefined,
@@ -185,7 +203,13 @@ export function sanitizeUnitStats(
     shoot: clampInt(s.shoot, CLAMP.shoot.min, CLAMP.shoot.max, d.shoot),
     shootMin: clampInt(s.shootMin, CLAMP.shootMin.min, CLAMP.shootMin.max, d.shootMin),
     shootArc: sanitizeShootArc(s.shootArc ?? d.shootArc),
-    actions: clampInt(s.actions, CLAMP.actions.min, CLAMP.actions.max, d.actions),
+    actionPointGain: clampInt(
+      (s as { actionPointGain?: unknown; actions?: unknown }).actionPointGain ??
+        (s as { actions?: unknown }).actions,
+      CLAMP.actionPointGain.min,
+      CLAMP.actionPointGain.max,
+      d.actionPointGain,
+    ),
     shootCooldown: clampInt(
       s.shootCooldown,
       CLAMP.shootCooldown.min,
@@ -194,13 +218,7 @@ export function sanitizeUnitStats(
     ),
     value: clampInt(s.value, CLAMP.value.min, CLAMP.value.max, d.value),
     moveBudget: clampInt(s.moveBudget, CLAMP.moveBudget.min, CLAMP.moveBudget.max, d.moveBudget),
-    stamina: clampInt(s.stamina, CLAMP.stamina.min, CLAMP.stamina.max, d.stamina),
-    staminaRegen: clampInt(
-      s.staminaRegen,
-      CLAMP.staminaRegen.min,
-      CLAMP.staminaRegen.max,
-      d.staminaRegen,
-    ),
+    actionPoints: migrateActionPoints(s, d),
     ammo: clampInt(s.ammo, CLAMP.ammo.min, CLAMP.ammo.max, d.ammo),
     hp: clampInt(s.hp, CLAMP.hp.min, CLAMP.hp.max, d.hp),
     meleeDamage: clampInt(
@@ -341,13 +359,48 @@ export function applyRemoteUnitStats(
   ingestRoster(raw);
 }
 
+function parseStoredRoster(
+  raw: string | null,
+): Partial<Record<string, Partial<UnitStats>>> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<string, Partial<UnitStats>>>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function customUnitCount(raw: Partial<Record<string, Partial<UnitStats>>>): number {
+  return Object.keys(raw).filter((id) => isCustomUnitId(id)).length;
+}
+
+/**
+ * Prefer the richer local roster. v2 may be a stock-only write after the AP
+ * rename; v1 still holds customs / HP / hex armor until migrated.
+ */
+function pickStoredRoster(): {
+  raw: Partial<Record<string, Partial<UnitStats>>>;
+  fromLegacy: boolean;
+} | null {
+  const v2 = parseStoredRoster(localStorage.getItem(STORAGE_KEY));
+  const v1 = parseStoredRoster(localStorage.getItem(LEGACY_STORAGE_KEY));
+  if (v1 && (!v2 || customUnitCount(v1) > customUnitCount(v2))) {
+    return { raw: v1, fromLegacy: true };
+  }
+  if (v2) return { raw: v2, fromLegacy: false };
+  if (v1) return { raw: v1, fromLegacy: true };
+  return null;
+}
+
 export function loadUnitStats(): void {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return;
-    const parsed = JSON.parse(stored) as Partial<Record<string, Partial<UnitStats>>>;
-    if (!parsed || typeof parsed !== 'object') return;
-    ingestRoster(parsed);
+    const picked = pickStoredRoster();
+    if (!picked) return;
+    ingestRoster(picked.raw);
+    // Sanitize migrates actions/stamina → actionPointGain/actionPoints; persist v2.
+    if (picked.fromLegacy) persistUnitStats();
   } catch {
     clearCustomUnits();
     writeStock(structuredClone(DEFAULT_UNIT_STATS));

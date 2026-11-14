@@ -267,8 +267,27 @@ export function editorOpensBoardPopup(
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
+/** Stackable promotions on a piece. Cap is shared across all promotion kinds. */
+export const MAX_UNIT_PROMOTIONS = 3;
+export const PROMOTION_TOKEN_TYPES = [
+  'range1',
+  'defense1',
+  'attack1',
+  'ap1',
+  'allTerrain',
+] as const;
+export type PromotionTokenType = (typeof PROMOTION_TOKEN_TYPES)[number];
+
 /** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
-export const UNIT_TOKEN_TYPES = ['general', 'hidden', 'exhausted', 'neutral', 'sleep', 'story'] as const;
+export const UNIT_TOKEN_TYPES = [
+  'general',
+  'hidden',
+  'exhausted',
+  'neutral',
+  'sleep',
+  'story',
+  ...PROMOTION_TOKEN_TYPES,
+] as const;
 export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
 export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   general: 'General',
@@ -277,6 +296,20 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   neutral: 'Neutral',
   sleep: 'Sleep',
   story: 'Story',
+  range1: 'Range +1',
+  defense1: 'Defense +1',
+  attack1: 'Attack +1',
+  ap1: 'AP +1',
+  allTerrain: 'All terrain',
+};
+
+/** Chevron / swatch fill per promotion kind. */
+export const PROMOTION_TOKEN_COLOR: Record<PromotionTokenType, string> = {
+  range1: '#f0d060',
+  defense1: '#8ab4e8',
+  attack1: '#f0a070',
+  ap1: '#9ad0a8',
+  allTerrain: '#d0b878',
 };
 
 export const STORY_WHENS = ['kill', 'touch'] as const;
@@ -311,11 +344,23 @@ export function isUnitTokenType(v: unknown): v is UnitTokenType {
   return (UNIT_TOKEN_TYPES as readonly string[]).includes(v as string);
 }
 
+export function isPromotionToken(v: unknown): v is PromotionTokenType {
+  return (PROMOTION_TOKEN_TYPES as readonly string[]).includes(v as string);
+}
+
 export function sanitizeUnitTokens(raw: unknown): UnitTokenType[] {
   if (!Array.isArray(raw)) return [];
   const out: UnitTokenType[] = [];
+  let promos = 0;
   for (const item of raw) {
-    if (!isUnitTokenType(item) || out.includes(item)) continue;
+    if (!isUnitTokenType(item)) continue;
+    if (isPromotionToken(item)) {
+      if (promos >= MAX_UNIT_PROMOTIONS) continue;
+      out.push(item);
+      promos += 1;
+      continue;
+    }
+    if (out.includes(item)) continue;
     out.push(item);
   }
   return out;
@@ -325,11 +370,85 @@ export function unitTokensOf(piece: { unitTokens?: UnitTokenType[] }): UnitToken
   return piece.unitTokens ?? [];
 }
 
+export function promotionTokensOf(piece: {
+  unitTokens?: UnitTokenType[];
+}): PromotionTokenType[] {
+  return unitTokensOf(piece).filter(isPromotionToken);
+}
+
+export function countUnitToken(
+  piece: { unitTokens?: UnitTokenType[] },
+  id: UnitTokenType,
+): number {
+  let n = 0;
+  for (const t of unitTokensOf(piece)) if (t === id) n += 1;
+  return n;
+}
+
 export function hasUnitToken(
   piece: { unitTokens?: UnitTokenType[] },
   id: UnitTokenType,
 ): boolean {
-  return unitTokensOf(piece).includes(id);
+  return countUnitToken(piece, id) > 0;
+}
+
+/** Base shoot + stacked Range +1 promotions. Melee (shoot 0) stays 0. */
+export function shootRangeOf(piece: Piece): number {
+  const base = statsOf(piece.type).shoot;
+  if (base <= 0) return 0;
+  return base + countUnitToken(piece, 'range1');
+}
+
+/** Stacked Defense +1 promotions — added to every armor face / ring. */
+export function armorBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
+  return countUnitToken(piece, 'defense1');
+}
+
+/** Stacked Attack +1 promotions — added to every outgoing damage value. */
+export function attackBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
+  return countUnitToken(piece, 'attack1');
+}
+
+/** Stacked AP +1 promotions — +1 max pool and +1 granted each turn. */
+export function apBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
+  return countUnitToken(piece, 'ap1');
+}
+
+/** Turn-start AP grant, including AP +1 promotions. */
+export function actionPointGainOf(piece: Piece): number {
+  return Math.max(0, statsOf(piece.type).actionPointGain) + apBonusOf(piece);
+}
+
+/** All terrain promo — ignore climb / swim penalties, climb to mountain. */
+export function hasAllTerrain(piece: { unitTokens?: UnitTokenType[] }): boolean {
+  return hasUnitToken(piece, 'allTerrain');
+}
+
+export function climbLevelOf(piece: Piece): number {
+  if (hasAllTerrain(piece)) return 3;
+  return Math.max(0, Math.min(3, statsOf(piece.type).climbLevel | 0));
+}
+
+export function canPassWater(piece: Piece): boolean {
+  return statsOf(piece.type).passWater || hasAllTerrain(piece);
+}
+
+function withAttackBonus(base: number, piece: { unitTokens?: UnitTokenType[] }): number {
+  const n = Math.max(0, base);
+  if (n <= 0) return 0;
+  return n + attackBonusOf(piece);
+}
+
+export function meleeDamageOf(piece: Piece): number {
+  return withAttackBonus(statsOf(piece.type).meleeDamage, piece);
+}
+
+export function shootDamageOf(piece: Piece): number {
+  return withAttackBonus(statsOf(piece.type).shootDamage, piece);
+}
+
+export function splashDamageOf(piece: Piece): number {
+  return withAttackBonus(statsOf(piece.type).splashDamage, piece);
 }
 
 /** Kickoff Sleep token — no move / shoot / turn until hit. */
@@ -692,10 +811,29 @@ function forestHp(tok: TileToken | undefined): number {
   return tok.hp ?? PALISADE_HP;
 }
 
-function chipForestAt(state: GameState, h: Hex): { remaining: number } | null {
+/** Attack strength vs wood HP — 1+2 melee (or shoot) falls a 3 HP fence in one hit. */
+function woodRemaining(hp: number, amount: number): number {
+  return Math.max(0, hp - Math.max(0, amount));
+}
+
+/** True when this strike destroys the wood on `h` (palisade / tree). */
+function breaksPalisadeAt(
+  state: { tokens: TileToken[] },
+  h: Hex,
+  amount: number,
+): boolean {
+  const hp = palisadeHpAt(state, h);
+  return hp > 0 && amount > 0 && woodRemaining(hp, amount) <= 0;
+}
+
+function chipForestAt(
+  state: GameState,
+  h: Hex,
+  amount = 1,
+): { remaining: number } | null {
   const tok = hexToken(state.tokens, h, (t) => isForestToken(t.type));
   if (!tok) return null;
-  const remaining = Math.max(0, forestHp(tok) - 1);
+  const remaining = woodRemaining(forestHp(tok), amount);
   if (remaining <= 0) {
     state.tokens = state.tokens.filter(
       (t) => !(isForestToken(t.type) && t.col === h.col && t.row === h.row),
@@ -739,16 +877,14 @@ export type Piece = {
   ammo?: number;
   /** Remaining hitpoints (undefined = full / `UnitStats.hp`). */
   hp?: number;
-  /** Remaining stamina (undefined = full / `UnitStats.stamina`). */
-  stamina?: number;
-  /** Spent stamina already this activation. */
-  staminaUsedThisTurn?: boolean;
-  /** Walked this activation — idle regen does not tick. */
+  /** Remaining action points (undefined = full / `UnitStats.actionPoints`). */
+  actionPoints?: number;
+  /** AP already spent against this turn's spend cap. */
+  apSpentThisTurn?: number;
+  /** Walked this activation. */
   movedThisTurn?: boolean;
-  /** Did anything this activation (move, shoot, climb). Idle regen requires none of this. */
+  /** Did anything this activation (move, shoot, climb). */
   actedThisTurn?: boolean;
-  /** Own-turn Ends left until +1 stamina can land (grant only while idle). */
-  staminaRegenWait?: number;
   /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
   facing?: HexDir;
   /** Took ranged damage since last finished activation. Hold-position AI advances. */
@@ -759,7 +895,7 @@ export type Piece = {
   holdSawIds?: string[];
   /** Runtime ability overlay. Missing → unit stats. */
   abilities?: AbilityId[];
-  /** Attachments (General, Hidden, Exhausted, Sleep, Story). Missing → none. */
+  /** Attachments (General, Hidden, Exhausted, Sleep, Story, promotions). Missing → none. */
   unitTokens?: UnitTokenType[];
   /** Story token copy. Ignored unless the story token is attached. */
   story?: PieceStory;
@@ -767,12 +903,12 @@ export type Piece = {
   revealed?: boolean;
   /** Standing march. Each own turn with no other order, walk toward this hex. */
   walkTo?: Hex;
-  /** This activation's march also spends 1 stamina for a second move. */
+  /** This activation's march also spends AP for a second move. */
   spendMarch?: boolean;
 };
 
 export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
-export type FxStamina = { id: string; kind: 'gain' | 'spend' };
+export type FxActionPoints = { id: string; kind: 'gain' | 'spend' };
 export type FxBoard = { col: number; row: number; text: string; title?: string };
 
 export type GameState = {
@@ -793,8 +929,6 @@ export type GameState = {
   scoutPieceId: string | null;
   /** Path-cost spent on moves this scout activation (budget 3 → no 2+2). */
   scoutMoveSpent: number | null;
-  /** Locked piece's leftover action is a stamina buy (after a non-stamina move). */
-  staminaBonus: boolean;
   /** Locked piece's leftover action is a free move from stepping one level down. */
   downhillMove: boolean;
   /** One-level drops already taken whose free move is still owed. */
@@ -832,11 +966,11 @@ export type GameState = {
   flagCaptures: number;
   /** One-shot drown (etc) hits for the UI to flash. Cleared after play. */
   fxHits?: FxHit[];
-  /** Stamina grants (gold) / water-penalty spends (blue). Played at that side's turn start. */
-  fxStamina?: FxStamina[];
+  /** AP grants (gold) / water-penalty spends (blue). Played at that side's turn start. */
+  fxActionPoints?: FxActionPoints[];
   /** Friendly walked a message board. UI pops this then clears. */
   fxBoard?: FxBoard;
-  pendingStaminaFx?: Partial<Record<Side, string[]>>;
+  pendingApFx?: Partial<Record<Side, string[]>>;
 };
 
 export type Action =
@@ -844,7 +978,6 @@ export type Action =
   | { kind: 'charge'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
-  | { kind: 'rest'; pieceId: string }
   | { kind: 'trap'; pieceId: string; to: Hex }
   | { kind: 'skip' }; // scout skip remaining action
 
@@ -852,11 +985,11 @@ export type Highlight =
   | { kind: 'move'; hex: Hex; cost: number; plus?: boolean }
   /** Downhill +1, shown only. Not a destination of this action. */
   | { kind: 'plus'; hex: Hex; cost: number }
-  /** Walk that spends 1 stamina (climb, or the extra straight-line action). */
-  | { kind: 'stamina'; hex: Hex; cost: number; extra?: boolean; beyondPlus?: boolean }
-  /** Would be a stamina walk if the pool weren't empty — display only. */
-  | { kind: 'rest'; hex: Hex; cost: number; extra?: boolean }
-  /** Crash through enemies. `extra` is past the normal move (spends 1). `unpaid` is that same tile with no energy left — display only. */
+  /** Walk that spends AP (climb surcharge, or a multi-chunk / extra straight-line action). */
+  | { kind: 'ap'; hex: Hex; cost: number; extra?: boolean; beyondPlus?: boolean }
+  /** Would be an AP walk if more points were spendable — display only. */
+  | { kind: 'apEmpty'; hex: Hex; cost: number; extra?: boolean }
+  /** Crash through enemies. `extra` is past the normal move (spends 1). `unpaid` is that same tile with no AP left — display only. */
   | { kind: 'charge'; hex: Hex; cost: number; extra?: boolean; unpaid?: boolean }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
@@ -893,9 +1026,15 @@ export function armorSideHit(
 
 export function armorOf(piece: Piece, from?: Hex, orientation?: HexOrientation): number {
   const s = statsOf(piece.type);
+  const bonus = armorBonusOf(piece);
   const side = armorSideHit(piece, from, orientation);
-  if (side) return s[side];
-  return s.armor;
+  if (side) return s[side] + bonus;
+  return s.armor + bonus;
+}
+
+/** Effective armor on one hex face (includes Defense +1 promotions). */
+export function armorFaceOf(piece: Piece, side: HexArmorSide): number {
+  return statsOf(piece.type)[side] + armorBonusOf(piece);
 }
 
 /** Cube dirs of −2 hex-armor faces. Empty if hex armor is off. */
@@ -903,9 +1042,10 @@ function redFaceDirs(piece: Piece): Set<HexDir> {
   const s = statsOf(piece.type);
   const blocked = new Set<HexDir>();
   if (!s.hexArmor) return blocked;
+  const bonus = armorBonusOf(piece);
   const facing = facingOf(piece);
   for (let rel = 0; rel < 6; rel++) {
-    if (s[HEX_ARMOR_SIDES[rel]] > -2) continue;
+    if (s[HEX_ARMOR_SIDES[rel]] + bonus > -2) continue;
     blocked.add((((facing + rel) % 6) + 6) % 6 as HexDir);
   }
   return blocked;
@@ -945,7 +1085,7 @@ function hexDamageFaceAmount(piece: Piece, dir: HexDir): number {
   const s = statsOf(piece.type);
   if (!s.hexDamage) return 0;
   const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
-  return Math.max(0, s[HEX_DAMAGE_SIDES[rel]] ?? 0);
+  return withAttackBonus(s[HEX_DAMAGE_SIDES[rel]] ?? 0, piece);
 }
 
 /** Hostile hex-damage covering `hex` (sum of faces). Adjacent only. `from` is the nearest source for armor. */
@@ -1124,49 +1264,68 @@ export function hpLeft(piece: Piece): number {
   return piece.hp ?? hpMax(piece);
 }
 
-export function staminaMax(piece: Piece): number {
-  return statsOf(piece.type).stamina + (hasUnitToken(piece, 'general') ? 1 : 0);
+export function actionPointsMax(piece: Piece): number {
+  return (
+    statsOf(piece.type).actionPoints +
+    (hasUnitToken(piece, 'general') ? 1 : 0) +
+    apBonusOf(piece)
+  );
 }
 
-export function staminaLeft(piece: Piece): number {
-  const max = staminaMax(piece);
+export function actionPointsLeft(piece: Piece): number {
+  const max = actionPointsMax(piece);
   if (max <= 0) return 0;
-  return piece.stamina ?? max;
+  return piece.actionPoints ?? max;
 }
 
-export function canSpendStamina(piece: Piece): boolean {
-  return staminaLeft(piece) > 0 && !piece.staminaUsedThisTurn;
+/** Per-turn spend ceiling: gain+1 when a pool exists; otherwise max(1, gain). */
+export function apSpendCap(piece: Piece): number {
+  const gain = actionPointGainOf(piece);
+  if (actionPointsMax(piece) <= 0) return Math.max(1, gain);
+  return gain + 1;
 }
 
-function spendStaminaPool(piece: Piece): void {
-  const max = staminaMax(piece);
+export function apSpentThisTurnOf(piece: Piece): number {
+  return Math.max(0, piece.apSpentThisTurn ?? 0);
+}
+
+/** How many AP this piece can still spend this turn (pool ∩ spend-cap). */
+export function apSpendable(piece: Piece): number {
+  const capLeft = Math.max(0, apSpendCap(piece) - apSpentThisTurnOf(piece));
+  if (actionPointsMax(piece) <= 0) return capLeft;
+  return Math.min(actionPointsLeft(piece), capLeft);
+}
+
+export function canSpendActionPoints(piece: Piece, n = 1): boolean {
+  return n > 0 && apSpendable(piece) >= n;
+}
+
+/** Pool only — water upkeep. Does not touch the spend cap. */
+function spendActionPointsPool(piece: Piece): void {
+  const max = actionPointsMax(piece);
   if (max <= 0) return;
-  piece.stamina = Math.max(0, staminaLeft(piece) - 1);
-  restartStaminaWait(piece);
+  piece.actionPoints = Math.max(0, actionPointsLeft(piece) - 1);
 }
 
-function spendStamina(piece: Piece): void {
-  spendStaminaPool(piece);
-  piece.staminaUsedThisTurn = true;
+/** Spend against pool (if any) and the turn spend cap. */
+function spendActionPoints(piece: Piece, n = 1): void {
+  if (n <= 0) return;
+  const max = actionPointsMax(piece);
+  for (let i = 0; i < n; i++) {
+    if (max > 0) {
+      piece.actionPoints = Math.max(0, actionPointsLeft(piece) - 1);
+    }
+    piece.apSpentThisTurn = apSpentThisTurnOf(piece) + 1;
+  }
 }
 
-/** Any action while below max restarts the idle countdown. */
 function markActed(piece: Piece): void {
   piece.actedThisTurn = true;
-  if (staminaLeft(piece) < staminaMax(piece)) restartStaminaWait(piece);
 }
 
-/** Moving while below max restarts the idle countdown. */
 function markMoved(piece: Piece): void {
   piece.movedThisTurn = true;
   markActed(piece);
-}
-
-function restartStaminaWait(piece: Piece): void {
-  const regen = statsOf(piece.type).staminaRegen;
-  if (regen > 0 && staminaLeft(piece) < staminaMax(piece)) {
-    piece.staminaRegenWait = regen;
-  }
 }
 
 function hpOf(piece: Piece, hpMap?: Map<string, number>): number {
@@ -1241,9 +1400,10 @@ export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean 
 
 function armorOnDir(piece: Piece, dir: HexDir): number {
   const s = statsOf(piece.type);
-  if (!s.hexArmor) return s.armor;
+  const bonus = armorBonusOf(piece);
+  if (!s.hexArmor) return s.armor + bonus;
   const rel = (((dir - facingOf(piece)) % 6) + 6) % 6;
-  return s[HEX_ARMOR_SIDES[rel]];
+  return s[HEX_ARMOR_SIDES[rel]] + bonus;
 }
 
 function escLog(s: string): string {
@@ -1486,7 +1646,7 @@ export function previewMove(
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
   const stats = statsOf(piece.type);
-  const melee = Math.max(0, stats.meleeDamage);
+  const melee = meleeDamageOf(piece);
   const charging = !!opts?.charging;
   const abilityCharge = chargeDamageOf(piece);
   const charge = charging ? abilityCharge : 0;
@@ -1530,7 +1690,7 @@ export function previewMove(
       const pal = hexToken(state.tokens, h, (t) => isPalisadeToken(t.type));
       if (pal) {
         if (melee <= 0) break;
-        const remaining = Math.max(0, palisadeHp(pal) - 1);
+        const remaining = woodRemaining(palisadeHp(pal), melee);
         palisadeHits.push({ hex: h, remaining, destroyed: remaining <= 0 });
         if (remaining > 0) break;
         stop = h;
@@ -1637,14 +1797,21 @@ function isLegalMovePath(
     }
     if (ok) {
       const via = path[firstRange - 1];
-      if (via && !pathHaltsExtra(state, from, via, path.slice(0, firstRange))) return true;
+      if (via && !pathHaltsExtra(state, piece, from, via, path.slice(0, firstRange))) return true;
     }
   }
   for (let i = 1; i < path.length; i++) {
     const via = path[i - 1];
     const a = first.get(key(via));
     if (!a || !pathsEq(a.path, path.slice(0, i))) continue;
-    if (pieceAt(state, via) || palisadeHpAt(state, via) > 1 || pathHaltsExtra(state, from, via, a.path)) continue;
+    if (
+      pieceAt(state, via) ||
+      (palisadeHpAt(state, via) > 0 &&
+        !breaksPalisadeAt(state, via, meleeDamageOf(piece))) ||
+      pathHaltsExtra(state, piece, from, via, a.path)
+    ) {
+      continue;
+    }
     const b = straightMoveStops(
       state,
       piece,
@@ -1720,7 +1887,7 @@ export function stickyMovePlan(
   for (let i = Math.min(prev.length, activationMoveRange(state, piece)); i >= 1; i--) {
     const via = prev[i - 1];
     const stop = first.get(key(via));
-    if (!stop || pieceAt(state, via) || pathHaltsExtra(state, start, via, stop.path)) continue;
+    if (!stop || pieceAt(state, via) || pathHaltsExtra(state, piece, start, via, stop.path)) continue;
     const tail = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
     if (!tail) continue;
     return { path: [...prev.slice(0, i), ...tail.path], via };
@@ -1948,25 +2115,24 @@ function cloneState(state: GameState): GameState {
     hadKing: { ...emptyHadKing(), ...state.hadKing },
     hadVisible: { ...emptyHadKing(), ...state.hadVisible },
     fxHits: state.fxHits?.map((h) => ({ ...h })),
-    fxStamina: state.fxStamina?.map((h) => ({ ...h })),
+    fxActionPoints: state.fxActionPoints?.map((h) => ({ ...h })),
     fxBoard: state.fxBoard ? { ...state.fxBoard } : undefined,
-    pendingStaminaFx: state.pendingStaminaFx
+    pendingApFx: state.pendingApFx
       ? {
-          red: state.pendingStaminaFx.red ? [...state.pendingStaminaFx.red] : undefined,
-          blue: state.pendingStaminaFx.blue ? [...state.pendingStaminaFx.blue] : undefined,
-          yellow: state.pendingStaminaFx.yellow
-            ? [...state.pendingStaminaFx.yellow]
-            : undefined,
-          purple: state.pendingStaminaFx.purple
-            ? [...state.pendingStaminaFx.purple]
-            : undefined,
+          red: state.pendingApFx.red ? [...state.pendingApFx.red] : undefined,
+          blue: state.pendingApFx.blue ? [...state.pendingApFx.blue] : undefined,
+          yellow: state.pendingApFx.yellow ? [...state.pendingApFx.yellow] : undefined,
+          purple: state.pendingApFx.purple ? [...state.pendingApFx.purple] : undefined,
         }
       : undefined,
   };
 }
 
 export function abilitiesOf(piece: Piece): AbilityId[] {
-  return piece.abilities ?? statsOf(piece.type).abilities ?? [];
+  const base = piece.abilities ?? statsOf(piece.type).abilities ?? [];
+  // All terrain carries Hide on forest / other hide cover.
+  if (!hasAllTerrain(piece) || base.includes('hide')) return base;
+  return [...base, 'hide'];
 }
 
 export function hasAbility(piece: Piece, id: AbilityId): boolean {
@@ -1976,7 +2142,7 @@ export function hasAbility(piece: Piece, id: AbilityId): boolean {
 /** Charge crash damage. Ability gates it; 0 on the stat still hits for 1. */
 export function chargeDamageOf(piece: Piece): number {
   if (!hasAbility(piece, 'charge')) return 0;
-  return Math.max(1, statsOf(piece.type).charge);
+  return Math.max(1, statsOf(piece.type).charge) + attackBonusOf(piece);
 }
 
 /** Melee unit with javelin: shoot is a special, not a default click. */
@@ -2010,7 +2176,7 @@ export function canTrap(state: GameState, pieceId: string): boolean {
   if (isSleeping(piece)) return false;
   if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
-  // Downhill grant is move-only. A leftover / energy second action can trap.
+  // Downhill grant is move-only. A leftover scout AP action can trap.
   if (state.downhillMove && state.scoutPieceId === pieceId) return false;
   if (
     !state.scoutPieceId &&
@@ -2069,8 +2235,12 @@ export function maybeSucceedGeneral(state: GameState, side: Side): Piece | null 
     'general',
   ];
   pick.hp = Math.min(hpMax(pick), hpLeft(pick) + 1);
-  const stam = pick.stamina ?? staminaMax(pick);
-  pick.stamina = Math.min(staminaMax(pick), stam + 1);
+  if (actionPointsMax(pick) > 0) {
+    pick.actionPoints = Math.min(
+      actionPointsMax(pick),
+      actionPointsLeft(pick) + 1,
+    );
+  }
   noteGenerals(state);
   state.log.push(`${unitLog(pick)} inherits command`);
   return pick;
@@ -2216,38 +2386,35 @@ function nextLivingSide(state: GameState, from: Side): Side {
   return from;
 }
 
-/**
- * Every own-turn End advances the countdown. Any action (move, shoot, climb)
- * resets it to `regen` (this End still counts, so remaining is regen-1). Only a
- * fully idle End on land can grant — water never refills, even parked.
- * Otherwise spend/shoot/walk + regen 1 would refill the same turn.
- */
-function tickStamina(state: GameState, side: Side): void {
+/** Clear per-activation busy flags at end of a side's turn. */
+function clearTurnFlags(state: GameState, side: Side): void {
   for (const p of state.pieces) {
     if (p.side !== side) continue;
-    const busy = !!p.actedThisTurn || !!p.movedThisTurn;
     p.actedThisTurn = false;
     p.movedThisTurn = false;
-    p.staminaUsedThisTurn = false;
-    // Asleep units are not active: no idle countdown, no stamina grant.
+  }
+}
+
+/**
+ * Start of a side's turn: reset spend caps and grant `actionPointGain` into the
+ * pool (up to max). Sleeping / water / max≤0 skip the pool grant.
+ */
+function grantActionPoints(state: GameState, side: Side): void {
+  for (const p of state.pieces) {
+    if (p.side !== side) continue;
+    p.apSpentThisTurn = undefined;
     if (isSleeping(p)) continue;
-    const max = staminaMax(p);
-    const regen = statsOf(p.type).staminaRegen;
-    if (max <= 0 || regen <= 0) continue;
-    if (staminaLeft(p) >= max) {
-      p.staminaRegenWait = undefined;
-      continue;
-    }
-    const wait = (p.staminaRegenWait ?? regen) - 1;
-    const wet = inWater(state, { col: p.col, row: p.row });
-    if (!busy && wait <= 0 && !wet) {
-      p.stamina = Math.min(max, staminaLeft(p) + 1);
-      p.staminaRegenWait = staminaLeft(p) < max ? regen : undefined;
-      const q = state.pendingStaminaFx ?? (state.pendingStaminaFx = {});
-      q[side] = [...(q[side] ?? []), p.id];
-    } else {
-      p.staminaRegenWait = Math.max(0, wait);
-    }
+    if (inWater(state, { col: p.col, row: p.row }) && !hasAllTerrain(p)) continue;
+    const max = actionPointsMax(p);
+    if (max <= 0) continue;
+    const gain = actionPointGainOf(p);
+    if (gain <= 0) continue;
+    const before = actionPointsLeft(p);
+    const after = Math.min(max, before + gain);
+    if (after === before) continue;
+    p.actionPoints = after;
+    const q = state.pendingApFx ?? (state.pendingApFx = {});
+    q[side] = [...(q[side] ?? []), p.id];
   }
 }
 
@@ -2269,34 +2436,35 @@ function clearScoutLock(state: GameState): void {
   state.scoutActionsLeft = null;
   state.scoutPieceId = null;
   state.scoutMoveSpent = null;
-  state.staminaBonus = false;
   state.downhillMove = false;
   state.downhillQueued = 0;
 }
 
 const WATER_DROWN_HP = 2;
 
-/** 0 energy and 2 lives or fewer: the next water upkeep kills them. */
+/** 0 AP and 2 lives or fewer: the next water upkeep kills them. */
 export function refusesWaterJump(piece: Piece): boolean {
+  if (hasAllTerrain(piece)) return false;
   if (hpLeft(piece) > WATER_DROWN_HP) return false;
-  if (staminaMax(piece) <= 0) return true;
-  return staminaLeft(piece) <= 0;
+  if (actionPointsMax(piece) <= 0) return true;
+  return actionPointsLeft(piece) <= 0;
 }
 
 function enteringWater(state: GameState, from: Hex, to: Hex): boolean {
   return terrainAt(state, to) === 'water' && terrainAt(state, from) !== 'water';
 }
 
-/** Start of a side's turn: each unit in water spends 1 stamina, or takes 2 HP. */
+/** Start of a side's turn: each unit in water spends 1 AP, or takes 2 HP. */
 export function applyWaterUpkeep(state: GameState, side: Side): void {
   const drowned: Piece[] = [];
   for (const p of state.pieces) {
     if (p.side !== side) continue;
     if (!inWater(state, { col: p.col, row: p.row })) continue;
-    if (staminaMax(p) > 0 && staminaLeft(p) > 0) {
-      spendStaminaPool(p);
-      state.fxStamina = [...(state.fxStamina ?? []), { id: p.id, kind: 'spend' }];
-      state.log.push(`${unitLog(p)} treads water (−1 energy)`);
+    if (hasAllTerrain(p)) continue;
+    if (actionPointsMax(p) > 0 && actionPointsLeft(p) > 0) {
+      spendActionPointsPool(p);
+      state.fxActionPoints = [...(state.fxActionPoints ?? []), { id: p.id, kind: 'spend' }];
+      state.log.push(`${unitLog(p)} treads water (−1 AP)`);
     } else {
       drowned.push(p);
     }
@@ -2335,31 +2503,33 @@ function applyTurnLimit(state: GameState): void {
 }
 
 /** Match start / after the turn flag flips onto `state.turn`. */
-export function beginSideTurn(state: GameState, newRound = false, _kickoff = false): void {
+export function beginSideTurn(state: GameState, newRound = false, kickoff = false): void {
   if (newRound) state.turnNumber += 1;
   applyTurnLimit(state);
   if (state.winner) return;
   maybeSucceedGeneral(state, state.turn);
   if (state.winner) return;
-  const queued = state.pendingStaminaFx?.[state.turn] ?? [];
+  // Kickoff: pieces already spawn full (or exhausted at 0). Do not grant here.
+  if (!kickoff) grantActionPoints(state, state.turn);
+  const queued = state.pendingApFx?.[state.turn] ?? [];
   if (queued.length) {
     const seen = new Set(
-      (state.fxStamina ?? []).filter((x) => x.kind === 'gain').map((x) => x.id),
+      (state.fxActionPoints ?? []).filter((x) => x.kind === 'gain').map((x) => x.id),
     );
     const extra = queued
       .filter((id) => !seen.has(id))
       .map((id) => ({ id, kind: 'gain' as const }));
-    state.fxStamina = [...(state.fxStamina ?? []), ...extra];
-    state.pendingStaminaFx = {
-      ...state.pendingStaminaFx,
+    state.fxActionPoints = [...(state.fxActionPoints ?? []), ...extra];
+    state.pendingApFx = {
+      ...state.pendingApFx,
       [state.turn]: [],
     };
   }
   applyWaterUpkeep(state, state.turn);
-  if (state.fxStamina?.length) {
+  if (state.fxActionPoints?.length) {
     const live = new Set(state.pieces.map((p) => p.id));
-    state.fxStamina = state.fxStamina.filter((x) => live.has(x.id));
-    if (!state.fxStamina.length) state.fxStamina = undefined;
+    state.fxActionPoints = state.fxActionPoints.filter((x) => live.has(x.id));
+    if (!state.fxActionPoints.length) state.fxActionPoints = undefined;
   }
   checkWin(state);
   maybeAutoEnd(state);
@@ -2375,18 +2545,9 @@ export type MarchAnim = {
 
 let queuedMarches: MarchAnim[] = [];
 
-/** UI double time. Each march spends the whole stamina pool for extra move chunks. */
-let marchDoubleTime = false;
-
-export function setMarchDoubleTime(on: boolean): void {
-  marchDoubleTime = on;
-}
-
-/** One log line per stamina point spent on Double time or an armed march extra. */
-function logStaminaAction(state: GameState, piece: Piece, times = 1): void {
-  const line = marchDoubleTime
-    ? `${unitLog(piece)} double time`
-    : `${unitLog(piece)} spends energy`;
+/** One log line per AP spent (climb / charge-extra / march chunk). */
+function logApAction(state: GameState, piece: Piece, times = 1): void {
+  const line = `${unitLog(piece)} spends AP`;
   for (let i = 0; i < times; i++) state.log.push(line);
 }
 
@@ -2398,7 +2559,7 @@ export function takeQueuedMarches(): MarchAnim[] {
 
 /** Hostile unit or palisade/tree the march can fight onto. Hidden units stay hidden. */
 function marchCombatAt(state: GameState, piece: Piece, hex: Hex): boolean {
-  if (statsOf(piece.type).meleeDamage <= 0) return false;
+  if (meleeDamageOf(piece) <= 0) return false;
   if (!inBounds(state, hex) || isWall(state, hex)) return false;
   if (isPalisade(state, hex)) return true;
   const occ = pieceAt(state, hex);
@@ -2408,11 +2569,10 @@ function marchCombatAt(state: GameState, piece: Piece, hex: Hex): boolean {
 }
 
 function marchStepTerrain(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
-  const stats = statsOf(piece.type);
   const t = terrainAt(state, toHex);
-  if (t === 'water' && !stats.passWater) return false;
+  if (t === 'water' && !canPassWater(piece)) return false;
   if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
-  if (terrainHeight(t) > stats.climbLevel) return false;
+  if (terrainHeight(t) > climbLevelOf(piece)) return false;
   if (Math.abs(hexHeight(state, toHex) - hexHeight(state, fromHex)) > 1) return false;
   return true;
 }
@@ -2425,7 +2585,7 @@ function friendlyOccupant(state: GameState, piece: Piece, hex: Hex): Piece | und
   return occ;
 }
 
-/** Tile a standing march can enter. Climbs ignore empty stamina; a lethal water jump does not. */
+/** Tile a standing march can enter. Climbs ignore empty AP; a lethal water jump does not. */
 function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
   if (!inBounds(state, toHex)) return false;
   if (isWall(state, toHex) || isPalisade(state, toHex)) return false;
@@ -2437,7 +2597,7 @@ function marchCanEnter(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex)
 
 /** One melee hit on the destination. True when the hex is taken. */
 function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex): boolean {
-  const melee = Math.max(0, statsOf(piece.type).meleeDamage);
+  const melee = meleeDamageOf(piece);
   if (melee <= 0) return false;
   const occ = pieceAt(state, target);
   if (
@@ -2459,7 +2619,7 @@ function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex
   }
   const pal = hexToken(state.tokens, target, (t) => isPalisadeToken(t.type));
   if (!pal) return false;
-  const remaining = Math.max(0, palisadeHp(pal) - 1);
+  const remaining = woodRemaining(palisadeHp(pal), melee);
   if (remaining <= 0) {
     state.tokens = state.tokens.filter(
       (t) => !(isPalisadeToken(t.type) && t.col === target.col && t.row === target.row),
@@ -2476,7 +2636,7 @@ function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex
 
 /**
  * Shortest walk from the piece to `goal`, facing updated along the route.
- * Red-face steps are illegal. Climbs are included even if stamina is empty —
+ * Red-face steps are illegal. Climbs are included even if AP is empty —
  * execution stops until they can pay.
  */
 function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | null {
@@ -2489,10 +2649,9 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
   const goalOcc = pieceAt(state, goal);
   if (goalOcc && goalOcc.id !== piece.id) return null;
   const tGoal = terrainAt(state, goal);
-  const stats = statsOf(piece.type);
   if (isWall(state, goal) || isPalisade(state, goal)) return null;
-  if (tGoal === 'water' && !stats.passWater) return null;
-  if (terrainHeight(tGoal) > stats.climbLevel) return null;
+  if (tGoal === 'water' && !canPassWater(piece)) return null;
+  if (terrainHeight(tGoal) > climbLevelOf(piece)) return null;
 
   type Node = { hex: Hex; facing: HexDir; prev: Node | null };
   const startNode: Node = { hex: start, facing: facingOf(piece), prev: null };
@@ -2540,19 +2699,13 @@ export function marchRoute(state: GameState, piece: Piece, goal: Hex): Hex[] | n
 
 /**
  * A march order is a destination this action cannot already reach.
- * Normal move range is never an order. Double time also covers the extra move.
+ * Normal move range and spendable-AP extras are never orders.
  */
-export function canOrderMarch(
-  state: GameState,
-  piece: Piece,
-  goal: Hex,
-  doubleTime: boolean,
-): boolean {
+export function canOrderMarch(state: GameState, piece: Piece, goal: Hex): boolean {
   if (!marchRoute(state, piece, goal)) return false;
   for (const h of rangeHighlights(state, piece.id)) {
     if (!eq(h.hex, goal)) continue;
-    if (h.kind === 'move' || h.kind === 'plus') return false;
-    if (h.kind === 'stamina' && (!h.extra || doubleTime)) return false;
+    if (h.kind === 'move' || h.kind === 'plus' || h.kind === 'ap') return false;
   }
   return true;
 }
@@ -2598,14 +2751,11 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   if (!full?.length) return null;
   const first = moveRangeAt(state, piece, here);
   if (first <= 0) return null;
-  // Each extra is a fresh line of `move`. Double time spends the pool; an armed spendMarch buys one.
-  const extraBudget = marchDoubleTime
-    ? piece.staminaUsedThisTurn
-      ? 0
-      : staminaLeft(piece)
-    : piece.spendMarch && canSpendStamina(piece)
-      ? 1
-      : 0;
+  // Each extra is a fresh line of `move` paid from spendable AP (or one armed spendMarch).
+  const extraBudget = Math.max(
+    apSpendable(piece),
+    piece.spendMarch && canSpendActionPoints(piece) ? 1 : 0,
+  );
   let speed = first;
   let extraLeft = extraBudget;
   const bounds = [0, first];
@@ -2720,13 +2870,15 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   }
   piece.spendMarch = undefined;
   let spent = 0;
-  for (let i = 0; i < used && staminaLeft(piece) > 0; i++) {
-    spendStamina(piece);
+  for (let i = 0; i < used && canSpendActionPoints(piece); i++) {
+    spendActionPoints(piece);
     spent += 1;
-    state.fxStamina = [...(state.fxStamina ?? []), { id: piece.id, kind: 'spend' }];
+    state.fxActionPoints = [...(state.fxActionPoints ?? []), { id: piece.id, kind: 'spend' }];
   }
-  if (spent > 0) logStaminaAction(state, piece, spent);
-  if (climbed && canSpendStamina(piece)) spendStamina(piece);
+  if (spent > 0) logApAction(state, piece, spent);
+  if (climbed && !hasAllTerrain(piece) && canSpendActionPoints(piece)) {
+    spendActionPoints(piece);
+  }
   markMoved(piece);
   if (arrived) piece.walkTo = undefined;
   return anim;
@@ -2741,21 +2893,17 @@ export function performMarch(state: GameState, pieceId: string): GameState {
   const next = cloneState(state);
   const piece = getPiece(next, pieceId);
   if (!piece || !marchEligible(next, piece)) return next;
-  const armedExtra = !!piece.spendMarch || marchDoubleTime;
   const anim = applyOneMarch(next, piece);
   if (!anim) return next;
   queuedMarches.push(anim);
   const live = getPiece(next, pieceId);
   if (!live) return next;
-  // Unused Double time / armed spend that this step did not already walk stays a
-  // separate action: another move, or a shot.
+  // Base action AP is paid in afterAction. Extras / climb already spent in applyOneMarch.
+  // Leftover spendable AP (unused double time, drop grants) stay as further actions.
   const enteredWater =
     terrainAt(next, anim.from) !== 'water' && terrainAt(next, anim.stop) === 'water';
   const dropped = downSteps(next, anim.from, anim.path, anim.stop);
-  // A one-level drop leaves another move even when a march extra was not armed.
-  if (dropped > 0 || (armedExtra && !live.staminaUsedThisTurn)) {
-    afterAction(next, live, 'move', enteredWater, dropped);
-  } else finishActivation(next, live);
+  afterAction(next, live, 'move', enteredWater, dropped);
   return next;
 }
 
@@ -2862,7 +3010,7 @@ function endSideTurn(state: GameState): void {
   checkWin(state);
   if (state.winner) return;
   tickShootCooldowns(state, finished);
-  tickStamina(state, finished);
+  clearTurnFlags(state, finished);
   state.actedIds = [];
   const next = nextLivingSide(state, finished);
   const start = state.startingSide ?? 'red';
@@ -2980,12 +3128,11 @@ function downSteps(state: GameState, from: Hex, path: Hex[], stop: Hex): number 
   return n;
 }
 
-/** Pay one owed downhill move. Move only — it does not spend stamina and cannot shoot. */
+/** Pay one owed downhill move. Move only — free, cannot shoot. */
 function payDownhill(state: GameState, piece: Piece): void {
   state.downhillQueued = Math.max(0, (state.downhillQueued ?? 0) - 1);
   state.scoutPieceId = piece.id;
   state.scoutActionsLeft = 1;
-  state.staminaBonus = false;
   state.downhillMove = true;
   state.log.push(`${unitLog(piece)} downhill move`);
   checkWin(state);
@@ -3000,72 +3147,40 @@ function afterAction(
 ): void {
   markActed(piece);
 
+  const downhillFree = state.downhillMove && state.scoutPieceId === piece.id;
+
   // Stepping into water from land ends momentum. Already-wet is a normal activation
-  // — the turn-start swim cost is a pool penalty, not staminaUsedThisTurn.
+  // — the turn-start swim cost is a pool penalty (not against the spend cap).
   if (kind === 'move' && enteredWater) {
+    if (!downhillFree && !hasAllTerrain(piece)) spendActionPoints(piece, 1);
     finishActivation(state, piece);
     return;
   }
 
-  const spendingBonus = state.staminaBonus && state.scoutPieceId === piece.id;
-  if (spendingBonus && !piece.staminaUsedThisTurn) {
-    spendStamina(piece);
-    logStaminaAction(state, piece);
-  }
-
   // Hill→land, plateau→hill, mountain→plateau. Flat ground and climbs do not.
-  // A drop of 2+ cannot be stepped. Own leftover actions resolve before the free move.
-  const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
+  // A drop of 2+ cannot be stepped. The free +1 is part of this same AP —
+  // leftover pool AP waits until after that bonus hex.
   if (kind === 'move' && downCount > 0) {
-    const leftover = spendingBonus || inDownhill ? 0 : leftoverActionPoints(state, piece);
+    if (!downhillFree) spendActionPoints(piece, 1);
     state.downhillQueued = (state.downhillQueued ?? 0) + downCount;
-    if (leftover > 0) {
-      state.downhillMove = false;
-      state.scoutPieceId = piece.id;
-      state.scoutActionsLeft = leftover;
-      state.staminaBonus = false;
-      checkWin(state);
-      return;
-    }
     payDownhill(state, piece);
     return;
   }
 
-  if ((state.downhillQueued ?? 0) > 0 && state.scoutPieceId === piece.id && !spendingBonus) {
-    const leftover = leftoverActionPoints(state, piece);
-    if (leftover > 0) {
-      state.downhillMove = false;
-      state.scoutActionsLeft = leftover;
-      state.staminaBonus = false;
-      checkWin(state);
-      return;
-    }
+  if ((state.downhillQueued ?? 0) > 0 && state.scoutPieceId === piece.id) {
+    if (!downhillFree) spendActionPoints(piece, 1);
     payDownhill(state, piece);
     return;
   }
 
   if (state.downhillMove) state.downhillMove = false;
 
-  if (spendingBonus) {
-    finishActivation(state, piece);
-    return;
-  }
+  if (!downhillFree) spendActionPoints(piece, 1);
 
-  const leftover = leftoverActionPoints(state, piece);
+  const leftover = apSpendable(piece);
   if (leftover > 0) {
     state.scoutPieceId = piece.id;
     state.scoutActionsLeft = leftover;
-    state.staminaBonus = false;
-    checkWin(state);
-    return;
-  }
-
-  // Unused stamina after the action points are spent buys one extra action.
-  // A shot spends those points the same way a move does.
-  if (!piece.staminaUsedThisTurn && canSpendStamina(piece)) {
-    state.scoutPieceId = piece.id;
-    state.scoutActionsLeft = 1;
-    state.staminaBonus = true;
     checkWin(state);
     return;
   }
@@ -3106,6 +3221,8 @@ function movePathOpts(
 ): Omit<PathOpts, 'maxDist'> {
   const stats = statsOf(piece.type);
   const charge = charging ? chargeDamageOf(piece) : 0;
+  const melee = meleeDamageOf(piece);
+  const climb = climbLevelOf(piece);
   return {
     cols: state.cols,
     rows: state.rows,
@@ -3114,30 +3231,30 @@ function movePathOpts(
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isWall(state, h)) return false;
-      if (t === 'water' && !stats.passWater) return false;
-      if (terrainHeight(t) > stats.climbLevel) return false;
+      if (t === 'water' && !canPassWater(piece)) return false;
+      if (terrainHeight(t) > climb) return false;
       const occ = occupantAt(state, piece, from, h);
       if (isPalisade(state, h)) {
         if (occ) {
-          return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
+          return isHostile(state, occ.side, piece.side) && melee > 0;
         }
-        return stats.meleeDamage > 0;
+        return melee > 0;
       }
       if (!occ) return true;
       if (canConvert(piece, occ)) return true;
       // Occupied dest is melee — 0 melee dmg cannot bump an enemy hex.
-      return isHostile(state, occ.side, piece.side) && stats.meleeDamage > 0;
+      return isHostile(state, occ.side, piece.side) && melee > 0;
     },
     canPass: (h: Hex) => {
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isWall(state, h)) return false;
       if (isPalisade(state, h)) {
-        return stats.meleeDamage > 0 && palisadeHpAt(state, h) <= 1;
+        return melee > 0 && breaksPalisadeAt(state, h, melee);
       }
       if (isForest(state, h) && charge > 0) return false;
       if (t === 'water') return false;
-      if (terrainHeight(t) > stats.climbLevel) return false;
+      if (terrainHeight(t) > climb) return false;
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
       if (!occ) return true;
@@ -3151,7 +3268,7 @@ function movePathOpts(
   };
 }
 
-/** Height only changes by 1 per step. Climbing needs stamina. */
+/** Height only changes by 1 per step. Climbing needs 2 spendable AP (action + surcharge). */
 function canWalkStep(
   state: GameState,
   piece: Piece,
@@ -3159,17 +3276,19 @@ function canWalkStep(
   fromHex: Hex,
   toHex: Hex,
 ): boolean {
-  const stats = statsOf(piece.type);
   const t = terrainAt(state, toHex);
   if (isWall(state, toHex)) return false;
-  if (isPalisade(state, toHex)) return stats.meleeDamage > 0;
-  if (t === 'water' && !stats.passWater) return false;
+  if (isPalisade(state, toHex)) return meleeDamageOf(piece) > 0;
+  if (t === 'water' && !canPassWater(piece)) return false;
   if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
   const fh = hexHeight(state, fromHex);
   const th = hexHeight(state, toHex);
-  if (th > stats.climbLevel) return false;
+  if (th > climbLevelOf(piece)) return false;
   if (Math.abs(th - fh) > 1) return false;
-  if (th > hexHeight(state, origin) && !canSpendStamina(piece)) return false;
+  if (th > hexHeight(state, origin) && !hasAllTerrain(piece)) {
+    if (actionPointsMax(piece) <= 0) return false;
+    if (!canSpendActionPoints(piece, 2)) return false;
+  }
   return true;
 }
 
@@ -3185,38 +3304,44 @@ function pathEntersWater(state: GameState, from: Hex, dest: Hex, path: Hex[]): b
   return path.some((p) => terrainAt(state, p) === 'water');
 }
 
-function pathSpendsStamina(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
+function pathSpendsAp(
+  state: GameState,
+  piece: Piece,
+  from: Hex,
+  dest: Hex,
+  path: Hex[],
+): boolean {
+  if (hasAllTerrain(piece)) return false;
   return pathClimbs(state, from, dest, path);
 }
 
-/** Climb or entering water: no extra stamina action / two-action chain through that hex. */
-function pathHaltsExtra(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
-  return pathSpendsStamina(state, from, dest, path) || pathEntersWater(state, from, dest, path);
-}
-
-/** Action points still available this activation, including the one about to be spent. */
-function remainingActionPoints(state: GameState, piece: Piece): number {
-  const stats = statsOf(piece.type);
-  if (state.staminaBonus && state.scoutPieceId === piece.id) return 0;
-  if (state.scoutPieceId === piece.id) return Math.max(1, state.scoutActionsLeft ?? 1);
-  return Math.max(1, stats.actions);
-}
-
-/** Action points left after the action about to resolve. */
-function leftoverActionPoints(state: GameState, piece: Piece): number {
-  return Math.max(0, remainingActionPoints(state, piece) - 1);
-}
-
-function extraMoveAction(state: GameState, piece: Piece): boolean {
+/** Climb or entering water: no extra AP action / two-action chain through that hex. */
+function pathHaltsExtra(
+  state: GameState,
+  piece: Piece,
+  from: Hex,
+  dest: Hex,
+  path: Hex[],
+): boolean {
   return (
-    canSpendStamina(piece) &&
-    !state.staminaBonus &&
-    remainingActionPoints(state, piece) <= 1
+    pathSpendsAp(state, piece, from, dest, path) ||
+    pathEntersWater(state, from, dest, path)
   );
 }
 
-/** True if this piece can still spend stamina for an extra action this activation. */
-export function canBuyStaminaExtra(state: GameState, pieceId: string): boolean {
+/** AP still available this activation (scout lock tracks leftover after the last spend). */
+function remainingActionPoints(state: GameState, piece: Piece): number {
+  if (state.scoutPieceId === piece.id) return Math.max(0, state.scoutActionsLeft ?? 0);
+  return apSpendable(piece);
+}
+
+/** True when this click can chain a second move chunk (needs ≥2 spendable AP). */
+function extraMoveAction(state: GameState, piece: Piece): boolean {
+  return remainingActionPoints(state, piece) >= 2;
+}
+
+/** True if this piece can still spend ≥1 AP this activation. */
+export function canBuyApExtra(state: GameState, pieceId: string): boolean {
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn || state.winner) return false;
   if (hasActed(state, pieceId)) return false;
@@ -3227,9 +3352,8 @@ export function canBuyStaminaExtra(state: GameState, pieceId: string): boolean {
   ) {
     return false;
   }
-  if (!canSpendStamina(piece)) return false;
-  if (state.staminaBonus && state.scoutPieceId === piece.id) return true;
-  return extraMoveAction(state, piece);
+  if (state.downhillMove && state.scoutPieceId === piece.id) return false;
+  return canSpendActionPoints(piece, 1);
 }
 
 type StraightStop = { dist: number; path: Hex[]; via: Hex | null; firstDist: number };
@@ -3267,7 +3391,7 @@ function straightMoveStops(
 }
 
 /**
- * Same-direction stamina run: firstRange + extra `move` as one ray.
+ * Same-direction AP run: firstRange + extra `move` as one ray.
  * Via need not be a stop — pass through units if you don't turn.
  */
 function straightExtraStops(
@@ -3301,7 +3425,7 @@ function straightExtraStops(
       path.push(next);
       if (dist === firstRange) {
         via = next;
-        firstClimb = pathHaltsExtra(state, start, via, path.slice());
+        firstClimb = pathHaltsExtra(state, piece, start, via, path.slice());
       }
       if (stop && dist > firstRange && via && !firstClimb && !first.has(key(next))) {
         if (dist <= firstRange + extraMoveRange(state, piece, via, firstRange)) {
@@ -3339,8 +3463,10 @@ function twoActionStops(
     const via = a.path[a.path.length - 1];
     if (!via) continue;
     if (pieceAt(state, via)) continue;
-    if (palisadeHpAt(state, via) > 1) continue;
-    if (pathHaltsExtra(state, start, via, a.path)) continue;
+    if (palisadeHpAt(state, via) > 0 && !breaksPalisadeAt(state, via, meleeDamageOf(piece))) {
+      continue;
+    }
+    if (pathHaltsExtra(state, piece, start, via, a.path)) continue;
     const second = straightMoveStops(
       state,
       piece,
@@ -3385,8 +3511,6 @@ function plusBonusStops(state: GameState, piece: Piece, first: Map<string, Strai
   const from: Hex = { col: piece.col, row: piece.row };
   const fromKey = key(from);
   const out = new Map<string, PlusReach>();
-  // Own actions resolve before the free hex. Don't mark it until this move would pay it.
-  if (leftoverActionPoints(state, piece) > 0) return out;
   for (const [k, stop] of first) {
     if (stop.via) continue;
     const landing = parseKey(k);
@@ -3398,7 +3522,7 @@ function plusBonusStops(state: GameState, piece: Piece, first: Map<string, Strai
       const held = first.get(bk);
       if (held && !held.via) continue;
       const hex = parseKey(bk);
-      if (pathSpendsStamina(state, landing, hex, b.path)) continue;
+      if (pathSpendsAp(state, piece, landing, hex, b.path)) continue;
       const prev = out.get(bk);
       if (prev && stop.dist >= prev.landingPath.length) continue;
       out.set(bk, { landing, landingPath: stop.path, bonusPath: b.path });
@@ -3468,13 +3592,12 @@ export type PlusStep = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
 
 /**
  * Downhill landing that reaches `goal` on the free extra move.
- * The landing is a normal stop — the second step does not spend energy.
+ * The landing is a normal stop — the second step does not spend AP.
  */
 export function plusStepPlan(state: GameState, pieceId: string, goal: Hex): PlusStep | null {
   const piece = getPiece(state, pieceId);
   if (!piece || isSleeping(piece)) return null;
   if (state.downhillMove && state.scoutPieceId === piece.id) return null;
-  if (leftoverActionPoints(state, piece) > 0) return null;
   const from: Hex = { col: piece.col, row: piece.row };
   if (eq(from, goal)) return null;
   const reach = allMoveStops(state, piece);
@@ -3487,7 +3610,7 @@ export function plusStepPlan(state: GameState, pieceId: string, goal: Hex): Plus
     const bonus = straightMoveStops(state, piece, landing, 1);
     const next = bonus.get(key(goal));
     if (!next) continue;
-    if (pathSpendsStamina(state, landing, goal, next.path)) continue;
+    if (pathSpendsAp(state, piece, landing, goal, next.path)) continue;
     const cand = {
       landing,
       landingPath: stop.path,
@@ -3520,7 +3643,6 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
 
   const fromTerrain = terrainAt(state, from);
   const reach = allMoveStops(state, piece);
-  const stamAction = state.staminaBonus && state.scoutPieceId === piece.id;
 
   const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
   const plusReach = inDownhill ? new Map<string, PlusReach>() : plusBonusStops(state, piece, reach);
@@ -3530,7 +3652,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   if (inDownhill) {
     const beside = new Set(hexNeighbors(state, from).map((h) => key(h)));
     for (const [fk, stop] of plain) {
-      if (pathSpendsStamina(state, from, parseKey(fk), stop.path)) continue;
+      if (pathSpendsAp(state, piece, from, parseKey(fk), stop.path)) continue;
       const further = straightMoveStops(state, piece, parseKey(fk), 1);
       for (const dk of further.keys()) {
         if (dk === key(from) || plain.has(dk) || beside.has(dk)) continue;
@@ -3541,8 +3663,8 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   for (const [k, { dist, path, via }] of reach) {
     if (plusReach.has(k)) continue;
     const h = parseKey(k);
-    const climbs = pathSpendsStamina(state, from, h, path);
-    const extra = !!(via || stamAction);
+    const climbs = pathSpendsAp(state, piece, from, h, path);
+    const extra = !!via;
     const throughFree = path.some((step) => plusReach.has(key(step)));
     // Full extra moves that run through the free hex stop at the one-hex frontier.
     if (throughFree && !frontier.has(k)) continue;
@@ -3552,7 +3674,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       out.push({ kind: 'move', hex: h, cost: dist, plus: true });
     } else if (climbs || extra) {
       out.push({
-        kind: 'stamina',
+        kind: 'ap',
         hex: h,
         cost: dist,
         extra,
@@ -3566,45 +3688,50 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     for (const pk of plusReach.keys()) out.push({ kind: 'plus', hex: parseKey(pk), cost: 0 });
   }
 
-  if (chargeDamageOf(piece) > 0 && !stamAction) {
-    const canPay = canSpendStamina(piece);
-    // Still survey the extra reach when the pool is empty, so those tiles can show the crossed bolt.
+  if (chargeDamageOf(piece) > 0) {
+    const canPay = canSpendActionPoints(piece, 1);
+    // Survey extra reach when spendable AP is empty so those tiles can show the crossed bolt.
     const survey =
-      canPay || staminaMax(piece) <= 0
+      canPay || actionPointsMax(piece) <= 0
         ? piece
-        : { ...piece, stamina: Math.max(1, staminaLeft(piece)), staminaUsedThisTurn: false };
+        : {
+            ...piece,
+            actionPoints: Math.max(1, actionPointsLeft(piece) || actionPointsMax(piece)),
+            apSpentThisTurn: 0,
+          };
     const charged = allMoveStops(state, survey, true);
     for (const [k, { dist, path, via }] of charged) {
       if (!pathChargesThrough(state, piece, path)) continue;
       const h = parseKey(k);
-      // A crash inside the normal move is just that move. Energy is only the extra reach (or a climb).
-      const needsEnergy = !!via || pathSpendsStamina(state, from, h, path);
-      if (needsEnergy && !canPay) {
+      // A crash inside the normal move is just that move. AP is only the extra reach (or a climb).
+      const needsAp = !!via || pathSpendsAp(state, piece, from, h, path);
+      if (needsAp && !canPay) {
         out.push({ kind: 'charge', hex: h, cost: dist, extra: true, unpaid: true });
         continue;
       }
-      out.push({ kind: 'charge', hex: h, cost: dist, extra: needsEnergy || undefined });
+      out.push({ kind: 'charge', hex: h, cost: dist, extra: needsAp || undefined });
     }
   }
 
-  if (staminaMax(piece) > 0 && staminaLeft(piece) <= 0) {
+  // Display-only: climbs / extras that need more AP than is currently spendable.
+  if (actionPointsMax(piece) > 0 && !canSpendActionPoints(piece, 2)) {
     const fresh: Piece = {
       ...piece,
-      stamina: Math.max(1, staminaMax(piece)),
-      staminaUsedThisTurn: false,
+      actionPoints: actionPointsMax(piece),
+      apSpentThisTurn: 0,
     };
     for (const [k, { dist, via }] of allMoveStops(state, fresh)) {
       if (reach.has(k)) continue;
-      out.push({ kind: 'rest', hex: parseKey(k), cost: dist, extra: !!via });
+      out.push({ kind: 'apEmpty', hex: parseKey(k), cost: dist, extra: !!via });
     }
   } else if (refusesWaterJump(piece)) {
-    // No stamina pool to fake. Extra HP is enough to open the water step.
+    // No AP pool to fake. Extra HP is enough to open the water step.
     const spared: Piece = { ...piece, hp: WATER_DROWN_HP + 1 };
     for (const [k, { dist, via }] of allMoveStops(state, spared)) {
       if (reach.has(k)) continue;
       const h = parseKey(k);
       if (terrainAt(state, h) !== 'water') continue;
-      out.push({ kind: 'rest', hex: h, cost: dist, extra: !!via });
+      out.push({ kind: 'apEmpty', hex: h, cost: dist, extra: !!via });
     }
   }
 
@@ -3620,7 +3747,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     return out; // move highlights only while reloading / empty / in water / no gun / downhill
   }
 
-  const shootRange = stats.shoot + terrainHeight(fromTerrain);
+  const shootRange = shootRangeOf(piece) + terrainHeight(fromTerrain);
   const shootMin = stats.shootMin;
   const splash = hasSplash(stats);
 
@@ -3684,15 +3811,14 @@ export function legalHighlights(state: GameState, pieceId: string): Highlight[] 
 
 /**
  * Spend one action to face `dir`. Legal whenever the piece can still act
- * (including a leftover scout / stamina-bonus action). Unused stamina still
- * buys the extra move. Not idle — no regen.
+ * (including a leftover scout action).
  */
 export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): GameState {
   if (state.winner) return state;
   if (!isHexDir(dir)) return state;
   const next = cloneState(state);
   next.fxHits = [];
-  next.fxStamina = [];
+  next.fxActionPoints = [];
   next.fxBoard = undefined;
   const piece = getPiece(next, pieceId);
   if (!piece || piece.side !== next.turn) return state;
@@ -3709,33 +3835,12 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   return resolveNoMoves(next);
 }
 
-/**
- * Park this piece: checkmark, spends a units/turn slot, still idle for regen.
- * Illegal after a walk (Rest is for units that haven't moved).
- */
-export function restPiece(state: GameState, pieceId: string): GameState {
-  if (state.winner) return state;
-  const next = cloneState(state);
-  next.fxHits = [];
-  next.fxStamina = [];
-  next.fxBoard = undefined;
-  const piece = getPiece(next, pieceId);
-  if (!piece || piece.side !== next.turn) return state;
-  if (isSleeping(piece)) return state;
-  if (piece.movedThisTurn) return state;
-  if (hasActed(next, piece.id)) return state;
-  if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
-  next.log.push(`${unitLog(piece)} rests`);
-  finishActivation(next, piece);
-  return resolveNoMoves(next);
-}
-
 /** End the current side-turn (skip leftover units / scout lock). */
 export function passTurn(state: GameState, keepFx = false): GameState {
   const next = cloneState(state);
   if (!keepFx) {
     next.fxHits = [];
-    next.fxStamina = [];
+    next.fxActionPoints = [];
     next.fxBoard = undefined;
   }
   if (next.winner) return next;
@@ -3770,11 +3875,10 @@ export function applyAction(state: GameState, action: Action): GameState {
 
 function applyActionInner(state: GameState, action: Action): GameState {
   if (action.kind === 'rotate') return rotatePiece(state, action.pieceId, action.dir);
-  if (action.kind === 'rest') return restPiece(state, action.pieceId);
 
   const next = cloneState(state);
   next.fxHits = [];
-  next.fxStamina = [];
+  next.fxActionPoints = [];
   next.fxBoard = undefined;
   if (next.winner) return next;
 
@@ -3782,9 +3886,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (next.scoutPieceId) {
       const scout = getPiece(next, next.scoutPieceId);
       next.log.push(
-        `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips ${
-          next.staminaBonus ? 'second action' : 'remaining action'
-        }`,
+        `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips remaining action`,
       );
       if (scout) finishActivation(next, scout);
       else {
@@ -3824,14 +3926,22 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const hit = charging
       ? highlights.find((h) => h.kind === 'charge' && eq(h.hex, action.to))
       : highlights.find(
-          (h) => (h.kind === 'move' || h.kind === 'stamina') && eq(h.hex, action.to),
+          (h) => (h.kind === 'move' || h.kind === 'ap') && eq(h.hex, action.to),
         );
     if (!hit) return state;
     if (charging) {
       if (hit.kind !== 'charge' || hit.unpaid) return state;
-      if (hit.extra && !canSpendStamina(piece)) return state;
-    } else if (hit.kind !== 'move' && hit.kind !== 'stamina') {
+      // extra = climb surcharge and/or second chunk → base action +1.
+      if (hit.extra && !canSpendActionPoints(piece, 2)) return state;
+    } else if (hit.kind === 'ap') {
+      if (!canSpendActionPoints(piece, 2)) return state;
+    } else if (hit.kind !== 'move') {
       return state;
+    } else {
+      // Free downhill +1 is already paid by the drop that granted it.
+      const freeDownhill =
+        !!hit.plus && next.downhillMove && next.scoutPieceId === piece.id;
+      if (!freeDownhill && !canSpendActionPoints(piece, 1)) return state;
     }
 
     reveal(piece);
@@ -3873,7 +3983,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
 
     const bounced = !eq(plan.stop, action.to);
-    const staminaTag = hit.kind === 'stamina' && !hit.extra ? ' (energy)' : '';
+    const apTag = hit.kind === 'ap' && !hit.extra ? ' (AP)' : '';
     const brokePal =
       plan.palisadeHits.some((p) => p.destroyed) && plan.hits.length === 0;
     const converted = plan.converts.length > 0 && plan.hits.length === 0;
@@ -3897,16 +4007,16 @@ function applyActionInner(state: GameState, action: Action): GameState {
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
             : ` → ${action.to.col},${action.to.row}`) +
-          staminaTag +
+          apTag +
           dmgLines.join(''),
       );
     } else if (bounced) {
       next.log.push(
-        `${unitLog(piece)} stops short of ${action.to.col},${action.to.row}${staminaTag}`,
+        `${unitLog(piece)} stops short of ${action.to.col},${action.to.row}${apTag}`,
       );
     } else {
       next.log.push(
-        `${unitLog(piece)} moves to ${action.to.col},${action.to.row}${staminaTag}`,
+        `${unitLog(piece)} moves to ${action.to.col},${action.to.row}${apTag}`,
       );
     }
 
@@ -3929,12 +4039,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
     piece.facing = plan.facing;
     if (getPiece(next, piece.id)) applyHexDamagePush(next, piece, prevCovered);
+    // Climb / charge-extra surcharge (+1). afterAction spends the base action AP.
     if (hit.kind === 'charge' && hit.extra) {
-      spendStamina(piece);
-      logStaminaAction(next, piece);
-    } else if (hit.kind === 'stamina') {
-      spendStamina(piece);
-      if (hit.extra) logStaminaAction(next, piece);
+      spendActionPoints(piece);
+      logApAction(next, piece);
+    } else if (hit.kind === 'ap') {
+      spendActionPoints(piece);
+      if (hit.extra) logApAction(next, piece);
     }
     markMoved(piece);
     if (statsOf(piece.type).moveBudget > 0) {
@@ -3947,9 +4058,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const tailDrop =
       last && hexHeight(next, beforeLast) - hexHeight(next, last) === 1 ? 1 : 0;
     // The opening drop already paid for the free hex inside this walk.
-    // A later drop, including the energy step, still grants downhill.
+    // A later drop, including the AP extra step, still grants downhill.
     const dropped =
-      hit.kind === 'stamina' && hit.beyondPlus
+      hit.kind === 'ap' && hit.beyondPlus
         ? tailDrop
         : downSteps(next, fromHex, walkPath, plan.stop);
     afterAction(next, piece, 'move', enteredWater, dropped);
@@ -3977,7 +4088,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const dmgLines: string[] = [];
     for (const h of blast) {
       if (isForest(next, h)) {
-        const chip = chipForestAt(next, h);
+        const chip = chipForestAt(next, h, splashDamageOf(piece));
         if (chip) {
           hitBits.push(
             chip.remaining > 0 ? `forest (${chip.remaining} left)` : 'forest',
@@ -3987,11 +4098,12 @@ function applyActionInner(state: GameState, action: Action): GameState {
       }
       const t = pieceAt(next, h);
       // Splash hits everyone in the blast — friendlies included
-      if (t && stats.splashDamage > 0) {
+      const splash = splashDamageOf(piece);
+      if (t && splash > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
-        const dmg = applyDamage(next, t, stats.splashDamage, 0, origin, true);
+        const dmg = applyDamage(next, t, splash, 0, origin, true);
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
-        dmgLines.push(dmgLine(next, t, stats.splashDamage, 0, origin, true));
+        dmgLines.push(dmgLine(next, t, splash, 0, origin, true));
       }
       // Concrete walls and palisades crumble under rockets; the tile underneath stays
       if (isBlockedWalk(next, h)) {
@@ -4025,7 +4137,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (!t || sameTeam(next, t.side, piece.side)) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
     if (isForest(next, action.at)) {
-      const chip = chipForestAt(next, action.at);
+      const chip = chipForestAt(next, action.at, shootDamageOf(piece));
       const cover =
         chip && chip.remaining > 0
           ? `forest (${chip.remaining} left)`
@@ -4039,13 +4151,14 @@ function applyActionInner(state: GameState, action: Action): GameState {
       afterAction(next, piece, 'shoot');
       return next;
     }
-    const dmg = applyDamage(next, t, stats.shootDamage, 0, fromHex, true);
+    const shot = shootDamageOf(piece);
+    const dmg = applyDamage(next, t, shot, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
         (dmg.routed ? ' — routed' : dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
         ammoLog(piece, stats) +
-        dmgLine(next, t, stats.shootDamage, 0, fromHex, true),
+        dmgLine(next, t, shot, 0, fromHex, true),
     );
   }
 
@@ -4065,7 +4178,7 @@ export function allLegalActions(state: GameState): Action[] {
   for (const p of pieces) {
     if (isSleeping(p)) continue;
     for (const h of legalHighlights(state, p.id)) {
-      if (h.kind === 'move' || h.kind === 'stamina') {
+      if (h.kind === 'move' || h.kind === 'ap') {
         actions.push({
           kind: 'move',
           pieceId: p.id,
@@ -4076,7 +4189,7 @@ export function allLegalActions(state: GameState): Action[] {
       } else if (h.kind === 'shoot') {
         actions.push({ kind: 'shoot', pieceId: p.id, at: h.hex });
       }
-      // shoot-range / rest are display-only
+      // shoot-range / apEmpty are display-only
     }
     if (canTrap(state, p.id)) {
       for (const to of trapSpots(state, p)) {
@@ -4089,10 +4202,6 @@ export function allLegalActions(state: GameState): Action[] {
         if (d === cur) continue;
         actions.push({ kind: 'rotate', pieceId: p.id, dir: d as HexDir });
       }
-    }
-    // Park for idle regen. Scout lock / already walked → no Rest (same as the dock).
-    if (!state.scoutPieceId && !p.movedThisTurn) {
-      actions.push({ kind: 'rest', pieceId: p.id });
     }
   }
   if (state.scoutPieceId && state.scoutActionsLeft) {

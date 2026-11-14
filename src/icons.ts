@@ -1,12 +1,15 @@
 import {
   ammoLeft,
+  isPromotionToken,
   isReloading,
   PALISADE_HP,
+  PROMOTION_TOKEN_COLOR,
   roleOf,
   statsOf,
   type AbilityId,
   type Piece,
   type Affiliation,
+  type PromotionTokenType,
   type Side,
   type TokenType,
   type UnitRole,
@@ -212,10 +215,12 @@ const ICONS: Record<UnitRole, string> = {
     <circle cx="0" cy="3.1" r="1.3"/>
     <circle cx="3.5" cy="3.1" r="1.3"/>
   `,
-  // Star + peaked silhouette
+  // Peaked officer — star lives on the general token above the piece
   general: `
-    <path d="M0 -7 L1.5 -3.2 H5.5 L2.2 -0.8 L3.5 3.2 L0 1.2 L-3.5 3.2 L-2.2 -0.8 L-5.5 -3.2 H-1.5 Z"/>
-    <path d="M-3.8 4.2 H3.8 L2.8 7 H-2.8 Z"/>
+    <path d="M-4.6 -5.2 L0 -7.4 L4.6 -5.2 L3.8 -3.6 H-3.8 Z"/>
+    <circle cx="0" cy="-2.2" r="2.4"/>
+    <path d="M-4.4 -0.2 Q0 -2.4 4.4 -0.2 L3.4 2.2 H-3.4 Z"/>
+    <path d="M-3.6 2.4 H3.6 L2.6 7 H-2.6 Z"/>
   `,
   // Keep — shaft, merlons, slit
   tower: `
@@ -588,21 +593,21 @@ export function hpBadgeSvg(n: number, cx: number, cy: number, r = 7): string {
 export const HP_HEART =
   'M0 4.7 C0 4.7 -5.2 1.15 -5.2 -1.55 C-5.2 -3.55 -3.55 -4.85 -1.9 -4.85 C-0.95 -4.85 -0.25 -4.3 0 -3.35 C0.25 -4.3 0.95 -4.85 1.9 -4.85 C3.55 -4.85 5.2 -3.55 5.2 -1.55 C5.2 1.15 0 4.7 0 4.7 Z';
 
-/** Lightning bolt, viewBox roughly -5..5 × -7..7. */
-export const STAMINA_BOLT =
-  'M1.5 -5.6 L-2.7 0.15 H0.55 L-2.3 5.6 L2.9 -0.15 H-0.45 Z';
+/** Lightning bolt, viewBox roughly -6..6 × -7..7 — chunkier than a needle. */
+export const AP_BOLT =
+  'M2.0 -5.6 L-3.5 0.15 H0.85 L-3.0 5.6 L3.7 -0.15 H-0.65 Z';
 
-/** Gold stamina bolt on a hex that will spend stamina if you move there. */
-export function staminaHexMarkSvg(cx: number, cy: number, r = 8): string {
+/** Gold AP bolt on a hex that will spend action points if you move there. */
+export function apHexMarkSvg(cx: number, cy: number, r = 8): string {
   const s = (r * 1.15) / 5.6;
   return `
-    <g class="stamina-hex-mark" transform="translate(${cx}, ${cy})">
-      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#f0d060"/>
+    <g class="ap-hex-mark" transform="translate(${cx}, ${cy})">
+      <path d="${AP_BOLT}" transform="scale(${s.toFixed(3)})" fill="#f0d060"/>
     </g>`;
 }
 
-/** Empty stamina — bolt pip, top-left, with a red prohibition ring + slash. */
-export function staminaEmptyMarkSvg(
+/** Empty AP — bolt pip with a red prohibition ring + slash. */
+export function apEmptyMarkSvg(
   cx: number,
   cy: number,
   r = 7,
@@ -616,9 +621,9 @@ export function staminaEmptyMarkSvg(
   const stroke = ghost ? 'rgba(255,255,255,0.55)' : '#e04030';
   const bolt = ghost ? 'rgba(255,255,255,0.7)' : '#e8b840';
   return `
-    <g class="stamina-empty-mark${ghost ? ' ghost' : ''}" transform="translate(${cx}, ${cy})">
+    <g class="ap-empty-mark${ghost ? ' ghost' : ''}" transform="translate(${cx}, ${cy})">
       <circle cx="0" cy="0" r="${r.toFixed(2)}" fill="${fill}" stroke="${stroke}" stroke-width="${ring.toFixed(2)}"/>
-      <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="${bolt}"/>
+      <path d="${AP_BOLT}" transform="scale(${s.toFixed(3)})" fill="${bolt}"/>
       <path d="M ${(-inset).toFixed(2)} ${inset.toFixed(2)} L ${inset.toFixed(2)} ${(-inset).toFixed(2)}"
         fill="none" stroke="${stroke}" stroke-width="${slash.toFixed(2)}" stroke-linecap="round"/>
     </g>`;
@@ -652,15 +657,15 @@ export function actionGlyphSvg(
 function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string } {
   if (kind === 'energy') {
     return {
-      viewBox: '-5 -7 10 14',
-      inner: `<path fill="currentColor" d="${STAMINA_BOLT}"/>`,
+      viewBox: '-6 -7 12 14',
+      inner: `<path fill="currentColor" d="${AP_BOLT}"/>`,
     };
   }
   if (kind === 'double') {
     return {
-      viewBox: '-12 -7 24 14',
-      inner: `<path fill="currentColor" d="${STAMINA_BOLT}" transform="translate(-4.4 0) scale(0.92)"/>
-       <path fill="currentColor" d="${STAMINA_BOLT}" transform="translate(4.4 0) scale(0.92)"/>`,
+      viewBox: '-13 -7 26 14',
+      inner: `<path fill="currentColor" d="${AP_BOLT}" transform="translate(-4.8 0) scale(0.92)"/>
+       <path fill="currentColor" d="${AP_BOLT}" transform="translate(4.8 0) scale(0.92)"/>`,
     };
   }
   if (kind === 'rest') {
@@ -710,9 +715,9 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
   };
 }
 
-/** Inline stamina bolt for copy / glyph catalog. */
+/** Inline AP bolt for copy / glyph catalog. Glyph id `energy` still draws this. */
 export function hudEnergyIconSvg(em = '1.2em'): string {
-  return `<svg class="copy-icon hud energy" viewBox="-5 -7 10 14" width="${em}" height="${em}" role="img" aria-label="Energy"><path fill="#f0d060" d="${STAMINA_BOLT}"/></svg>`;
+  return `<svg class="copy-icon hud energy" viewBox="-6 -7 12 14" width="${em}" height="${em}" role="img" aria-label="AP"><path fill="#f0d060" d="${AP_BOLT}"/></svg>`;
 }
 
 /** Inline HP heart / units pip for copy / glyph catalog. */
@@ -728,15 +733,46 @@ export function hudArrowIconSvg(em = '1.2em'): string {
   return `<svg class="copy-icon hud arrow" viewBox="-4 -7 8 14" width="${em}" height="${em}" role="img" aria-label="Arrow"><path fill="#f0d060" d="${SHOT_ARROW}"/></svg>`;
 }
 
-/** Remaining/max stamina as gold / grey lightning pips. */
-export function staminaPipsHtml(left: number, max: number): string {
+/**
+ * AP pips: spend window | storage.
+ * Window L→R: keep yellow → preview red (about to spend) → spent grey.
+ * Storage: banked green, then empty grey.
+ * Ex: EE|EEE → hover1 ER|EEE → hover2 RR|EEE → after GG|EEE → next +1 EE|EEG.
+ */
+export function actionPointsPipsHtml(opts: {
+  max: number;
+  left: number;
+  spendCap: number;
+  spentThisTurn: number;
+  /** How many of the remaining spendable window pips flash red (hover / pending). */
+  previewSpend?: number;
+}): string {
+  const max = Math.max(0, Math.floor(opts.max));
   if (max <= 0) return '';
-  const on = Math.max(0, Math.min(max, Math.floor(left)));
-  const bolts = Array.from({ length: max }, (_, i) => {
-    const cls = i < on ? 'on' : 'off';
-    return `<svg class="stam-pip ${cls}" viewBox="-5 -7 10 14" width="12" height="16" aria-hidden="true"><path d="${STAMINA_BOLT}"/></svg>`;
+  const left = Math.max(0, Math.min(max, Math.floor(opts.left)));
+  const spendCap = Math.max(0, Math.min(max, Math.floor(opts.spendCap)));
+  const spentThisTurn = Math.max(0, Math.min(spendCap, Math.floor(opts.spentThisTurn)));
+  const spendable = Math.min(left, Math.max(0, spendCap - spentThisTurn));
+  const preview = Math.max(0, Math.min(spendable, Math.floor(opts.previewSpend ?? 0)));
+  const keep = spendable - preview;
+  const storageFilled = Math.max(0, left - spendable);
+  const restCount = Math.max(0, max - spendCap);
+  const pip = (cls: string) =>
+    `<svg class="ap-pip ${cls}" viewBox="-6 -7 12 14" width="15" height="16" aria-hidden="true"><path d="${AP_BOLT}"/></svg>`;
+  const windowPips = Array.from({ length: spendCap }, (_, i) => {
+    if (i < keep) return pip('spendable on-spend');
+    if (i < keep + preview) return pip('preview');
+    if (i < keep + preview + spentThisTurn) return pip('spent empty');
+    return pip('empty off');
   }).join('');
-  return `<span class="stam-pips" aria-label="Energy ${on} of ${max}">${bolts}</span>`;
+  const restPips = Array.from({ length: restCount }, (_, i) =>
+    pip(i < storageFilled ? 'storage' : 'empty off'),
+  ).join('');
+  const window =
+    spendCap > 0 ? `<span class="ap-window">${windowPips}</span>` : '';
+  const split =
+    spendCap > 0 && restCount > 0 ? '<span class="ap-split" aria-hidden="true"></span>' : '';
+  return `<span class="ap-pips" aria-label="AP ${left} of ${max}">${window}${split}${restPips}</span>`;
 }
 
 /** Arrowhead + shaft, viewBox roughly -4..4 × -7..7. */
@@ -901,7 +937,7 @@ export function exhaustedBadgeSvg(cx: number, cy: number, r = 7): string {
   return `
       <g class="ability-badge exhausted" transform="translate(${cx}, ${cy})">
         <circle cx="0" cy="0" r="${r}" fill="#1c1810" stroke="#c9a227" stroke-width="1.3"/>
-        <path d="${STAMINA_BOLT}" transform="scale(${s.toFixed(3)})" fill="#6a5a28"/>
+        <path d="${AP_BOLT}" transform="scale(${s.toFixed(3)})" fill="#6a5a28"/>
       </g>`;
 }
 
@@ -950,6 +986,72 @@ export function sleepBadgeSvg(cx: number, cy: number, r = 7): string {
       </g>`;
 }
 
+/** Stacked army Vs — one color per promotion, dark plate for contrast. */
+export function promotionChevronsSvg(
+  promos: readonly PromotionTokenType[] | number,
+  cx: number,
+  cy: number,
+  r = 7,
+): string {
+  const kinds: PromotionTokenType[] =
+    typeof promos === 'number'
+      ? Array.from({ length: Math.max(0, Math.min(3, Math.floor(promos))) }, () => 'range1')
+      : promos.slice(0, 3);
+  const n = kinds.length;
+  if (n <= 0) return '';
+  const w = r * 1.55;
+  const step = r * 0.42;
+  const depth = r * 0.55;
+  const sw = Math.max(1.35, r * 0.22);
+  const totalH = depth + (n - 1) * step;
+  const top = -totalH / 2;
+  const marks = kinds
+    .map((id, i) => {
+      const y0 = top + i * step;
+      const y1 = y0 + depth;
+      const color = PROMOTION_TOKEN_COLOR[id];
+      return `<path d="M${(-w / 2).toFixed(2)} ${y0.toFixed(2)} L0 ${y1.toFixed(2)} L${(w / 2).toFixed(2)} ${y0.toFixed(2)}" fill="none" stroke="${color}" stroke-width="${sw.toFixed(2)}" stroke-linecap="square" stroke-linejoin="miter"/>`;
+    })
+    .join('');
+  const padX = w / 2 + sw;
+  const padY = totalH / 2 + sw * 0.7;
+  return `
+      <g class="ability-badge promotion" transform="translate(${cx}, ${cy})">
+        <rect x="${(-padX).toFixed(2)}" y="${(-padY).toFixed(2)}" width="${(padX * 2).toFixed(2)}" height="${(padY * 2).toFixed(2)}" rx="${Math.max(1.2, r * 0.18).toFixed(2)}" fill="#1a1810" stroke="#5a4820" stroke-width="0.7"/>
+        ${marks}
+      </g>`;
+}
+
+/**
+ * Rank stack above a unit: promotion Vs, optional general star on top.
+ * General alone → just the star. Promos alone → just Vs.
+ */
+export function unitRankBadgesSvg(
+  promos: readonly PromotionTokenType[],
+  general: boolean,
+  cx: number,
+  cy: number,
+  r = 7,
+): string {
+  const kinds = promos.slice(0, 3);
+  if (!general && kinds.length === 0) return '';
+  if (general && kinds.length === 0) return generalBadgeSvg(cx, cy, r);
+  const chevronR = r;
+  const w = chevronR * 1.55;
+  const step = chevronR * 0.42;
+  const depth = chevronR * 0.55;
+  const sw = Math.max(1.35, chevronR * 0.22);
+  const totalH = depth + (kinds.length - 1) * step;
+  const plateHalf = totalH / 2 + sw * 0.7;
+  if (!general) return promotionChevronsSvg(kinds, cx, cy, chevronR);
+  const starR = r * 0.92;
+  const gap = r * 0.12;
+  const stackHalf = plateHalf + gap / 2 + starR;
+  const chevronCy = cy + stackHalf - plateHalf;
+  const starCy = cy - stackHalf + starR;
+  return `${promotionChevronsSvg(kinds, cx, chevronCy, chevronR)}${generalBadgeSvg(cx, starCy, starR)}`;
+}
+
 /** Editor swatch for a unit token. */
 export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   const r = size * 0.42;
@@ -959,6 +1061,7 @@ export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   if (id === 'neutral') return neutralBadgeSvg(0, 0, r);
   if (id === 'sleep') return sleepBadgeSvg(0, 0, r);
   if (id === 'story') return storyBadgeSvg(0, 0, r);
+  if (isPromotionToken(id)) return promotionChevronsSvg([id], 0, 0, r * 1.15);
   return '';
 }
 
@@ -978,6 +1081,17 @@ export function starGlyphSvg(
   </svg>`;
 }
 
+/** Gold coin for roguelite reward pile / fly FX. */
+export function coinGlyphSvg(size = 22): string {
+  return `<svg class="coin-glyph" viewBox="-8 -8 16 16" width="${size}" height="${size}" aria-hidden="true">
+    <ellipse cx="0" cy="1.2" rx="6.4" ry="5.6" fill="#8a6a12"/>
+    <ellipse cx="0" cy="0" rx="6.4" ry="5.6" fill="#f0d060" stroke="#c9a227" stroke-width="0.85"/>
+    <ellipse cx="0" cy="0" rx="4.35" ry="3.75" fill="none" stroke="#d4b84a" stroke-width="0.55"/>
+    <path d="M-1.1 -2.2 V2.2 M1.1 -2.2 V2.2 M-1.1 -2.2 Q0 -3.1 1.1 -2.2 M-1.1 2.2 Q0 3.1 1.1 2.2"
+      fill="none" stroke="#b8860b" stroke-width="0.7" stroke-linecap="round"/>
+  </svg>`;
+}
+
 export const ICON_LABEL: Record<UnitRole, string> = {
   soldier: 'infantry helmet',
   scout: 'horse',
@@ -993,7 +1107,7 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   barbarian: 'axe',
   catapult: 'onager',
   tank: 'tracked hull',
-  general: 'command star',
+  general: 'officer',
   tower: 'keep',
   dummy: 'scarecrow',
   peasant: 'fork',

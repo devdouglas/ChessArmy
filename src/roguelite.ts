@@ -1,11 +1,14 @@
 /** Roguelite: randomised maps, shop recruits, permanent player losses, 10 wins. */
 
 import {
+  PROMOTION_TOKEN_TYPES,
+  isPromotionToken,
   statsOf,
   unitTokensOf,
   withStory,
   type AiStyle,
   type Piece,
+  type PromotionTokenType,
   type Side,
   type UnitTokenType,
   type UnitType,
@@ -56,6 +59,10 @@ export type RogueShop = {
   offers: UnitType[];
   /** Units bought this shop, queued onto the next army. */
   purchased: UnitType[];
+  /** Gold gained from stars this battle (1 per star). */
+  starGold: number;
+  /** Free promotion picks this shop (assign to a survivor). */
+  promotions: PromotionTokenType[];
 };
 
 /** Combat kits for the era — no dummies / zero-combat props. */
@@ -110,6 +117,20 @@ export function rollRogueShopOffers(
   return offers;
 }
 
+/** Distinct random promotions for the victory shop (up to `count`). */
+export function rollRoguePromotions(
+  count = ROGUE_SHOP_SIZE,
+): PromotionTokenType[] {
+  const pool = [...PROMOTION_TOKEN_TYPES];
+  const out: PromotionTokenType[] = [];
+  const n = Math.max(0, Math.min(Math.floor(count), pool.length));
+  for (let i = 0; i < n; i++) {
+    const j = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(j, 1)[0]!);
+  }
+  return out;
+}
+
 /** Victory shop — `starGold` is 1 per earned star this battle. */
 export function openRogueShop(
   run: RogueRun,
@@ -121,6 +142,8 @@ export function openRogueShop(
     shop: {
       offers: rollRogueShopOffers(run.period),
       purchased: [],
+      starGold: gain,
+      promotions: rollRoguePromotions(),
     },
   };
 }
@@ -145,7 +168,30 @@ export function buyRogueShopOffer(
     shop: {
       offers,
       purchased: [...shop.purchased, type],
+      starGold: shop.starGold,
+      promotions: shop.promotions,
     },
+  };
+}
+
+/**
+ * Take promotion offer at index off the shelf (assign separately to a survivor).
+ * Returns null when the slot is gone.
+ */
+export function takeRoguePromotionOffer(
+  shop: RogueShop,
+  index: number,
+): { shop: RogueShop; promo: PromotionTokenType } | null {
+  const promo = shop.promotions[index];
+  if (promo == null) return null;
+  const promotions = shop.promotions.slice();
+  promotions.splice(index, 1);
+  return {
+    shop: {
+      ...shop,
+      promotions,
+    },
+    promo,
   };
 }
 
@@ -298,7 +344,9 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
 
 /** Tokens that should ride with a unit into the next battle. */
 function carryTokens(piece: Piece): UnitTokenType[] | undefined {
-  const tokens = unitTokensOf(piece).filter((t) => t === 'general');
+  const tokens = unitTokensOf(piece).filter(
+    (t) => t === 'general' || isPromotionToken(t),
+  );
   return tokens.length ? tokens : undefined;
 }
 

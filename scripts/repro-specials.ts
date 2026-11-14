@@ -7,7 +7,7 @@ import {
   hasActed,
   hpLeft,
   legalHighlights,
-  staminaLeft,
+  actionPointsLeft,
   tokenOnHex,
   trapSpots,
   UNIT_STATS,
@@ -66,7 +66,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const after = applyAction(s, { kind: 'trap', pieceId: hop.id, to: side });
   assert(tokenOnHex(after.tokens, side, 'pikes'), 'pikes land on the chosen hex');
   assert(!tokenOnHex(after.tokens, front, 'pikes'), 'the faced hex stays empty');
-  assert(after.staminaBonus, 'first trap with energy left arms the second action');
+  assert(!!after.scoutPieceId, 'first trap with energy left arms the second action');
   assert(canTrap(after, hop.id), 'trap stays available for the second action');
   assert(!hasActed(after, hop.id), 'first trap does not finish while energy remains');
 
@@ -119,10 +119,10 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     ((hopper.facing + 1) % 6) as HexDir,
     second.orientation,
   );
-  const energyBefore = staminaLeft(hopper);
+  const energyBefore = actionPointsLeft(hopper);
   assert(energyBefore > 0, 'hoplite has energy for a second action');
   const afterMove = applyAction(second, { kind: 'move', pieceId: hopper.id, to: firstStep });
-  assert(afterMove.staminaBonus, 'a walk with energy left arms the second action');
+  assert(!!afterMove.scoutPieceId, 'a walk with energy left arms the second action');
   assert(canTrap(afterMove, hopper.id), 'trap is legal as the second action');
   const moved = getPiece(afterMove, hopper.id)!;
   const plantHex = trapSpots(afterMove, moved).find(
@@ -134,10 +134,10 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     to: plantHex,
   });
   assert(tokenOnHex(afterTrap.tokens, plantHex, 'pikes'), 'second-action trap plants');
-  assert(!afterTrap.staminaBonus, 'second-action trap clears the energy lock');
+  assert(!!!afterTrap.scoutPieceId, 'second-action trap clears the energy lock');
   assert(afterTrap.turn === 'blue', 'second-action trap ends the side (cap 1)');
   assert(
-    staminaLeft(getPiece(afterTrap, hopper.id)!) === energyBefore - 1,
+    actionPointsLeft(getPiece(afterTrap, hopper.id)!) === energyBefore - 1,
     'second-action trap spends 1 energy',
   );
 
@@ -166,7 +166,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   ]);
   s.turn = 'red';
   const tank = s.pieces.find((p) => p.type === 'tank')!;
-  tank.staminaUsedThisTurn = true;
+  tank.apSpentThisTurn = true;
   const charges = legalHighlights(s, tank.id).filter((h) => h.kind === 'charge');
   assert(
     charges.some((h) => h.hex.col === 3 && !h.extra),

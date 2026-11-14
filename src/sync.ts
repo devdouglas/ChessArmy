@@ -1,4 +1,9 @@
-import { UNIT_STATS, type UnitStats, type UnitType } from './engine';
+import {
+  UNIT_STATS,
+  isCustomUnitId,
+  type UnitStats,
+  type UnitType,
+} from './engine';
 import {
   getDefaultFormationId,
   listDeletedFormations,
@@ -166,9 +171,58 @@ function localStore(): ServerStore {
   };
 }
 
+function rosterCustomCount(
+  units: Partial<Record<string, Partial<UnitStats>>> | null | undefined,
+): number {
+  if (!units || typeof units !== 'object') return 0;
+  return Object.keys(units).filter((id) => isCustomUnitId(id)).length;
+}
+
+function unitsStamp(
+  units: Partial<Record<string, Partial<UnitStats>>> | null | undefined,
+): string {
+  if (!units || typeof units !== 'object') return '';
+  return Object.keys(units)
+    .sort()
+    .map((id) => {
+      const u = units[id];
+      if (!u || typeof u !== 'object') return id;
+      const ap =
+        u.actionPoints ??
+        (u as { stamina?: number }).stamina ??
+        '';
+      return `${id}:${u.hp ?? ''}:${u.hexArmor ? 1 : 0}:${ap}`;
+    })
+    .join('|');
+}
+
+/** Keep the richer roster (customs / tuned stock). Never let stock-only clobber. */
+function pickUnitsRoster(
+  remote: Partial<Record<string, Partial<UnitStats>>> | null,
+  local: Partial<Record<string, Partial<UnitStats>>> | null,
+): Partial<Record<string, Partial<UnitStats>>> | null {
+  if (!remote) return local;
+  if (!local) return remote;
+  const rc = rosterCustomCount(remote);
+  const lc = rosterCustomCount(local);
+  if (rc !== lc) return rc > lc ? remote : local;
+  // Same custom count: prefer remote (shared units.json) when local is stock-shaped.
+  if (lc === 0 && unitStatsAreStock()) return remote;
+  return remote;
+}
+
 export async function pushStore(): Promise<boolean> {
   const body = localStore();
   try {
+    // Stock-only local must not overwrite a richer units.json on the server.
+    if (rosterCustomCount(body.units) === 0) {
+      const remote = await pullStore();
+      if (remote && rosterCustomCount(remote.units) > 0) {
+        applyRemoteUnitStats(remote.units!);
+        persistUnitStats();
+        body.units = UNIT_STATS;
+      }
+    }
     const res = await fetch(API_URL, {
       method: 'POST',
       cache: 'no-store',
@@ -260,8 +314,9 @@ export async function syncFromServer(): Promise<{
     mergeDeleted(local.deletedFormations, remote.deletedFormations),
     [...local.formations, ...remote.formations],
   );
+  const mergedUnits = pickUnitsRoster(remote.units, local.units);
   const merged: ServerStore = {
-    units: remote.units ?? local.units,
+    units: mergedUnits,
     aiChecklist: sanitizeAiChecklist(remote.aiChecklist ?? local.aiChecklist),
     levels: mergeByUpdatedAt(local.levels, remote.levels, deletedLevels),
     defaultLevelId: remote.defaultLevelId ?? local.defaultLevelId,
@@ -274,7 +329,11 @@ export async function syncFromServer(): Promise<{
   const checklistStamp = (c: ServerStore['aiChecklist']) =>
     c ? JSON.stringify(c) : '';
 
+  const localUnitsStamp = unitsStamp(UNIT_STATS);
+  const unitsChanged = unitsStamp(merged.units) !== localUnitsStamp;
+
   const changed =
+    unitsChanged ||
     itemStamp(merged.levels) !== itemStamp(local.levels) ||
     itemStamp(merged.formations) !== itemStamp(local.formations) ||
     deletedStamp(merged.deletedLevels) !== deletedStamp(local.deletedLevels) ||
@@ -284,6 +343,7 @@ export async function syncFromServer(): Promise<{
   if (changed) applyMerged(merged);
 
   const needsPush =
+    unitsStamp(merged.units) !== unitsStamp(remote.units) ||
     itemStamp(merged.levels) !== itemStamp(remote.levels) ||
     itemStamp(merged.formations) !== itemStamp(remote.formations) ||
     deletedStamp(merged.deletedLevels) !== deletedStamp(remote.deletedLevels) ||

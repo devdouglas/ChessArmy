@@ -54,9 +54,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 - A side activates up to **units per turn** pieces, then the turn passes. Played pieces get a check. **End turn** skips leftovers (also how you idle-regen when the cap is 1).
 - Saved maps set their own cap (default 1). Randomised battles use **6**.
 - **Max turns** (0 = none) counts full rounds, same clock as stars.
-- Select a piece: **green** move, **gold** energy, **red** shot. Dual hex: **Shoot**, or click again to move. Empty shoot-range shows a white transparent crosshair.
-- **Rest** — idle this activation (regen).
-- **Skip** — scout leftover action.
+- Select a piece: **green** move, **gold** AP (climb / paid extras), **red** shot. Dual hex: **Shoot**, or click again to move. Empty shoot-range shows a white transparent crosshair.
 - **Turn** (hex-armor units) — face a new hex without walking.
 
 ---
@@ -65,17 +63,18 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Move** is a straight-line range. Standing on a hill/plateau/mountain adds **+1 / +2 / +3**. **Move cap** limits total steps this activation (0 = none; scout stock 3). Height only changes **±1** per step. **Climb level** is the max occupiable height (0 land … 3 mountain).
 
-**Energy** (pool):
+**Action points** (per unit pool):
 
-- Spend 1 to **climb**, to **stay in water** at turn start, or after **every action point** is spent take a **second straight-line** action (new direction OK). Unused steps of an action are lost. Units with extra actions (scout) use those first; energy extra is last.
-- Climbing or entering water ends momentum (no chained extra action through that hex).
-- Empty pool: bolt badge on the piece.
-- **Regen**: consecutive own turns per point. Any action resets the countdown (that End still counts). The point only lands if the unit did **nothing** that turn (**Rest** counts as idle), **on land** — never in water. 0 = never.
+- **AP max** = store capacity. **AP / turn** (`actionPointGain`) is granted at the start of each of that unit’s turns (banks if unspent; no grant in water / while sleeping).
+- **Spend cap / turn** = gain + 1 (yellow window on the AP bar). Storage beyond that is green; spent this turn is red; empty slots grey.
+- Each action costs **1 AP**. **Climb** and **charge past normal move** cost **+1 AP** on top. Unused steps of an action are lost.
+- Climbing or entering water ends momentum (no chained extra through that hex).
+- Empty pool: bolt badge on the piece. No Rest button — refill is only the per-turn grant.
 
 **Water:**
 
 - Entering from land ends the activation. From water: **1 hex** per action, cannot shoot.
-- Turn start in water: **−1 energy** (not an action), or **2 HP** if you cannot pay. Leftover energy can still buy an extra 1-hex. No regen in water.
+- Turn start in water: **−1 AP** (not against the spend cap), or **2 HP** if you cannot pay. No AP grant in water.
 
 **Melee:** bump an occupied hex. A kill takes the spot; otherwise stop on the hex before. **0 melee** cannot bump. Melee damage floors at **1** even if armor would soak it.
 
@@ -97,7 +96,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Can hide:** invisible to enemies while on a hide token (forest). Owner still sees them. Moving, attacking, or taking a hit breaks hide for the rest of the match. Stock **Barbarian** has this on.
 
-**Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** energy, and **+1** value.
+**Value/weight** is AI scoring. A General token on a piece is **+1** HP, **+1** AP max, and **+1** value.
 
 ---
 
@@ -123,14 +122,14 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 | **Pikes** | 1 damage to enemies that **enter** the hex. |
 | **Wall** | Impassable, blocks LOS, splash-breakable. |
 | **House** | Same as wall, house graphic. Paint onto a unit in the editor to garrison them at kickoff. Occupant can shoot out and leave; after they exit, nobody can enter. |
-| **Palisade** | Fence, **3 HP**. Melee/charge/splash chip it. Random maps use these instead of walls. |
+| **Palisade** | Fence, **3 HP**. Melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). Charge/splash also. Random maps use these instead of walls. |
 | **Tree** | Same as palisade, tree graphic. |
 | **Forest** | Three trees, no hex fill/stroke. Walkable cover — units render behind the trees. Incoming shots chip the wood (3 HP, same as palisade); occupant unharmed until felled. Shoot out OK. Charge cannot pass through. **Can hide** units are invisible to enemies here until they move, attack, or are hit. |
 | **Flag** | Capture by standing on it. All flags held = win. Seeded owner if a piece starts on it. |
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
-**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 energy**, **+1** value. All generals on a side must fall to lose by command.
+**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 AP max**, **+1** value. All generals on a side must fall to lose by command.
 
 **Unit token — Hidden:** starts the match invisible to enemies (any hex). Same reveal rules as **Can hide**: moving, attacking, or taking a hit breaks it for the rest of the match. Owner still sees them. AI always camps while concealed — no walking until they can shoot/melee, or until they are provoked (hit → revealed). If a side's remaining pieces are all still hidden, they all break cover; an AI side then switches to **aggressive**. If every living piece on the board is hidden, everyone unhides.
 

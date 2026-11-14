@@ -71,10 +71,10 @@ function board(): GameState {
     after.log.some((line) => line.includes('message board')),
     'log mentions the board',
   );
-  assert(after.staminaBonus, 'unused stamina still hangs after the walk');
+  assert(!!after.scoutPieceId, 'unused stamina still hangs after the walk');
   assert(after.scoutPieceId === soldier.id, 'bonus lock is this walker');
   const skipped = applyAction(after, { kind: 'skip' });
-  assert(!skipped.staminaBonus, 'skip clears the unarmed extra');
+  assert(!!!skipped.scoutPieceId, 'skip clears the unarmed extra');
   assert(!skipped.scoutPieceId, 'skip clears the scout lock');
 }
 

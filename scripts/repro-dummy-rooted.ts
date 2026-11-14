@@ -23,7 +23,7 @@ function dummyOn(terrain: 'land' | 'high' | 'plateau' | 'rock'): GameState {
 function dummyMoves(s: GameState): boolean {
   const p = s.pieces.find((x) => x.type === 'dummy' && x.side === 'blue')!;
   return legalHighlights(s, p.id).some(
-    (h) => h.kind === 'move' || h.kind === 'stamina',
+    (h) => h.kind === 'move' || h.kind === 'ap',
   );
 }
 

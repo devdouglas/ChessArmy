@@ -57,7 +57,7 @@ function board(): GameState {
   assert(
     !legalHighlights(s, buddy.id).some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina') &&
+        (h.kind === 'move' || h.kind === 'ap') &&
         h.hex.col === home.col &&
         h.hex.row === home.row,
     ),
@@ -91,11 +91,11 @@ function board(): GameState {
     scoutPieceId: null,
   };
   left.movedThisTurn = false;
-  left.staminaUsedThisTurn = false;
+  left.apSpentThisTurn = false;
   assert(
     !legalHighlights(again, left.id).some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina') &&
+        (h.kind === 'move' || h.kind === 'ap') &&
         h.hex.col === home.col &&
         h.hex.row === home.row,
     ),
@@ -105,7 +105,7 @@ function board(): GameState {
   assert(
     !legalHighlights(again, buddy.id).some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina') &&
+        (h.kind === 'move' || h.kind === 'ap') &&
         h.hex.col === home.col &&
         h.hex.row === home.row,
     ),

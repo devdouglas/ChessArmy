@@ -3,14 +3,14 @@
  * 1 Walking — do-not-touch / flags / pikes / palisades / keep-line / general last.
  * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
  * 3 Targeting — hunt: nearest enemy (Attack); else advance the front; else guard owned flags.
- * 4 Chasing — close on that hunt, prefer high ground. Empty energy vs a higher
- *   hunt → Rest that unit (regen to climb) instead of pacing on flat ground.
+ * 4 Chasing — close on that hunt, prefer high ground. Empty AP cannot climb;
+ *   skip that unit's walks toward higher ground rather than pacing for nothing.
  * 5 Defending — smash walls on the path; hold and face only enemies in Sight.
  * 6 Retreating — do not flee the hunt; if not hunting, walk home; avoid skip.
  * Hidden (still concealed): camp. No walk/rotate unless that action is an attack.
  * Last remaining pieces all concealed → unhide + that AI goes aggressive, but
  * only if that side already had a visible unit. Kickoff ambush stays camped.
- * Sleep token: not active until hit. No rest, no stamina. Awake allies act.
+ * Sleep token: not active until hit. No AP spend. Awake allies act.
  */
 
 import {
@@ -21,9 +21,12 @@ import {
   getPiece,
   hasAbility,
   hasSplash,
+  canPassWater,
+  climbLevelOf,
   hasUnitToken,
   hpLeft,
   isHostile,
+  meleeDamageOf,
   pieceSees,
   pieceVisibleTo,
   pathForMove,
@@ -43,8 +46,8 @@ import {
   flushLastHiddenArmies,
   hidesHoldLos,
   isConcealed,
-  staminaLeft,
-  staminaMax,
+  actionPointsLeft,
+  actionPointsMax,
   type Action,
   aiStyleOf,
   type GameState,
@@ -185,15 +188,14 @@ function huntHex(state: GameState, from: Hex, me: Side, on: RuleOn): Hex | null 
   return null;
 }
 
-/** Empty pool, hunt sits higher, and this unit can idle-regen on land → Rest to climb. */
-function shouldRestToClimb(
+/** Empty AP, hunt sits higher — cannot climb; prefer skip / pass over flat walks. */
+function shouldSkipEmptyApClimb(
   state: GameState,
   piece: Piece,
   me: Side,
   on: RuleOn,
 ): boolean {
-  if (staminaMax(piece) <= 0 || staminaLeft(piece) > 0) return false;
-  if (UNIT_STATS[piece.type].staminaRegen <= 0) return false;
+  if (actionPointsMax(piece) <= 0 || actionPointsLeft(piece) > 0) return false;
   const from: Hex = { col: piece.col, row: piece.row };
   if (terrainAt(state, from) === 'water') return false;
   const hunt = huntHex(state, from, me, on);
@@ -301,7 +303,7 @@ function highGroundPath(
   goal: Hex,
 ): Hex[] {
   if (eq(from, goal)) return [];
-  const stats = UNIT_STATS[piece.type];
+  const climb = climbLevelOf(piece);
   const found = pathTo(from, goal, {
     cols: state.cols,
     rows: state.rows,
@@ -311,22 +313,22 @@ function highGroundPath(
       const ha = terrainHeight(terrainAt(state, a));
       const hb = terrainHeight(terrainAt(state, b));
       if (Math.abs(hb - ha) > 1) return 0;
-      if (hb > stats.climbLevel) return 0;
+      if (hb > climb) return 0;
       return hb > 0 ? 1 : 5;
     },
     canStop: (h) => {
       if (!inBoard(state, h)) return false;
       if (eq(h, goal)) return true;
       const t = terrainAt(state, h);
-      if (t === 'water' && !stats.passWater) return false;
-      if (terrainHeight(t) > stats.climbLevel) return false;
+      if (t === 'water' && !canPassWater(piece)) return false;
+      if (terrainHeight(t) > climb) return false;
       return true;
     },
     canPass: (h) => {
       if (!inBoard(state, h) || eq(h, goal)) return false;
       const t = terrainAt(state, h);
-      if (t === 'water' && !stats.passWater) return false;
-      if (terrainHeight(t) > stats.climbLevel) return false;
+      if (t === 'water' && !canPassWater(piece)) return false;
+      if (terrainHeight(t) > climb) return false;
       return true;
     },
   });
@@ -361,7 +363,7 @@ function walkHexesToStop(
 /** Highest walkable hex in 3 of `from` that this piece can occupy. */
 function highGroundSeek(state: GameState, piece: Piece, from: Hex): Hex | null {
   const here = terrainHeight(terrainAt(state, from));
-  const maxClimb = UNIT_STATS[piece.type].climbLevel;
+  const maxClimb = climbLevelOf(piece);
   let best: Hex | null = null;
   let bestH = here;
   let bestD = Infinity;
@@ -602,7 +604,7 @@ function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
 function meleeThreatens(state: GameState, attacker: Piece, target: Piece): boolean {
   if (attacker.id === target.id) return false;
   if (!isHostile(state, attacker.side, target.side)) return false;
-  if (UNIT_STATS[attacker.type].meleeDamage <= 0) return false;
+  if (meleeDamageOf(attacker) <= 0) return false;
   return (
     dist(
       state,
@@ -649,7 +651,7 @@ function isHolding(state: GameState, piece: Piece, me: Side, on: RuleOn): boolea
   return huntHex(state, { col: piece.col, row: piece.row }, me, on) == null;
 }
 
-/** Unprovoked hold walks — even stamina lunges. Adjacent melee onto the dest is allowed. */
+/** Unprovoked hold walks — even AP lunges. Adjacent melee onto the dest is allowed. */
 function isHoldWalk(state: GameState, action: Action, me: Side): boolean {
   if (!isWalkAction(action)) return false;
   const piece = getPiece(state, action.pieceId);
@@ -701,24 +703,18 @@ function scoreKillDelta(state: GameState, after: GameState, me: Side): number {
 }
 
 function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): number {
-  if (action.kind === 'skip') return on('avoid-skip') ? -80 : 0;
+  if (action.kind === 'skip') {
+    // Scout skip: prefer when the locked piece is empty-AP vs a higher hunt.
+    const locked = state.scoutPieceId ? getPiece(state, state.scoutPieceId) : null;
+    if (locked && shouldSkipEmptyApClimb(state, locked, me, on)) return 1_500;
+    return on('avoid-skip') ? -80 : 0;
+  }
 
   const piece = getPiece(state, action.pieceId);
   if (!piece) return -Infinity;
 
   const from: Hex = { col: piece.col, row: piece.row };
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
-
-  if (action.kind === 'rest') {
-    if (shouldRestToClimb(state, piece, me, on)) {
-      // Beat any flat chase — empty energy cannot climb to the hunt.
-      score += 1_500;
-      return score;
-    }
-    // Hold parks on purpose. Otherwise Rest stays below weak walks / skip filler.
-    score += isHolding(state, piece, me, on) ? 400 : -40;
-    return score;
-  }
 
   const hunt = huntHex(state, from, me, on);
   const foe =
@@ -758,6 +754,11 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
   }
 
   if (!isWalkAction(action)) return score;
+
+  // Empty AP cannot climb — don't pace on flat while the hunt sits higher.
+  if (shouldSkipEmptyApClimb(state, piece, me, on)) {
+    score -= 1_200;
+  }
 
   const palPlan = previewMove(state, piece, action.to, action.path, {
     charging: action.kind === 'charge',
@@ -840,10 +841,8 @@ function holdAction(
       const want = faceToward(state, from, { col: enemy.col, row: enemy.row });
       if (want != null && want !== facingOf(p)) {
         holds.push({ kind: 'rotate', pieceId: id, dir: want });
-        continue;
       }
     }
-    holds.push({ kind: 'rest', pieceId: id });
   }
   if (!holds.length) return null;
   return pickBest(holds, state, me, on);
@@ -951,7 +950,7 @@ function pickBest(actions: Action[], state: GameState, me: Side, on: RuleOn): Ac
 
 /** Concealed AI: only shoot / melee / hex-damage. Walks wait until provoked (revealed). */
 function hiddenCamperOk(state: GameState, a: Action, me: Side): boolean {
-  if (a.kind === 'skip' || a.kind === 'rest') return true;
+  if (a.kind === 'skip') return true;
   const piece = getPiece(state, a.pieceId);
   if (!piece || !isConcealed(state, piece)) return true;
   return isAttackAction(state, a, me);

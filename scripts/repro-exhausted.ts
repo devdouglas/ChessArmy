@@ -1,4 +1,4 @@
-import { hasUnitToken, staminaLeft, staminaMax } from '../src/engine';
+import { hasUnitToken, actionPointsLeft, actionPointsMax } from '../src/engine';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 import { UNIT_STATS } from '../src/roster';
 
@@ -26,10 +26,10 @@ const starred = s.pieces.find((p) => p.side === 'red' && p.col === 4)!;
 const plain = s.pieces.find((p) => p.side === 'red' && p.col === 5)!;
 
 assert(hasUnitToken(tired, 'exhausted'), 'token stamped');
-assert(staminaMax(tired) === UNIT_STATS.soldier.stamina, 'max unchanged');
-assert(staminaLeft(tired) === 0, 'kickoff stamina is 0');
-assert(staminaMax(starred) === UNIT_STATS.soldier.stamina + 1, 'general still +1 max');
-assert(staminaLeft(starred) === 0, 'general+exhausted still starts empty');
-assert(staminaLeft(plain) === staminaMax(plain), 'unstamped soldier is full');
+assert(actionPointsMax(tired) === UNIT_STATS.soldier.actionPoints, 'max unchanged');
+assert(actionPointsLeft(tired) === 0, 'kickoff AP is 0');
+assert(actionPointsMax(starred) === UNIT_STATS.soldier.actionPoints + 1, 'general still +1 max');
+assert(actionPointsLeft(starred) === 0, 'general+exhausted still starts empty');
+assert(actionPointsLeft(plain) === actionPointsMax(plain), 'unstamped soldier is full');
 
-console.log('exhausted: kickoff stamina is 0; max and general bonus stay');
+console.log('exhausted: kickoff AP is 0; max and general bonus stay');

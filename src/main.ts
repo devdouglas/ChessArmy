@@ -27,10 +27,8 @@ import {
   marchRoute,
   plusStepPlan,
   performMarch,
-  setMarchDoubleTime,
   setWalkOrder,
   takeQueuedMarches,
-  restPiece,
   rotatePiece,
   getPiece,
   ammoLeft,
@@ -59,10 +57,13 @@ import {
   netDamage,
   wouldRout,
   splashBlast,
-  staminaLeft,
-  staminaMax,
+  actionPointsLeft,
+  actionPointsMax,
+  apSpendCap,
+  apSpendable,
+  apSpentThisTurnOf,
   refusesWaterJump,
-  canSpendStamina,
+  canSpendActionPoints,
   terrainHeight,
   isElevatedTerrain,
   STOCK_UNIT_TYPES,
@@ -98,8 +99,23 @@ import {
   sanitizeBoardText,
   tokenOnHex,
   tokenIsNoTouch,
+  MAX_UNIT_PROMOTIONS,
   UNIT_TOKEN_LABEL,
   UNIT_TOKEN_TYPES,
+  actionPointGainOf,
+  armorBonusOf,
+  armorFaceOf,
+  attackBonusOf,
+  chargeDamageOf,
+  climbLevelOf,
+  countUnitToken,
+  hasAllTerrain,
+  isPromotionToken,
+  meleeDamageOf,
+  promotionTokensOf,
+  shootDamageOf,
+  shootRangeOf,
+  splashDamageOf,
   defaultArmyControls,
   defaultAiStyles,
   hotseatArmyControls,
@@ -137,6 +153,7 @@ import {
   type TileToken,
   type TokenType,
   type UnitCategory,
+  type PromotionTokenType,
   type UnitTokenType,
   type UnitType,
   hasGeneral,
@@ -284,6 +301,7 @@ import {
   rogueUnitPool,
   survivorTypes,
   survivorUnits,
+  takeRoguePromotionOffer,
   type RogueRun,
   type RogueShop,
 } from './roguelite';
@@ -310,28 +328,29 @@ import {
   ammoBadgeSvg,
   hpBadgeSvg,
   abilityBadgeSvg,
-  generalBadgeSvg,
   hiddenBadgeSvg,
   exhaustedBadgeSvg,
   neutralBadgeSvg,
   storyBadgeSvg,
   sleepZsSvg,
+  unitRankBadgesSvg,
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
   noTouchMarkSvg,
   facingPikeSvg,
-  staminaEmptyMarkSvg,
-  staminaHexMarkSvg,
+  apEmptyMarkSvg,
+  apHexMarkSvg,
   actionGlyphSvg,
   tutorialHandSvg,
   type ActionGlyphId,
-  staminaPipsHtml,
+  actionPointsPipsHtml,
   unitTokenGlyphSvg,
   pieceShotPipsHtml,
   hpPipsHtml,
   unitQuotaPipsHtml,
   starGlyphSvg,
+  coinGlyphSvg,
 } from './icons';
 import { copyGlyphGroups, copyMentionedActions, copyMentionsTutorial, formatCopyHtml } from './copy';
 import {
@@ -405,7 +424,14 @@ type RandomSetup = {
   aiStyle: AiStyle;
 };
 type UnitTokenBrush = `unit:${UnitTokenType}`;
-type EditorBrush = Terrain | UnitType | TokenType | UnitTokenBrush | 'notouch' | 'erase';
+type EditorBrush =
+  | Terrain
+  | UnitType
+  | TokenType
+  | UnitTokenBrush
+  | 'notouch'
+  | 'erase'
+  | 'clear-promotions';
 
 const TRASH_ICON_SVG = `<svg class="icon-trash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6.1 1.2h3.8l.45 1.3H14v1.25H2V2.5h3.65L6.1 1.2zM3.25 5h9.5l-.55 8.25A1.4 1.4 0 0 1 10.8 14.6H5.2a1.4 1.4 0 0 1-1.4-1.35L3.25 5zm2.3 1.35v6.15h1.15V6.35H5.55zm3.2 0v6.15H9.9V6.35H8.75z"/></svg>`;
 
@@ -454,6 +480,11 @@ let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
 let rogueRun: RogueRun | null = null;
 /** Post-victory recruit shop for the active run. */
 let rogueShop: RogueShop | null = null;
+/** Star→pile coin FX already played for this shop open. */
+let rogueGoldFxPlayed = false;
+/** Pending promotion assign: pick a survivor after choosing an offer. */
+let roguePromoAssign: { index: number; promo: PromotionTokenType } | null =
+  null;
 const RANDOM_UNITS_PER_TURN = 6;
 let state: GameState = bootState();
 let briefingOpen = false;
@@ -482,22 +513,11 @@ let commitPath: Hex[] = [];
 let aiThinking = false;
 let animating = false;
 let rotatePreviewDir: HexDir | null = null;
-/** Auto extra-action energy. Every level starts off; the dock can turn it on for that match. */
-const DOUBLE_TIME_KEY = 'chessarmy-double-time-v1';
-let doubleTime = false;
 /** Player pref: narration on intro / victory / lose popups. Default on. */
 const POPUP_AUDIO_KEY = 'chessarmy-popup-audio-v1';
 let popupAudioOn = loadPopupAudio();
 /** Active special mode for the selected unit (hide / javelin / charge). */
 let specialMode: AbilityId | null = null;
-
-function persistDoubleTime(): void {
-  try {
-    localStorage.setItem(DOUBLE_TIME_KEY, doubleTime ? '1' : '0');
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
 
 function loadPopupAudio(): boolean {
   try {
@@ -751,7 +771,7 @@ function formationByPickId(id: string, cols: number, rows: number) {
 }
 
 function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
-  if (rogueRun) return rogueArmyStamps(rogueRun, cols, rows, ROGUE_HEX_RADIUS);
+  if (rogueRun) return rogueArmyStamps(rogueRun);
   if (randomArmies) {
     return [
       ...stampFormation(
@@ -775,6 +795,8 @@ function randomMatchArmies(cols: number, rows: number): ArmyStamp[] {
 
 function clearRogueShop() {
   rogueShop = null;
+  rogueGoldFxPlayed = false;
+  roguePromoAssign = null;
 }
 
 function startRogueRun() {
@@ -820,6 +842,55 @@ function buyRogueOffer(index: number) {
   if (!next) return;
   rogueRun = next.run;
   rogueShop = next.shop;
+  render();
+}
+
+/** Survivors who still have a promotion slot. */
+function roguePromoCandidates(): Piece[] {
+  return state.pieces
+    .filter(
+      (p) =>
+        p.side === 'red' &&
+        promotionTokensOf(p).length < MAX_UNIT_PROMOTIONS,
+    )
+    .sort((a, b) => a.row - b.row || a.col - b.col);
+}
+
+function beginRoguePromoAssign(index: number) {
+  if (!rogueShop) return;
+  const promo = rogueShop.promotions[index];
+  if (promo == null) return;
+  if (!roguePromoCandidates().length) return;
+  roguePromoAssign = { index, promo };
+  render();
+}
+
+function cancelRoguePromoAssign() {
+  if (!roguePromoAssign) return;
+  roguePromoAssign = null;
+  render();
+}
+
+/** Stamp the pending promotion onto a survivor; it rides until that unit dies. */
+function confirmRoguePromoAssign(pieceId: string) {
+  if (!rogueShop || !roguePromoAssign) return;
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== 'red') return;
+  if (promotionTokensOf(piece).length >= MAX_UNIT_PROMOTIONS) return;
+  const taken = takeRoguePromotionOffer(rogueShop, roguePromoAssign.index);
+  if (!taken || taken.promo !== roguePromoAssign.promo) return;
+  const unitTokens = sanitizeUnitTokens([
+    ...(piece.unitTokens ?? []),
+    taken.promo,
+  ]);
+  state = {
+    ...state,
+    pieces: state.pieces.map((p) =>
+      p.id === pieceId ? { ...p, unitTokens } : p,
+    ),
+  };
+  rogueShop = taken.shop;
+  roguePromoAssign = null;
   render();
 }
 
@@ -927,9 +998,6 @@ function bootState(): GameState {
 }
 
 function startMatch(reshuffleRandom = true) {
-  doubleTime = false;
-  setMarchDoubleTime(false);
-  persistDoubleTime();
   specialMode = null;
   for (const k of Object.keys(rememberedSelectId) as Side[]) {
     delete rememberedSelectId[k];
@@ -974,7 +1042,7 @@ function startMatch(reshuffleRandom = true) {
       rogueRun
         ? createRogueInitialState(
             mapOpts,
-            randomMatchArmies(0, 0),
+            rogueArmyStamps(rogueRun),
             matchControls(),
             matchAiStyles(),
             ROGUE_HEX_RADIUS,
@@ -1197,22 +1265,22 @@ async function playQueuedMarches(): Promise<void> {
 async function playPendingFx(): Promise<void> {
   await playQueuedMarches();
   const hits = state.fxHits;
-  const stam = state.fxStamina ?? [];
+  const stam = state.fxActionPoints ?? [];
   const board = state.fxBoard;
   const gains = stam.filter((x) => x.kind === 'gain');
   const spends = stam.filter((x) => x.kind === 'spend');
   if (!hits?.length && !gains.length && !spends.length && !board) {
-    if (state.fxHits || state.fxStamina || state.fxBoard) {
-      state = { ...state, fxHits: undefined, fxStamina: undefined, fxBoard: undefined };
+    if (state.fxHits || state.fxActionPoints || state.fxBoard) {
+      state = { ...state, fxHits: undefined, fxActionPoints: undefined, fxBoard: undefined };
     }
     return;
   }
-  state = { ...state, fxHits: undefined, fxStamina: undefined, fxBoard: undefined };
+  state = { ...state, fxHits: undefined, fxActionPoints: undefined, fxBoard: undefined };
   if (hits?.length) await flashDamaged(hits);
   if (gains.length || spends.length) {
     render();
-    if (gains.length) await flashStamina(gains, 'stam-gain');
-    if (spends.length) await flashStamina(spends, 'stam-spend');
+    if (gains.length) await flashActionPoints(gains, 'ap-gain');
+    if (spends.length) await flashActionPoints(spends, 'ap-spend');
   }
   if (board?.text) boardPopup = { text: board.text, title: board.title };
 }
@@ -1250,9 +1318,9 @@ function flashDamaged(
   return wait(dying ? blink + 140 : blink);
 }
 
-function flashStamina(
+function flashActionPoints(
   events: readonly { id: string }[],
-  cls: 'stam-gain' | 'stam-spend',
+  cls: 'ap-gain' | 'ap-spend',
 ): Promise<void> {
   if (!events.length) return Promise.resolve();
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1260,7 +1328,7 @@ function flashStamina(
   for (const ev of events) {
     const el = document.querySelector(`g.piece-unit[data-id="${CSS.escape(ev.id)}"]`);
     if (!el) continue;
-    el.classList.remove('stam-gain', 'stam-spend');
+    el.classList.remove('ap-gain', 'ap-spend');
     void (el as SVGElement).getBoundingClientRect();
     el.classList.add(cls);
     any = true;
@@ -1418,6 +1486,12 @@ function ringArmor(type: UnitType): number {
   return s.hexArmor ? s.armorFront : s.armor;
 }
 
+function ringArmorOf(piece: Piece): number {
+  const s = UNIT_STATS[piece.type];
+  const base = s.hexArmor ? s.armorFront : s.armor;
+  return base + armorBonusOf(piece);
+}
+
 function hexVerts(r: number, o: HexOrientation): { x: number; y: number }[] {
   const start = o === 'flat' ? 0 : -30;
   return Array.from({ length: 6 }, (_, i) => {
@@ -1449,9 +1523,10 @@ function edgeCubeDir(edge: number, o: HexOrientation): HexDir {
 
 function pieceBodySvg(piece: Piece, pr: number): string {
   const s = UNIT_STATS[piece.type];
+  const bonus = armorBonusOf(piece);
   if (!s.hexArmor) {
     return `<circle class="piece-bg" cx="0" cy="0" r="${pr}"
-      fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor)}" stroke-width="2.2" />`;
+      fill="${pieceColor(piece.side)}" stroke="${armorColor(s.armor + bonus)}" stroke-width="2.2" />`;
   }
   const o = viewOrientation();
   const facing = facingOf(piece);
@@ -1466,7 +1541,7 @@ function pieceBodySvg(piece: Piece, pr: number): string {
       const d = inner[i];
       const dir = edgeCubeDir(i, o);
       const rel = (((dir - facing) % 6) + 6) % 6;
-      const fill = armorColor(s[HEX_ARMOR_SIDES[rel]]);
+      const fill = armorColor(s[HEX_ARMOR_SIDES[rel]] + bonus);
       return `<polygon class="piece-shield" points="${a.x.toFixed(2)},${a.y.toFixed(2)} ${b.x.toFixed(2)},${b.y.toFixed(2)} ${c.x.toFixed(2)},${c.y.toFixed(2)} ${d.x.toFixed(2)},${d.y.toFixed(2)}" fill="${fill}" />`;
     })
     .join('');
@@ -2104,6 +2179,29 @@ function paintEditorNoTouch(col: number, row: number) {
   refreshEditorBoard();
 }
 
+/** Peel the last promotion off a unit. One click = one chevron. */
+function paintEditorClearPromotions(col: number, row: number) {
+  const idx = editorPieces.findIndex((p) => p.col === col && p.row === row);
+  if (idx < 0) return;
+  const cur = sanitizeUnitTokens(editorPieces[idx].unitTokens);
+  let drop = -1;
+  for (let i = cur.length - 1; i >= 0; i--) {
+    if (isPromotionToken(cur[i])) {
+      drop = i;
+      break;
+    }
+  }
+  if (drop < 0) return;
+  ensureEditorStrokeUndo();
+  const next = [...cur.slice(0, drop), ...cur.slice(drop + 1)];
+  editorPieces[idx] = {
+    ...editorPieces[idx],
+    unitTokens: next.length ? next : undefined,
+  };
+  markEditorDirty();
+  refreshEditorBoard();
+}
+
 function paintEditorUnitToken(col: number, row: number, first = true) {
   if (!isUnitTokenBrush(editorBrush)) return;
   const kind = unitTokenFromBrush(editorBrush);
@@ -2116,14 +2214,36 @@ function paintEditorUnitToken(col: number, row: number, first = true) {
   }
   const cur = sanitizeUnitTokens(editorPieces[idx].unitTokens);
   const has = cur.includes(kind);
-  if (!editorUnitTokenStroke) editorUnitTokenStroke = has ? 'remove' : 'add';
-  if (editorUnitTokenStroke === 'add' && has) return;
-  if (editorUnitTokenStroke === 'remove' && !has) return;
+  const promo = isPromotionToken(kind);
+  const promoCount = promotionTokensOf({ unitTokens: cur }).length;
+  const kindCount = countUnitToken({ unitTokens: cur }, kind);
+  if (!editorUnitTokenStroke) {
+    if (promo) {
+      editorUnitTokenStroke =
+        promoCount < MAX_UNIT_PROMOTIONS ? 'add' : kindCount > 0 ? 'remove' : 'add';
+    } else {
+      editorUnitTokenStroke = has ? 'remove' : 'add';
+    }
+  }
+  if (editorUnitTokenStroke === 'add') {
+    if (promo) {
+      if (promoCount >= MAX_UNIT_PROMOTIONS) return;
+    } else if (has) {
+      return;
+    }
+  } else if (kindCount <= 0) {
+    return;
+  }
   ensureEditorStrokeUndo();
-  const next =
-    editorUnitTokenStroke === 'add'
-      ? [...cur, kind]
-      : cur.filter((t) => t !== kind);
+  let next: typeof cur;
+  if (editorUnitTokenStroke === 'add') {
+    next = [...cur, kind];
+  } else if (promo) {
+    const drop = cur.lastIndexOf(kind);
+    next = drop < 0 ? cur : [...cur.slice(0, drop), ...cur.slice(drop + 1)];
+  } else {
+    next = cur.filter((t) => t !== kind);
+  }
   editorPieces[idx] = {
     ...editorPieces[idx],
     unitTokens: next.length ? next : undefined,
@@ -2181,6 +2301,10 @@ function paintEditorHex(col: number, row: number, first = true) {
   if (!inEditorHex(col, row)) return;
   if (editorBrush === 'erase') {
     paintEditorErase(col, row);
+    return;
+  }
+  if (editorBrush === 'clear-promotions') {
+    paintEditorClearPromotions(col, row);
     return;
   }
   if (isUnitTokenBrush(editorBrush)) {
@@ -2688,6 +2812,73 @@ function endStarsHtml(): string {
     .join('')}</ul>`;
 }
 
+/** Visual coin stack for the roguelite victory wallet. */
+function rogueGoldPileHtml(count: number): string {
+  const n = Math.max(0, Math.min(10, Math.floor(count)));
+  if (n < 1) {
+    return `<div class="rogue-gold-pile empty" aria-hidden="true"><span class="rogue-pile-coin" style="--x:0px;--y:0px;--z:0">${coinGlyphSvg(26)}</span></div>`;
+  }
+  const coins = Array.from({ length: n }, (_, i) => {
+    const x = ((i % 3) - 1) * 7 + (i > 5 ? 2 : 0);
+    const y = -Math.floor(i / 1.6) * 4;
+    return `<span class="rogue-pile-coin" style="--x:${x}px;--y:${y}px;--z:${i}">${coinGlyphSvg(26)}</span>`;
+  }).join('');
+  return `<div class="rogue-gold-pile" aria-hidden="true">${coins}</div>`;
+}
+
+/** Star→pile reward strip on the mid-run victory shop. */
+function rogueGoldRewardHtml(gold: number, starGold: number): string {
+  const gain = Math.max(0, Math.floor(starGold));
+  const total = Math.max(0, Math.floor(gold));
+  const base = Math.max(0, total - gain);
+  const settled = rogueGoldFxPlayed || gain < 1;
+  const shown = settled ? total : base;
+  const fly =
+    settled
+      ? ''
+      : Array.from({ length: gain }, (_, i) => {
+          const dx = (i - (gain - 1) / 2) * 2.35;
+          return `<span class="rogue-fly-coin" data-i="${i}" style="--i:${i};--n:${gain};--dx:${dx}rem">${coinGlyphSvg(24)}</span>`;
+        }).join('');
+  return `<div class="rogue-gold-reward${settled ? ' settled' : ''}" data-base="${base}" data-gain="${gain}" data-total="${total}">
+    ${rogueGoldPileHtml(shown)}
+    <div class="rogue-fly-layer" aria-hidden="true">${fly}</div>
+    <span class="rogue-gold-amount"><span class="rogue-gold-num">${shown}</span> gold</span>
+  </div>`;
+}
+
+/** Count up wallet as star coins land in the pile. */
+function playRogueGoldFx() {
+  const root = app.querySelector('.rogue-gold-reward:not(.settled)') as HTMLElement | null;
+  if (!root || rogueGoldFxPlayed) return;
+  rogueGoldFxPlayed = true;
+  const base = Number(root.dataset.base ?? 0);
+  const gain = Number(root.dataset.gain ?? 0);
+  const total = Number(root.dataset.total ?? base + gain);
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const paint = (n: number) => {
+    const num = root.querySelector('.rogue-gold-num');
+    const pile = root.querySelector('.rogue-gold-pile');
+    if (num) num.textContent = String(n);
+    if (pile) pile.outerHTML = rogueGoldPileHtml(n);
+  };
+  if (reduce || gain < 1) {
+    paint(total);
+    root.classList.add('settled');
+    return;
+  }
+  // Star pop delays 0.28/0.56/0.84s + pop ~0.35s, then coin flight 0.55s.
+  const landAt = (i: number) => 280 + i * 280 + 350 + 550;
+  for (let i = 0; i < gain; i++) {
+    window.setTimeout(() => {
+      if (!root.isConnected) return;
+      paint(base + i + 1);
+      root.querySelector(`.rogue-fly-coin[data-i="${i}"]`)?.classList.add('landed');
+      if (i === gain - 1) root.classList.add('settled');
+    }, landAt(i));
+  }
+}
+
 function bestStarsHtml(id: string, size = 14): string {
   const best = bestStarsForLevel(id);
   const glyphs = [1, 2, 3]
@@ -2752,19 +2943,9 @@ function canControl(): boolean {
   return isPlayerControlled(state, state.turn);
 }
 
-function extrasVisible(): boolean {
-  return doubleTime;
-}
-
-/** Extra-action dests (second move / rest). Climb gold is this-action — never extra. */
-function isExtraStaminaDest(h: Highlight): boolean {
-  return (h.kind === 'stamina' && !!h.extra) || h.kind === 'rest';
-}
-
-/** Extra-move dests stay hidden unless Double time. Climbs stay. Specials filter dests. */
+/** Specials filter dests. Spendable AP extras are always shown. */
 function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
-  let out = extrasVisible() ? list : list.filter((h) => !isExtraStaminaDest(h));
-  // Double-time second action keeps shoot (engine already allows it).
+  let out = list;
   const javelinOn = specialMode === 'javelin' && javelinIsSpecial(piece);
   if (javelinOn) {
     return out.filter((h) => h.kind === 'shoot' || h.kind === 'shoot-range');
@@ -2775,7 +2956,7 @@ function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
   if (specialMode === 'hide' && hasAbility(piece, 'hide')) {
     return out.filter(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina') && isHideCover(state, h.hex),
+        (h.kind === 'move' || h.kind === 'ap') && isHideCover(state, h.hex),
     );
   }
   if (specialMode === 'trap' && hasAbility(piece, 'trap')) {
@@ -2788,7 +2969,7 @@ function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
   return out;
 }
 
-/** Unfiltered rest dests for empty-stamina marks (busy icons still draw in normal time). */
+/** Unfiltered apEmpty dests for empty-AP marks (busy icons still draw in normal time). */
 function restDestHighlights(pieceId: string): Highlight[] {
   const piece = getPiece(state, pieceId);
   if (!piece || hasActed(state, pieceId)) return [];
@@ -2798,11 +2979,11 @@ function restDestHighlights(pieceId: string): Highlight[] {
     (!state.scoutPieceId || state.scoutPieceId === pieceId)
       ? legalHighlights(state, pieceId)
       : rangeHighlights(state, pieceId);
-  return list.filter((h) => h.kind === 'rest');
+  return list.filter((h) => h.kind === 'apEmpty');
 }
 
-/** Hexes that draw the empty-energy mark for this unit. */
-function emptyEnergyKeys(pieceId: string): Set<string> {
+/** Hexes that draw the empty-AP mark for this unit. */
+function emptyApKeys(pieceId: string): Set<string> {
   const marks = new Set<string>();
   if (screen === 'editor' || !canControl()) return marks;
   const actor = getPiece(state, pieceId);
@@ -2813,12 +2994,11 @@ function emptyEnergyKeys(pieceId: string): Set<string> {
     const p = pieceAt(state, hex);
     return !!p && pieceVisible(state, p, viewers);
   };
-  const showExtras = extrasVisible();
   for (const hl of restDestHighlights(pieceId)) {
-    if (hl.kind !== 'rest') continue;
+    if (hl.kind !== 'apEmpty') continue;
     const terrain = state.terrain[hl.hex.row]?.[hl.hex.col] ?? 'land';
     if (terrain === 'water' && refusesWaterJump(actor)) {
-      if (!hl.extra || showExtras) marks.add(key(hl.hex));
+      marks.add(key(hl.hex));
       continue;
     }
     const blocked =
@@ -2827,14 +3007,14 @@ function emptyEnergyKeys(pieceId: string): Set<string> {
       isWall(state, hl.hex) ||
       isPalisade(state, hl.hex) ||
       isForest(state, hl.hex);
-    if (blocked || (doubleTime && !isElevatedTerrain(terrain))) marks.add(key(hl.hex));
+    if (blocked || !isElevatedTerrain(terrain)) marks.add(key(hl.hex));
   }
   return marks;
 }
 
 /** Visible enemy this unit can strike. Palisade and tree use the normal move tint. */
 function meleeRangeHex(actor: Piece, hex: Hex): boolean {
-  if (UNIT_STATS[actor.type].meleeDamage <= 0) return false;
+  if (meleeDamageOf(actor) <= 0) return false;
   const occ = pieceAt(state, hex);
   if (!occ || occ.id === actor.id) return false;
   if (!pieceVisible(state, occ, viewingSides(state))) return false;
@@ -2854,13 +3034,72 @@ function hexActions(
   hex: Hex,
 ): { canMove: boolean; canShoot: boolean; canCharge: boolean } {
   const legal = actingHighlights(pieceId).filter(
-    (h) => eq(h.hex, hex) && h.kind !== 'shoot-range' && h.kind !== 'rest',
+    (h) => eq(h.hex, hex) && h.kind !== 'shoot-range' && h.kind !== 'apEmpty',
   );
   return {
-    canMove: legal.some((h) => h.kind === 'move' || h.kind === 'stamina'),
+    canMove: legal.some((h) => h.kind === 'move' || h.kind === 'ap'),
     canShoot: legal.some((h) => h.kind === 'shoot'),
     canCharge: legal.some((h) => h.kind === 'charge' && !h.unpaid),
   };
+}
+
+/** Base action AP (0 on free downhill) + climb/extra surcharge. */
+function apCostForHighlight(piece: Piece, hl: Highlight): number {
+  const downhillFree = !!(state.downhillMove && state.scoutPieceId === piece.id);
+  const base = downhillFree ? 0 : 1;
+  if (hl.kind === 'move' || hl.kind === 'plus' || hl.kind === 'shoot' || hl.kind === 'trap') {
+    return base;
+  }
+  if (hl.kind === 'ap') return base + 1;
+  if (hl.kind === 'charge' && !hl.unpaid) return base + (hl.extra ? 1 : 0);
+  return 0;
+}
+
+/** AP that the current hover / pending hex action would spend. */
+function previewApSpend(piece: Piece): number {
+  if (!canActWithSelected() || piece.id !== selectedId) return 0;
+  const list = actingHighlights(piece.id);
+  const at = hoverHex ?? pendingHex;
+  if (!at) return 0;
+  const hits = list.filter(
+    (h) =>
+      eq(h.hex, at) &&
+      (h.kind === 'move' ||
+        h.kind === 'ap' ||
+        h.kind === 'plus' ||
+        h.kind === 'shoot' ||
+        h.kind === 'trap' ||
+        (h.kind === 'charge' && !h.unpaid)),
+  );
+  if (!hits.length) return 0;
+  // Prefer the costly move/charge over a concurrent shoot when both are on the hex.
+  const preferred =
+    hits.find((h) => h.kind === 'ap') ??
+    hits.find((h) => h.kind === 'charge') ??
+    hits.find((h) => h.kind === 'move' || h.kind === 'plus') ??
+    hits.find((h) => h.kind === 'trap') ??
+    hits[0]!;
+  return apCostForHighlight(piece, preferred);
+}
+
+function pieceApPipsHtml(piece: Piece): string {
+  return actionPointsPipsHtml({
+    max: actionPointsMax(piece),
+    left: actionPointsLeft(piece),
+    spendCap: apSpendCap(piece),
+    spentThisTurn: apSpentThisTurnOf(piece),
+    previewSpend: previewApSpend(piece),
+  });
+}
+
+/** Board hover only redraws the SVG — poke dock/sidebar AP bolts too. */
+function paintApPips(): void {
+  const piece = selectedId ? getPiece(state, selectedId) : null;
+  if (!piece || actionPointsMax(piece) <= 0) return;
+  const html = pieceApPipsHtml(piece);
+  app.querySelectorAll('.ap-pips').forEach((el) => {
+    el.outerHTML = html;
+  });
 }
 
 /** Real options anywhere: move hexes, fire targets, or charge dests. */
@@ -2872,7 +3111,7 @@ function availableActions(pieceId: string): {
   const piece = getPiece(state, pieceId);
   if (!piece) return { canMove: false, canShoot: false, canCharge: false };
   const all = highlightsFor(pieceId);
-  const canMove = all.some((h) => h.kind === 'move' || h.kind === 'stamina');
+  const canMove = all.some((h) => h.kind === 'move' || h.kind === 'ap');
   const canShoot =
     !isReloading(piece) && !isDepleted(piece) && all.some((h) => h.kind === 'shoot');
   const canCharge = all.some((h) => h.kind === 'charge' && !h.unpaid);
@@ -2890,7 +3129,7 @@ function highlightsFor(pieceId: string): Highlight[] {
   ) {
     return actingHighlights(pieceId);
   }
-  // Preview / enemy turn: same extra-move filter so gold energy dests don't
+  // Preview / enemy turn: same extra-move filter so gold AP dests don't
   // remount (and replay fade-in) on every AI step while you stay selected.
   return filterPlayerHighlights(piece, rangeHighlights(state, pieceId));
 }
@@ -2903,7 +3142,7 @@ function syncMarchSpend(pieceId: string | null, on: boolean): void {
   if (!pieceId) return;
   const piece = getPiece(state, pieceId);
   if (!piece) return;
-  piece.spendMarch = on && canSpendStamina(piece) ? true : undefined;
+  piece.spendMarch = on && canSpendActionPoints(piece) ? true : undefined;
 }
 
 function selectPiece(id: string | null) {
@@ -2988,7 +3227,6 @@ async function playAnimatedAction(action: Action): Promise<void> {
 
   if (
     action.kind === 'skip' ||
-    action.kind === 'rest' ||
     action.kind === 'rotate' ||
     action.kind === 'trap'
   ) {
@@ -3189,7 +3427,9 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     if (!t) continue;
     // Splash hits everyone (incl. friendlies); bullets skip friendlies
     if (!hasSplash(stats) && t.side === piece.side) continue;
-    const dmgAmt = hasSplash(stats) ? stats.splashDamage : stats.shootDamage;
+    const dmgAmt = hasSplash(stats)
+      ? splashDamageOf(piece)
+      : shootDamageOf(piece);
     if (dmgAmt <= 0) continue;
     const origin = hasSplash(stats) && !eq(h, at) ? at : fromHex;
     const net = netDamage(t, dmgAmt, 0, origin, state.orientation, true);
@@ -3236,12 +3476,12 @@ function plusOnlyHex(hex: Hex): boolean {
   if (!marked) return false;
   return !highlights.some(
     (h) =>
-      (h.kind === 'move' || h.kind === 'stamina' || (h.kind === 'charge' && !h.unpaid)) &&
+      (h.kind === 'move' || h.kind === 'ap' || (h.kind === 'charge' && !h.unpaid)) &&
       eq(h.hex, hex),
   );
 }
 
-/** Walk the downhill step, then the free +1, in this turn. No energy, no march. */
+/** Walk the downhill step, then the free +1, in this turn. No AP spend, no march. */
 async function tryPlusStep(hex: Hex) {
   if (!canActWithSelected() || !selectedId || animating) return;
   const plan = plusStepPlan(state, selectedId, hex);
@@ -3269,7 +3509,6 @@ async function tryPlusStep(hex: Hex) {
       path: plan.bonusPath,
     });
   }
-  await settleUnarmedStaminaExtra(actingId);
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
     hoverHex = null;
@@ -3302,7 +3541,6 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   const actingId = selectedId;
   pendingHex = null;
   await playAnimatedAction(action);
-  await settleUnarmedStaminaExtra(actingId);
 
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
@@ -3329,22 +3567,6 @@ async function placeTrap(hex: Hex) {
   await maybeAi();
 }
 
-async function restSelected() {
-  if (!selectedId || !canRest(selectedId) || animating) return;
-  const resting = getPiece(state, selectedId);
-  if (!resting || energyFull(resting)) return;
-  rotatePreviewDir = null;
-  animating = true;
-  const actingId = selectedId;
-  const turnBefore = state.turn;
-  state = restPiece(state, actingId);
-  if (state.turn !== turnBefore) specialMode = null;
-  await playPendingFx();
-  animating = false;
-  retainSelection(actingId);
-  render();
-  await maybeAi();
-}
 
 function canRotate(pieceId: string): boolean {
   if (!canControl()) return false;
@@ -3354,9 +3576,6 @@ function canRotate(pieceId: string): boolean {
   if (hasActed(state, pieceId)) return false;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
   if (state.downhillMove && state.scoutPieceId === piece.id) return false;
-  if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible()) {
-    return false;
-  }
   return true;
 }
 
@@ -3392,7 +3611,6 @@ async function commitRotate(dir: HexDir) {
   rotatePreviewDir = null;
   await playPendingFx();
   animating = false;
-  await settleUnarmedStaminaExtra(actingId);
   if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
     selectedId = actingId;
     hoverHex = null;
@@ -3404,22 +3622,6 @@ async function commitRotate(dir: HexDir) {
     retainSelection(actingId);
     render();
     await maybeAi();
-  }
-}
-
-/** Off = first action ends the unit. On (Double time) keeps the extra.
- *  Board / briefing overlays must not leave the extra hanging — they already block
- *  canControl(), which used to skip this and then show Skip second action on close. */
-async function settleUnarmedStaminaExtra(actingId: string) {
-  if (state.winner || aiThinking) return;
-  const piece = getPiece(state, actingId);
-  if (!piece) return;
-  if (
-    state.staminaBonus &&
-    state.scoutPieceId === actingId &&
-    !extrasVisible()
-  ) {
-    await playAnimatedAction({ kind: 'skip' });
   }
 }
 
@@ -3534,9 +3736,9 @@ function renderBoard(): string {
   };
 
   // Dest overlay is yours-to-act only. Rebuilding it on every AI step remounts
-  // energy bolts and they flash while the unit stays selected.
+  // AP bolts and they flash while the unit stays selected.
   const allHl = !editing && selectedId && canControl() ? highlights : [];
-  const moveMap = new Map<string, 'move' | 'stamina' | 'charge'>();
+  const moveMap = new Map<string, 'move' | 'ap' | 'charge'>();
   const trapSet = new Set<string>();
   const plusMove = new Set<string>();
   const plusOnly = new Set<string>();
@@ -3548,7 +3750,7 @@ function renderBoard(): string {
     if (hl.kind === 'plus') plusOnly.add(k);
     if (hl.kind === 'trap') trapSet.add(k);
     if (hl.kind === 'move' && hl.plus) plusMove.add(k);
-    if (hl.kind === 'move' || hl.kind === 'stamina' || (hl.kind === 'charge' && !hl.unpaid)) {
+    if (hl.kind === 'move' || hl.kind === 'ap' || (hl.kind === 'charge' && !hl.unpaid)) {
       moveMap.set(k, hl.kind);
     } else if (hl.kind === 'shoot') shootTarget.add(k);
     else if (hl.kind === 'shoot-range') shootRange.add(k);
@@ -3558,7 +3760,7 @@ function renderBoard(): string {
     ? terrainHeight(state.terrain[actor.row]?.[actor.col] ?? 'land')
     : 0;
   if (!editing && selectedId && canControl()) {
-    for (const k of emptyEnergyKeys(selectedId)) restSet.add(k);
+    for (const k of emptyApKeys(selectedId)) restSet.add(k);
   }
   // Climb marks only. Same height or lower is not a climb, even on a hill.
   const restBusy = (hex: Hex) => {
@@ -3577,7 +3779,7 @@ function renderBoard(): string {
   const splashSet = new Set<string>();
   const pathSet = new Set<string>();
   let pathVia: Hex | null = null;
-  let pathKind: 'move' | 'stamina' | 'charge' | null = null;
+  let pathKind: 'move' | 'ap' | 'charge' | null = null;
   const marchSet = new Set<string>();
   let marchEnd: Hex | null = null;
   const selForMarch = !editing && selectedId ? getPiece(state, selectedId) : null;
@@ -3606,7 +3808,7 @@ function renderBoard(): string {
       sel &&
       !hasAbility(sel, 'charge') &&
       !splashAim &&
-      canOrderMarch(state, sel, hoverHex, doubleTime)
+      canOrderMarch(state, sel, hoverHex)
         ? marchRoute(state, sel, hoverHex)
         : null;
     if (plusPlan) {
@@ -3619,15 +3821,15 @@ function renderBoard(): string {
     } else {
       const destHl = highlights.find(
         (h) =>
-          (h.kind === 'move' || h.kind === 'stamina' || (h.kind === 'charge' && !h.unpaid)) &&
+          (h.kind === 'move' || h.kind === 'ap' || (h.kind === 'charge' && !h.unpaid)) &&
           eq(h.hex, hoverHex!),
       );
       if (sel && destHl) {
         pathKind =
           destHl.kind === 'charge'
             ? 'charge'
-            : destHl.kind === 'stamina'
-              ? 'stamina'
+            : destHl.kind === 'ap'
+              ? 'ap'
               : 'move';
         const plan = stickyMovePlan(
           state,
@@ -3689,21 +3891,21 @@ function renderBoard(): string {
       }
       const meleeHex = !editing && !!actor && meleeRangeHex(actor, hex);
       const mv = moveMap.get(k);
-      const enemyMelee = meleeHex && (mv === 'move' || mv === 'stamina' || mv === 'charge');
+      const enemyMelee = meleeHex && (mv === 'move' || mv === 'ap' || mv === 'charge');
       const plusTile = plusMove.has(k) || (plusOnly.has(k) && !moveMap.has(k));
       if (enemyMelee && !plusTile) hlOverlays += `<polygon class="hl-tint melee" points="${pts}" />`;
       else if (plusTile) hlOverlays += `<polygon class="hl-tint plus" points="${pts}" />`;
       else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
-      else if (mv === 'stamina') hlOverlays += `<polygon class="hl-tint stamina" points="${pts}" />`;
+      else if (mv === 'ap') hlOverlays += `<polygon class="hl-tint ap" points="${pts}" />`;
       else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
       else if (trapSet.has(k)) hlOverlays += `<polygon class="hl-tint trap" points="${pts}" />`;
-      else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint rest" points="${pts}" />`;
+      else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint ap-empty" points="${pts}" />`;
 
       if (!enemyMelee && pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
         const via = !!(pathVia && eq(pathVia, hex) && !end);
         hlOverlays += `<polygon class="hl-tint path${
-          pathKind === 'stamina' ? ' stamina' : pathKind === 'charge' ? ' charge' : ''
+          pathKind === 'ap' ? ' ap' : pathKind === 'charge' ? ' charge' : ''
         }${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
         if (via) {
           hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
@@ -3745,20 +3947,22 @@ function renderBoard(): string {
     }
   }
 
-  let staminaMarks = '';
-  const staminaMarkHexes = new Set<string>();
+  let apMarks = '';
+  const apMarkHexes = new Set<string>();
+  // Climb bolts only — no orange icon on spendable-AP "extra" move tiles.
   if (canActWithSelected()) {
     for (const hl of allHl) {
-      if (hl.kind !== 'stamina') continue;
+      if (hl.kind !== 'ap' || hl.extra) continue;
       if (actor && meleeRangeHex(actor, hl.hex)) continue;
-      staminaMarkHexes.add(key(hl.hex));
+      apMarkHexes.add(key(hl.hex));
     }
     if (
-      pathKind === 'stamina' &&
+      pathKind === 'ap' &&
       hoverHex &&
       !(actor && meleeRangeHex(actor, hoverHex))
     ) {
-      staminaMarkHexes.add(key(hoverHex));
+      const hoverAp = allHl.find((h) => h.kind === 'ap' && eq(h.hex, hoverHex));
+      if (hoverAp && !hoverAp.extra) apMarkHexes.add(key(hoverHex));
     }
   }
   const placeStaminaMark = (k: string, svg: (x: number, y: number, r: number) => string) => {
@@ -3767,33 +3971,38 @@ function renderBoard(): string {
     const occ = seenOcc(hex);
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
-    staminaMarks += svg(x, y + dy, r);
+    apMarks += svg(x, y + dy, r);
   };
-  for (const k of staminaMarkHexes) {
-    placeStaminaMark(k, staminaHexMarkSvg);
+  for (const k of apMarkHexes) {
+    placeStaminaMark(k, apHexMarkSvg);
   }
-  // Past the normal move: gold bolt while energy can be spent, crossed bolt once it is gone.
+  // Charge past normal move: gold bolt while AP can be spent, crossed bolt once gone.
   if (specialMode === 'charge') {
     for (const hl of allHl) {
       if (hl.kind !== 'charge' || !hl.extra) continue;
       const k = key(hl.hex);
       if (hl.unpaid) {
         if (restSet.has(k)) continue;
-        placeStaminaMark(k, (x, y, r) => staminaEmptyMarkSvg(x, y, r));
+        placeStaminaMark(k, (x, y, r) => apEmptyMarkSvg(x, y, r));
       } else if (!(actor && meleeRangeHex(actor, hl.hex))) {
-        placeStaminaMark(k, staminaHexMarkSvg);
+        placeStaminaMark(k, apHexMarkSvg);
       }
     }
   }
+  // Crossed bolts for climbs / water you can't pay — not for unpaid extra-move tiles.
+  const extraEmptyKeys = new Set(
+    allHl.filter((h) => h.kind === 'apEmpty' && h.extra).map((h) => key(h.hex)),
+  );
   for (const k of restSet) {
     if (plusOnly.has(k) && !moveMap.has(k)) continue;
+    if (extraEmptyKeys.has(k)) continue;
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
     const occ = seenOcc(hex);
     const busy = restBusy(hex);
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
-    staminaMarks += `<g class="need-rest-mark${busy ? '' : ' ghost'}">${staminaEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
+    apMarks += `<g class="need-ap-mark${busy ? '' : ' ghost'}">${apEmptyMarkSvg(x, y + dy, r, !busy)}</g>`;
   }
   const plusFont = Math.max(10, HEX_SIZE * 0.36);
   const plusLabel = new Set(plusMove);
@@ -3803,7 +4012,7 @@ function renderBoard(): string {
   for (const k of plusLabel) {
     const hex = parseKey(k);
     const { x, y } = pixelOf(hex);
-    staminaMarks += `<text class="hl-plus-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${plusFont.toFixed(1)}">+1</text>`;
+    apMarks += `<text class="hl-plus-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${plusFont.toFixed(1)}">+1</text>`;
   }
 
   let tokensSvg = '';
@@ -3852,7 +4061,8 @@ function renderBoard(): string {
   }
 
   let piecesSvg = '';
-    const drawPieces: Piece[] = editing
+  let promoSvg = '';
+  const drawPieces: Piece[] = editing
     ? editorPieces.map((p) => ({
         id: `ed-${p.side}-${p.col}-${p.row}`,
         side: stampAffiliation(p),
@@ -3897,15 +4107,15 @@ function renderBoard(): string {
     const hexed = UNIT_STATS[p.type].hexArmor;
     const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
     const badgeR = Math.max(6.5, HEX_SIZE * 0.22);
-    const emptyStamina = staminaMax(p) > 0 && staminaLeft(p) <= 0;
+    const emptyStamina = actionPointsMax(p) > 0 && actionPointsLeft(p) <= 0;
     // Exhausted mark: your eyes only (hotseat: current player), fixed bottom-left.
-    const ownEnergy =
+    const ownAp =
       editing || (isSide(p.side) && viewingSides(state).includes(p.side));
     const stamCx = -pr * 0.65;
     const stamCy = -pr * 0.7;
     const bottomLeft = -pr * 0.65;
     const bottomY = pr * 0.7;
-    const showExhausted = !editing && emptyStamina && ownEnergy;
+    const showExhausted = !editing && emptyStamina && ownAp;
     const exhaustedIcon = showExhausted
       ? exhaustedBadgeSvg(bottomLeft, bottomY, badgeR)
       : '';
@@ -3922,9 +4132,9 @@ function renderBoard(): string {
       !editing && hasActed(state, p.id)
         ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
-    // Hide is a live status in play. Charge is a dock command, not a piece badge.
+    // Hide / javelin are live actions, not piece badges. Charge is editor-only here.
     const boardAbilities = abilitiesOf(p).filter((id) => {
-      if (id === 'hide') return false;
+      if (id === 'hide' || id === 'javelin') return false;
       if (id === 'charge') return editing;
       return true;
     });
@@ -3940,29 +4150,40 @@ function renderBoard(): string {
       .join('');
     const statusMarks: Array<'hidden'> = [];
     if (!editing && isConcealed(state, p)) statusMarks.push('hidden');
+    const isGeneral = hasUnitToken(p, 'general');
     const tokenMarks = unitTokensOf(p).filter(
       (id) =>
-        id === 'general' ||
-        id === 'story' ||
-        (id === 'neutral' && editing) ||
-        (editing && (id === 'hidden' || id === 'exhausted')),
+        !isPromotionToken(id) &&
+        id !== 'general' &&
+        (id === 'story' ||
+          (id === 'neutral' && editing) ||
+          (editing && (id === 'hidden' || id === 'exhausted'))),
     );
     const hideIcons = [...tokenMarks, ...statusMarks]
       .map((id, i) => {
         const cx =
           bottomLeft + (bottomBadgeOffset + boardAbilities.length + i) * badgeR * 1.65;
         const cy = bottomY;
-        return id === 'general'
-          ? generalBadgeSvg(cx, cy, badgeR)
-          : id === 'hidden'
-            ? hiddenBadgeSvg(cx, cy, badgeR)
-            : id === 'exhausted'
-              ? exhaustedBadgeSvg(cx, cy, badgeR)
-              : id === 'neutral'
-                ? neutralBadgeSvg(cx, cy, badgeR)
-                : storyBadgeSvg(cx, cy, badgeR);
+        return id === 'hidden'
+          ? hiddenBadgeSvg(cx, cy, badgeR)
+          : id === 'exhausted'
+            ? exhaustedBadgeSvg(cx, cy, badgeR)
+            : id === 'neutral'
+              ? neutralBadgeSvg(cx, cy, badgeR)
+              : storyBadgeSvg(cx, cy, badgeR);
       })
       .join('');
+    const promos = promotionTokensOf(p);
+    // Rank stack (Vs + optional general star) above forest/house.
+    if (promos.length > 0 || isGeneral) {
+      promoSvg += `<g class="piece-promos" transform="translate(${x}, ${y})">${unitRankBadgesSvg(
+        promos,
+        isGeneral,
+        0,
+        -(pr + badgeR * 0.95),
+        badgeR * 1.05,
+      )}</g>`;
+    }
     const sleepMark = hasUnitToken(p, 'sleep')
       ? sleepZsSvg(pr * 0.5, -pr * 0.58, badgeR)
       : '';
@@ -4064,9 +4285,10 @@ function renderBoard(): string {
     <g class="piece-layer">${piecesSvg}</g>
     <g class="house-layer">${houseSvg}</g>
     <g class="forest-layer">${forestSvg}</g>
+    <g class="promo-layer">${promoSvg}</g>
     <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
-    <g class="stamina-mark-layer">${staminaMarks}</g>
+    <g class="ap-mark-layer">${apMarks}</g>
     <g class="rotate-btn-layer">${rotateMarks}</g>
     <g class="tutorial-hand-layer">${tutorialSvg}</g>
   </svg>`;
@@ -4099,32 +4321,7 @@ function dockButton(
   }>${dockIcon(opts.icon)}<span class="dock-label">${label}</span></button></span>`;
 }
 
-function canRest(pieceId: string): boolean {
-  if (!canControl()) return false;
-  const piece = getPiece(state, pieceId);
-  if (!piece || piece.side !== state.turn) return false;
-  if (isSleeping(piece)) return false;
-  if (hasActed(state, pieceId) || piece.movedThisTurn) return false;
-  if (state.scoutPieceId) return false;
-  return true;
-}
 
-/** Rest is regen. Full pool → button stays, disabled. No pool → park is still legal. */
-function energyFull(piece: Piece): boolean {
-  const max = staminaMax(piece);
-  return max > 0 && staminaLeft(piece) >= max;
-}
-
-function setDoubleTime(on: boolean): void {
-  doubleTime = on;
-  setMarchDoubleTime(on);
-  persistDoubleTime();
-  hoverHex = null;
-  hoverPath = [];
-  commitPath = [];
-  refreshHighlights();
-  render();
-}
 
 function setSpecialMode(mode: AbilityId | null): void {
   specialMode = specialMode === mode ? null : mode;
@@ -4158,25 +4355,9 @@ function renderActionBar(): string {
     pieceAt(state, pendingHex!) &&
     pieceAt(state, pendingHex!)!.side !== piece.side
   ) {
-    hint = `Melee — ${UNIT_STATS[piece.type].meleeDamage} dmg (min 1); kill takes the hex`;
-  } else if (
-    state.scoutPieceId &&
-    state.scoutPieceId !== piece.id &&
-    piece.side === state.turn
-  ) {
-    hint = state.staminaBonus
-      ? 'A second action is available — finish it or skip'
-      : 'Scout still has an action — finish it or skip';
-  } else if (hasActed(state, piece.id) && piece.side === state.turn) {
-    hint = piece.actedThisTurn || piece.movedThisTurn
-      ? 'Already acted this turn'
-      : 'Resting this turn';
+    hint = `Melee — ${meleeDamageOf(piece)} dmg (min 1); kill takes the hex`;
   } else if (state.downhillMove && state.scoutPieceId === piece.id) {
     hint = 'Downhill — one more move';
-  } else if (state.staminaBonus && state.scoutPieceId === piece.id) {
-    hint = 'Second action — move, shoot, or skip';
-  } else if (state.scoutPieceId && piece.id === state.scoutPieceId) {
-    hint = 'Second scout action — move, shoot, or skip';
   } else if (state.terrain[piece.row]?.[piece.col] === 'water') {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (isSleeping(piece)) {
@@ -4203,17 +4384,6 @@ function renderActionBar(): string {
     }
   }
 
-  const left = state.scoutActionsLeft ?? 0;
-  const downhillNow = state.downhillMove && state.scoutPieceId === piece.id;
-  const scoutUi =
-    state.scoutPieceId && canControl() && !downhillNow
-      ? `<button type="button" id="skip-scout">${
-          state.staminaBonus
-            ? 'Skip second action'
-            : `Skip remaining action${left > 0 ? ` (${left})` : ''}`
-        }</button>`
-      : '';
-
   const extra =
     !choosing && isReloading(piece)
       ? `<span class="action-flag">reloading</span>`
@@ -4226,33 +4396,34 @@ function renderActionBar(): string {
       ? `<button type="button" id="cancel-march">Cancel march</button>`
       : '';
 
-  const restReady = canRest(piece.id) && !energyFull(piece);
-  const restNote =
-    restReady &&
-    staminaMax(piece) > 0 &&
-    staminaLeft(piece) <= 0 &&
-    UNIT_STATS[piece.type].staminaRegen > 0 &&
-    state.terrain[piece.row]?.[piece.col] !== 'water'
-      ? 'one idle turn = gain 1 energy'
-      : '';
+  const promos = promotionTokensOf(piece);
+  const promoIcons = promos.length
+    ? `<span class="action-bar-promos">${promos
+        .map((id) => {
+          const label = UNIT_TOKEN_LABEL[id];
+          return `<span class="action-bar-promo" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><svg viewBox="-10 -10 20 20" width="22" height="22" aria-hidden="true">${unitTokenGlyphSvg(id, 16)}</svg></span>`;
+        })
+        .join('')}</span>`
+    : '';
+
+  const meta = [cancelMarch, extra, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
+    .filter(Boolean)
+    .join('');
 
   return `
-    <div class="action-bar${scoutUi ? ' has-skip' : ''}${restReady ? ' has-rest' : ''}">
-      <div class="action-bar-piece">
+    <div class="action-bar">
+      <div class="action-bar-left">
         <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
-          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
+          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmorOf(piece))}" stroke-width="2" />
           <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
         </svg>
-        <span>${s.name}</span>
-        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side, hasUnitToken(piece, 'general'))}
-        ${staminaPipsHtml(staminaLeft(piece), staminaMax(piece))}
+        <span class="action-bar-name">${s.name}</span>
+        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side)}
         ${pieceShotPipsHtml(piece)}
       </div>
-      ${cancelMarch}
-      ${scoutUi}
-      ${extra}
-      ${hint ? `<span class="action-bar-hint">${hint}</span>` : ''}
-      ${restNote ? `<span class="action-bar-hint rest-note">${restNote}</span>` : ''}
+      <div class="action-bar-center">${pieceApPipsHtml(piece)}</div>
+      <div class="action-bar-right">${promoIcons}</div>
+      ${meta ? `<div class="action-bar-meta">${meta}</div>` : ''}
     </div>`;
 }
 
@@ -4264,9 +4435,6 @@ function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (!canControl() || piece.side !== state.turn) return false;
   if (isSleeping(piece) || hasActed(state, piece.id)) return false;
   if (id === 'trap') {
-    if (state.staminaBonus && state.scoutPieceId === piece.id && !extrasVisible()) {
-      return false;
-    }
     return canTrap(state, piece.id);
   }
   if (id === 'charge') return legalHighlights(state, piece.id).some((h) => h.kind === 'charge');
@@ -4274,17 +4442,19 @@ function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   return true;
 }
 
-/** Double time, Rest, specials (or stub), End turn. */
+/** End turn — floats above the unit selection bar, board bottom-right. */
+function renderEndTurn(): string {
+  return `<div class="play-end-cluster">${dockButton('end-turn', 'End turn', canControl(), {
+    icon: 'end',
+    className: 'play-end-turn',
+  })}</div>`;
+}
+
+/** Specials (or stub). */
 function renderUnitDock(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
-  const yours = canControl();
-  const rest = !!(piece && canRest(piece.id) && !energyFull(piece));
   const specials = piece ? dockSpecials(piece) : [];
-  const cols = 3 + Math.max(1, specials.length);
-  const ownSelected = !!(piece && piece.side === state.turn);
-  const energyLocked =
-    ownSelected && staminaMax(piece!) > 0 && !canSpendStamina(piece!);
-  const doubleOn = yours && !energyLocked;
+  const cols = Math.max(1, specials.length);
   const specialBtns = specials.length
     ? specials
         .map((id) => {
@@ -4298,17 +4468,7 @@ function renderUnitDock(): string {
         .join('')
     : dockButton('special-action', 'Special', false, { icon: 'special', title: 'No special' });
   return `<div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
-    ${dockButton('double-time', 'Double time', doubleOn, {
-      icon: 'double',
-      pressed: doubleTime,
-      title: 'Energy extras for every unit in your army',
-    })}
-    ${dockButton('rest-unit', 'Rest', rest, {
-      icon: 'rest',
-      title: 'Skip this activation. An idle turn restores 1 energy',
-    })}
     ${specialBtns}
-    ${dockButton('end-turn', 'End turn', yours, { icon: 'end', className: 'play-end-turn' })}
   </div>`;
 }
 
@@ -4321,68 +4481,54 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is climb, red is shoot. Double time auto-spends energy. Specials (hide / javelin / charge / trap) replace overlapping clicks.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb / AP spend, red is shoot. Specials (hide / javelin / charge / trap) replace overlapping clicks.</p>';
   let moreStats = '';
 
   if (piece) {
     const s = UNIT_STATS[piece.type];
     const elev = terrainHeight(state.terrain[piece.row][piece.col]);
-    const shootVal = s.shoot > 0 ? s.shoot + elev : 0;
+    const shootBase = shootRangeOf(piece);
+    const shootVal = shootBase > 0 ? shootBase + elev : 0;
+    const rangeBonus = countUnitToken(piece, 'range1');
     const shootRange =
       s.shootMin > 1 ? `${s.shootMin}–${shootVal}` : String(shootVal);
+    const shootRangeNote = rangeBonus
+      ? `+${rangeBonus} promotion${rangeBonus > 1 ? 's' : ''}`
+      : '';
+    const atkBonus = attackBonusOf(piece);
+    const atkNote = atkBonus
+      ? `+${atkBonus} promotion${atkBonus > 1 ? 's' : ''}`
+      : '';
     const moveNote = [
-      s.actions > 1 ? `${s.actions} actions` : '',
+      (() => {
+        const gain = actionPointGainOf(piece);
+        return gain > 1 ? `${gain} AP / turn` : '';
+      })(),
       s.moveBudget > 0 ? `cap ${s.moveBudget}` : '',
     ]
       .filter(Boolean)
       .join(' · ');
 
-    const maxSt = staminaMax(piece);
-    const curSt = staminaLeft(piece);
-    let stamNote = '';
-    let stamWarn = false;
-    if (piece.staminaUsedThisTurn) {
-      stamNote = 'used this turn';
-      stamWarn = true;
-    } else if (
-      (piece.actedThisTurn || piece.movedThisTurn) &&
-      curSt < maxSt &&
-      s.staminaRegen > 0
-    ) {
-      stamNote = 'acted — no regen';
-      stamWarn = true;
-    } else if (
-      hasActed(state, piece.id) &&
-      curSt < maxSt &&
-      s.staminaRegen > 0
-    ) {
-      stamNote = 'resting';
-    } else if (
-      state.terrain[piece.row]?.[piece.col] === 'water' &&
-      curSt < maxSt &&
-      s.staminaRegen > 0
-    ) {
-      stamNote = 'no regen in water';
-      stamWarn = true;
-    } else if (curSt < maxSt && s.staminaRegen > 0) {
-      const n = Math.max(1, piece.staminaRegenWait ?? s.staminaRegen);
-      stamNote = `+1 after ${n} idle turn${n === 1 ? '' : 's'}`;
-    } else if (s.staminaRegen > 0) {
-      stamNote = `regen ${s.staminaRegen}`;
+    const maxAp = actionPointsMax(piece);
+    const spent = apSpentThisTurnOf(piece);
+    const spendable = apSpendable(piece);
+    const cap = apSpendCap(piece);
+    let apNote = '';
+    let apWarn = false;
+    if (spent > 0) {
+      apNote = `spent ${spent}/${cap} · ${spendable} spendable`;
+      apWarn = spendable <= 0;
+    } else if (maxAp > 0) {
+      apNote = `${spendable} spendable / turn (cap ${cap})`;
     }
 
     const vitals = [
-      ...(maxSt > 0
-        ? [statRow('Energy', staminaPipsHtml(curSt, maxSt), stamNote, stamWarn)]
+      ...(maxAp > 0
+        ? [statRow('AP', pieceApPipsHtml(piece), apNote, apWarn)]
         : []),
       statRow(
         'HP',
-        hpPipsHtml(
-          hpLeft(piece),
-          hpMax(piece),
-          piece.side,
-          hasUnitToken(piece, 'general'),
-        ),
+        hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side),
         hpLeft(piece) < hpMax(piece) ? 'wounded' : '',
         hpLeft(piece) < hpMax(piece),
       ),
@@ -4412,13 +4558,26 @@ function renderSidebar(): string {
         [
           s.shootArc === 'arch' ? 'arch over units' : 'straight',
           elev === 2 ? '+2 from plateau' : elev === 1 ? '+1 from high' : '',
+          shootRangeNote,
           'high dest +1 · plateau dest +2',
         ]
           .filter(Boolean)
           .join(' · '),
       ),
-      statRow('Melee', `${s.meleeDamage}`),
-      statRow('Charge', s.charge > 0 ? String(s.charge) : '0'),
+      statRow(
+        'Melee',
+        `${meleeDamageOf(piece)}`,
+        s.meleeDamage > 0 ? atkNote : '',
+      ),
+      statRow(
+        'Charge',
+        hasAbility(piece, 'charge')
+          ? String(chargeDamageOf(piece))
+          : s.charge > 0
+            ? String(s.charge)
+            : '0',
+        hasAbility(piece, 'charge') ? atkNote : '',
+      ),
       statRow(
         'Sight',
         String(s.sight + elev),
@@ -4426,31 +4585,47 @@ function renderSidebar(): string {
       ),
       statRow(
         'Shot',
-        String(s.shootDamage),
-        hasSplash(s) ? `splash ${s.splashDamage} · FF` : '',
+        String(shootDamageOf(piece) || s.shootDamage),
+        [
+          hasSplash(s) ? `splash ${splashDamageOf(piece)} · FF` : '',
+          s.shootDamage > 0 ? atkNote : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
       ),
       statRow(
         'Armor',
         s.hexArmor
           ? HEX_ARMOR_SIDES.map((side) => {
-              const n = s[side];
+              const n = armorFaceOf(piece, side);
               const tag = HEX_ARMOR_LABEL[side]
                 .split(' ')
                 .map((w) => w[0])
                 .join('');
               return `${tag}${n > 0 ? '+' : ''}${n}`;
             }).join(' ')
-          : `${s.armor > 0 ? '+' : ''}${s.armor}`,
-        s.hexArmor
-          ? (() => {
-              const walk = isExperimentalOn('block-red-move');
-              const shoot = isExperimentalOn('block-red-shoot');
-              if (walk && shoot) return 'hex · front follows last move · −2 face blocks walk and shoot';
-              if (walk) return 'hex · front follows last move · −2 face blocks walk';
-              if (shoot) return 'hex · front follows last move · −2 face blocks shoot';
-              return 'hex · front follows last move';
-            })()
-          : '',
+          : (() => {
+              const n = s.armor + armorBonusOf(piece);
+              return `${n > 0 ? '+' : ''}${n}`;
+            })(),
+        (() => {
+          const defBonus = armorBonusOf(piece);
+          return [
+            s.hexArmor
+              ? (() => {
+                  const walk = isExperimentalOn('block-red-move');
+                  const shoot = isExperimentalOn('block-red-shoot');
+                  if (walk && shoot) return 'hex · front follows last move · −2 face blocks walk and shoot';
+                  if (walk) return 'hex · front follows last move · −2 face blocks walk';
+                  if (shoot) return 'hex · front follows last move · −2 face blocks shoot';
+                  return 'hex · front follows last move';
+                })()
+              : '',
+            defBonus ? `+${defBonus} promotion${defBonus > 1 ? 's' : ''}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ');
+        })(),
       ),
     ];
     if (s.shoot > 0) {
@@ -4464,15 +4639,17 @@ function renderSidebar(): string {
       );
     }
 
-    const abilityNotes = abilitiesOf(piece).map((id) => ABILITY_BLURB[id]);
+    const abilityNotes = abilitiesOf(piece)
+      .filter((id) => id !== 'javelin')
+      .map((id) => ABILITY_BLURB[id]);
     const extraNotes: string[] = [];
     if (s.passWater && s.passUnits) extraNotes.push('Move onto water; pathing through pieces');
     else {
-      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 energy with 2 HP or less; turn-start energy penalty or 2 HP; no regen)');
+      if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 AP with 2 HP or less; turn-start AP penalty or 2 HP)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
     if (hasAbility(piece, 'charge')) extraNotes.push(
-      `Charge special: ${Math.max(1, s.charge)} dmg through enemies (armor applies). Inside the normal move this spends nothing. Past that move, picking the tile spends 1 energy. A living blocker stops you unless that hit kills it, or you land empty beyond`,
+      `Charge special: ${chargeDamageOf(piece)} dmg through enemies (armor applies). Inside the normal move this spends nothing. Past that move, picking the tile spends 1 AP. A living blocker stops you unless that hit kills it, or you land empty beyond`,
     );
     if (isHouse(state, { col: piece.col, row: piece.row })) {
       extraNotes.push('In a house — after leaving, nobody can enter it again');
@@ -4480,27 +4657,49 @@ function renderSidebar(): string {
     if (isConcealed(state, piece)) {
       extraNotes.push('Hidden — enemies cannot see this unit');
     }
-    if (staminaMax(piece) > 0 && staminaLeft(piece) <= 0) {
-      extraNotes.push('Exhausted — no energy until an idle turn on land');
+    if (actionPointsMax(piece) > 0 && actionPointsLeft(piece) <= 0) {
+      extraNotes.push('Exhausted — 0 AP in pool');
     }
     if (hasUnitToken(piece, 'sleep')) {
       extraNotes.push(
-        'Sleeping — not active until hit. No move, shoot, turn, rest, or energy',
+        'Sleeping — not active until hit. No move, shoot, turn, or AP spend',
       );
+    }
+    {
+      const promos = promotionTokensOf(piece);
+      if (promos.length) {
+        const counts = new Map<string, number>();
+        for (const id of promos) counts.set(id, (counts.get(id) ?? 0) + 1);
+        const parts = [...counts.entries()].map(
+          ([id, n]) => `${UNIT_TOKEN_LABEL[id as typeof promos[number]]}${n > 1 ? ` ×${n}` : ''}`,
+        );
+        extraNotes.push(
+          `Promotions (${promos.length}/${MAX_UNIT_PROMOTIONS}): ${parts.join(', ')}`,
+        );
+      }
     }
     if (isNeutralSide(piece.side)) {
       extraNotes.push(
         'Neutral — not in any army. Any unit that walks onto this hex converts it, no damage',
       );
     }
-    extraNotes.push(`Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(s.climbLevel)]}`);
+    extraNotes.push(
+      `Climb ${CLIMB_LEVEL_LABEL[sanitizeClimbLevel(climbLevelOf(piece))]}${
+        hasAllTerrain(piece) ? ' (All terrain)' : ''
+      }`,
+    );
+    if (hasAllTerrain(piece)) {
+      extraNotes.push(
+        'All terrain — free climbs, swim without AP/HP upkeep, mountains ok, Hide on forest',
+      );
+    }
     if (hasSplash(s)) extraNotes.push('Splash: full ring; wall hits 3 tiles back-arc');
 
     detail = `
       <section class="ability">
         <header class="ability-head">
           <svg class="side-icon" viewBox="-10 -10 20 20" width="28" height="28" aria-hidden="true">
-            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmor(piece.type))}" stroke-width="2" />
+            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmorOf(piece))}" stroke-width="2" />
             <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 14)}</g>
           </svg>
           <div>
@@ -4544,26 +4743,26 @@ function renderSidebar(): string {
           ${moreStats}
           <div class="legend">
             <span class="l-move">Move</span>
-            <span class="l-stamina">Energy (climb / extra move)</span>
-            <span class="l-rest">Need rest</span>
+            <span class="l-ap">AP (climb / extra)</span>
+            <span class="l-ap-empty">Need AP</span>
             <span class="l-shoot">Shoot (target)</span>
             <span class="l-shoot-range">Shoot range</span>
           </div>
           <dl class="rules">
-            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 energy and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 energy penalty (not an action) or 2 HP; leftover energy can still extra-move. No energy regen in water, even idle</dd></div>
+            <div><dt>Water</dt><dd>shoot over, never from. Move to water units can stop on it (ends momentum that turn). Can't step in with 0 AP and 2 HP or less. From water: 1 hex/action, no shooting. Start of turn: 1 AP penalty (not an action) or 2 HP; leftover spendable AP can still extra-move</dd></div>
             <div><dt>LOS low</dt><dd>wall always blocks; palisade and forest block straight shots; hill / plateau / mountain block if higher than the shooter; straight blocked by units</dd></div>
             <div><dt>Arch</dt><dd>over units, palisades and forest; walls / higher ground still block</dd></div>
             <div><dt>LOS high</dt><dd>hill +1 / plateau +2 / mountain +3 to shoot only; firing at elevation costs that much range; over pieces &amp; along ridge. Higher ground blocks shots from below. Standing height does not add move. A step down one level grants one more move</dd></div>
-            <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs energy. Climb level is the max height a unit can occupy</dd></div>
+            <div><dt>Heights</dt><dd>Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only (no land↔plateau). Climbing costs AP. Climb level is the max height a unit can occupy</dd></div>
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same wall rules, house graphic — paint onto a unit in the editor to garrison them. That unit can leave; afterwards nobody can enter</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
             <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
-            <div><dt>Energy</dt><dd>climb, tread water at turn start, or a second straight-line move after every action point is spent (leftover steps don't carry). Extra actions (scout) come first</dd></div>
+            <div><dt>Action points</dt><dd>pool + per-turn spend window (gain+1). Climb and water upkeep spend AP. Spendable AP extras stay available within the per-turn window (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap units are immune and can plant or clear them. Spawn / stand still does not trigger. Palisade: wood fence, three melee hits to break, no charge through unless it falls, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
-            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 energy, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 energy — no climb or extra move until it idles to regen. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or rest, and no energy regen while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
+            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap units are immune and can plant or clear them. Spawn / stand still does not trigger. Palisade: wood fence, 3 HP — melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). No charge through unless that hit breaks it, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP, shoot damage applies), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 AP max, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 AP — no climb or spend until AP returns. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or AP spend while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
-            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Rest parks a unit that hasn't moved (checkmark, still regenerates). Hex-shield units can Turn on an adjacent rear / −2 hex (spends an action). Energy extra only after all action points are spent</dd></div>
+            <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Hex-shield units can Turn on an adjacent rear / −2 hex (spends AP). Spendable AP extras stay available within the per-turn window</dd></div>
             <div><dt>Win</dt><dd>kill their General (if they have one), or every enemy piece. Flags on the map: capturing all of them also wins</dd></div>
           </dl>
         </details>
@@ -4774,15 +4973,19 @@ function renderEndOverlay(): string {
             ? `<button type="button" id="end-start" class="ghost">Start</button>`
             : `<button type="button" id="end-start">Done</button>`;
 
+  const goldRewardHtml =
+    shop && rogueRun
+      ? rogueGoldRewardHtml(rogueRun.gold, shop.starGold)
+      : '';
+  const canPromo = roguePromoCandidates().length > 0;
   const shopHtml =
     shop && rogueRun
       ? `<div class="rogue-shop">
           <div class="rogue-shop-head">
-            <span class="rogue-shop-gold">${rogueRun.gold} gold</span>
             ${
               shop.purchased.length
                 ? `<span class="rogue-shop-bought">Bought: ${escapeHtml(boughtNames)}</span>`
-                : `<span class="rogue-shop-hint">Pick any you can afford</span>`
+                : `<span class="rogue-shop-hint">Pick any you can afford — leftover coin carries</span>`
             }
           </div>
           <div class="rogue-shop-offers">
@@ -4806,6 +5009,25 @@ function renderEndOverlay(): string {
                 : `<p class="rogue-shop-empty">Shelf empty — continue when ready.</p>`
             }
           </div>
+          <div class="rogue-shop-head rogue-promo-head">
+            <span class="rogue-shop-hint">Promotions — pick free, assign to a survivor (keeps until death)</span>
+          </div>
+          <div class="rogue-shop-offers rogue-shop-promos">
+            ${
+              shop.promotions.length
+                ? shop.promotions
+                    .map((promo, i) => {
+                      const label = UNIT_TOKEN_LABEL[promo];
+                      return `<button type="button" class="rogue-offer rogue-promo ${promo}${canPromo ? '' : ' unaffordable'}" data-rogue-promo="${i}"${canPromo ? '' : ' disabled'}>
+                        <span class="rogue-promo-glyph">${unitTokenGlyphSvg(promo, 22)}</span>
+                        <span class="rogue-offer-name">${escapeHtml(label)}</span>
+                        <span class="rogue-offer-cost">free</span>
+                      </button>`;
+                    })
+                    .join('')
+                : `<p class="rogue-shop-empty">No promotions left.</p>`
+            }
+          </div>
         </div>`
       : '';
 
@@ -4819,6 +5041,7 @@ function renderEndOverlay(): string {
         </svg>
         <h2 class="end-title">${title}</h2>
         ${endStarsHtml()}
+        ${goldRewardHtml}
         ${endBestStarsHtml()}
         <p class="end-sub${custom ? ' level-copy' : ''}">${custom ? formatCopyHtml(custom) : sub}</p>
         ${shopHtml}
@@ -4836,6 +5059,43 @@ function renderEndOverlay(): string {
           }
         </div>
         ${popupAudioButton()}
+      </div>
+    </div>`;
+}
+
+function renderRoguePromoAssign(): string {
+  if (!roguePromoAssign || !rogueShop) return '';
+  const { promo } = roguePromoAssign;
+  const label = UNIT_TOKEN_LABEL[promo];
+  const targets = roguePromoCandidates();
+  const rows = targets.length
+    ? targets
+        .map((p) => {
+          const s = UNIT_STATS[p.type];
+          const n = promotionTokensOf(p).length;
+          const gen = hasUnitToken(p, 'general') ? ' · General' : '';
+          return `<button type="button" class="rogue-promo-target" data-rogue-promo-target="${escapeHtml(p.id)}">
+            <svg class="side-icon" viewBox="-10 -10 20 20" width="40" height="40" aria-hidden="true">
+              <circle cx="0" cy="0" r="9.5" fill="${pieceColor('red')}" stroke="${armorColor(s.armor)}" stroke-width="2" />
+              <g fill="${iconInk('red')}" color="${iconInk('red')}">${pieceIconSvg(p.type, 16)}</g>
+            </svg>
+            <span class="rogue-promo-target-meta">
+              <span class="rogue-promo-target-name">${escapeHtml(s.name)}${gen}</span>
+              <span class="rogue-promo-target-rank">${n}/${MAX_UNIT_PROMOTIONS} promos</span>
+            </span>
+          </button>`;
+        })
+        .join('')
+    : `<p class="rogue-shop-empty">No survivors with a free promotion slot.</p>`;
+  return `
+    <div class="end-overlay rogue-promo-overlay" role="dialog" aria-modal="true" aria-label="Assign ${escapeHtml(label)}">
+      <div class="end-card briefing rogue-promo-card">
+        <h2 class="end-title">Assign ${escapeHtml(label)}</h2>
+        <p class="end-sub">Choose a surviving unit. The promotion stays until that unit dies.</p>
+        <div class="rogue-promo-targets">${rows}</div>
+        <div class="end-actions">
+          <button type="button" id="rogue-promo-cancel" class="ghost">Cancel</button>
+        </div>
       </div>
     </div>`;
 }
@@ -4926,9 +5186,7 @@ function closeBoardPopup() {
   const text = boardPopup?.text ?? '';
   boardPopup = null;
   armTutorialHands(text);
-  const actingId = state.scoutPieceId;
   void (async () => {
-    if (actingId) await settleUnarmedStaminaExtra(actingId);
     render();
     await maybeAi();
   })();
@@ -5164,11 +5422,10 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   if (state.scoutPieceId && state.scoutPieceId !== piece.id) return false;
   // The armed second action is a normal move or shot, not another march order.
   if (piece.movedThisTurn || hasActed(state, piece.id)) return false;
-  if (state.staminaBonus && state.scoutPieceId === piece.id) return false;
   if (eq(hex, { col: piece.col, row: piece.row })) return false;
   const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
-  // In-range moves, and double time's extra move, are actions — not march orders.
-  if (!cancel && !canOrderMarch(state, piece, hex, doubleTime)) return false;
+  // In-range moves (including spendable AP extras) are actions — not march orders.
+  if (!cancel && !canOrderMarch(state, piece, hex)) return false;
   const acting = !cancel && canActWithSelected() && selectedId === piece.id;
   void commitMarch(piece.id, cancel ? null : hex, acting);
   return true;
@@ -5270,13 +5527,13 @@ function onHexClick(col: number, row: number) {
   }
 
   if (occ) {
-    const skipStaminaForOther =
+    const skipApForOther =
       canControl() &&
-      state.staminaBonus &&
       !!state.scoutPieceId &&
+      (state.scoutActionsLeft ?? 0) > 0 &&
       occ.id !== state.scoutPieceId &&
       occ.side === state.turn;
-    if (skipStaminaForOther) {
+    if (skipApForOther) {
       void skipScout(occ.id);
       return;
     }
@@ -5296,8 +5553,8 @@ function onHexClick(col: number, row: number) {
     return;
   }
 
-  // Empty-energy mark: the move needs stamina. Keep this unit selected.
-  if (selectedId && emptyEnergyKeys(selectedId).has(key(hex))) {
+  // Empty-AP mark: the move needs action points. Keep this unit selected.
+  if (selectedId && emptyApKeys(selectedId).has(key(hex))) {
     return;
   }
 
@@ -5424,16 +5681,17 @@ function bindBoardOnly() {
     const moveHover = highlights.some(
       (h) =>
         (h.kind === 'move' ||
-          h.kind === 'stamina' ||
+          h.kind === 'ap' ||
           h.kind === 'charge' ||
           h.kind === 'plus' ||
           h.kind === 'trap') &&
         eq(h.hex, hex),
     );
+    const shootHover = highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
     const splashHover =
       !!sel &&
       hasSplash(UNIT_STATS[sel.type]) &&
-      highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
+      shootHover;
     const zoneHover = !!sel && redZoneDir(sel, hex) != null;
     const marchHover =
       specialMode !== 'trap' &&
@@ -5442,8 +5700,10 @@ function bindBoardOnly() {
       canControl() &&
       sel.side === state.turn &&
       isExperimentalOn('walk-orders') &&
-      canOrderMarch(state, sel, hex, doubleTime);
-    paintBoardHover(moveHover || splashHover || zoneHover || marchHover ? hex : null);
+      canOrderMarch(state, sel, hex);
+    paintBoardHover(
+      moveHover || shootHover || splashHover || zoneHover || marchHover ? hex : null,
+    );
   });
 }
 
@@ -5458,7 +5718,7 @@ function paintBoardHover(next: Hex | null) {
     next &&
     highlights.some(
       (h) =>
-        (h.kind === 'move' || h.kind === 'stamina' || h.kind === 'charge' || h.kind === 'plus') &&
+        (h.kind === 'move' || h.kind === 'ap' || h.kind === 'charge' || h.kind === 'plus') &&
         eq(h.hex, next),
     )
   );
@@ -5469,6 +5729,7 @@ function paintBoardHover(next: Hex | null) {
     bindBoardOnly();
     placeHexChoice();
   }
+  paintApPips();
 }
 
 function escapeHtml(s: string): string {
@@ -5813,9 +6074,9 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${randomLock}Randomised Battle</span>
             <span class="start-opt-meta">${randomGateMeta('Generated map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Stars pay gold (win / general lives / no losses). General death promotes your strongest unit next turn — wipeout still ends the run. Shop of 3 recruits after each win; enemy gains one free unit.')}>
+          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Stars pay gold (win / general lives / no losses). General death crowns your strongest unit next turn — wipeout still ends the run. Shop of 3 recruits + 3 free promotions after each win; enemy gains one free unit.')}>
             <span class="start-opt-name">${rogueLock}Roguelite</span>
-            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · stars→gold · succession`)}</span>
+            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · stars→gold · promos`)}</span>
           </button>
         </div>
         <div class="start-tools">
@@ -6111,9 +6372,10 @@ function renderUnitTokenPanel(): string {
   return `
     <section class="editor-panel editor-panel-unit-tokens">
       <h3>Unit tokens</h3>
-      <p class="muted">Story opens a message. On kill, or on touch by a melee move.</p>
+      <p class="muted">Story opens a message. Promotions stack up to ${MAX_UNIT_PROMOTIONS} as V chevrons — duplicates ok. Clear promotions peels one chevron per paint.</p>
       <div class="editor-brushes">
         ${tokens}
+        <button type="button" class="brush unit-token clear-promotions${editorBrush === 'clear-promotions' ? ' active' : ''}" data-brush="clear-promotions">${TRASH_ICON_SVG}<span>Clear promotions</span></button>
       </div>
     </section>`;
 }
@@ -6899,7 +7161,7 @@ function renderEditorBar(): string {
           ${levelCopyField('start', 'editor-start-text', 'intro', 'Shown at the start of the level', 6, editorStartText)}
           ${levelCopyField('win', 'editor-win-text', 'victory', 'Shown when you win', 4, editorWinText)}
           ${levelCopyField('lose', 'editor-lose-text', 'lose', 'Shown when you lose', 4, editorLoseText)}
-          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend energy], [double time], [rest], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. [tutorial] in a message points bouncing hands at painted Tutorial tokens after it closes. The same message's [rest], [spend energy], [double time], [special], or [end turn] points a hand at that button. The next map click hides them.</p>
+          <p class="muted star-turns-hint">[hoplite], [pikes], [energy], [spend ap], [special], [end turn], [tutorial]… — name in brackets becomes that item's icon. [tutorial] in a message points bouncing hands at painted Tutorial tokens after it closes. The same message's [special] or [end turn] points a hand at that button. The next map click hides them.</p>
           <div class="star-rules">
             <span class="editor-label">Stars</span>
             <p class="muted star-turns-hint">Turns = full rounds. HP lost = damage taken. Units lost = your pieces removed. Allies lost = AI ally pieces removed. Units killed = enemy pieces removed. Flags captured / signs read count what you achieve this match. Use &lt; ≤ = to cap, ≥ &gt; to require.</p>
@@ -7194,15 +7456,15 @@ function renderUnitEditor(): string {
           ${unitNumField(type, 'hp', 'HP')}
           ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value/weight')}
-          ${unitNumField(type, 'actions', 'Actions')}
+          ${unitNumField(type, 'actionPointGain', 'AP / turn')}
+          <p class="muted" style="margin:0;font-size:0.85em">spend/turn = AP/turn + 1</p>
           ${unitNumField(type, 'sight', 'Sight')}
         </div>
         <div class="unit-group">
           <span class="unit-group-label">Move</span>
           ${unitNumField(type, 'move', 'Range')}
           ${unitNumField(type, 'moveBudget', 'Move cap')}
-          ${unitNumField(type, 'stamina', 'Energy')}
-          ${unitNumField(type, 'staminaRegen', 'Energy regen')}
+          ${unitNumField(type, 'actionPoints', 'AP max')}
           ${unitNumField(type, 'meleeDamage', 'Melee dmg')}
           ${unitNumField(type, 'charge', 'Charge')}
           <label class="chk">
@@ -7293,7 +7555,7 @@ function renderUnitEditor(): string {
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
-          <dd><strong>Actions</strong> action points per activation. All of them spend before an energy extra</dd>
+          <dd><strong>AP / turn</strong> action points granted at turn start. Spend window is gain+1</dd>
           <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
           <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
@@ -7302,13 +7564,12 @@ function renderUnitEditor(): string {
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
-          <dd><strong>Move cap</strong> total steps this activation, actions and energy extras included (0 = none; scout stock 3). Cannot go past it</dd>
-          <dd><strong>Energy</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or after every action point is spent take a second straight-line action of the same range (new direction OK) — still inside the move cap. Extra actions (scout) come first. Unused steps of an action are lost</dd>
-          <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 energy and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 energy penalty (not an action), or 2 HP if you can't pay — leftover energy can still buy an extra 1-hex. No regen in water, even idle</dd>
+          <dd><strong>Move cap</strong> total steps this activation, including AP extras (0 = none; scout stock 3). Cannot go past it</dd>
+          <dd><strong>AP max</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or for an extra straight-line action within the spend window (gain+1) — still inside the move cap. Unused steps of an action are lost</dd>
+          <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 AP and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 AP penalty (not an action), or 2 HP if you can't pay — leftover spendable AP can still buy an extra 1-hex</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
-          <dd><strong>Energy regen</strong> own turns to recover 1. Any action (move, shoot, climb) resets (that End still counts). Point lands only if the unit did nothing that turn (Rest counts as idle), on land — never in water. 0 = never</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
-          <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. No charge icon on the piece in play. Hopping over a unit still deals charge damage. A unit with Charge cannot be given a walk-to order, and that route does not show on hover. A crash inside the normal move spends nothing and shows no energy mark. A destination past that move shows the normal energy bolt and spends 1 when you pick it. With no energy left, that tile shows the crossed bolt instead. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
+          <dd><strong>Charge</strong> damage of the Charge special (ability required). 0 still hits for 1 if they have the ability. Hover charge dests when the dock toggle is on. No charge icon on the piece in play. Hopping over a unit still deals charge damage. A unit with Charge cannot be given a walk-to order, and that route does not show on hover. A crash inside the normal move spends nothing and shows no AP mark. A destination past that move shows the normal AP bolt and spends 1 when you pick it. With no spendable AP left, that tile shows the crossed bolt instead. Same as palisade: a living blocker stops you unless that hit kills them, or you land empty beyond. Forest: charge cannot pass through</dd>
           <dt>Shoot</dt>
           <dd><strong>Range</strong> fire distance. 0 = cannot shoot (hides the rest). Shooter on hill +1, plateau +2, mountain +3. A high target costs that much extra range</dd>
           <dd><strong>DMG</strong> bullets</dd>
@@ -8281,6 +8542,23 @@ function bindEvents() {
       buyRogueOffer(i);
     });
   });
+  app.querySelectorAll<HTMLButtonElement>('[data-rogue-promo]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.roguePromo);
+      if (!Number.isFinite(i)) return;
+      beginRoguePromoAssign(i);
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-rogue-promo-target]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.roguePromoTarget;
+      if (!id) return;
+      confirmRoguePromoAssign(id);
+    });
+  });
+  app.querySelector('#rogue-promo-cancel')?.addEventListener('click', () => {
+    cancelRoguePromoAssign();
+  });
   app.querySelector('#end-start')?.addEventListener('click', () => showStart());
   bindBoardPopup();
   app.querySelector('#briefing-go')?.addEventListener('click', () => {
@@ -8298,9 +8576,6 @@ function bindEvents() {
   app.querySelector('#open-levels')?.addEventListener('click', () => {
     enterLevels();
   });
-  app.querySelector('#skip-scout')?.addEventListener('click', () => {
-    void skipScout();
-  });
   app.querySelector('.unit-dock')?.addEventListener(
     'click',
     () => {
@@ -8308,9 +8583,6 @@ function bindEvents() {
     },
     true,
   );
-  app.querySelector('#rest-unit')?.addEventListener('click', () => {
-    void restSelected();
-  });
   app.querySelector('#cancel-march')?.addEventListener('click', () => {
     if (!selectedId || animating || !canControl()) return;
     const piece = getPiece(state, selectedId);
@@ -8322,9 +8594,6 @@ function bindEvents() {
     pendingHex = null;
     refreshHighlights();
     render();
-  });
-  app.querySelector('#double-time')?.addEventListener('click', () => {
-    setDoubleTime(!doubleTime);
   });
   app.querySelectorAll<HTMLButtonElement>('[id^="special-"]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -8376,6 +8645,7 @@ function bindEvents() {
     mapOpts.plateauCount = Number((e.target as HTMLInputElement).value);
   });
   bindBoardOnly();
+  playRogueGoldFx();
 }
 
 function render() {
@@ -8530,7 +8800,7 @@ function render() {
         <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
         <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
         <label>Forests <input type="number" id="map-forest" min="0" max="${maxT}" value="${mapOpts.forestCount}" /></label>
-        <span class="map-hint">mid belt · climb costs energy · water 1 hex/action, turn-start energy penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
+        <span class="map-hint">mid belt · climb costs AP · water 1 hex/action, turn-start AP penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
       </div>`
     : `<div class="map-params">
         ${levelSelect}
@@ -8550,10 +8820,12 @@ function render() {
         ${renderBoard()}
         ${renderHexChoice()}
         ${state.winner ? renderEndOverlay() : renderStartOverlay()}
+        ${renderRoguePromoAssign()}
         ${renderBoardPopup()}
       </div>
       <div class="play-dock">
         ${renderOtherTurnBanner()}
+        ${renderEndTurn()}
         ${renderActionBar()}
         ${renderUnitDock()}
       </div>

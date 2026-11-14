@@ -14,7 +14,7 @@ import {
   seedFlagOwners,
   statsOf,
   hpMax,
-  staminaMax,
+  actionPointsMax,
   hasUnitToken,
   stampAffiliation,
   type ArmyControl,
@@ -431,12 +431,12 @@ function pawnCol(side: Side, backIndex: number, cols: number): number {
   return Math.max(0, Math.min(cols - 1, col));
 }
 
-function spawnExtras(type: UnitType): Pick<Piece, 'ammo' | 'hp' | 'stamina'> {
+function spawnExtras(type: UnitType): Pick<Piece, 'ammo' | 'hp' | 'actionPoints'> {
   const s = statsOf(type);
   return {
     ammo: s.ammo > 0 ? s.ammo : undefined,
     hp: s.hp > 1 ? s.hp : undefined,
-    stamina: s.stamina > 0 ? s.stamina : undefined,
+    actionPoints: s.actionPoints > 0 ? s.actionPoints : undefined,
   };
 }
 
@@ -456,9 +456,9 @@ function spawnTokens(
 function applySpawnPools(piece: Piece): void {
   const max = hpMax(piece);
   piece.hp = max > 1 ? max : undefined;
-  const stam = staminaMax(piece);
-  if (hasUnitToken(piece, 'exhausted') && stam > 0) piece.stamina = 0;
-  else piece.stamina = stam > 0 ? stam : undefined;
+  const ap = actionPointsMax(piece);
+  if (hasUnitToken(piece, 'exhausted') && ap > 0) piece.actionPoints = 0;
+  else piece.actionPoints = ap > 0 ? ap : undefined;
 }
 
 /** Map edge a formation is stamped onto. One army per edge. */
@@ -849,7 +849,6 @@ function freshGame(
     scoutActionsLeft: null,
     scoutPieceId: null,
     scoutMoveSpent: null,
-    staminaBonus: false,
     downhillMove: false,
     downhillQueued: 0,
     winner: null,

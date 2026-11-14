@@ -10,7 +10,7 @@ function assert(cond: unknown, msg: string) {
 
 const saved = {
   shoot: UNIT_STATS.soldier.shoot,
-  stamina: UNIT_STATS.soldier.stamina,
+  stamina: UNIT_STATS.soldier.actionPoints,
 };
 
 function board(): GameState {
@@ -35,7 +35,7 @@ function board(): GameState {
 
 resetAiChecklist();
 UNIT_STATS.soldier.shoot = 0;
-UNIT_STATS.soldier.stamina = 0;
+UNIT_STATS.soldier.actionPoints = 0;
 try {
   const s = board();
   const a = pickAiAction(s);
@@ -45,7 +45,7 @@ try {
   assert(a.kind === 'move' && a.to.row > p.row, 'rear walks toward the far edge');
 } finally {
   UNIT_STATS.soldier.shoot = saved.shoot;
-  UNIT_STATS.soldier.stamina = saved.stamina;
+  UNIT_STATS.soldier.actionPoints = saved.actionPoints;
   resetAiChecklist();
 }
 

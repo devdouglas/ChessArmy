@@ -7,10 +7,8 @@ import {
   marchRoute,
   passTurn,
   performMarch,
-  restPiece,
-  setMarchDoubleTime,
   setWalkOrder,
-  staminaLeft,
+  actionPointsLeft,
   allLegalActions,
   applyAction,
   type GameState,
@@ -176,7 +174,7 @@ try {
   const rested = board();
   const restLine = forward(rested, 3);
   let restState = setWalkOrder(rested, restLine.piece.id, restLine.path[2]!);
-  restState = restPiece(restState, restLine.piece.id);
+  restState = passTurn(restState, restLine.piece.id);
   const restedPiece = getPiece(restState, restLine.piece.id)!;
   assert(
     restedPiece.col === restLine.piece.col && restedPiece.row === restLine.piece.row,
@@ -213,11 +211,11 @@ try {
   );
   let struck = applyAction(fight, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
   assert(getPiece(struck, foe.id)!.hp === 2, 'first melee chips the defender');
-  assert(struck.turn === 'red' && struck.staminaBonus, 'spend energy keeps a second melee');
+  assert(struck.turn === 'red' && !!struck.scoutPieceId, 'spend energy keeps a second melee');
   assert(getPiece(struck, fighterId)!.col === fightLine.piece.col, 'a living defender keeps you off the hex');
   struck = applyAction(struck, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
   assert(getPiece(struck, foe.id)!.hp === 1, 'the second action melees again');
-  assert(!struck.staminaBonus, 'the second strike spends the extra');
+  assert(!!!struck.scoutPieceId, 'the second strike spends the extra');
   assert(!struck.log.some((l) => l.includes('march ordered')), 'the second melee is not a march');
 
   const wood = board();
@@ -273,7 +271,7 @@ try {
     wingPath.push(wingAt);
   }
   let held = setWalkOrder(squad, wing.id, wingPath[3]!);
-  held = restPiece(held, leader.id);
+  held = passTurn(held, leader.id);
   const heldWing = getPiece(held, wing.id)!;
   assert(held.turn === 'red', 'without auto walk the other unit still gets a turn');
   assert(
@@ -300,7 +298,7 @@ try {
     autoPath.push(autoAt);
   }
   let passed = setWalkOrder(auto, autoWing.id, autoPath[3]!);
-  passed = restPiece(passed, autoLead.id);
+  passed = passTurn(passed, autoLead.id);
   const marched = getPiece(passed, autoWing.id)!;
   assert(passed.turn === 'blue', 'auto walk ends the turn once unordered units have acted');
   assert(
@@ -334,7 +332,7 @@ try {
     waitPath.push(waitAt);
   }
   let still = setWalkOrder(waiting, waitWing.id, waitPath[1]!);
-  still = restPiece(still, waitLead.id);
+  still = passTurn(still, waitLead.id);
   const stillWing = getPiece(still, waitWing.id)!;
   assert(still.turn === 'red', 'a unit with no destination still to play holds the turn');
   assert(stillWing.col === waitWing.col, 'walker does not march early');
@@ -463,7 +461,7 @@ try {
     after.col === spendPath[1]!.col && after.row === spendPath[1]!.row,
     'spend energy walks two hexes',
   );
-  assert(staminaLeft(after) === 0, 'the extra hex spends 1 stamina');
+  assert(actionPointsLeft(after) === 0, 'the extra hex spends 1 stamina');
   assert(!after.spendMarch, 'the spend is consumed');
   assert(
     boosted.log.some((l) => l.includes('spends energy')),
@@ -491,8 +489,8 @@ try {
   const javHeldPiece = getPiece(javHeld, javPiece.id)!;
   assert(javHeldPiece.col === javStep.col && javHeldPiece.row === javStep.row, 'one-tile spend still walks one');
   assert(javHeld.turn === 'red', 'one-tile spend does not end the action');
-  assert(javHeld.staminaBonus, 'the second action stays armed');
-  assert(staminaLeft(javHeldPiece) === 1, 'the first tile does not spend the energy');
+  assert(!!javHeld.scoutPieceId, 'the second action stays armed');
+  assert(actionPointsLeft(javHeldPiece) === 1, 'the first tile does not spend the energy');
   const javFollow = allLegalActions(javHeld);
   assert(
     javFollow.some((a) => a.kind === 'move' && a.pieceId === javPiece.id),
@@ -512,11 +510,10 @@ try {
     stood.col === spendPath[1]!.col && stood.row === spendPath[1]!.row,
     'ending the turn with spend energy still walks two hexes',
   );
-  assert(staminaLeft(stood) === 0, 'the standing march spends the stamina');
+  assert(actionPointsLeft(stood) === 0, 'the standing march spends the stamina');
   assert(!stood.spendMarch, 'a spent march does not stay armed');
 
   setExperimental('auto-walk', false);
-  setMarchDoubleTime(true);
   const dt = createStateFromTerrain(
     emptyTerrain(10, 8),
     'double',
@@ -527,7 +524,7 @@ try {
     ],
   );
   const dtPiece = dt.pieces.find((p) => p.side === 'red')!;
-  dtPiece.stamina = 2;
+  dtPiece.actionPoints = 2;
   const dtPath = [];
   let dtAt = { col: dtPiece.col, row: dtPiece.row };
   for (let i = 0; i < 7; i++) {
@@ -539,25 +536,24 @@ try {
   let dtAtPiece = getPiece(dtState, dtPiece.id)!;
   assert(
     dtAtPiece.col === dtPath[2]!.col && dtAtPiece.row === dtPath[2]!.row,
-    'double time spends the whole pool (move 1 + 2 stamina)',
+    'march spends the whole AP pool (move + extras)',
   );
-  assert(staminaLeft(dtAtPiece) === 0, 'double time leaves no stamina');
+  assert(actionPointsLeft(dtAtPiece) === 0, 'double time leaves no stamina');
   assert(
-    dtState.log.filter((l) => l.includes('double time')).length === 2,
-    'each double time spend is logged',
+    dtState.log.filter((l) => l.includes('spends AP')).length === 2,
+    'each AP march spend is logged',
   );
   dtState = passTurn(dtState);
   assert(dtState.turn === 'red', 'without auto walk the next red turn is waiting');
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
-  dtAtPiece.stamina = 2;
+  dtAtPiece.actionPoints = 2;
   dtState = performMarch(dtState, dtPiece.id);
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
   assert(
     dtAtPiece.col === dtPath[5]!.col && dtAtPiece.row === dtPath[5]!.row,
     'the next turn spends the refilled pool again',
   );
-  assert(staminaLeft(dtAtPiece) === 0, 'the second turn also empties stamina');
-  setMarchDoubleTime(false);
+  assert(actionPointsLeft(dtAtPiece) === 0, 'the second turn also empties stamina');
 
   const reach = createStateFromTerrain(
     emptyTerrain(10, 8),
@@ -576,23 +572,12 @@ try {
     reachAt = neighborInDir(reachAt, reachFace, reach.orientation);
     reachSteps.push(reachAt);
   }
-  assert(!canOrderMarch(reach, reachPiece, reachSteps[0]!, false), 'a normal move is not a march');
-  assert(
-    canOrderMarch(reach, reachPiece, reachSteps[1]!, false),
-    'the extra move is a march until double time',
-  );
-  assert(
-    !canOrderMarch(reach, reachPiece, reachSteps[1]!, true),
-    'double time reaches the extra move without an order',
-  );
-  assert(
-    canOrderMarch(reach, reachPiece, reachSteps[2]!, true),
-    'past double time is still a march',
-  );
+  assert(!canOrderMarch(reach, reachPiece, reachSteps[0]!), 'a normal move is not a march');
+  assert(!canOrderMarch(reach, reachPiece, reachSteps[1]!), 'spendable AP extra is an action, not a march');
+  assert(canOrderMarch(reach, reachPiece, reachSteps[2]!), 'past spendable AP range is still a march');
 } finally {
   UNIT_STATS.soldier.move = savedMove;
-  setMarchDoubleTime(false);
   resetExperimental();
 }
 
-console.log('walk-to orders: route, speed, wall, rest, melee, auto walk, spend energy, double time');
+console.log('walk-to orders: route, speed, wall, melee, auto walk, AP march extras');

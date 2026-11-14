@@ -167,7 +167,7 @@ function campBoard(): GameState {
   assert(wolves.length === 2 && wolves.every((p) => isConcealed(s, p)), 'ambush wolves start hidden');
   const a = pickAiAction(s);
   assert(
-    !a || a.kind === 'skip' || a.kind === 'rest',
+    !a || a.kind === 'skip' || a.kind === 'apEmpty',
     'hidden ambush army does not walk',
   );
   assert(

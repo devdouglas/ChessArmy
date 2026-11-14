@@ -4,7 +4,7 @@ import {
   isConcealedFrom,
   legalHighlights,
   pieceVisible,
-  restPiece,
+  passTurn,
   revealPiece,
   tokenAt,
   viewingSides,
@@ -75,7 +75,7 @@ assert(!UNIT_STATS.soldier.canHide, 'stock soldier cannot hide');
   const back = { ...after, turn: 'blue', actedIds: [], scoutPieceId: null };
   const p = back.pieces.find((x) => x.id === barb.id)!;
   p.movedThisTurn = false;
-  p.staminaUsedThisTurn = false;
+  p.apSpentThisTurn = false;
   const home = applyAction(back, { kind: 'move', pieceId: p.id, to: woods });
   const again = home.pieces.find((x) => x.id === p.id)!;
   assert(!again.revealed, 'entering forest hides them again');
@@ -86,7 +86,7 @@ assert(!UNIT_STATS.soldier.canHide, 'stock soldier cannot hide');
   const s = board();
   const barb = s.pieces.find((p) => p.type === 'barbarian')!;
   s.turn = 'blue';
-  const rested = restPiece(s, barb.id);
+  const rested = passTurn(s, barb.id);
   const still = rested.pieces.find((p) => p.id === barb.id)!;
   assert(!still.revealed, 'rest does not break hide');
   assert(isConcealed(rested, still), 'still hidden after rest');

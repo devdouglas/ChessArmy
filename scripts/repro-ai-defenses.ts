@@ -63,12 +63,12 @@ function meleePalisade(s: GameState) {
 
 const saved = {
   shoot: UNIT_STATS.soldier.shoot,
-  stamina: UNIT_STATS.soldier.stamina,
+  stamina: UNIT_STATS.soldier.actionPoints,
 };
 
 try {
   UNIT_STATS.soldier.shoot = 0;
-  UNIT_STATS.soldier.stamina = 0;
+  UNIT_STATS.soldier.actionPoints = 0;
   resetAiChecklist();
   setAiRule('aggressive', 'hold-position', false);
 
@@ -104,7 +104,7 @@ try {
   }
 } finally {
   UNIT_STATS.soldier.shoot = saved.shoot;
-  UNIT_STATS.soldier.stamina = saved.stamina;
+  UNIT_STATS.soldier.actionPoints = saved.actionPoints;
   resetAiChecklist();
 }
 

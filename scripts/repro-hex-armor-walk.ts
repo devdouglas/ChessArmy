@@ -15,7 +15,7 @@ function assert(cond: unknown, msg: string) {
 function moveOnto(s: GameState, pieceId: string, col: number, row: number) {
   return legalHighlights(s, pieceId).some(
     (h) =>
-      (h.kind === 'move' || h.kind === 'stamina') &&
+      (h.kind === 'move' || h.kind === 'ap') &&
       h.hex.col === col &&
       h.hex.row === row,
   );

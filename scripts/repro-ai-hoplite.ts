@@ -71,7 +71,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   const h = blueHoplite(s);
   h.facing = 5;
   const a = pickAiAction(s);
-  assert(a?.kind === 'rest' && a.pieceId === h.id, 'beyond Sight: no turn');
+  assert(a?.kind === 'apEmpty' && a.pieceId === h.id, 'beyond Sight: no turn');
 }
 
 {
@@ -82,7 +82,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   const h = blueHoplite(s);
   h.facing = 5;
   const a = pickAiAction(s);
-  assert(a?.kind === 'rest' && a.pieceId === h.id, 'wall in the way: no turn');
+  assert(a?.kind === 'apEmpty' && a.pieceId === h.id, 'wall in the way: no turn');
 }
 
 {
@@ -93,7 +93,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   const h = blueHoplite(s);
   h.facing = 0;
   const idle = pickAiAction(s);
-  assert(idle?.kind === 'rest', 'first look beyond Sight is a rest');
+  assert(idle?.kind === 'apEmpty', 'first look beyond Sight is a rest');
   const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
   grunt.col = far.col;
   grunt.row = far.row;
@@ -109,7 +109,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   const h = blueHoplite(s);
   h.facing = 0;
   const a = pickAiAction(s);
-  assert(a?.kind === 'rest' && a.pieceId === h.id, 'already facing → hold');
+  assert(a?.kind === 'apEmpty' && a.pieceId === h.id, 'already facing → hold');
 }
 
 {
@@ -161,7 +161,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   shot.actedIds = [];
   shot.scoutPieceId = null;
   shot.scoutActionsLeft = 0;
-  shot.staminaBonus = false;
+  !!shot.scoutPieceId = false;
   const a = pickAiAction(shot);
   assert(a?.kind === 'move' && a.to.col === far.col && a.to.row === far.row, 'shot provokes an attack if they can reach');
 }
@@ -175,7 +175,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   const grunt = s.pieces.find((p) => p.side === 'blue' && p.type === 'soldier')!;
   const a = pickAiAction(s);
   assert(a, 'AI still acts');
-  assert(a.kind === 'rotate' || a.kind === 'rest', 'unprovoked soldiers hold too');
+  assert(a.kind === 'rotate' || a.kind === 'apEmpty', 'unprovoked soldiers hold too');
   assert(a.pieceId === grunt.id || a.pieceId === blueHoplite(s).id, 'a holding unit acts');
 }
 
@@ -205,7 +205,7 @@ setAiRule('aggressive', 'guard-owned-flags', false);
   grunt.col = far.col;
   grunt.row = far.row;
   const a = pickAiAction(s);
-  assert(a?.kind === 'rest' || a?.kind === 'rotate', 'forest cover: no LOS charge');
+  assert(a?.kind === 'apEmpty' || a?.kind === 'rotate', 'forest cover: no LOS charge');
   assert(a?.kind !== 'move', 'entering forest does not pull holders');
 }
 

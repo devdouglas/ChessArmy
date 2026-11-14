@@ -54,12 +54,12 @@ assert(turned !== start, 'legal rotate clones state');
 assert(facingOf(turned.pieces.find((p) => p.id === cohort.id)!) === 0, 'facing locked to click dir');
 assert(turned.log.some((l) => l.includes('turns')), 'log says turns');
 assert(!hasActed(turned, cohort.id), 'rotate leaves the stamina extra');
-assert(turned.staminaBonus, 'stamina extra after first rotate');
+assert(!!turned.scoutPieceId, 'stamina extra after first rotate');
 assert(turned.scoutPieceId === cohort.id, 'lock after first rotate');
 const step = neighborInDir({ col: cohort.col, row: cohort.row }, 0, 'pointy');
 assert(
   legalHighlights(turned, cohort.id).some(
-    (h) => (h.kind === 'move' || h.kind === 'stamina') && h.hex.col === step.col && h.hex.row === step.row,
+    (h) => (h.kind === 'move' || h.kind === 'ap') && h.hex.col === step.col && h.hex.row === step.row,
   ),
   'second action can still walk',
 );
@@ -71,7 +71,7 @@ assert(hasActed(secondTurn, cohort.id), 'second rotate spends stamina and finish
 
 const dry = board();
 const dryCohort = dry.pieces.find((p) => p.side === 'red' && p.type === 'cohort')!;
-dryCohort.stamina = 0;
+dryCohort.actionPoints = 0;
 const spent = rotatePiece(dry, dryCohort.id, 0);
 assert(hasActed(spent, dryCohort.id), 'no stamina → rotate ends the activation');
 assert(rotatePiece(spent, dryCohort.id, 5) === spent, 'cannot rotate twice with empty stamina');
@@ -94,7 +94,7 @@ try {
   assert((first.scoutActionsLeft ?? 0) === 1, 'one action left');
   const second = rotatePiece(first, hexed.id, 1);
   assert(!hasActed(second, hexed.id), 'second rotate spends the last action point');
-  assert(second.staminaBonus, 'last AP buys the stamina extra');
+  assert(!!second.scoutPieceId, 'last AP buys the stamina extra');
   assert(facingOf(second.pieces.find((p) => p.id === hexed.id)!) === 1, 'second rotate facing');
   const third = rotatePiece(second, hexed.id, 0);
   assert(hasActed(third, hexed.id), 'stamina rotate finishes');

@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import {
   applyAction,
-  canBuyStaminaExtra,
-  canSpendStamina,
+  canBuyApExtra,
+  canSpendActionPoints,
   getPiece,
   legalHighlights,
-  staminaLeft,
+  actionPointsLeft,
   UNIT_STATS,
   type GameState,
   type Highlight,
@@ -33,24 +33,24 @@ function boot(): GameState {
 }
 
 function extras(s: GameState, id: string) {
-  return legalHighlights(s, id).filter((h: Highlight) => h.kind === 'stamina' && h.extra);
+  return legalHighlights(s, id).filter((h: Highlight) => h.kind === 'ap' && h.extra);
 }
 
 function dump(label: string, s: GameState) {
   const p = s.pieces.find((x) => x.side === 'red')!;
   const hits = legalHighlights(s, p.id);
   const extra = extras(s, p.id);
-  const stam = hits.filter((h) => h.kind === 'stamina');
+  const stam = hits.filter((h) => h.kind === 'ap');
   console.log(label, {
     turn: s.turn,
     scout: s.scoutPieceId,
-    bonus: s.staminaBonus,
+    bonus: !!s.scoutPieceId,
     acted: s.actedIds,
     pos: `${p.col},${p.row}`,
-    stam: staminaLeft(p),
-    used: !!p.staminaUsedThisTurn,
-    canSpend: canSpendStamina(p),
-    statsStam: UNIT_STATS[p.type]?.stamina,
+    stam: actionPointsLeft(p),
+    used: !!p.apSpentThisTurn,
+    canSpend: canSpendActionPoints(p),
+    statsStam: UNIT_STATS[p.type]?.actionPoints,
     move: UNIT_STATS[p.type]?.move,
     nLegal: hits.length,
     nStam: stam.length,
@@ -72,7 +72,7 @@ s = runAiTurn(s, 'blue');
 dump('after AI', s);
 
 const p = getPiece(s, id)!;
-const offer = canBuyStaminaExtra(s, p.id);
+const offer = canBuyApExtra(s, p.id);
 if (s.turn !== 'red') throw new Error('should be player turn after AI');
 if (!offer) throw new Error('Spend stamina should be available after enemy turn');
 if (extras(s, p.id).length === 0) throw new Error('extra dests should exist after AI');

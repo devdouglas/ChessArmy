@@ -32,7 +32,7 @@ const HUD_GLYPHS: {
   label: string;
   aliases: string[];
 }[] = [
-  { id: 'energy', tag: 'energy', label: 'Energy', aliases: ['stamina', 'bolt'] },
+  { id: 'energy', tag: 'energy', label: 'AP', aliases: ['stamina', 'bolt', 'action points', 'ap'] },
   { id: 'hp', tag: 'hp', label: 'HP', aliases: ['health', 'hitpoints'] },
   { id: 'units', tag: 'units', label: 'Units', aliases: ['unit'] },
   {
@@ -49,7 +49,7 @@ const ACTION_GLYPHS: {
   label: string;
   aliases: string[];
 }[] = [
-  { id: 'energy', tag: 'spend energy', label: 'Spend energy', aliases: ['spend', 'second action'] },
+  { id: 'energy', tag: 'spend ap', label: 'Spend AP', aliases: ['spend', 'spend energy', 'second action'] },
   { id: 'double', tag: 'double time', label: 'Double time', aliases: ['double'] },
   { id: 'rest', tag: 'rest', label: 'Rest', aliases: [] },
   { id: 'special', tag: 'special', label: 'Special', aliases: [] },

@@ -64,7 +64,7 @@ function readyAgain(s: GameState, id: string) {
   const p = s.pieces.find((x) => x.id === id);
   if (p) {
     p.movedThisTurn = false;
-    p.staminaUsedThisTurn = false;
+    p.apSpentThisTurn = false;
     p.shootCooldown = 0;
     p.firedThisTurn = false;
   }

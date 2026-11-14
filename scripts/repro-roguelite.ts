@@ -9,6 +9,7 @@ import {
   hasUnitToken,
   maybeSucceedGeneral,
   passTurn,
+  sanitizeUnitTokens,
 } from '../src/engine';
 import { distance } from '../src/hex';
 import {
@@ -25,6 +26,7 @@ import {
   rogueUnitCost,
   rogueUnitPool,
   survivorUnits,
+  takeRoguePromotionOffer,
 } from '../src/roguelite';
 
 const period = 'ancient' as const;
@@ -77,6 +79,30 @@ let shop = opened.shop;
 if (run.gold !== ROGUE_START_GOLD + 2) throw new Error(`star gold ${run.gold}`);
 if (shop.offers.length !== Math.min(ROGUE_SHOP_SIZE, pool.length)) {
   throw new Error(`shop size ${shop.offers.length}`);
+}
+if (shop.promotions.length !== Math.min(ROGUE_SHOP_SIZE, 5)) {
+  throw new Error(`promo size ${shop.promotions.length}`);
+}
+if (new Set(shop.promotions).size !== shop.promotions.length) {
+  throw new Error('promo offers not distinct');
+}
+{
+  const taken = takeRoguePromotionOffer(shop, 0);
+  if (!taken) throw new Error('take promo failed');
+  shop = taken.shop;
+  if (shop.promotions.length !== 2) throw new Error('promo shelf not consumed');
+  const stamped = living.map((u, i) =>
+    i === 0
+      ? {
+          ...u,
+          unitTokens: sanitizeUnitTokens([...(u.unitTokens ?? []), taken.promo]),
+        }
+      : u,
+  );
+  if (!stamped[0]?.unitTokens?.includes(taken.promo)) {
+    throw new Error('promo not stamped');
+  }
+  // Put promo back for the rest of the script — shelf already consumed is fine.
 }
 
 let bought = 0;

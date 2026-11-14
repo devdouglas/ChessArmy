@@ -1,4 +1,4 @@
-import { getPiece, hpLeft, passTurn, staminaLeft, type GameState } from '../src/engine';
+import { getPiece, hpLeft, passTurn, actionPointsLeft, type GameState } from '../src/engine';
 import { neighborInDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
@@ -13,7 +13,7 @@ function make(): { s: GameState; id: string } {
     { type: 'general', col: 1, row: 9, side: 'blue' },
   ]);
   const piece = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
-  piece.stamina = 0;
+  piece.actionPoints = 0;
   return { s, id: piece.id };
 }
 
@@ -22,16 +22,16 @@ function assert(cond: unknown, msg: string): void {
 }
 
 function ids(s: GameState, kind: 'gain' | 'spend'): string[] {
-  return (s.fxStamina ?? []).filter((x) => x.kind === kind).map((x) => x.id);
+  return (s.fxActionPoints ?? []).filter((x) => x.kind === kind).map((x) => x.id);
 }
 
 {
   let { s, id } = make();
-  assert(!s.fxStamina?.length, 'match start has no stamina flash');
+  assert(!s.fxActionPoints?.length, 'match start has no stamina flash');
   s = passTurn(s);
   assert(s.turn === 'blue', 'after red idle, blue to move');
   assert(!ids(s, 'gain').includes(id), 'grant is queued, not flashed on the opponent turn');
-  assert(staminaLeft(getPiece(s, id)!) === 1, 'idle End still grants immediately');
+  assert(actionPointsLeft(getPiece(s, id)!) === 1, 'idle End still grants immediately');
   s = passTurn(s);
   assert(s.turn === 'red', 'back to red');
   assert(ids(s, 'gain').includes(id), 'gold flash lands at the start of the regenerating side');
@@ -42,7 +42,7 @@ function ids(s: GameState, kind: 'gain' | 'spend'): string[] {
   const p = getPiece(s, id)!;
   p.movedThisTurn = true;
   s = passTurn(s);
-  assert(staminaLeft(getPiece(s, id)!) === 0, 'walk End does not grant');
+  assert(actionPointsLeft(getPiece(s, id)!) === 0, 'walk End does not grant');
   s = passTurn(s);
   assert(!ids(s, 'gain').includes(id), 'no gold when nothing generated');
 }
@@ -59,7 +59,7 @@ function ids(s: GameState, kind: 'gain' | 'spend'): string[] {
   const id = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!.id;
   assert(ids(s, 'spend').includes(id), 'water penalty flashes blue at turn start');
   assert(!ids(s, 'gain').includes(id), 'penalty is not a gold grant');
-  assert(staminaLeft(getPiece(s, id)!) === 0, 'water spends 1 stamina');
+  assert(actionPointsLeft(getPiece(s, id)!) === 0, 'water spends 1 stamina');
   assert(hpLeft(getPiece(s, id)!) === 1, 'paying the penalty does not drown');
 }
 
@@ -74,7 +74,7 @@ function ids(s: GameState, kind: 'gain' | 'spend'): string[] {
   ]);
   const p = s.pieces.find((x) => x.side === 'red' && x.type === 'soldier')!;
   s = passTurn(s);
-  assert(staminaLeft(getPiece(s, p.id)!) === 0, 'idle End in water does not regenerate');
+  assert(actionPointsLeft(getPiece(s, p.id)!) === 0, 'idle End in water does not regenerate');
   assert(!ids(s, 'gain').includes(p.id), 'no gold regen flash in water');
   s = passTurn(s);
   assert(

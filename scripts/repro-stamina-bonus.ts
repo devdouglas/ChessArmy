@@ -4,7 +4,7 @@ import {
   hasActed,
   legalHighlights,
   pathForMove,
-  staminaLeft,
+  actionPointsLeft,
   type GameState,
 } from '../src/engine';
 import { neighborInDir, type Hex, type HexDir } from '../src/hex';
@@ -36,7 +36,7 @@ function red(s: GameState, type: string) {
 
 function walk(s: GameState, id: string) {
   return legalHighlights(s, id).filter(
-    (h) => h.kind === 'move' || h.kind === 'stamina',
+    (h) => h.kind === 'move' || h.kind === 'ap',
   );
 }
 
@@ -60,20 +60,20 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
     'green dests are this action only (range 1)',
   );
   assert(
-    walk(s, p.id).some((h) => h.kind === 'stamina' && h.extra && h.cost === 2),
+    walk(s, p.id).some((h) => h.kind === 'ap' && h.extra && h.cost === 2),
     'stamina options are a second straight 1, not a doubled ray',
   );
   assert(
-    walk(s, p.id).filter((h) => h.kind === 'stamina').every((h) => h.extra),
+    walk(s, p.id).filter((h) => h.kind === 'ap').every((h) => h.extra),
     'flat-board gold dests are extras',
   );
   const mid = applyAction(s, { kind: 'move', pieceId: p.id, to: green!.hex });
   const q = red(mid, 'soldier');
   assert(!hasActed(mid, q.id), 'no check after green move');
-  assert(mid.staminaBonus, 'stamina bonus lock');
+  assert(!!mid.scoutPieceId, 'stamina bonus lock');
   assert(mid.turn === 'red', 'quota 2: first unit still hangs for extra');
   assert(mid.scoutPieceId === q.id, 'stays the active piece');
-  assert(staminaLeft(q) === 1, 'stamina not spent yet');
+  assert(actionPointsLeft(q) === 1, 'stamina not spent yet');
   assert(
     allLegalActions(mid).some((a) => a.kind === 'skip'),
     'skip is available',
@@ -81,13 +81,13 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
 
   const next = walk(mid, q.id)[0];
   assert(next, 'bonus action has a move');
-  assert(next.kind === 'stamina', 'bonus dests are stamina');
+  assert(next.kind === 'ap', 'bonus dests are stamina');
   assert(next.extra, 'bonus dests are extra');
   const done = applyAction(mid, { kind: 'move', pieceId: q.id, to: next.hex });
   const r = red(done, 'soldier');
   assert(hasActed(done, r.id), 'check after second action');
-  assert(!done.staminaBonus, 'bonus lock cleared');
-  assert(staminaLeft(r) === 0, 'second action spent 1 stamina');
+  assert(!!!done.scoutPieceId, 'bonus lock cleared');
+  assert(actionPointsLeft(r) === 0, 'second action spent 1 stamina');
 }
 
 {
@@ -96,15 +96,15 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   const s = boot({ high });
   const p = red(s, 'soldier');
   const gold = walk(s, p.id).find(
-    (h) => h.kind === 'stamina' && h.hex.col === high.col && h.hex.row === high.row,
+    (h) => h.kind === 'ap' && h.hex.col === high.col && h.hex.row === high.row,
   );
   assert(gold, 'climb is a gold stamina move');
   assert(!gold.extra, 'climb is this-action gold, not a second action');
   const after = applyAction(s, { kind: 'move', pieceId: p.id, to: gold!.hex });
   const q = red(after, 'soldier');
   assert(hasActed(after, q.id), 'gold first move ends the activation');
-  assert(!after.staminaBonus, 'no bonus after spending stamina');
-  assert(staminaLeft(q) === 0, 'gold move spent stamina');
+  assert(!!!after.scoutPieceId, 'no bonus after spending stamina');
+  assert(actionPointsLeft(q) === 0, 'gold move spent stamina');
 }
 
 {
@@ -115,7 +115,7 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   const skipped = applyAction(mid, { kind: 'skip' });
   const q = red(skipped, 'soldier');
   assert(hasActed(skipped, q.id), 'skip still finishes the unit');
-  assert(staminaLeft(q) === 1, 'skip does not spend stamina');
+  assert(actionPointsLeft(q) === 1, 'skip does not spend stamina');
 }
 
 {
@@ -138,10 +138,10 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   const two = step(from, 5, 2);
   const afterTwo = applyAction(s, { kind: 'move', pieceId: p.id, to: two });
   const q = red(afterTwo, 'scout');
-  assert(!afterTwo.staminaBonus, 'first scout action does not buy the stamina extra');
+  assert(!!!afterTwo.scoutPieceId, 'first scout action does not buy the stamina extra');
   assert(afterTwo.scoutPieceId === q.id, 'stays the active piece');
   assert(afterTwo.scoutActionsLeft === 1, 'one action point left');
-  assert(staminaLeft(q) === staminaLeft(p), 'stamina unused until action points are gone');
+  assert(actionPointsLeft(q) === actionPointsLeft(p), 'stamina unused until action points are gone');
   const at = { col: q.col, row: q.row };
   const second = walk(afterTwo, q.id);
   const greenSecond = second.filter((h) => h.kind === 'move');
@@ -172,13 +172,13 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
 
   const lastGreen = applyAction(afterTwo, { kind: 'move', pieceId: q.id, to: oneMore });
   const last = red(lastGreen, 'scout');
-  assert(lastGreen.staminaBonus, 'spending the last action point buys the stamina extra');
-  assert(staminaLeft(last) === staminaLeft(q), 'stamina not spent until the extra is taken');
+  assert(!!lastGreen.scoutPieceId, 'spending the last action point buys the stamina extra');
+  assert(actionPointsLeft(last) === actionPointsLeft(q), 'stamina not spent until the extra is taken');
 
   const one = step(from, 5, 1);
   const afterOne = applyAction(s, { kind: 'move', pieceId: p.id, to: one });
   const r = red(afterOne, 'scout');
-  assert(!afterOne.staminaBonus, 'short first action still leaves an action point');
+  assert(!!!afterOne.scoutPieceId, 'short first action still leaves an action point');
   const leftover = walk(afterOne, r.id);
   assert(maxCost(leftover.filter((h) => h.kind === 'move')) === 2, 'stop after 1: leftover step is dead, next action is still 2');
   assert(
@@ -245,8 +245,8 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   const green = walk(s, p.id).find((h) => h.kind === 'move')!;
   const after = applyAction(s, { kind: 'move', pieceId: p.id, to: green.hex });
   assert(after.turn === 'red', 'last unit green move stays the side');
-  assert(after.staminaBonus, 'last unit unused stamina hangs for Spend stamina');
-  assert(staminaLeft(red(after, 'soldier')) === 1, 'extra not spent until taken');
+  assert(!!after.scoutPieceId, 'last unit unused stamina hangs for Spend stamina');
+  assert(actionPointsLeft(red(after, 'soldier')) === 1, 'extra not spent until taken');
 }
 
 {
@@ -256,7 +256,7 @@ function step(from: Hex, dir: HexDir, n: number): Hex {
   assert(after.turn === 'red' || after.winner, 'AI turn completes');
   const blue = after.pieces.find((p) => p.side === 'blue' && p.type === 'soldier');
   if (blue && hasActed(after, blue.id) === false) {
-    assert(!after.staminaBonus || after.turn !== 'blue', 'AI not stuck in bonus');
+    assert(!!!after.scoutPieceId || after.turn !== 'blue', 'AI not stuck in bonus');
   }
 }
 

@@ -25,7 +25,7 @@ function board() {
 const savedHp = UNIT_STATS.soldier.hp;
 const savedArmor = UNIT_STATS.soldier.armor;
 const savedPass = UNIT_STATS.tank.passUnits;
-const savedStam = UNIT_STATS.tank.stamina;
+const savedStam = UNIT_STATS.tank.actionPoints;
 const savedClimb = UNIT_STATS.tank.climbLevel;
 const savedCharge = UNIT_STATS.tank.charge;
 const savedMelee = UNIT_STATS.tank.meleeDamage;
@@ -36,7 +36,7 @@ try {
   UNIT_STATS.soldier.hp = 2;
   UNIT_STATS.soldier.armor = 0;
   UNIT_STATS.tank.passUnits = false;
-  UNIT_STATS.tank.stamina = 0;
+  UNIT_STATS.tank.actionPoints = 0;
   UNIT_STATS.tank.climbLevel = 0;
   UNIT_STATS.tank.charge = 1;
   UNIT_STATS.tank.meleeDamage = 1;
@@ -78,11 +78,11 @@ try {
     assert(!hopped.log.some((l) => l.includes('spends energy')), 'in-move charge spends nothing');
   }
 
-  UNIT_STATS.tank.stamina = Math.max(1, savedStam);
+  UNIT_STATS.tank.actionPoints = Math.max(1, savedStam);
   {
     const s = board();
     const tank = s.pieces.find((p) => p.type === 'tank' && p.side === 'red')!;
-    tank.stamina = 0;
+    tank.actionPoints = 0;
     const marks = legalHighlights(s, tank.id).filter((h) => h.kind === 'charge');
     assert(
       marks.some((h) => h.hex.col === 5 && h.unpaid),
@@ -146,7 +146,7 @@ try {
   UNIT_STATS.soldier.hp = 2;
   UNIT_STATS.tank.passUnits = true;
   UNIT_STATS.tank.move = 3;
-  UNIT_STATS.tank.stamina = 0;
+  UNIT_STATS.tank.actionPoints = 0;
   {
     const s = board();
     const tank = s.pieces.find((p) => p.type === 'tank' && p.side === 'red')!;
@@ -155,10 +155,10 @@ try {
     const blues = after.pieces.filter((p) => p.side === 'blue' && p.type === 'soldier');
     assert(moved.col === 4 && moved.row === 5, 'hop lands beyond the line');
     assert(blues.length === 2 && blues.every((p) => hpLeft(p) === 1), 'hop still deals charge damage');
-    assert(!moved.staminaUsedThisTurn, 'a hop does not spend the charge action');
+    assert(!moved.apSpentThisTurn, 'a hop does not spend the charge action');
   }
 
-  UNIT_STATS.tank.stamina = 1;
+  UNIT_STATS.tank.actionPoints = 1;
   UNIT_STATS.tank.passUnits = false;
   UNIT_STATS.tank.move = 3;
   {
@@ -171,7 +171,7 @@ try {
     const moved = after.pieces.find((p) => p.id === tank.id)!;
     assert(moved.col === far.col && moved.row === far.row, 'extra charge lands');
     assert(
-      moved.stamina === 0 && after.log.some((l) => l.includes('spends energy')),
+      moved.actionPoints === 0 && after.log.some((l) => l.includes('spends energy')),
       'picking that tile spends 1 energy',
     );
   }
@@ -179,7 +179,7 @@ try {
   UNIT_STATS.soldier.hp = savedHp;
   UNIT_STATS.soldier.armor = savedArmor;
   UNIT_STATS.tank.passUnits = savedPass;
-  UNIT_STATS.tank.stamina = savedStam;
+  UNIT_STATS.tank.actionPoints = savedStam;
   UNIT_STATS.tank.climbLevel = savedClimb;
   UNIT_STATS.tank.charge = savedCharge;
   UNIT_STATS.tank.meleeDamage = savedMelee;

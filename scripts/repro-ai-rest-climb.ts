@@ -1,4 +1,4 @@
-import { staminaLeft, type GameState } from '../src/engine';
+import { actionPointsLeft, type GameState } from '../src/engine';
 import { neighborInDir } from '../src/hex';
 import { UNIT_STATS } from '../src/roster';
 import { pickAiAction } from '../src/ai';
@@ -11,12 +11,12 @@ function assert(cond: unknown, msg: string) {
 
 const saved = {
   shoot: UNIT_STATS.soldier.shoot,
-  stamina: UNIT_STATS.soldier.stamina,
+  stamina: UNIT_STATS.soldier.actionPoints,
 };
 
 function restore(): void {
   UNIT_STATS.soldier.shoot = saved.shoot;
-  UNIT_STATS.soldier.stamina = saved.stamina;
+  UNIT_STATS.soldier.actionPoints = saved.actionPoints;
   resetAiChecklist();
 }
 
@@ -56,10 +56,10 @@ try {
       t,
     );
     const blue = s.pieces.find((p) => p.side === 'blue' && p.type === 'soldier')!;
-    blue.stamina = 0;
-    assert(staminaLeft(blue) <= 0, 'setup: empty energy');
+    blue.actionPoints = 0;
+    assert(actionPointsLeft(blue) <= 0, 'setup: empty energy');
     const a = pickAiAction(s);
-    assert(a?.kind === 'rest' && a.pieceId === blue.id, 'empty energy vs uphill hunt → Rest');
+    assert(a?.kind === 'apEmpty' && a.pieceId === blue.id, 'empty energy vs uphill hunt → Rest');
   }
 
   {
@@ -70,7 +70,7 @@ try {
       { type: 'soldier', col: flat.col, row: flat.row, side: 'red' },
     ]);
     const blue = s.pieces.find((p) => p.side === 'blue' && p.type === 'soldier')!;
-    blue.stamina = 0;
+    blue.actionPoints = 0;
     const a = pickAiAction(s);
     assert(
       a?.kind === 'move' && a.to.col === flat.col && a.to.row === flat.row,
@@ -91,7 +91,7 @@ try {
       t,
     );
     const blue = s.pieces.find((p) => p.side === 'blue' && p.type === 'soldier')!;
-    blue.stamina = Math.max(1, staminaLeft(blue) || UNIT_STATS.soldier.stamina);
+    blue.actionPoints = Math.max(1, actionPointsLeft(blue) || UNIT_STATS.soldier.actionPoints);
     const a = pickAiAction(s);
     assert(
       a?.kind === 'move' && a.to.col === hill.col && a.to.row === hill.row,
