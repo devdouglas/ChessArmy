@@ -46,6 +46,8 @@ export type CampaignStack = {
   armySize?: ArmySize;
   moved: boolean;
   exhausted: boolean;
+  /** Paid 1¢ upkeep this turn (campaigning army). */
+  upkeepPaid?: boolean;
   /** Fallen homeland faction — stack is a rebel unit. */
   rebelOf?: string;
 };
@@ -106,6 +108,10 @@ export type MatchState = {
   sieges: Siege[];
   pendingInvasions: PendingInvasion[];
   armyPrompt: ArmyPrompt | null;
+  /** Last capital region each faction captured (camera at turn start). */
+  lastCapturedCapitalByFaction: Record<string, string>;
+  /** Stack id of last army formed for each faction (camera; consumed on focus). */
+  lastFormedArmyByFaction: Record<string, string>;
   phase: MatchPhase;
   log: string[];
   nextStackId: number;
@@ -221,6 +227,8 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
     sieges: [],
     pendingInvasions: [],
     armyPrompt: null,
+    lastCapturedCapitalByFaction: {},
+    lastFormedArmyByFaction: {},
     phase: {
       kind: 'play',
       phase: 'taxes',
@@ -274,6 +282,12 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
     }
   }
 
+  // Ownership requires presence — empty regions are neutral
+  for (const rid of Object.keys(state.regionOwners)) {
+    const occupied = state.stacks.some((s) => s.regionId === rid && !s.rebelOf);
+    if (!occupied) state.regionOwners[rid] = null;
+  }
+
   state.log.push(
     `Match started: ${unique
       .map((id) => map.factions.find((f) => f.id === id)?.name ?? id)
@@ -301,6 +315,8 @@ export function loadMatch(): MatchState | null {
     const parsed = JSON.parse(raw) as MatchState;
     if (!parsed || parsed.version !== 1 || parsed.mapId !== 'europe') return null;
     if (!Array.isArray(parsed.seats) || !Array.isArray(parsed.stacks)) return null;
+    parsed.lastCapturedCapitalByFaction ??= {};
+    parsed.lastFormedArmyByFaction ??= {};
     return parsed;
   } catch {
     return null;

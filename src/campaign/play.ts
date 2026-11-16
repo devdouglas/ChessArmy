@@ -5,6 +5,7 @@ import {
   type CampaignMap,
   type CampaignRegion,
   type Point,
+  type SeaNode,
 } from './types';
 import { centroid, pointInPolygon, ringToPath } from './geometry';
 import { UNIT_STATS } from '../roster';
@@ -18,14 +19,15 @@ import {
   createMatch,
   loadMatch,
   saveMatch,
+  seatOf,
   type CampaignStack,
   type MatchState,
   type TurnPhase,
 } from './match';
+import { coinGlyphSvg } from '../icons';
 import {
   admitBattleDefeat,
   advancePhase,
-  answerArmyPrompt,
   buildSeaAdjacency,
   collectTaxes,
   controllableStackIds,
@@ -39,10 +41,13 @@ import {
   recruitableRegions,
   resolveInvasionChoice,
   retreatDestinations,
-  skipTaxes,
   stacksInRegion,
+  taxableCapitalRegions,
   toggleSupplyGrant,
-  armyNeedsUpkeepPayment,
+  armiesNeedingUpkeep,
+  isCampaigningArmy,
+  isSeaStopLocation,
+  upkeepLossAmount,
 } from './rules';
 
 export type CampaignPlayHandle = {
@@ -72,6 +77,43 @@ function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): Poin
   if (!ctm) return { x: 0, y: 0 };
   const p = pt.matrixTransform(ctm.inverse());
   return { x: p.x, y: p.y };
+}
+
+function svgToClient(svg: SVGSVGElement, x: number, y: number): Point {
+  const pt = svg.createSVGPoint();
+  pt.x = x;
+  pt.y = y;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const p = pt.matrixTransform(ctm);
+  return { x: p.x, y: p.y };
+}
+
+function findSeaStopAt(map: CampaignMap, p: Point, r = 14): SeaNode | null {
+  let best: SeaNode | null = null;
+  let bestD = r;
+  for (const n of map.seaNodes) {
+    if (n.kind !== 'stop') continue;
+    const d = Math.hypot(n.at.x - p.x, n.at.y - p.y);
+    if (d <= bestD) {
+      bestD = d;
+      best = n;
+    }
+  }
+  return best;
+}
+
+/** Click target: prefer legal ocean stop, else land region, else any nearby stop. */
+function findMoveLocationAt(
+  map: CampaignMap,
+  p: Point,
+  legal?: string[],
+): string | null {
+  const stop = findSeaStopAt(map, p);
+  if (stop && (!legal || legal.includes(stop.id))) return stop.id;
+  const reg = findRegionAt(map, p);
+  if (reg) return reg.id;
+  return stop?.id ?? null;
 }
 
 function findRegionAt(map: CampaignMap, p: Point): CampaignRegion | null {
@@ -106,12 +148,46 @@ function phaseLabel(p: TurnPhase): string {
   }
 }
 
-function stackBadge(s: CampaignStack): string {
+function stackBadge(s: CampaignStack, upkeepWarn = false): string {
   if (s.kind === 'army') {
-    const t = s.armySize === 10 ? 'L' : s.armySize === 5 ? 'M' : 'S';
-    return `${t}${s.units}`;
+    return `★${s.units}${upkeepWarn ? ' !!!' : ''}`;
   }
   return `×${s.units}`;
+}
+
+/** Tiny star path for army chips (viewBox-local around origin). */
+const ARMY_STAR_PATH =
+  'M0 -4.2 L0.95 -1.3 H4 L1.4 0.4 L2.3 3.3 L0 1.45 L-2.3 3.3 L-1.4 0.4 L-4 -1.3 H-0.95 Z';
+
+function stackChipMarkup(
+  s: CampaignStack,
+  map: CampaignMap,
+  x: number,
+  y: number,
+  selected: boolean,
+  dragging: boolean,
+  upkeepWarn: boolean,
+): string {
+  const army = s.kind === 'army';
+  const w = army ? (upkeepWarn ? 34 : 26) : 20;
+  const h = 14;
+  const sel = selected ? ' selected' : '';
+  const drag = dragging ? ' dragging' : '';
+  const warn = upkeepWarn ? ' upkeep-warn' : '';
+  const moved = s.moved ? ' moved' : '';
+  const label = army ? String(s.units) : `×${s.units}`;
+  const star = army
+    ? `<path class="cm-army-star" d="${ARMY_STAR_PATH}" transform="translate(${-w / 2 + 7},0)" fill="#f0d060" stroke="#000" stroke-width="0.35"/>`
+    : '';
+  const bang = upkeepWarn
+    ? `<text class="cm-upkeep-bang" x="${w / 2 - 7}" y="3.5" text-anchor="middle">!!!</text>`
+    : '';
+  return `<g class="cm-stack-chip${sel}${drag}${warn}${moved}${army ? ' army' : ''}" data-stack="${s.id}" transform="translate(${x},${y})">
+    <rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="3" fill="${factionColor(map, s.factionId)}" stroke="#000" stroke-width="0.8"/>
+    ${star}
+    <text y="3.5" text-anchor="middle" ${army ? `x="2"` : ''}>${label}</text>
+    ${bang}
+  </g>`;
 }
 
 export async function mountCampaignPlay(
@@ -124,11 +200,23 @@ export async function mountCampaignPlay(
   let selectedId: string | null = null;
   let selectedStackId: string | null = null;
   let legalDests: string[] = [];
+  /** Click-move peels 1; drag-move sends the whole stack. */
+  let moveCountMode: 'one' | 'all' = 'one';
   let spacePan = false;
   let panning = false;
   let panLast: Point | null = null;
+  let stackDrag: {
+    stackId: string;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+    pointerId: number;
+  } | null = null;
   let statusMsg = '';
   let giftPayerId: string | null = null;
+  let taxFxBusy = false;
+  let taxFxToken = 0;
+  let lastCenteredTurnKey = '';
 
   let match: MatchState | null = loadMatch();
   let setupPicks: string[] = [];
@@ -137,11 +225,214 @@ export async function mountCampaignPlay(
   root.className = 'campaign-root campaign-play';
   host.replaceChildren(root);
 
+  function centerViewOn(sx: number, sy: number): void {
+    view = { ...view, x: sx - view.w / 2, y: sy - view.h / 2 };
+  }
+
+  function centerOnRegion(regionId: string): boolean {
+    const stop = map.seaNodes.find((n) => n.kind === 'stop' && n.id === regionId);
+    if (stop) {
+      centerViewOn(stop.at.x, stop.at.y);
+      return true;
+    }
+    const reg = map.regions.find((r) => r.id === regionId);
+    if (!reg) return false;
+    if (reg.settlement.kind !== 'none') {
+      centerViewOn(reg.settlement.at.x, reg.settlement.at.y);
+    } else {
+      const c = centroid(reg.ring);
+      centerViewOn(c.x, c.y);
+    }
+    return true;
+  }
+
+  /** Start of turn: prefer newly formed army, else latest captured capital, else home capital. */
+  function maybeCenterTurnStart(): void {
+    if (!match || match.phase.kind !== 'play') return;
+    if (match.phase.phase !== 'taxes') return;
+    const key = `${match.phase.round}:${match.phase.playerIndex}`;
+    if (key === lastCenteredTurnKey) return;
+    lastCenteredTurnKey = key;
+
+    const factionId = activeSeat(match)!.factionId;
+    match.lastFormedArmyByFaction ??= {};
+    match.lastCapturedCapitalByFaction ??= {};
+
+    const armyId = match.lastFormedArmyByFaction[factionId];
+    if (armyId) {
+      const stack = match.stacks.find((s) => s.id === armyId && s.factionId === factionId);
+      delete match.lastFormedArmyByFaction[factionId];
+      if (stack && centerOnRegion(stack.regionId)) {
+        saveMatch(match);
+        return;
+      }
+    }
+
+    const capId = match.lastCapturedCapitalByFaction[factionId];
+    if (capId && centerOnRegion(capId)) return;
+
+    const homeCap = map.regions.find(
+      (r) =>
+        r.settlement.kind === 'capital' &&
+        (match!.regionOwners[r.id] === factionId || r.ownerId === factionId),
+    );
+    if (homeCap) centerOnRegion(homeCap.id);
+  }
+
   function commit(next: MatchState): void {
     match = next;
     saveMatch(next);
     statusMsg = '';
+    maybeCenterTurnStart();
     paintAll();
+    void maybeAutoTaxes();
+    maybeAutoSkipRecruit();
+    maybeAutoSkipUpkeep();
+  }
+
+  function playRecruitFx(regionId: string, factionId: string): void {
+    const svg = root.querySelector<SVGSVGElement>('.cm-svg');
+    const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
+    if (!svg || !layer) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const reg = map.regions.find((r) => r.id === regionId);
+    if (!reg) return;
+    const at =
+      reg.settlement.kind !== 'none'
+        ? reg.settlement.at
+        : centroid(reg.ring);
+    // Aim near stack chip (below centroid) when present
+    const target = { x: at.x, y: at.y + (reg.settlement.kind !== 'none' ? 10 : 0) };
+    const screen = svgToClient(svg, target.x, target.y);
+    const el = document.createElement('div');
+    el.className = 'tw-recruit-pop';
+    el.style.setProperty('--x', `${screen.x}px`);
+    el.style.setProperty('--y', `${screen.y}px`);
+    el.style.setProperty('--fc', factionColor(map, factionId));
+    el.innerHTML = `<span class="tw-recruit-chip" aria-hidden="true">+1</span>`;
+    layer.appendChild(el);
+    window.setTimeout(() => el.remove(), 520);
+  }
+
+  function playTaxCoinFx(capitalIds: string[]): Promise<void> {
+    const svg = root.querySelector<SVGSVGElement>('.cm-svg');
+    const bank = root.querySelector<HTMLElement>('.tw-coin.active');
+    const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
+    if (!svg || !bank || !layer || capitalIds.length < 1) return Promise.resolve();
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return Promise.resolve();
+
+    const bankRect = bank.getBoundingClientRect();
+    const toX = bankRect.left + bankRect.width / 2;
+    const toY = bankRect.top + bankRect.height / 2;
+    const flightMs = 720;
+    const staggerMs = 140;
+
+    layer.replaceChildren();
+    const coins: HTMLElement[] = [];
+    capitalIds.forEach((rid, i) => {
+      const region = map.regions.find((r) => r.id === rid);
+      if (!region || region.settlement.kind !== 'capital') return;
+      const from = svgToClient(svg, region.settlement.at.x, region.settlement.at.y);
+      const el = document.createElement('div');
+      el.className = 'tw-tax-fly-coin';
+      el.style.setProperty('--x0', `${from.x}px`);
+      el.style.setProperty('--y0', `${from.y}px`);
+      el.style.setProperty('--x1', `${toX}px`);
+      el.style.setProperty('--y1', `${toY}px`);
+      el.style.animationDelay = `${i * staggerMs}ms`;
+      el.innerHTML = coinGlyphSvg(26);
+      layer.appendChild(el);
+      coins.push(el);
+    });
+
+    if (!coins.length) return Promise.resolve();
+
+    const total = flightMs + (coins.length - 1) * staggerMs + 80;
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        layer.replaceChildren();
+        resolve();
+      }, total);
+    });
+  }
+
+  function canAffordRecruit(): boolean {
+    if (!match || match.phase.kind !== 'play') return false;
+    const seat = activeSeat(match)!;
+    if (seat.coins >= 1) return true;
+    if (giftPayerId) {
+      const gift = seatOf(match, giftPayerId);
+      if (gift && gift.coins >= 1) return true;
+    }
+    return false;
+  }
+
+  /** No coins left to recruit → skip to next phase (upkeep/move). */
+  function maybeAutoSkipRecruit(): void {
+    if (!match || match.phase.kind !== 'play') return;
+    if (match.phase.phase !== 'recruit') return;
+    if (taxFxBusy) return;
+    if (canAffordRecruit()) return;
+    try {
+      selectedStackId = null;
+      legalDests = [];
+      commit(advancePhase(match, map, sea));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** No !!! armies due → skip upkeep. */
+  function maybeAutoSkipUpkeep(): void {
+    if (!match || match.phase.kind !== 'play') return;
+    if (match.phase.phase !== 'upkeep') return;
+    if (taxFxBusy) return;
+    const seat = activeSeat(match)!;
+    if (armiesNeedingUpkeep(match, map, sea, seat.factionId).length > 0) return;
+    try {
+      selectedStackId = null;
+      legalDests = [];
+      commit(advancePhase(match, map, sea));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function maybeAutoTaxes(): Promise<void> {
+    if (!match || match.phase.kind !== 'play') return;
+    if (match.phase.phase !== 'taxes') return;
+    if (taxFxBusy) return;
+
+    // Already collected (legacy save / safety) → jump straight to recruit
+    if (match.phase.taxesCollected) {
+      try {
+        commit(advancePhase(match, map, sea));
+      } catch (e) {
+        fail(e);
+      }
+      return;
+    }
+
+    taxFxBusy = true;
+    const token = ++taxFxToken;
+    paintHud();
+
+    const capitals = taxableCapitalRegions(match, map);
+    try {
+      await playTaxCoinFx(capitals);
+      if (token !== taxFxToken || !match || match.phase.kind !== 'play') return;
+      let next = collectTaxes(match, map);
+      next = advancePhase(next, map, sea);
+      taxFxBusy = false;
+      commit(next);
+    } catch (e) {
+      taxFxBusy = false;
+      fail(e);
+      paintHud();
+    }
   }
 
   function fail(err: unknown): void {
@@ -197,7 +488,7 @@ export async function mountCampaignPlay(
             ${gifts}
           </select>
         </label>
-        <button type="button" data-act="next">Next phase</button>
+        <button type="button" data-act="next" ${taxFxBusy || phase === 'taxes' || phase === 'armies' ? 'disabled' : ''}>Next phase</button>
         <button type="button" class="danger" data-act="resign-match">New game</button>
       </div>
       ${statusMsg ? `<p class="tw-status-err">${escapeHtml(statusMsg)}</p>` : ''}
@@ -205,45 +496,30 @@ export async function mountCampaignPlay(
 
     hud.querySelector<HTMLSelectElement>('[data-gift]')?.addEventListener('change', (e) => {
       giftPayerId = (e.target as HTMLSelectElement).value || null;
+      maybeAutoSkipRecruit();
     });
     bindHudActions();
   }
 
   function phaseActionsHtml(phase: TurnPhase, _factionId: string): string {
     if (!match || match.phase.kind !== 'play') return '';
-    if (phase === 'taxes' && !match.phase.taxesCollected) {
-      return `
-        <button type="button" data-act="collect-tax">Collect taxes</button>
-        <button type="button" data-act="skip-tax">Skip</button>`;
+    if (phase === 'taxes') {
+      return `<span class="cm-muted">${taxFxBusy ? 'Collecting taxes…' : 'Taxes…'}</span>`;
     }
     if (phase === 'recruit') {
-      return `<span class="cm-muted">Click a supplied region to recruit (1¢)</span>`;
+      return `<span class="cm-muted">Recruit on owned village/capital (ready), or adjacent region (arrives moved) · 1¢</span>`;
     }
     if (phase === 'upkeep') {
-      const due = match.stacks.filter(
-        (s) =>
-          s.factionId === activeSeat(match!)!.factionId &&
-          armyNeedsUpkeepPayment(match!, map, sea, s),
-      );
-      if (!due.length) return `<span class="cm-muted">No campaigning armies</span>`;
-      return due
-        .map(
-          (s) =>
-            `<button type="button" data-act="pay-upkeep" data-stack="${s.id}">Pay upkeep · ${escapeHtml(regionByIdName(s.regionId))} (${s.units})</button>`,
-        )
-        .join('');
+      return `<span class="cm-muted">Resolve campaigning army upkeep…</span>`;
     }
     if (phase === 'move') {
-      return `<span class="cm-muted">Select a stack, click a highlighted region. Move again for haste (+1¢; exhausted if invading)</span>`;
+      return `<span class="cm-muted">Loose: click = 1, drag = all. ★ army always moves whole (can enter enemy units/armies). Turn start merges stacks.</span>`;
     }
     if (phase === 'invasions') {
       return invasionPanelHtml();
     }
-    if (phase === 'armies' && match.armyPrompt) {
-      return `
-        <span class="cm-muted">${escapeHtml(regionByIdName(match.armyPrompt.regionId))}: ${match.armyPrompt.units} units</span>
-        <button type="button" data-act="army-upgrade">Upgrade (greedy)</button>
-        <button type="button" data-act="army-separate">Keep separate smalls</button>`;
+    if (phase === 'armies') {
+      return `<span class="cm-muted">Forming armies…</span>`;
     }
     return '';
   }
@@ -286,16 +562,6 @@ export async function mountCampaignPlay(
   function bindHudActions(): void {
     const hud = root.querySelector('.tw-hud');
     if (!hud || !match) return;
-    hud.querySelector('[data-act="collect-tax"]')?.addEventListener('click', () => {
-      try {
-        commit(collectTaxes(match!, map));
-      } catch (e) {
-        fail(e);
-      }
-    });
-    hud.querySelector('[data-act="skip-tax"]')?.addEventListener('click', () => {
-      commit(skipTaxes(match!));
-    });
     hud.querySelectorAll('[data-act="pay-upkeep"]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.stack!;
@@ -307,6 +573,13 @@ export async function mountCampaignPlay(
       });
     });
     hud.querySelector('[data-act="next"]')?.addEventListener('click', () => {
+      if (
+        taxFxBusy ||
+        (match!.phase.kind === 'play' &&
+          (match!.phase.phase === 'taxes' || match!.phase.phase === 'armies'))
+      ) {
+        return;
+      }
       try {
         selectedStackId = null;
         legalDests = [];
@@ -358,12 +631,6 @@ export async function mountCampaignPlay(
         }
       });
     });
-    hud.querySelector('[data-act="army-upgrade"]')?.addEventListener('click', () => {
-      commit(answerArmyPrompt(match!, map, 'upgrade'));
-    });
-    hud.querySelector('[data-act="army-separate"]')?.addEventListener('click', () => {
-      commit(answerArmyPrompt(match!, map, 'separate'));
-    });
   }
 
   function paintInfo(): void {
@@ -388,9 +655,10 @@ export async function mountCampaignPlay(
         const sel = selectedStackId === s.id ? ' selected' : '';
         const ctrl =
           seat && controllableStackIds(match!, map, seat.factionId).includes(s.id);
-        return `<button type="button" class="tw-stack-btn${sel}" data-stack="${s.id}" ${ctrl ? '' : 'disabled'}
+        const upkeepWarn = isCampaigningArmy(match!, map, sea, s);
+        return `<button type="button" class="tw-stack-btn${sel}${upkeepWarn ? ' upkeep-warn' : ''}" data-stack="${s.id}" ${ctrl ? '' : 'disabled'}
           style="border-color:${factionColor(map, s.factionId)}">
-          ${escapeHtml(factionName(map, s.factionId))} ${stackBadge(s)}
+          ${escapeHtml(factionName(map, s.factionId))} ${stackBadge(s, upkeepWarn)}
           ${s.exhausted ? ' · exhausted' : ''}
           ${s.moved ? ' · moved' : ''}
         </button>`;
@@ -520,8 +788,7 @@ export async function mountCampaignPlay(
     if (!panel || !match) return;
     panel.querySelectorAll('[data-stack]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        selectedStackId = (btn as HTMLElement).dataset.stack!;
-        refreshLegal();
+        selectStack((btn as HTMLElement).dataset.stack!);
         paintAll();
       });
     });
@@ -551,13 +818,48 @@ export async function mountCampaignPlay(
 
   function refreshLegal(): void {
     legalDests = [];
-    if (!match || !selectedStackId || match.phase.kind !== 'play') return;
-    if (match.phase.phase !== 'move') return;
+    if (!match || match.phase.kind !== 'play') return;
+    if (match.phase.phase === 'recruit') {
+      legalDests = recruitableRegions(match, map, sea, activeSeat(match)!.factionId);
+      return;
+    }
+    if (match.phase.phase !== 'move' || !selectedStackId) return;
     const stack = match.stacks.find((s) => s.id === selectedStackId);
-    const haste = !!stack?.moved;
-    legalDests = legalMovesForStack(match, map, sea, selectedStackId, {
-      haste: haste || undefined,
-    }).map((m) => m.regionId);
+    if (!stack) return;
+    // ★ armies always move as a whole; loose: click=1 / drag=all
+    const count = stack.kind === 'army' || moveCountMode === 'all' ? 'all' : 1;
+    legalDests = legalMovesForStack(match, map, sea, selectedStackId, { count }).map(
+      (m) => m.regionId,
+    );
+  }
+
+  function selectStack(stackId: string): void {
+    selectedStackId = stackId;
+    const st = match?.stacks.find((s) => s.id === stackId);
+    moveCountMode = st?.kind === 'army' ? 'all' : 'one';
+    if (st) selectedId = st.regionId;
+    refreshLegal();
+  }
+
+  function tryMoveSelected(regionId: string, count: number | 'all'): boolean {
+    if (!match || !selectedStackId) return false;
+    const stack = match.stacks.find((s) => s.id === selectedStackId);
+    const moveCount = stack?.kind === 'army' ? 'all' : count;
+    try {
+      const next = moveStack(match, map, sea, selectedStackId, regionId, {
+        count: moveCount,
+        payerFactionId: giftPayerId ?? undefined,
+      });
+      selectedId = regionId;
+      selectedStackId = null;
+      moveCountMode = 'one';
+      legalDests = [];
+      commit(next);
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
   }
 
   function paintMap(): void {
@@ -566,6 +868,7 @@ export async function mountCampaignPlay(
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svg.classList.toggle('tool-pan', true);
     svg.classList.toggle('panning', panning || spacePan);
+    svg.classList.toggle('stack-dragging', !!stackDrag?.dragging);
 
     const regionsG = svg.querySelector('.cm-regions')!;
     const labelsG = svg.querySelector('.cm-labels')!;
@@ -601,27 +904,35 @@ export async function mountCampaignPlay(
       })
       .join('');
 
-    // Stack chips near centroid
+    // Stack chips near region centroid or on ocean stop
     if (match) {
-      const byRegion = new Map<string, CampaignStack[]>();
+      const byLoc = new Map<string, CampaignStack[]>();
       for (const s of match.stacks) {
-        const list = byRegion.get(s.regionId) ?? [];
+        const list = byLoc.get(s.regionId) ?? [];
         list.push(s);
-        byRegion.set(s.regionId, list);
+        byLoc.set(s.regionId, list);
       }
       const chips: string[] = [];
-      for (const [rid, list] of byRegion) {
-        const reg = map.regions.find((r) => r.id === rid);
-        if (!reg) continue;
-        const c = centroid(reg.ring);
+      for (const [locId, list] of byLoc) {
+        const stop = map.seaNodes.find((n) => n.kind === 'stop' && n.id === locId);
+        const reg = map.regions.find((r) => r.id === locId);
+        if (!stop && !reg) continue;
+        const c = stop ? stop.at : centroid(reg!.ring);
+        const yOff = stop ? -10 : 12;
         list.forEach((s, i) => {
-          const x = c.x + (i - (list.length - 1) / 2) * 18;
-          const y = c.y + 12;
-          const sel = selectedStackId === s.id ? ' selected' : '';
-          chips.push(`<g class="cm-stack-chip${sel}" data-stack="${s.id}" transform="translate(${x},${y})">
-            <rect x="-10" y="-7" width="20" height="14" rx="3" fill="${factionColor(map, s.factionId)}" stroke="#000" stroke-width="0.8"/>
-            <text y="3.5" text-anchor="middle">${stackBadge(s)}</text>
-          </g>`);
+          const x = c.x + (i - (list.length - 1) / 2) * 22;
+          const y = c.y + yOff;
+          chips.push(
+            stackChipMarkup(
+              s,
+              map,
+              x,
+              y,
+              selectedStackId === s.id,
+              !!(stackDrag?.stackId === s.id && stackDrag.dragging),
+              isCampaigningArmy(match!, map, sea, s),
+            ),
+          );
         });
       }
       stacksG.innerHTML = chips.join('');
@@ -640,17 +951,103 @@ export async function mountCampaignPlay(
       .join('');
 
     nodesG.innerHTML = map.seaNodes
-      .map(
-        (n) =>
-          `<circle class="cm-sea-node ${n.kind}" cx="${n.at.x}" cy="${n.at.y}" r="${n.kind === 'stop' ? 5.5 : 4.5}"/>`,
-      )
+      .map((n) => {
+        const legal = n.kind === 'stop' && legalDests.includes(n.id) ? ' legal' : '';
+        return `<circle class="cm-sea-node ${n.kind}${legal}" data-sea-node="${n.id}" cx="${n.at.x}" cy="${n.at.y}" r="${n.kind === 'stop' ? 5.5 : 4.5}"/>`;
+      })
       .join('');
   }
 
+  function paintUpkeepModal(): void {
+    let modal = root.querySelector<HTMLElement>('.tw-upkeep-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.className = 'tw-upkeep-modal';
+      modal.setAttribute('aria-hidden', 'true');
+      root.appendChild(modal);
+    }
+    if (!match || match.phase.kind !== 'play' || match.phase.phase !== 'upkeep') {
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      modal.innerHTML = '';
+      return;
+    }
+    const seat = activeSeat(match)!;
+    const due = armiesNeedingUpkeep(match, map, sea, seat.factionId);
+    if (!due.length) {
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      modal.innerHTML = '';
+      return;
+    }
+
+    const coins = seat.coins;
+    const rows = due
+      .map((s) => {
+        const name = escapeHtml(regionByIdName(s.regionId));
+        const loss = upkeepLossAmount(s.units);
+        const left = s.units - loss;
+        if (coins >= 1) {
+          return `<li class="tw-upkeep-row">
+            <div class="tw-upkeep-meta">
+              <strong>${name}</strong>
+              <span>★${s.units} · !!!</span>
+            </div>
+            <button type="button" data-act="pay-upkeep" data-stack="${s.id}">Pay 1¢</button>
+          </li>`;
+        }
+        return `<li class="tw-upkeep-row">
+          <div class="tw-upkeep-meta">
+            <strong>${name}</strong>
+            <span>★${s.units} · !!!</span>
+            <span class="tw-upkeep-loss">No coins — loses ${loss} → ★${left}</span>
+          </div>
+        </li>`;
+      })
+      .join('');
+
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    modal.innerHTML = `
+      <div class="tw-modal-backdrop" data-act="upkeep-dismiss"></div>
+      <div class="tw-modal-card" role="dialog" aria-labelledby="tw-upkeep-title">
+        <h2 id="tw-upkeep-title">Upkeep required</h2>
+        <p class="tw-modal-copy">Campaigning armies need 1¢ each, or lose half their units (rounded down).</p>
+        <ul class="tw-upkeep-list">${rows}</ul>
+        <div class="tw-modal-actions">
+          <button type="button" data-act="upkeep-done">${coins >= 1 ? 'Continue' : 'Accept losses'}</button>
+        </div>
+      </div>`;
+
+    modal.querySelectorAll('[data-act="pay-upkeep"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.stack!;
+        try {
+          commit(payUpkeep(match!, map, sea, id, giftPayerId ?? undefined));
+        } catch (e) {
+          fail(e);
+        }
+      });
+    });
+    const finish = () => {
+      try {
+        selectedStackId = null;
+        legalDests = [];
+        commit(advancePhase(match!, map, sea));
+      } catch (e) {
+        fail(e);
+      }
+    };
+    modal.querySelector('[data-act="upkeep-done"]')?.addEventListener('click', finish);
+    modal.querySelector('[data-act="upkeep-dismiss"]')?.addEventListener('click', finish);
+  }
+
   function paintAll(): void {
+    refreshLegal();
     paintHud();
     paintInfo();
     paintMap();
+    paintUpkeepModal();
   }
 
   function zoomAt(sx: number, sy: number, factor: number): void {
@@ -661,21 +1058,25 @@ export async function mountCampaignPlay(
     view = { x: sx - rx * nw, y: sy - ry * nh, w: nw, h: nh };
   }
 
-  function onRegionClick(region: CampaignRegion, haste: boolean): void {
+  function onLocationClick(locationId: string): void {
+    if (taxFxBusy) return;
+    const isStop = isSeaStopLocation(map, locationId);
     if (!match || match.phase.kind !== 'play') {
-      selectedId = region.id;
+      selectedId = isStop ? null : locationId;
       paintAll();
       return;
     }
     const phase = match.phase.phase;
     const seat = activeSeat(match)!;
 
-    if (phase === 'recruit') {
+    if (phase === 'recruit' && !isStop) {
       const allowed = recruitableRegions(match, map, sea, seat.factionId);
-      if (allowed.includes(region.id)) {
+      if (allowed.includes(locationId)) {
         try {
-          commit(recruit(match, map, sea, region.id, giftPayerId ?? undefined));
-          selectedId = region.id;
+          const next = recruit(match, map, sea, locationId, giftPayerId ?? undefined);
+          selectedId = locationId;
+          commit(next);
+          playRecruitFx(locationId, seat.factionId);
           return;
         } catch (e) {
           fail(e);
@@ -683,34 +1084,22 @@ export async function mountCampaignPlay(
       }
     }
 
-    if (phase === 'move' && selectedStackId && legalDests.includes(region.id)) {
-      const stack = match.stacks.find((s) => s.id === selectedStackId);
-      try {
-        commit(
-          moveStack(match, map, sea, selectedStackId, region.id, {
-            haste: stack?.moved || haste || undefined,
-            payerFactionId: giftPayerId ?? undefined,
-          }),
-        );
-        // Keep selection for optional haste step
-        selectedId = region.id;
-        refreshLegal();
-        paintAll();
-        return;
-      } catch (e) {
-        fail(e);
-        return;
-      }
+    if (phase === 'move' && selectedStackId && legalDests.includes(locationId)) {
+      tryMoveSelected(locationId, 1);
+      return;
     }
 
-    selectedId = region.id;
-    // Clicking a region with controllable stacks selects first
+    selectedId = isStop ? null : locationId;
     if (phase === 'move') {
       const ctrl = controllableStackIds(match, map, seat.factionId);
-      const here = stacksInRegion(match, region.id).find((s) => ctrl.includes(s.id));
+      const here = stacksInRegion(match, locationId).find(
+        (s) => ctrl.includes(s.id) && !s.moved,
+      );
       if (here) {
-        selectedStackId = here.id;
-        refreshLegal();
+        selectStack(here.id);
+      } else {
+        selectedStackId = null;
+        legalDests = [];
       }
     }
     paintAll();
@@ -725,6 +1114,7 @@ export async function mountCampaignPlay(
         <span class="cm-status">${escapeHtml(map.name)}</span>
       </div>
       <div class="tw-hud"></div>
+      <div class="tw-tax-fx" aria-hidden="true"></div>
       <div class="campaign-body campaign-play-body">
         <div class="campaign-stage">
           <svg class="cm-svg tool-pan" viewBox="${view.x} ${view.y} ${view.w} ${view.h}" xmlns="http://www.w3.org/2000/svg">
@@ -744,8 +1134,10 @@ export async function mountCampaignPlay(
         </div>
         <aside class="campaign-inspector campaign-play-info"></aside>
       </div>`;
+    maybeCenterTurnStart();
     paintAll();
     bindShell();
+    void maybeAutoTaxes();
   }
 
   function bindShell(): void {
@@ -772,6 +1164,32 @@ export async function mountCampaignPlay(
     );
 
     svg.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      const stackEl =
+        e.button === 0 && !spacePan
+          ? (e.target as Element)?.closest?.('[data-stack]')
+          : null;
+      if (
+        stackEl &&
+        match?.phase.kind === 'play' &&
+        match.phase.phase === 'move'
+      ) {
+        const stackId = (stackEl as HTMLElement).dataset.stack!;
+        const st = match.stacks.find((s) => s.id === stackId);
+        if (st && !st.moved) {
+          selectStack(stackId);
+          stackDrag = {
+            stackId,
+            startX: e.clientX,
+            startY: e.clientY,
+            dragging: false,
+            pointerId: e.pointerId,
+          };
+          svg.setPointerCapture(e.pointerId);
+          paintAll();
+          return;
+        }
+      }
       if (e.button === 1 || spacePan || e.button === 0) {
         panning = true;
         panLast = { x: e.clientX, y: e.clientY };
@@ -780,6 +1198,16 @@ export async function mountCampaignPlay(
       }
     });
     svg.addEventListener('pointermove', (e) => {
+      if (stackDrag && stackDrag.pointerId === e.pointerId) {
+        const dist = Math.hypot(e.clientX - stackDrag.startX, e.clientY - stackDrag.startY);
+        if (!stackDrag.dragging && dist > 8) {
+          stackDrag.dragging = true;
+          moveCountMode = 'all';
+          refreshLegal();
+          paintMap();
+        }
+        return;
+      }
       if (!panning || !panLast) return;
       const dx = e.clientX - panLast.x;
       const dy = e.clientY - panLast.y;
@@ -791,6 +1219,31 @@ export async function mountCampaignPlay(
       paintMap();
     });
     svg.addEventListener('pointerup', (e) => {
+      if (stackDrag && stackDrag.pointerId === e.pointerId) {
+        const drag = stackDrag;
+        stackDrag = null;
+        try {
+          svg.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        if (drag.dragging) {
+          const p = clientToSvg(svg, e.clientX, e.clientY);
+          const loc = findMoveLocationAt(map, p, legalDests);
+          if (loc && legalDests.includes(loc)) {
+            tryMoveSelected(loc, 'all');
+          } else {
+            moveCountMode = 'one';
+            refreshLegal();
+            paintAll();
+          }
+        } else {
+          // Click-select only — destinations already lit for count=1
+          paintAll();
+        }
+        return;
+      }
+
       const moved = svg.dataset.panMoved === '1';
       panning = false;
       panLast = null;
@@ -800,24 +1253,27 @@ export async function mountCampaignPlay(
         /* ignore */
       }
       if (!moved && e.button === 0) {
-        const target = (e.target as Element)?.closest?.('[data-stack]');
-        if (target) {
-          selectedStackId = (target as HTMLElement).dataset.stack!;
-          const st = match?.stacks.find((s) => s.id === selectedStackId);
-          if (st) selectedId = st.regionId;
-          refreshLegal();
+        const p = clientToSvg(svg, e.clientX, e.clientY);
+        const loc = findMoveLocationAt(map, p, legalDests);
+        if (loc) onLocationClick(loc);
+        else {
+          selectedId = null;
+          selectedStackId = null;
+          legalDests = [];
           paintAll();
-        } else {
-          const p = clientToSvg(svg, e.clientX, e.clientY);
-          const region = findRegionAt(map, p);
-          if (region) onRegionClick(region, e.shiftKey);
-          else {
-            selectedId = null;
-            paintAll();
-          }
         }
       }
       paintMap();
+    });
+    svg.addEventListener('pointercancel', (e) => {
+      if (stackDrag && stackDrag.pointerId === e.pointerId) {
+        stackDrag = null;
+        moveCountMode = 'one';
+        refreshLegal();
+        paintAll();
+      }
+      panning = false;
+      panLast = null;
     });
   }
 
@@ -841,6 +1297,8 @@ export async function mountCampaignPlay(
 
   return {
     destroy: () => {
+      taxFxToken += 1;
+      taxFxBusy = false;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       root.remove();

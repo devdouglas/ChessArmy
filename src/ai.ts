@@ -560,7 +560,7 @@ function moveStepsOnPikes(
   const from: Hex = { col: piece.col, row: piece.row };
   const plan = previewMove(state, piece, to, undefined, { charging });
   if (eq(from, plan.stop)) return false;
-  const ignoreTiles = hasAbility(piece, 'trap');
+  const ignoreTiles = hasAbility(piece, 'build');
   for (const h of pathForMove(state, piece, to, charging)) {
     if (!ignoreTiles) {
       const pike = tokenOnHex(state.tokens, h, 'pikes');

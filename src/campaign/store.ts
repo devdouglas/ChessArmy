@@ -151,11 +151,22 @@ export function parseCampaignMap(raw: unknown): CampaignMap {
   // Drop capital keys not in the fixed list (already filtered by isCapitalKey).
   void CAPITAL_KEYS;
 
+  // Open ground (no village/capital) cannot be owned
+  neutralizeOpenGround(base.regions);
+
   base.neighbors = computeNeighbors(base.regions);
   return base;
 }
 
+/** Regions without a village or capital are always neutral. */
+export function neutralizeOpenGround(regions: CampaignRegion[]): void {
+  for (const r of regions) {
+    if (r.settlement.kind === 'none') r.ownerId = null;
+  }
+}
+
 export function prepareForSave(map: CampaignMap): CampaignMap {
+  neutralizeOpenGround(map.regions);
   return {
     ...map,
     id: 'europe',

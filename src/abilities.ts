@@ -4,7 +4,7 @@ export const ABILITY_IDS = [
   'hide',
   'javelin',
   'charge',
-  'trap',
+  'build',
   'shields',
   'bash',
   'berserk',
@@ -12,11 +12,27 @@ export const ABILITY_IDS = [
 
 export type AbilityId = (typeof ABILITY_IDS)[number];
 
+/** What Build can place (or clear) on an adjacent hex. */
+export const BUILD_STRUCTURES = ['pikes', 'palisade'] as const;
+export type BuildStructure = (typeof BUILD_STRUCTURES)[number];
+
+export const BUILD_STRUCTURE_LABEL: Record<BuildStructure, string> = {
+  pikes: 'Trap',
+  palisade: 'Palisade',
+};
+
+export const BUILD_STRUCTURE_BLURB: Record<BuildStructure, string> = {
+  pikes:
+    'Hidden pikes. Enemies cannot see them and take damage walking in. Build units are immune and clear them by walking over or building again.',
+  palisade:
+    'Wooden fence, 3 HP. Blocks walk and charge (unless the hit breaks it). Arch shots go over; straight shots do not. Build again on it to dismantle.',
+};
+
 export const ABILITY_LABEL: Record<AbilityId, string> = {
   hide: 'Hide',
   javelin: 'Javelin',
   charge: 'Charge',
-  trap: 'Trap',
+  build: 'Build',
   shields: 'Shields up',
   bash: 'Bash',
   berserk: 'Berserk',
@@ -28,7 +44,8 @@ export const ABILITY_BLURB: Record<AbilityId, string> = {
     'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
   charge:
     'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no AP mark. A destination past that move shows the normal AP bolt and spends 1 when you pick it. With no AP left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. No walk-to orders.',
-  trap: 'Pick an adjacent hex this unit could step toward. Red faces are not spots. Plants hidden pikes (enemies cannot see them), or clears them if already there. Immune to pikes — walking onto them clears the trap. Can spend AP as a second action.',
+  build:
+    'Pick Trap or Palisade, then an adjacent hex this unit could step toward (red faces are not spots). Empty hex: place it. Existing trap/palisade: clear it. Immune to pikes — walking onto them clears the trap. Can spend AP as a second action.',
   shields:
     'Ranged attacks do nothing until this side\'s next turn. Ends this activation — leftover AP cannot be spent.',
   bash:
@@ -41,11 +58,22 @@ export function isAbilityId(raw: unknown): raw is AbilityId {
   return typeof raw === 'string' && (ABILITY_IDS as readonly string[]).includes(raw);
 }
 
+export function isBuildStructure(raw: unknown): raw is BuildStructure {
+  return typeof raw === 'string' && (BUILD_STRUCTURES as readonly string[]).includes(raw);
+}
+
+/** Saved unit data may still say `trap` — that is Build. */
+function normalizeAbilityId(raw: unknown): AbilityId | null {
+  if (raw === 'trap') return 'build';
+  return isAbilityId(raw) ? raw : null;
+}
+
 export function sanitizeAbilities(raw: unknown, fallback: readonly AbilityId[] = []): AbilityId[] {
   const src = Array.isArray(raw) ? raw : fallback;
   const out: AbilityId[] = [];
   for (const a of src) {
-    if (isAbilityId(a) && !out.includes(a)) out.push(a);
+    const id = normalizeAbilityId(a);
+    if (id && !out.includes(id)) out.push(id);
   }
   return out;
 }

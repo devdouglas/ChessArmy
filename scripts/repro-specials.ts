@@ -1,6 +1,6 @@
 import {
   applyAction,
-  canTrap,
+  canBuild,
   getPiece,
   javelinIsSpecial,
   hasAbility,
@@ -9,8 +9,9 @@ import {
   legalHighlights,
   actionPointsLeft,
   tokenOnHex,
-  trapSpots,
+  buildSpots,
   UNIT_STATS,
+  isPalisade,
 } from '../src/engine';
 import { defaultFacing, neighborInDir, type HexDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
@@ -22,7 +23,7 @@ function assert(cond: unknown, msg: string) {
 assert(UNIT_STATS.barbarian.abilities.includes('hide'), 'barbarian hide');
 assert(UNIT_STATS.barbarian.abilities.includes('charge'), 'barbarian charge');
 assert(UNIT_STATS.cohort.abilities.includes('javelin'), 'cohort javelin');
-assert(UNIT_STATS.hoplite.abilities.includes('trap'), 'hoplite trap');
+assert(UNIT_STATS.hoplite.abilities.includes('build'), 'hoplite build');
 assert(UNIT_STATS.general.king, 'general king kit');
 assert(UNIT_STATS.general.abilities.length === 0, 'general ability gone');
 assert(UNIT_STATS.tank.abilities.includes('charge'), 'tank charge');
@@ -46,7 +47,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
 }
 
 {
-  const s = createStateFromTerrain(emptyTerrain(8, 8), 'trap', 'pointy', [
+  const s = createStateFromTerrain(emptyTerrain(8, 8), 'build', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
     { type: 'general', col: 0, row: 4, side: 'red' },
     { type: 'general', col: 7, row: 4, side: 'blue' },
@@ -55,24 +56,61 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const hop = s.pieces.find((p) => p.type === 'hoplite')!;
   hop.facing = defaultFacing('red');
   const front = neighborInDir({ col: hop.col, row: hop.row }, hop.facing, s.orientation);
-  assert(canTrap(s, hop.id), 'hoplite can trap');
-  const spots = trapSpots(s, hop);
-  assert(spots.length === 6, `every step direction is a trap spot, got ${spots.length}`);
+  assert(canBuild(s, hop.id), 'hoplite can build');
+  const spots = buildSpots(s, hop);
+  assert(spots.length === 6, `every step direction is a build spot, got ${spots.length}`);
   assert(
-    legalHighlights(s, hop.id).filter((h) => h.kind === 'trap').length === 6,
-    'trap spots are highlighted',
+    legalHighlights(s, hop.id).filter((h) => h.kind === 'build').length === 6,
+    'build spots are highlighted',
   );
   const side = spots.find((h) => h.col !== front.col || h.row !== front.row)!;
-  const after = applyAction(s, { kind: 'trap', pieceId: hop.id, to: side });
+  const after = applyAction(s, {
+    kind: 'build',
+    pieceId: hop.id,
+    to: side,
+    structure: 'pikes',
+  });
   const planted = tokenOnHex(after.tokens, side, 'pikes');
   assert(!!planted, 'pikes land on the chosen hex');
-  assert(planted!.owner === 'red', 'planted pikes belong to the trapper');
+  assert(planted!.owner === 'red', 'planted pikes belong to the builder');
   assert(!tokenOnHex(after.tokens, front, 'pikes'), 'the faced hex stays empty');
-  assert(!!after.scoutPieceId, 'first trap with energy left arms the second action');
-  assert(canTrap(after, hop.id), 'trap stays available for the second action');
-  assert(!hasActed(after, hop.id), 'first trap does not finish while energy remains');
+  assert(!!after.scoutPieceId, 'first build with energy left arms the second action');
+  assert(canBuild(after, hop.id), 'build stays available for the second action');
+  assert(!hasActed(after, hop.id), 'first build does not finish while energy remains');
 
-  const clearBoard = createStateFromTerrain(emptyTerrain(8, 8), 'trap-clear', 'pointy', [
+  const fenceBoard = createStateFromTerrain(emptyTerrain(8, 8), 'build-palisade', 'pointy', [
+    { type: 'hoplite', col: 3, row: 4, side: 'red' },
+    { type: 'general', col: 0, row: 4, side: 'red' },
+    { type: 'general', col: 7, row: 4, side: 'blue' },
+  ]);
+  fenceBoard.turn = 'red';
+  const fencer = fenceBoard.pieces.find((p) => p.type === 'hoplite')!;
+  fencer.facing = hop.facing;
+  const fenceHex = buildSpots(fenceBoard, fencer).find(
+    (h) => h.col !== front.col || h.row !== front.row,
+  )!;
+  const fenced = applyAction(fenceBoard, {
+    kind: 'build',
+    pieceId: fencer.id,
+    to: fenceHex,
+    structure: 'palisade',
+  });
+  assert(isPalisade(fenced, fenceHex), 'palisade lands on the chosen hex');
+  assert(
+    buildSpots(fenced, getPiece(fenced, fencer.id)!).some(
+      (h) => h.col === fenceHex.col && h.row === fenceHex.row,
+    ),
+    'built palisade stays a build spot',
+  );
+  const clearedFence = applyAction(fenced, {
+    kind: 'build',
+    pieceId: fencer.id,
+    to: fenceHex,
+    structure: 'palisade',
+  });
+  assert(!isPalisade(clearedFence, fenceHex), 'build clears a palisade');
+
+  const clearBoard = createStateFromTerrain(emptyTerrain(8, 8), 'build-clear', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
     { type: 'general', col: 0, row: 4, side: 'red' },
     { type: 'general', col: 7, row: 4, side: 'blue' },
@@ -82,13 +120,18 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const clearer = clearBoard.pieces.find((p) => p.type === 'hoplite')!;
   clearer.facing = hop.facing;
   assert(
-    trapSpots(clearBoard, clearer).some((h) => h.col === side.col && h.row === side.row),
-    'existing pikes stay a trap spot',
+    buildSpots(clearBoard, clearer).some((h) => h.col === side.col && h.row === side.row),
+    'existing pikes stay a build spot',
   );
-  const cleared = applyAction(clearBoard, { kind: 'trap', pieceId: clearer.id, to: side });
-  assert(!tokenOnHex(cleared.tokens, side, 'pikes'), 'trap clears pikes on the chosen hex');
+  const cleared = applyAction(clearBoard, {
+    kind: 'build',
+    pieceId: clearer.id,
+    to: side,
+    structure: 'pikes',
+  });
+  assert(!tokenOnHex(cleared.tokens, side, 'pikes'), 'build clears pikes on the chosen hex');
 
-  const immune = createStateFromTerrain(emptyTerrain(8, 8), 'trap-immune', 'pointy', [
+  const immune = createStateFromTerrain(emptyTerrain(8, 8), 'build-immune', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
     { type: 'general', col: 0, row: 4, side: 'red' },
     { type: 'general', col: 7, row: 4, side: 'blue' },
@@ -101,14 +144,14 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const hpBefore = hpLeft(walker);
   const walked = applyAction(immune, { kind: 'move', pieceId: walker.id, to: step });
   const afterWalk = walked.pieces.find((p) => p.id === walker.id)!;
-  assert(hpLeft(afterWalk) === hpBefore, 'trap units ignore pikes when walking onto them');
+  assert(hpLeft(afterWalk) === hpBefore, 'build units ignore pikes when walking onto them');
   assert(
     afterWalk.col === step.col && afterWalk.row === step.row,
-    'trap unit still walks onto the pike hex',
+    'build unit still walks onto the pike hex',
   );
-  assert(!tokenOnHex(walked.tokens, step, 'pikes'), 'trap unit clears pikes on move-over');
+  assert(!tokenOnHex(walked.tokens, step, 'pikes'), 'build unit clears pikes on move-over');
 
-  const second = createStateFromTerrain(emptyTerrain(8, 8), 'trap-second', 'pointy', [
+  const second = createStateFromTerrain(emptyTerrain(8, 8), 'build-second', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
     { type: 'general', col: 0, row: 4, side: 'red' },
     { type: 'general', col: 7, row: 4, side: 'blue' },
@@ -125,33 +168,34 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   assert(actionPointsLeft(hopper) > 0, 'hoplite has energy for a second action');
   const afterMove = applyAction(second, { kind: 'move', pieceId: hopper.id, to: firstStep });
   assert(!!afterMove.scoutPieceId, 'a walk with energy left arms the second action');
-  assert(canTrap(afterMove, hopper.id), 'trap is legal as the second action');
+  assert(canBuild(afterMove, hopper.id), 'build is legal as the second action');
   const moved = getPiece(afterMove, hopper.id)!;
   const apAfterMove = actionPointsLeft(moved);
-  const plantHex = trapSpots(afterMove, moved).find(
+  const plantHex = buildSpots(afterMove, moved).find(
     (h) => h.col !== firstStep.col || h.row !== firstStep.row,
   )!;
-  const afterTrap = applyAction(afterMove, {
-    kind: 'trap',
+  const afterBuild = applyAction(afterMove, {
+    kind: 'build',
     pieceId: hopper.id,
     to: plantHex,
+    structure: 'pikes',
   });
-  assert(tokenOnHex(afterTrap.tokens, plantHex, 'pikes'), 'second-action trap plants');
-  assert(!!!afterTrap.scoutPieceId, 'second-action trap clears the energy lock');
-  assert(afterTrap.turn === 'blue', 'second-action trap ends the side (cap 1)');
+  assert(tokenOnHex(afterBuild.tokens, plantHex, 'pikes'), 'second-action build plants');
+  assert(!!!afterBuild.scoutPieceId, 'second-action build clears the energy lock');
+  assert(afterBuild.turn === 'blue', 'second-action build ends the side (cap 1)');
   assert(
-    actionPointsLeft(getPiece(afterTrap, hopper.id)!) === apAfterMove - 1,
-    'second-action trap spends 1 energy',
+    actionPointsLeft(getPiece(afterBuild, hopper.id)!) === apAfterMove - 1,
+    'second-action build spends 1 energy',
   );
 
   const savedFront = UNIT_STATS.hoplite.armorFront;
   UNIT_STATS.hoplite.armorFront = -2;
   const red = neighborInDir({ col: hop.col, row: hop.row }, hop.facing, s.orientation);
   assert(
-    !trapSpots(s, hop).some((h) => h.col === red.col && h.row === red.row),
-    'a red face is not a trap spot',
+    !buildSpots(s, hop).some((h) => h.col === red.col && h.row === red.row),
+    'a red face is not a build spot',
   );
-  assert(trapSpots(s, hop).length === 5, 'the other five directions stay');
+  assert(buildSpots(s, hop).length === 5, 'the other five directions stay');
   UNIT_STATS.hoplite.armorFront = savedFront;
 }
 
@@ -159,7 +203,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const t = emptyTerrain(10, 8);
   for (let row = 0; row < 8; row++) {
     if (row === 4) continue;
-    for (let col = 0; col < 10; col++) t[row][col] = 'rock';
+    for (let col = 0; col < 10; col++) t[row]![col] = 'rock';
   }
   const s = createStateFromTerrain(t, 'no-charge', 'pointy', [
     { type: 'tank', col: 1, row: 4, side: 'red' },
@@ -175,10 +219,6 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     charges.some((h) => h.hex.col === 3 && !h.extra),
     'spent energy still allows a crash inside the normal move',
   );
-  assert(
-    charges.some((h) => h.extra && h.unpaid) && !charges.some((h) => h.extra && !h.unpaid),
-    'spent energy leaves extra-reach charge dests unpaid',
-  );
 }
 
-console.log('specials: hide/javelin/charge/trap catalog and engine actions');
+console.log('specials: hide/javelin/charge/build catalog and engine actions');

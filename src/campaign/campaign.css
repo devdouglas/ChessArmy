@@ -345,6 +345,13 @@
   fill: #ffe08a;
 }
 
+.cm-sea-node.stop.legal {
+  fill: #f5e6b0;
+  stroke: #f5e6b0;
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 3px #f5e6b0aa);
+}
+
 .cm-sea-node.selected {
   stroke: var(--cm-accent);
   stroke-width: 2.2;
@@ -518,6 +525,178 @@
   outline: 1px solid var(--cm-accent);
 }
 
+.tw-upkeep-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.tw-upkeep-modal[hidden] {
+  display: none !important;
+}
+
+.tw-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 16, 0.72);
+}
+
+.tw-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(22rem, 100%);
+  padding: 1rem 1.1rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--cm-border);
+  background: #1a2433;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tw-modal-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #f5e6b0;
+}
+
+.tw-modal-copy {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--cm-muted);
+  line-height: 1.35;
+}
+
+.tw-upkeep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tw-upkeep-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #ff3b3b 35%, var(--cm-border));
+  background: #121820;
+}
+
+.tw-upkeep-meta {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+
+.tw-upkeep-loss {
+  color: #ffb4b4;
+}
+
+.tw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tw-tax-fx {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+  overflow: hidden;
+}
+
+.tw-tax-fly-coin {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px rgba(255, 220, 90, 0.75));
+  animation: tw-coin-to-bank 0.72s cubic-bezier(0.22, 0.9, 0.28, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes tw-coin-to-bank {
+  0% {
+    opacity: 0;
+    transform: translate(var(--x0), var(--y0)) scale(0.45) rotate(-24deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(var(--x1), var(--y1)) scale(1.05) rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tw-tax-fly-coin {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+.tw-recruit-pop {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 81;
+  animation: tw-recruit-drop 0.48s cubic-bezier(0.22, 0.9, 0.28, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.tw-recruit-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 18px;
+  margin: -20px 0 0 -13px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fc, #888) 88%, #000);
+  border: 1px solid #0a0a0a;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes tw-recruit-drop {
+  0% {
+    opacity: 0;
+    transform: translate(var(--x), calc(var(--y) - 36px)) scale(0.4);
+  }
+  35% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate(var(--x), calc(var(--y) - 2px)) scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), var(--y)) scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tw-recruit-pop {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 .tw-actions {
   display: flex;
   flex-wrap: wrap;
@@ -586,6 +765,19 @@
   pointer-events: none;
 }
 
+.cm-stack-chip .cm-army-star {
+  pointer-events: none;
+}
+
+.cm-stack-chip .cm-upkeep-bang {
+  font-size: 7px;
+  font-weight: 800;
+  fill: #ff3b3b;
+  stroke: #4a0000;
+  stroke-width: 0.45px;
+  pointer-events: none;
+}
+
 .cm-stack-chip {
   cursor: pointer;
 }
@@ -593,6 +785,39 @@
 .cm-stack-chip.selected rect {
   stroke: #f5e6b0;
   stroke-width: 1.6px;
+}
+
+.cm-stack-chip.moved rect {
+  stroke: #f09030;
+  stroke-width: 1.5px;
+}
+
+.cm-stack-chip.moved.selected rect {
+  stroke: #ffb060;
+  stroke-width: 1.8px;
+}
+
+.cm-stack-chip.upkeep-warn rect {
+  stroke: #ff3b3b;
+  stroke-width: 1.2px;
+}
+
+.cm-stack-chip.moved.upkeep-warn rect {
+  stroke: #ff3b3b;
+  stroke-width: 1.5px;
+}
+
+.cm-stack-chip.dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.tw-stack-btn.upkeep-warn {
+  color: #ffb4b4;
+}
+
+.cm-svg.stack-dragging {
+  cursor: grabbing;
 }
 
 .tw-stack-list {

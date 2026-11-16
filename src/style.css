@@ -4078,6 +4078,28 @@ svg.board .hex {
   color: var(--muted);
 }
 
+.rogue-promo-target-promos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.55rem;
+}
+
+.rogue-promo-target-promo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.rogue-promo-target-promo svg {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
 @media (max-width: 520px) {
   .rogue-shop-offers {
     grid-template-columns: 1fr;
@@ -4388,6 +4410,7 @@ svg.board .hex {
   fill: var(--charge);
 }
 
+.hl-tint.build,
 .hl-tint.trap {
   fill: rgba(196, 154, 74, 0.55);
 }
@@ -4445,6 +4468,7 @@ svg.board .hex {
 }
 
 svg.board:has(.hl-tint.path) .hl-tint.move,
+svg.board:has(.hl-tint.path) .hl-tint.build,
 svg.board:has(.hl-tint.path) .hl-tint.trap,
 svg.board:has(.hl-tint.path) .hl-tint.ap,
 svg.board:has(.hl-tint.path) .hl-tint.charge,
@@ -5216,15 +5240,34 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
   padding: 0.4rem 0.65rem 0.15rem;
 }
 
+.unit-dock-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0 0 calc(0.45rem + var(--safe-b));
+}
+
 .unit-dock {
   position: static;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.35rem;
-  padding: 0.4rem 0.5rem calc(0.45rem + var(--safe-b));
+  padding: 0.4rem 0.5rem 0;
   background: transparent;
   border: none;
   box-shadow: none;
+}
+
+.build-pick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+}
+
+.build-pick .dock-btn.build-kind {
+  min-height: 2.7rem;
+  font-size: 0.62rem;
 }
 
 .board-wrap:has(.play-dock) {

@@ -65,6 +65,63 @@ export function ownerOf(state: MatchState, regionId: string): string | null {
   return state.regionOwners[regionId] ?? null;
 }
 
+/** Non-rebel factions with at least one unit in the region. */
+function presentFactionsInRegion(state: MatchState, regionId: string): Set<string> {
+  const present = new Set<string>();
+  for (const s of stacksInRegion(state, regionId)) {
+    if (s.rebelOf) continue;
+    present.add(s.factionId);
+  }
+  return present;
+}
+
+/**
+ * Ownership follows presence: empty (or rebels-only) → neutral;
+ * exactly one faction → that faction; contested → keep current if still present else null.
+ */
+export function isSeaStopLocation(map: CampaignMap, locationId: string): boolean {
+  return map.seaNodes.some((n) => n.kind === 'stop' && n.id === locationId);
+}
+
+export function isLandLocation(map: CampaignMap, locationId: string): boolean {
+  return !!regionById(map, locationId);
+}
+
+export function locationLabel(map: CampaignMap, locationId: string): string {
+  const reg = regionById(map, locationId);
+  if (reg) return reg.name;
+  if (isSeaStopLocation(map, locationId)) return 'sea stop';
+  return locationId;
+}
+
+export function syncRegionOwnership(
+  state: MatchState,
+  regionId: string,
+  map?: CampaignMap,
+): void {
+  if (map && !isLandLocation(map, regionId)) return;
+  const present = presentFactionsInRegion(state, regionId);
+  if (present.size === 0) {
+    state.regionOwners[regionId] = null;
+    return;
+  }
+  if (present.size === 1) {
+    state.regionOwners[regionId] = [...present][0]!;
+    return;
+  }
+  const cur = state.regionOwners[regionId];
+  if (cur && present.has(cur)) return;
+  state.regionOwners[regionId] = null;
+}
+
+export function syncAllRegionOwnership(state: MatchState, map: CampaignMap): void {
+  const ids = new Set<string>(Object.keys(state.regionOwners));
+  for (const s of state.stacks) {
+    if (isLandLocation(map, s.regionId)) ids.add(s.regionId);
+  }
+  for (const rid of ids) syncRegionOwnership(state, rid, map);
+}
+
 export function playerHoldsHomeCapital(
   state: MatchState,
   map: CampaignMap,
@@ -80,79 +137,114 @@ export function playerHoldsHomeCapital(
   return false;
 }
 
-/** Build region↔region sea adjacencies (worst link kind on path through stops). */
+/** Location id for a sea node: port → its region; stop → itself (ocean waypoint). */
+function seaNodeLocation(node: SeaNode): string | null {
+  if (node.kind === 'stop') return node.id;
+  if (node.kind === 'port' && node.regionId) return node.regionId;
+  return null;
+}
+
+/**
+ * One-hop sea graph. Keys/values are land region ids or sea-stop node ids.
+ * Direct port↔port = regions adjacent. Port↔stop or stop↔stop = must stop on the dot.
+ */
 export function buildSeaAdjacency(map: CampaignMap): Record<string, SeaAdjacency[]> {
   const byId = new Map(map.seaNodes.map((n) => [n.id, n]));
-  const adj = new Map<string, { id: string; kind: SeaRouteKind }[]>();
-  for (const l of map.seaLinks) {
-    const listA = adj.get(l.a) ?? [];
-    listA.push({ id: l.b, kind: l.kind });
-    adj.set(l.a, listA);
-    const listB = adj.get(l.b) ?? [];
-    listB.push({ id: l.a, kind: l.kind });
-    adj.set(l.b, listB);
-  }
-
   const out: Record<string, SeaAdjacency[]> = {};
-  const ports = map.seaNodes.filter((n): n is SeaNode & { regionId: string } =>
-    n.kind === 'port' && !!n.regionId,
-  );
 
-  for (const port of ports) {
-    const queue: { id: string; worst: SeaRouteKind }[] = [{ id: port.id, worst: 'blue' }];
-    const seen = new Set<string>([port.id]);
-    const found = new Map<string, SeaRouteKind>();
-
-    while (queue.length) {
-      const cur = queue.shift()!;
-      for (const edge of adj.get(cur.id) ?? []) {
-        if (seen.has(edge.id)) continue;
-        seen.add(edge.id);
-        const worst: SeaRouteKind = cur.worst === 'red' || edge.kind === 'red' ? 'red' : 'blue';
-        const node = byId.get(edge.id);
-        if (!node) continue;
-        if (node.kind === 'port' && node.regionId && node.regionId !== port.regionId) {
-          const prev = found.get(node.regionId);
-          if (!prev || (prev === 'red' && worst === 'blue')) {
-            found.set(node.regionId, worst);
-          }
-        } else if (node.kind === 'stop') {
-          queue.push({ id: edge.id, worst });
-        } else if (node.kind === 'port') {
-          // other port without region — still traverse? skip
-        }
-      }
+  const add = (from: string, to: string, kind: SeaRouteKind) => {
+    if (from === to) return;
+    const list = out[from] ?? [];
+    const prev = list.find((x) => x.to === to);
+    if (prev) {
+      if (prev.kind === 'red' && kind === 'blue') prev.kind = 'blue';
+      return;
     }
+    list.push({ to, kind });
+    out[from] = list;
+  };
 
-    const list = out[port.regionId] ?? [];
-    for (const [to, kind] of found) {
-      if (!list.some((x) => x.to === to && x.kind === kind)) {
-        list.push({ to, kind });
-      }
-    }
-    out[port.regionId] = list;
+  for (const link of map.seaLinks) {
+    const a = byId.get(link.a);
+    const b = byId.get(link.b);
+    if (!a || !b) continue;
+    const from = seaNodeLocation(a);
+    const to = seaNodeLocation(b);
+    if (!from || !to) continue;
+    add(from, to, link.kind);
+    add(to, from, link.kind);
   }
   return out;
 }
 
-function ownsBothShores(
-  state: MatchState,
-  factionId: string,
-  a: string,
-  b: string,
-): boolean {
-  return ownerOf(state, a) === factionId && ownerOf(state, b) === factionId;
+/** Port regions in the sea-component that contains the hop from→to. */
+function seaComponentPortRegions(
+  map: CampaignMap,
+  fromLoc: string,
+  toLoc: string,
+): string[] {
+  const byId = new Map(map.seaNodes.map((n) => [n.id, n]));
+  const adj = new Map<string, string[]>();
+  for (const l of map.seaLinks) {
+    const la = adj.get(l.a) ?? [];
+    la.push(l.b);
+    adj.set(l.a, la);
+    const lb = adj.get(l.b) ?? [];
+    lb.push(l.a);
+    adj.set(l.b, lb);
+  }
+
+  const nodesOf = (loc: string): string[] => {
+    if (isSeaStopLocation(map, loc)) return byId.has(loc) ? [loc] : [];
+    return map.seaNodes
+      .filter((n) => n.kind === 'port' && n.regionId === loc)
+      .map((n) => n.id);
+  };
+
+  const startNodes = nodesOf(fromLoc);
+  const goal = new Set(nodesOf(toLoc));
+  let seed: string | null = null;
+  for (const a of startNodes) {
+    for (const b of adj.get(a) ?? []) {
+      if (goal.has(b) || seaNodeLocation(byId.get(b)!) === toLoc) {
+        seed = a;
+        break;
+      }
+    }
+    if (seed) break;
+  }
+  if (!seed) seed = startNodes[0] ?? null;
+  if (!seed) return [];
+
+  const seen = new Set<string>([seed]);
+  const queue = [seed];
+  const ports = new Set<string>();
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const node = byId.get(cur);
+    if (node?.kind === 'port' && node.regionId) ports.add(node.regionId);
+    for (const n of adj.get(cur) ?? []) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      queue.push(n);
+    }
+  }
+  return [...ports];
 }
 
+/** Red hops are free when the mover owns every shore port in that sea component. */
 function seaActsAsBlue(
   state: MatchState,
+  map: CampaignMap,
   factionId: string,
   from: string,
   to: string,
   kind: SeaRouteKind,
 ): boolean {
   if (kind === 'blue') return true;
-  return ownsBothShores(state, factionId, from, to);
+  const shores = seaComponentPortRegions(map, from, to);
+  if (shores.length === 0) return false;
+  return shores.every((r) => ownerOf(state, r) === factionId);
 }
 
 /** Regions occupied by faction (or grantors who supply them). */
@@ -211,8 +303,14 @@ export function isRegionSupplied(
     }
     for (const edge of sea[cur] ?? []) {
       if (seen.has(edge.to)) continue;
-      if (!occupied.has(edge.to)) continue;
-      if (!seaActsAsBlue(state, factionId, cur, edge.to, edge.kind)) continue;
+      if (!seaActsAsBlue(state, map, factionId, cur, edge.to, edge.kind)) continue;
+      const toStop = isSeaStopLocation(map, edge.to);
+      // Ocean stops bridge supply when empty/friendly; land needs occupation
+      if (toStop) {
+        if (hasHostileUnits(state, edge.to, factionId)) continue;
+      } else if (!occupied.has(edge.to)) {
+        continue;
+      }
       if (capitals.includes(edge.to)) return true;
       seen.add(edge.to);
       queue.push(edge.to);
@@ -263,6 +361,7 @@ export function armyNeedsUpkeepPayment(
   stack: CampaignStack,
 ): boolean {
   if (stack.kind !== 'army') return false;
+  if (stack.upkeepPaid) return false;
   // In battle: only pay if entered supplied and now unsupplied (supply broken mid-battle)
   const inv = state.pendingInvasions.find(
     (i) => i.status === 'battle' && i.attackerStackIds.includes(stack.id),
@@ -281,19 +380,46 @@ export function armyNeedsUpkeepPayment(
   return isCampaigningArmy(state, map, sea, stack);
 }
 
+export function armiesNeedingUpkeep(
+  state: MatchState,
+  map: CampaignMap,
+  sea: Record<string, SeaAdjacency[]>,
+  factionId: string,
+): CampaignStack[] {
+  return state.stacks.filter(
+    (s) =>
+      s.factionId === factionId &&
+      !s.rebelOf &&
+      armyNeedsUpkeepPayment(state, map, sea, s),
+  );
+}
+
+/** Half rounded down (5 → lose 2). */
+export function upkeepLossAmount(units: number): number {
+  return Math.floor(Math.max(0, units) / 2);
+}
+
+/** Owned capitals that yield tax this turn (not under siege). */
+export function taxableCapitalRegions(state: MatchState, map: CampaignMap): string[] {
+  assertPlay(state);
+  const seat = activeSeat(state)!;
+  const ids: string[] = [];
+  for (const r of map.regions) {
+    if (r.settlement.kind !== 'capital') continue;
+    if (ownerOf(state, r.id) !== seat.factionId) continue;
+    if (state.sieges.some((s) => s.regionId === r.id)) continue;
+    ids.push(r.id);
+  }
+  return ids;
+}
+
 export function collectTaxes(state: MatchState, map: CampaignMap): MatchState {
   assertPlay(state);
   const next = cloneMatch(state);
   assertPlay(next);
   if (next.phase.taxesCollected) return next;
   const seat = activeSeat(next)!;
-  let gain = 0;
-  for (const r of map.regions) {
-    if (r.settlement.kind !== 'capital') continue;
-    if (ownerOf(next, r.id) !== seat.factionId) continue;
-    if (next.sieges.some((s) => s.regionId === r.id)) continue;
-    gain += 1;
-  }
+  const gain = taxableCapitalRegions(next, map).length;
   seat.coins += gain;
   next.phase.taxesCollected = true;
   pushLog(next, `${factionLabel(map, seat.factionId)} collects ${gain} tax`);
@@ -312,24 +438,75 @@ function factionLabel(map: CampaignMap, id: string): string {
   return map.factions.find((f) => f.id === id)?.name ?? id;
 }
 
+function recruitBlockedByCampaigning(
+  state: MatchState,
+  map: CampaignMap,
+  sea: Record<string, SeaAdjacency[]>,
+  regionId: string,
+  factionId: string,
+): boolean {
+  const mine = stacksOfFactionInRegion(state, regionId, factionId);
+  if (!mine.length) return false;
+  const hasCampaigning = mine.some((s) => isCampaigningArmy(state, map, sea, s));
+  const hasNonCampaigning = mine.some((s) => !isCampaigningArmy(state, map, sea, s));
+  return hasCampaigning && !hasNonCampaigning;
+}
+
+function hasHostileUnits(state: MatchState, regionId: string, factionId: string): boolean {
+  return stacksInRegion(state, regionId).some(
+    (s) => s.factionId !== factionId && !s.rebelOf,
+  );
+}
+
+/** True when recruiting onto an owned village/capital (stays unmoved). Adjacent placements are moved. */
+export function isHomeRecruit(
+  state: MatchState,
+  map: CampaignMap,
+  regionId: string,
+  factionId: string,
+): boolean {
+  if (ownerOf(state, regionId) !== factionId) return false;
+  const r = regionById(map, regionId);
+  return r?.settlement.kind === 'capital' || r?.settlement.kind === 'village';
+}
+
+/** Regions where this faction has at least one unmoved unit (recruit adjacency source). */
+function regionsWithUnmovedPresence(state: MatchState, factionId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const s of state.stacks) {
+    if (s.factionId === factionId && !s.rebelOf && !s.moved) ids.add(s.regionId);
+  }
+  return ids;
+}
+
+/**
+ * Recruit targets: owned villages/capitals, plus land neighbors of regions with
+ * unmoved presence (moved units do not unlock further adjacency until next turn).
+ */
 export function recruitableRegions(
   state: MatchState,
   map: CampaignMap,
   sea: Record<string, SeaAdjacency[]>,
   factionId: string,
 ): string[] {
-  const occupied = occupiedByForSupply(state, factionId);
-  const out: string[] = [];
-  for (const rid of occupied) {
-    if (!isRegionSupplied(state, map, sea, factionId, rid)) continue;
-    // Cannot add onto a campaigning army — if the only presence is campaigning armies, skip
-    const mine = stacksOfFactionInRegion(state, rid, factionId);
-    const hasCampaigning = mine.some((s) => isCampaigningArmy(state, map, sea, s));
-    const hasNonCampaigning = mine.some((s) => !isCampaigningArmy(state, map, sea, s));
-    if (hasCampaigning && !hasNonCampaigning) continue;
-    out.push(rid);
+  const out = new Set<string>();
+
+  for (const r of map.regions) {
+    if (ownerOf(state, r.id) !== factionId) continue;
+    if (r.settlement.kind !== 'capital' && r.settlement.kind !== 'village') continue;
+    if (recruitBlockedByCampaigning(state, map, sea, r.id, factionId)) continue;
+    out.add(r.id);
   }
-  return out;
+
+  // Recruit-and-move: only unmoved stacks grant neighbouring access this turn
+  for (const rid of regionsWithUnmovedPresence(state, factionId)) {
+    for (const n of map.neighbors[rid] ?? []) {
+      if (hasHostileUnits(state, n, factionId)) continue;
+      if (recruitBlockedByCampaigning(state, map, sea, n, factionId)) continue;
+      out.add(n);
+    }
+  }
+  return [...out];
 }
 
 export function recruit(
@@ -347,30 +524,144 @@ export function recruit(
   if (!payer) throw new Error('No payer');
   if (payer.coins < 1) throw new Error('Not enough coins');
   const allowed = recruitableRegions(next, map, sea, seat.factionId);
-  if (!allowed.includes(regionId)) throw new Error('Not on supply');
+  if (!allowed.includes(regionId)) throw new Error('Cannot recruit there');
+
+  const home = isHomeRecruit(next, map, regionId, seat.factionId);
+  const asMoved = !home;
 
   payer.coins -= 1;
-  // Prefer merging into an existing loose stack
-  const loose = stacksOfFactionInRegion(next, regionId, seat.factionId).find(
-    (s) => s.kind === 'loose',
+  const mergeTarget = stacksOfFactionInRegion(next, regionId, seat.factionId).find(
+    (s) => s.moved === asMoved && !s.rebelOf,
   );
-  if (loose) {
-    loose.units += 1;
+  let placed: CampaignStack;
+  if (mergeTarget) {
+    mergeTarget.units += 1;
+    placed = mergeTarget;
   } else {
-    next.stacks.push(
-      makeStack(next, {
-        factionId: seat.factionId,
-        regionId,
-        units: 1,
-        kind: 'loose',
-      }),
-    );
+    placed = makeStack(next, {
+      factionId: seat.factionId,
+      regionId,
+      units: 1,
+      kind: 'loose',
+      moved: asMoved,
+    });
+    next.stacks.push(placed);
   }
+  syncStackArmyKind(next, placed);
+  syncRegionOwnership(next, regionId);
   pushLog(
     next,
-    `${factionLabel(map, seat.factionId)} recruits in ${regionById(map, regionId)?.name ?? regionId}`,
+    `${factionLabel(map, seat.factionId)} recruits in ${regionById(map, regionId)?.name ?? regionId}${asMoved ? ' (moved)' : ''}`,
   );
   return next;
+}
+
+/** 3+ units on a stack = army. */
+export const ARMY_MIN_UNITS = 3;
+
+export function factionHasArmy(state: MatchState, factionId: string): boolean {
+  return state.stacks.some(
+    (s) => s.factionId === factionId && s.kind === 'army' && !s.rebelOf,
+  );
+}
+
+/**
+ * Sync army kind from unit count.
+ * Demotion (<3) always runs. Promotion (3+ → army) only when `promote` (end of turn).
+ * Returns true when a stack newly becomes an army.
+ */
+export function syncStackArmyKind(
+  state: MatchState,
+  stack: CampaignStack,
+  opts?: { promote?: boolean },
+): boolean {
+  if (stack.rebelOf) return false;
+  const seat = seatOf(state, stack.factionId);
+  if (stack.units >= ARMY_MIN_UNITS) {
+    if (!opts?.promote || stack.kind === 'army') return false;
+    const fit = seat ? largestTokenFitting(seat.tokens, stack.units) : null;
+    if (fit && seat) takeToken(seat.tokens, fit);
+    stack.kind = 'army';
+    stack.armySize = fit ?? (stack.units >= 10 ? 10 : stack.units >= 5 ? 5 : 3);
+    state.lastFormedArmyByFaction ??= {};
+    state.lastFormedArmyByFaction[stack.factionId] = stack.id;
+    return true;
+  }
+  if (stack.kind === 'army') {
+    if (seat && stack.armySize) returnToken(seat.tokens, stack.armySize);
+    stack.kind = 'loose';
+    delete stack.armySize;
+  }
+  return false;
+}
+
+function remapStackIds(
+  state: MatchState,
+  oldIds: Set<string>,
+  newId: string,
+): void {
+  for (const inv of state.pendingInvasions) {
+    if (!inv.attackerStackIds.some((id) => oldIds.has(id))) continue;
+    inv.attackerStackIds = [
+      ...new Set([...inv.attackerStackIds.filter((id) => !oldIds.has(id)), newId]),
+    ];
+    let supplied = false;
+    for (const id of oldIds) {
+      if (inv.enteredSupplied[id]) supplied = true;
+      delete inv.enteredSupplied[id];
+    }
+    inv.enteredSupplied[newId] = supplied;
+  }
+  for (const sg of state.sieges) {
+    if (sg.attackerStackIds.some((id) => oldIds.has(id))) {
+      sg.attackerStackIds = [
+        ...new Set([...sg.attackerStackIds.filter((id) => !oldIds.has(id)), newId]),
+      ];
+    }
+    if (sg.defenderStackIds.some((id) => oldIds.has(id))) {
+      sg.defenderStackIds = [
+        ...new Set([...sg.defenderStackIds.filter((id) => !oldIds.has(id)), newId]),
+      ];
+    }
+  }
+}
+
+/**
+ * End of turn: extras in a region with an army merge into that army;
+ * any remaining 3+ stack becomes an army (★).
+ */
+export function formArmiesEndOfTurn(state: MatchState, factionId: string): void {
+  state.armyPrompt = null;
+  const seat = seatOf(state, factionId);
+  const byRegion = new Map<string, CampaignStack[]>();
+  for (const s of state.stacks) {
+    if (s.factionId !== factionId || s.rebelOf) continue;
+    const list = byRegion.get(s.regionId);
+    if (list) list.push(s);
+    else byRegion.set(s.regionId, [s]);
+  }
+
+  for (const [, group] of byRegion) {
+    const army = group.find((s) => s.kind === 'army');
+    const keep = army ?? group[0];
+    if (!keep) continue;
+
+    if (group.length > 1) {
+      const absorbed = new Set<string>();
+      for (const s of group) {
+        if (s.id === keep.id) continue;
+        keep.units += s.units;
+        if (seat && s.kind === 'army' && s.armySize) returnToken(seat.tokens, s.armySize);
+        absorbed.add(s.id);
+      }
+      if (absorbed.size) {
+        state.stacks = state.stacks.filter((s) => !absorbed.has(s.id));
+        remapStackIds(state, absorbed, keep.id);
+      }
+    }
+
+    syncStackArmyKind(state, keep, { promote: true });
+  }
 }
 
 function returnToken(pool: TokenPool, size: ArmySize): void {
@@ -402,28 +693,25 @@ function largestTokenFitting(pool: TokenPool, units: number): ArmySize | null {
   return null;
 }
 
-/** Apply unpaid upkeep: lose ceil(units/2), retoken. */
+/** Apply unpaid upkeep: lose floor(units/2), retoken. */
 export function applyUpkeepLoss(state: MatchState, stackId: string): MatchState {
   const next = cloneMatch(state);
   const stack = next.stacks.find((s) => s.id === stackId);
   if (!stack || stack.kind !== 'army') return next;
+  const regionId = stack.regionId;
   const seat = seatOf(next, stack.factionId);
-  const loss = Math.ceil(stack.units / 2);
+  const loss = upkeepLossAmount(stack.units);
   stack.units = Math.max(0, stack.units - loss);
   if (seat && stack.armySize) returnToken(seat.tokens, stack.armySize);
   if (stack.units <= 0) {
     next.stacks = next.stacks.filter((s) => s.id !== stackId);
+    syncRegionOwnership(next, regionId);
     return next;
   }
-  const fit = seat ? largestTokenFitting(seat.tokens, stack.units) : null;
-  if (fit && seat) {
-    takeToken(seat.tokens, fit);
-    stack.kind = 'army';
-    stack.armySize = fit;
-  } else {
-    stack.kind = 'loose';
-    delete stack.armySize;
-  }
+  stack.kind = 'loose';
+  delete stack.armySize;
+  // Still 3+ → stay an army; below 3 → remains loose
+  syncStackArmyKind(next, stack, { promote: true });
   return next;
 }
 
@@ -444,6 +732,7 @@ export function payUpkeep(
   const payer = payerFactionId ? seatOf(next, payerFactionId) : active;
   if (!payer || payer.coins < 1) throw new Error('Not enough coins');
   payer.coins -= 1;
+  stack.upkeepPaid = true;
   pushLog(next, `Upkeep paid for army in ${regionById(map, stack.regionId)?.name ?? stack.regionId}`);
   return next;
 }
@@ -508,23 +797,41 @@ function abortBattleForSupply(
   return next;
 }
 
+function resolveMoveCount(stack: CampaignStack, count?: number | 'all'): number {
+  if (count === 'all' || count == null) return stack.units;
+  return Math.floor(count);
+}
+
+/** Destinations for a stack moving `count` units (default: whole stack). Once/turn — moved stacks have none. */
 export function legalMovesForStack(
   state: MatchState,
   map: CampaignMap,
   sea: Record<string, SeaAdjacency[]>,
   stackId: string,
-  opts?: { haste?: boolean },
+  opts?: { count?: number | 'all' },
 ): LegalMove[] {
   const stack = state.stacks.find((s) => s.id === stackId);
-  if (!stack) return [];
-  // First step free (moved=false). Second step is haste (moved=true).
-  if (stack.moved && !opts?.haste) return [];
-  if (!stack.moved && opts?.haste) return [];
+  if (!stack || stack.moved) return [];
+  const moveCount = resolveMoveCount(stack, opts?.count);
+  if (moveCount < 1 || moveCount > stack.units) return [];
+
+  // Capital cannot be left empty
+  if (isCapitalRegion(map, stack.regionId)) {
+    const owner = ownerOf(state, stack.regionId);
+    if (owner && stack.factionId === owner) {
+      const remaining = capitalGarrisonCount(state, map, stack.regionId) - moveCount;
+      if (remaining < 1) return [];
+    }
+  }
+
+  // Armies never peel — only whole-stack moves
+  if (stack.kind === 'army' && moveCount !== stack.units) return [];
+
   const factionId = stack.factionId;
   const from = stack.regionId;
   const moves: LegalMove[] = [];
-
-  const canInvade = stack.kind === 'army' && stack.units >= 3;
+  // Only a ★ army (moved as a whole) may enter enemy-held / enemy-occupied regions
+  const canInvade = stack.kind === 'army' && moveCount === stack.units;
 
   const tryAdd = (to: string, via: 'land' | 'sea', seaKind?: SeaRouteKind, coinCost = 0) => {
     if (to === from) return;
@@ -533,19 +840,19 @@ export function legalMovesForStack(
     const enemyStacks = stacksInRegion(state, to).filter(
       (s) => s.factionId !== factionId && !(stack.rebelOf && s.rebelOf === stack.rebelOf),
     );
-    // Only armies enter enemy-owned territory
     if (foreign && !canInvade) return;
-    // Entering a region with enemies requires army
     if (enemyStacks.length && !canInvade) return;
-    const hasteTax = opts?.haste ? 1 : 0;
-    moves.push({ regionId: to, via, seaKind, coinCost: coinCost + hasteTax });
+    moves.push({ regionId: to, via, seaKind, coinCost });
   };
 
-  for (const n of map.neighbors[from] ?? []) {
-    tryAdd(n, 'land');
+  // Land neighbors only from land regions (ocean stops have none)
+  if (isLandLocation(map, from)) {
+    for (const n of map.neighbors[from] ?? []) {
+      tryAdd(n, 'land');
+    }
   }
   for (const edge of sea[from] ?? []) {
-    const asBlue = seaActsAsBlue(state, factionId, from, edge.to, edge.kind);
+    const asBlue = seaActsAsBlue(state, map, factionId, from, edge.to, edge.kind);
     const cost = asBlue ? 0 : 1;
     tryAdd(edge.to, 'sea', edge.kind, cost);
   }
@@ -559,24 +866,30 @@ function capitalGarrisonCount(state: MatchState, map: CampaignMap, regionId: str
   return totalUnitsOfFactionInRegion(state, regionId, owner);
 }
 
+/**
+ * Move units from a stack to a bordering (or sea-linked) region.
+ * `count: 1` peels one unit; `count: 'all'` (default) moves the whole stack.
+ * Each stack moves at most once per turn.
+ */
 export function moveStack(
   state: MatchState,
   map: CampaignMap,
   sea: Record<string, SeaAdjacency[]>,
   stackId: string,
   toRegionId: string,
-  opts?: { haste?: boolean; payerFactionId?: string },
+  opts?: { count?: number | 'all'; payerFactionId?: string },
 ): MatchState {
   assertPlay(state);
   const next = cloneMatch(state);
   assertPlay(next);
   const stack = next.stacks.find((s) => s.id === stackId);
   if (!stack) throw new Error('No stack');
-  const haste = opts?.haste || stack.moved;
-  if (stack.moved && !haste) throw new Error('Already moved');
-  if (haste && !stack.moved) throw new Error('Haste is an extra step after moving');
+  if (stack.moved) throw new Error('Already moved');
 
-  const legal = legalMovesForStack(next, map, sea, stackId, { haste: haste || undefined });
+  const count = resolveMoveCount(stack, opts?.count);
+  if (count < 1 || count > stack.units) throw new Error('Bad move count');
+
+  const legal = legalMovesForStack(next, map, sea, stackId, { count });
   const dest = legal.find((m) => m.regionId === toRegionId);
   if (!dest) throw new Error('Illegal move');
 
@@ -588,55 +901,82 @@ export function moveStack(
     payer.coins -= cost;
   }
 
-  // Capital cannot be left empty
   if (isCapitalRegion(map, stack.regionId)) {
     const owner = ownerOf(next, stack.regionId);
     if (owner && stack.factionId === owner) {
-      const remaining = capitalGarrisonCount(next, map, stack.regionId) - stack.units;
+      const remaining = capitalGarrisonCount(next, map, stack.regionId) - count;
       if (remaining < 1) throw new Error('Capital cannot be left empty');
     }
   }
 
   const fromId = stack.regionId;
-  stack.regionId = toRegionId;
-  stack.moved = true;
-  if (haste) {
-    const owner = ownerOf(next, toRegionId);
-    const invades =
-      (owner && owner !== stack.factionId) ||
-      stacksInRegion(next, toRegionId).some(
-        (s) => s.id !== stack.id && s.factionId !== stack.factionId,
-      ) ||
-      next.sieges.some((s) => s.regionId === toRegionId);
-    if (invades) stack.exhausted = true;
+  const invadesAsArmy = !stack.rebelOf && stack.kind === 'army' && count === stack.units;
+  let mover: CampaignStack;
+
+  const movedAtDest = stacksOfFactionInRegion(next, toRegionId, stack.factionId).find(
+    (s) => s.moved && s.rebelOf === stack.rebelOf && s.id !== stack.id,
+  );
+
+  if (count === stack.units) {
+    if (movedAtDest) {
+      movedAtDest.units += stack.units;
+      const ownerSeat = seatOf(next, stack.factionId);
+      if (ownerSeat && stack.kind === 'army' && stack.armySize) {
+        returnToken(ownerSeat.tokens, stack.armySize);
+        stack.kind = 'loose';
+        delete stack.armySize;
+      }
+      next.stacks = next.stacks.filter((s) => s.id !== stack.id);
+      syncStackArmyKind(next, movedAtDest);
+      mover = movedAtDest;
+    } else {
+      stack.regionId = toRegionId;
+      stack.moved = true;
+      mover = stack;
+    }
+  } else {
+    if (stack.kind === 'army') throw new Error('Armies cannot split');
+    // Peel: remainder stays as the region's unmoved stack
+    stack.units -= count;
+    syncStackArmyKind(next, stack);
+    if (movedAtDest) {
+      movedAtDest.units += count;
+      syncStackArmyKind(next, movedAtDest);
+      mover = movedAtDest;
+    } else {
+      mover = makeStack(next, {
+        factionId: stack.factionId,
+        regionId: toRegionId,
+        units: count,
+        kind: 'loose',
+        moved: true,
+        rebelOf: stack.rebelOf,
+      });
+      next.stacks.push(mover);
+      syncStackArmyKind(next, mover);
+    }
   }
 
-  // Track invasion if entering foreign territory with army
+  const atSea = isSeaStopLocation(map, toRegionId);
   const owner = ownerOf(next, toRegionId);
-  if (
-    stack.kind === 'army' &&
-    owner &&
-    owner !== stack.factionId &&
-    !stack.rebelOf
-  ) {
-    queueInvasion(next, map, sea, stack, fromId, owner);
-  } else if (stack.kind === 'army' && !owner && !stack.rebelOf) {
-    // Neutral empty — occupy immediately at invasion phase; mark pending empty occupy
-    queueInvasion(next, map, sea, stack, fromId, null);
-  } else if (
-    stack.kind === 'army' &&
-    owner === stack.factionId &&
-    stacksInRegion(next, toRegionId).some(
-      (s) => s.id !== stack.id && s.factionId !== stack.factionId,
-    )
-  ) {
-    // Co-occupied / treachery target — handled via explicit treachery action
+  const enemiesAtDest = stacksInRegion(next, toRegionId).filter(
+    (s) => s.id !== mover.id && s.factionId !== mover.factionId && !mover.rebelOf,
+  );
+  if (invadesAsArmy && !atSea && owner && owner !== mover.factionId) {
+    queueInvasion(next, map, sea, mover, fromId, owner);
+  } else if (invadesAsArmy && !atSea && !owner) {
+    queueInvasion(next, map, sea, mover, fromId, null);
+  } else if (invadesAsArmy && enemiesAtDest.length) {
+    queueInvasion(next, map, sea, mover, fromId, enemiesAtDest[0].factionId);
   }
 
+  const label = count === 1 ? '1 unit' : `${count} units`;
   pushLog(
     next,
-    `${factionLabel(map, stack.factionId)} moves to ${regionById(map, toRegionId)?.name ?? toRegionId}${haste ? ' (haste)' : ''}`,
+    `${factionLabel(map, mover.factionId)} moves ${label} to ${locationLabel(map, toRegionId)}`,
   );
+  syncRegionOwnership(next, fromId, map);
+  syncRegionOwnership(next, toRegionId, map);
   return next;
 }
 
@@ -734,10 +1074,12 @@ function removeUnitsFromStacks(
   loss: number,
 ): void {
   let left = loss;
+  const touched = new Set<string>();
   for (const id of stackIds) {
     if (left <= 0) break;
     const s = state.stacks.find((x) => x.id === id);
     if (!s) continue;
+    touched.add(s.regionId);
     const take = Math.min(s.units, left);
     s.units -= take;
     left -= take;
@@ -745,13 +1087,11 @@ function removeUnitsFromStacks(
       const seat = seatOf(state, s.factionId);
       if (seat && s.kind === 'army' && s.armySize) returnToken(seat.tokens, s.armySize);
       state.stacks = state.stacks.filter((x) => x.id !== s.id);
-    } else if (s.kind === 'army' && s.armySize && s.units < 3) {
-      const seat = seatOf(state, s.factionId);
-      if (seat) returnToken(seat.tokens, s.armySize);
-      s.kind = 'loose';
-      delete s.armySize;
+    } else {
+      syncStackArmyKind(state, s);
     }
   }
+  for (const rid of touched) syncRegionOwnership(state, rid);
 }
 
 function captureRegion(
@@ -765,6 +1105,9 @@ function captureRegion(
   state.regionOwners[regionId] = newOwner;
 
   if (!wasCapital) return;
+
+  state.lastCapturedCapitalByFaction ??= {};
+  state.lastCapturedCapitalByFaction[newOwner] = regionId;
 
   const seat = seatOf(state, newOwner);
   if (!seat) return;
@@ -902,6 +1245,7 @@ export function resolveInvasionAuto(
     }
     const prev = ownerOf(next, inv.regionId) ?? BARBARIAN_ID;
     captureRegion(next, map, inv.regionId, inv.attackerFactionId, prev);
+    syncRegionOwnership(next, inv.regionId);
     next.pendingInvasions = next.pendingInvasions.filter((i) => i.id !== invasionId);
     return next;
   }
@@ -928,6 +1272,8 @@ export function resolveInvasionAuto(
       inv.attackerFactionId,
       inv.defenderFactionId,
     );
+    syncRegionOwnership(next, inv.regionId);
+    syncRegionOwnership(next, dest);
     next.pendingInvasions = next.pendingInvasions.filter((i) => i.id !== invasionId);
     pushLog(next, `Defenders auto-retreat to ${regionById(map, dest)?.name ?? dest}`);
     return next;
@@ -969,6 +1315,8 @@ export function resolveInvasionChoice(
       d.regionId = dest;
     }
     captureRegion(next, map, inv.regionId, inv.attackerFactionId, inv.defenderFactionId);
+    syncRegionOwnership(next, inv.regionId);
+    syncRegionOwnership(next, dest);
     next.pendingInvasions = next.pendingInvasions.filter((i) => i.id !== invasionId);
     pushLog(next, 'Defender retreats');
     return next;
@@ -1198,23 +1546,12 @@ export function packArmiesInRegion(
   return next;
 }
 
-export function runArmyPhase(state: MatchState, map: CampaignMap): MatchState {
+/** Automatic armies phase: promote 3+ stacks, no prompts. */
+export function runArmyPhase(state: MatchState, _map: CampaignMap): MatchState {
   assertPlay(state);
-  let next = cloneMatch(state);
+  const next = cloneMatch(state);
   assertPlay(next);
-  const seat = activeSeat(next)!;
-
-  if (next.armyPrompt) {
-    return next; // wait for UI choice
-  }
-
-  const regions = new Set(
-    next.stacks.filter((s) => s.factionId === seat.factionId && !s.rebelOf).map((s) => s.regionId),
-  );
-  for (const rid of regions) {
-    next = packArmiesInRegion(next, map, rid, seat.factionId);
-    if (next.armyPrompt) return next;
-  }
+  formArmiesEndOfTurn(next, activeSeat(next)!.factionId);
   return next;
 }
 
@@ -1233,6 +1570,107 @@ export function answerArmyPrompt(
   return next;
 }
 
+/**
+ * Start-of-turn: merge each region's stacks for this faction into one unmoved stack.
+ * Arrivals from last turn (moved) combine with locals so everything can move again.
+ */
+export function consolidateFactionStacks(state: MatchState, factionId: string): void {
+  const mine = state.stacks.filter((s) => s.factionId === factionId);
+  const groups = new Map<string, CampaignStack[]>();
+  for (const s of mine) {
+    const key = `${s.regionId}\0${s.rebelOf ?? ''}`;
+    const list = groups.get(key);
+    if (list) list.push(s);
+    else groups.set(key, [s]);
+  }
+
+  const seat = seatOf(state, factionId);
+
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      group[0].moved = false;
+      group[0].exhausted = false;
+      delete group[0].upkeepPaid;
+      syncStackArmyKind(state, group[0], { promote: true });
+      continue;
+    }
+
+    const regionId = group[0].regionId;
+    const rebelOf = group[0].rebelOf;
+    const total = group.reduce((n, s) => n + s.units, 0);
+    const oldIds = new Set(group.map((s) => s.id));
+
+    for (const s of group) {
+      if (seat && s.kind === 'army' && s.armySize) returnToken(seat.tokens, s.armySize);
+    }
+    state.stacks = state.stacks.filter((s) => !oldIds.has(s.id));
+    if (total <= 0) continue;
+
+    let kind: 'loose' | 'army' = 'loose';
+    let armySize: ArmySize | undefined;
+    if (!rebelOf && seat) {
+      const fit = largestTokenFitting(seat.tokens, total);
+      if (fit && takeToken(seat.tokens, fit)) {
+        kind = 'army';
+        armySize = fit;
+      }
+    }
+
+    const stacked = makeStack(state, {
+      factionId,
+      regionId,
+      units: total,
+      kind,
+      armySize,
+      rebelOf,
+      moved: false,
+      exhausted: false,
+    });
+    delete stacked.upkeepPaid;
+    state.stacks.push(stacked);
+    if (syncStackArmyKind(state, stacked, { promote: true })) {
+      /* recorded in lastFormedArmyByFaction */
+    } else if (stacked.kind === 'army') {
+      state.lastFormedArmyByFaction ??= {};
+      state.lastFormedArmyByFaction[factionId] = stacked.id;
+    }
+
+    for (const inv of state.pendingInvasions) {
+      if (!inv.attackerStackIds.some((id) => oldIds.has(id))) continue;
+      inv.attackerStackIds = [
+        ...new Set([
+          ...inv.attackerStackIds.filter((id) => !oldIds.has(id)),
+          stacked.id,
+        ]),
+      ];
+      let supplied = false;
+      for (const id of oldIds) {
+        if (inv.enteredSupplied[id]) supplied = true;
+        delete inv.enteredSupplied[id];
+      }
+      inv.enteredSupplied[stacked.id] = supplied;
+    }
+    for (const sg of state.sieges) {
+      if (sg.attackerStackIds.some((id) => oldIds.has(id))) {
+        sg.attackerStackIds = [
+          ...new Set([
+            ...sg.attackerStackIds.filter((id) => !oldIds.has(id)),
+            stacked.id,
+          ]),
+        ];
+      }
+      if (sg.defenderStackIds.some((id) => oldIds.has(id))) {
+        sg.defenderStackIds = [
+          ...new Set([
+            ...sg.defenderStackIds.filter((id) => !oldIds.has(id)),
+            stacked.id,
+          ]),
+        ];
+      }
+    }
+  }
+}
+
 export function advancePhase(
   state: MatchState,
   map: CampaignMap,
@@ -1244,7 +1682,7 @@ export function advancePhase(
 
   const idx = TURN_PHASES.indexOf(next.phase.phase);
   if (next.phase.phase === 'taxes' && !next.phase.taxesCollected) {
-    next = skipTaxes(next);
+    next = collectTaxes(next, map);
     assertPlay(next);
   }
   if (next.phase.phase === 'upkeep') {
@@ -1267,45 +1705,62 @@ export function advancePhase(
     );
     if (blocking) return next;
   }
-  if (next.phase.phase === 'armies') {
-    next = runArmyPhase(next, map);
-    assertPlay(next);
-    if (next.armyPrompt) return next;
-  }
-
-  if (idx >= TURN_PHASES.length - 1) {
-    next = applySiegeAttrition(next, map);
-    assertPlay(next);
-    // Next player
-    for (const s of next.stacks) {
-      if (s.factionId === activeSeat(next)!.factionId) {
-        s.moved = false;
-        // exhausted clears at end of own turn
-        s.exhausted = false;
-      }
-    }
-    // Clear pending invasions that somehow linger for this attacker if resolved
-    let pIdx = next.phase.playerIndex + 1;
-    let round = next.phase.round;
-    if (pIdx >= next.seats.length) {
+  const passTurn = (state: MatchState): MatchState => {
+    let s = state;
+    assertPlay(s);
+    formArmiesEndOfTurn(s, activeSeat(s)!.factionId);
+    s = applySiegeAttrition(s, map);
+    assertPlay(s);
+    let pIdx = s.phase.playerIndex + 1;
+    let round = s.phase.round;
+    if (pIdx >= s.seats.length) {
       pIdx = 0;
       round += 1;
     }
-    next.phase = {
+    s.phase = {
       kind: 'play',
       phase: 'taxes',
       playerIndex: pIdx,
       round,
       taxesCollected: false,
     };
-    pushLog(next, `— ${factionLabel(map, next.seats[pIdx].factionId)} turn (round ${round}) —`);
-    return next;
+    consolidateFactionStacks(s, s.seats[pIdx].factionId);
+    pushLog(s, `— ${factionLabel(map, s.seats[pIdx].factionId)} turn (round ${round}) —`);
+    return s;
+  };
+
+  if (idx >= TURN_PHASES.length - 1) {
+    // Leaving armies (or last phase): form ★ armies and hand off
+    return passTurn(next);
   }
 
   next.phase = {
     ...next.phase,
     phase: TURN_PHASES[idx + 1],
   };
+  const seatId = activeSeat(next)!.factionId;
+  // No campaigning army needing !!! upkeep → skip
+  if (
+    next.phase.phase === 'upkeep' &&
+    armiesNeedingUpkeep(next, map, sea, seatId).length === 0
+  ) {
+    next.phase = { ...next.phase, phase: 'move' };
+  }
+  // No armies entered enemy/neutral territory → skip invasions
+  if (
+    next.phase.phase === 'invasions' &&
+    !next.pendingInvasions.some(
+      (i) =>
+        i.attackerFactionId === seatId &&
+        (i.status === 'pending' || i.status === 'battle'),
+    )
+  ) {
+    next.phase = { ...next.phase, phase: 'armies' };
+  }
+  // Armies phase is automatic — form ★ and pass the turn
+  if (next.phase.phase === 'armies') {
+    return passTurn(next);
+  }
   return next;
 }
 

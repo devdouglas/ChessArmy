@@ -114,7 +114,7 @@
                     "y": 358.5
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -188,7 +188,7 @@
                     "y": 591.9
                 }
             ],
-            "ownerId": "gaule",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -340,7 +340,7 @@
                     "y": 340.4
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -506,7 +506,11 @@
             ],
             "ownerId": "rome",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 582.3937500000001,
+                    "y": 688.01875
+                }
             }
         },
         {
@@ -656,7 +660,7 @@
                     "y": 455.2
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -884,7 +888,11 @@
             ],
             "ownerId": "rome",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 635.2279510498047,
+                    "y": 647.607676188151
+                }
             }
         },
         {
@@ -932,7 +940,7 @@
                     "y": 367.9864196777344
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -982,7 +990,7 @@
                     "y": 367.9864196777344
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1140,9 +1148,13 @@
                     "y": 525.8
                 }
             ],
-            "ownerId": null,
+            "ownerId": "rome",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 608.4906687923622,
+                    "y": 538.7464167389493
+                }
             }
         },
         {
@@ -1386,7 +1398,7 @@
                     "y": 457.4944152832031
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1436,7 +1448,7 @@
                     "y": 457.4944152832031
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1486,7 +1498,7 @@
                     "y": 653.3360595703125
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1848,7 +1860,7 @@
                     "y": 867.126220703125
                 }
             ],
-            "ownerId": "egypt",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1932,7 +1944,7 @@
                     "y": 747.684814453125
                 }
             ],
-            "ownerId": "caragheu",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -1972,7 +1984,11 @@
             ],
             "ownerId": "caragheu",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 352.12789132254466,
+                    "y": 745.1701311383929
+                }
             }
         },
         {
@@ -2058,7 +2074,11 @@
             ],
             "ownerId": "caragheu",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 446.0879978724888,
+                    "y": 744.4735822405135
+                }
             }
         },
         {
@@ -2090,7 +2110,7 @@
                     "y": 863.2643432617188
                 }
             ],
-            "ownerId": "caragheu",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2128,7 +2148,7 @@
                     "y": 862.1495971679688
                 }
             ],
-            "ownerId": "caragheu",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2190,7 +2210,7 @@
                     "y": 862.1495971679688
                 }
             ],
-            "ownerId": "caragheu",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2222,7 +2242,11 @@
             ],
             "ownerId": "caragheu",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 544.2132385253906,
+                    "y": 817.3489990234375
+                }
             }
         },
         {
@@ -2250,7 +2274,7 @@
                     "y": 856.357177734375
                 }
             ],
-            "ownerId": "caragheu",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2626,7 +2650,7 @@
                     "y": 518.7523803710938
                 }
             ],
-            "ownerId": "gaule",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2690,7 +2714,7 @@
                     "y": 681.5
                 }
             ],
-            "ownerId": "fac-mwj3irqd-9vssa",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2784,7 +2808,7 @@
                     "y": 639.0904541015625
                 }
             ],
-            "ownerId": "fac-mwj3irqd-9vssa",
+            "ownerId": null,
             "settlement": {
                 "kind": "none"
             }
@@ -2934,7 +2958,11 @@
             ],
             "ownerId": "rome",
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 520.9523753353309,
+                    "y": 550.2769175324063
+                }
             }
         },
         {
@@ -3285,6 +3313,15 @@
                 "y": 423.3468322753906
             },
             "regionId": "reg-benelux"
+        },
+        {
+            "id": "port-mwjokvq2-o3u60",
+            "kind": "port",
+            "at": {
+                "x": 182.4999237060547,
+                "y": 700.4906005859375
+            },
+            "regionId": "reg-mwj45v0y-vwcrl"
         }
     ],
     "seaLinks": [
@@ -3491,6 +3528,12 @@
             "kind": "blue",
             "a": "port-mwj5s0mi-7mxip",
             "b": "port-mwj5tlyu-gw92w"
+        },
+        {
+            "id": "link-mwjokwfy-a1e6q",
+            "kind": "blue",
+            "a": "port-mwjokvq2-o3u60",
+            "b": "port-mwj5ravg-bunbv"
         }
     ],
     "neighbors": {

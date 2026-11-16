@@ -3,10 +3,14 @@ import {
   ABILITY_BLURB,
   ABILITY_IDS,
   ABILITY_LABEL,
+  BUILD_STRUCTURE_BLURB,
+  BUILD_STRUCTURE_LABEL,
+  BUILD_STRUCTURES,
   abilitiesOf,
   hasAbility,
   javelinIsSpecial,
-  canTrap,
+  canBuild,
+  buildSpotMatches,
   canBash,
   canBerserk,
   canShields,
@@ -378,7 +382,8 @@ import {
   unitStatsAreStock,
   type EditableStat,
 } from './units';
-import type { AbilityId } from './abilities';
+import type { AbilityId, BuildStructure } from './abilities';
+import { isBuildStructure } from './abilities';
 import {
   deleteLevelAudio,
   flushStore,
@@ -545,8 +550,10 @@ let rotatePreviewDir: HexDir | null = null;
 /** Player pref: narration on intro / victory / lose popups. Default on. */
 const POPUP_AUDIO_KEY = 'chessarmy-popup-audio-v1';
 let popupAudioOn = loadPopupAudio();
-/** Active special mode for the selected unit (hide / javelin / charge). */
+/** Active special mode for the selected unit (hide / javelin / charge / build). */
 let specialMode: AbilityId | null = null;
+/** What Build places / clears while specialMode is build. */
+let buildStructure: BuildStructure = 'pikes';
 
 function loadPopupAudio(): boolean {
   try {
@@ -3030,10 +3037,13 @@ function filterPlayerHighlights(piece: Piece, list: Highlight[]): Highlight[] {
         (h.kind === 'move' || h.kind === 'ap') && isHideCover(state, h.hex),
     );
   }
-  if (specialMode === 'trap' && hasAbility(piece, 'trap')) {
-    return out.filter((h) => h.kind === 'trap');
+  if (specialMode === 'build' && hasAbility(piece, 'build')) {
+    return out.filter(
+      (h) =>
+        h.kind === 'build' && buildSpotMatches(state, h.hex, buildStructure),
+    );
   }
-  out = out.filter((h) => h.kind !== 'charge' && h.kind !== 'trap');
+  out = out.filter((h) => h.kind !== 'charge' && h.kind !== 'build');
   if (javelinIsSpecial(piece)) {
     out = out.filter((h) => h.kind !== 'shoot' && h.kind !== 'shoot-range');
   }
@@ -3118,7 +3128,7 @@ function hexActions(
 function apCostForHighlight(piece: Piece, hl: Highlight): number {
   const downhillFree = !!(state.downhillMove && state.scoutPieceId === piece.id);
   const base = downhillFree ? 0 : 1;
-  if (hl.kind === 'move' || hl.kind === 'plus' || hl.kind === 'shoot' || hl.kind === 'trap') {
+  if (hl.kind === 'move' || hl.kind === 'plus' || hl.kind === 'shoot' || hl.kind === 'build') {
     return base;
   }
   if (hl.kind === 'ap') return base + 1;
@@ -3139,7 +3149,7 @@ function previewApSpend(piece: Piece): number {
         h.kind === 'ap' ||
         h.kind === 'plus' ||
         h.kind === 'shoot' ||
-        h.kind === 'trap' ||
+        h.kind === 'build' ||
         (h.kind === 'charge' && !h.unpaid)),
   );
   if (!hits.length) return 0;
@@ -3148,7 +3158,7 @@ function previewApSpend(piece: Piece): number {
     hits.find((h) => h.kind === 'ap') ??
     hits.find((h) => h.kind === 'charge') ??
     hits.find((h) => h.kind === 'move' || h.kind === 'plus') ??
-    hits.find((h) => h.kind === 'trap') ??
+    hits.find((h) => h.kind === 'build') ??
     hits[0]!;
   return apCostForHighlight(piece, preferred);
 }
@@ -3290,7 +3300,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
     action.kind === 'charge' ||
     action.kind === 'shoot' ||
     action.kind === 'rotate' ||
-    action.kind === 'trap' ||
+    action.kind === 'build' ||
     action.kind === 'bash' ||
     action.kind === 'berserk'
   ) {
@@ -3323,7 +3333,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
   if (
     action.kind === 'skip' ||
     action.kind === 'rotate' ||
-    action.kind === 'trap' ||
+    action.kind === 'build' ||
     action.kind === 'bash' ||
     action.kind === 'shields'
   ) {
@@ -3653,12 +3663,19 @@ async function tryAct(hex: Hex, kind: ActionMode) {
   }
 }
 
-async function placeTrap(hex: Hex) {
+async function placeBuild(hex: Hex) {
   if (!selectedId || animating || !canControl()) return;
-  if (!canTrap(state, selectedId)) return;
+  if (!canBuild(state, selectedId, buildStructure)) return;
+  if (!buildSpotMatches(state, hex, buildStructure)) return;
   const actingId = selectedId;
+  const structure = buildStructure;
   specialMode = null;
-  await playAnimatedAction({ kind: 'trap', pieceId: actingId, to: hex });
+  await playAnimatedAction({
+    kind: 'build',
+    pieceId: actingId,
+    to: hex,
+    structure,
+  });
   retainSelection(actingId);
   render();
   await maybeAi();
@@ -3862,7 +3879,7 @@ function renderBoard(): string {
   // AP bolts and they flash while the unit stays selected.
   const allHl = !editing && selectedId && canControl() ? highlights : [];
   const moveMap = new Map<string, 'move' | 'ap' | 'charge'>();
-  const trapSet = new Set<string>();
+  const buildSet = new Set<string>();
   const plusMove = new Set<string>();
   const plusOnly = new Set<string>();
   const restSet = new Set<string>();
@@ -3871,7 +3888,7 @@ function renderBoard(): string {
   for (const hl of allHl) {
     const k = key(hl.hex);
     if (hl.kind === 'plus') plusOnly.add(k);
-    if (hl.kind === 'trap') trapSet.add(k);
+    if (hl.kind === 'build') buildSet.add(k);
     if (hl.kind === 'move' && hl.plus) plusMove.add(k);
     if (hl.kind === 'move' || hl.kind === 'ap' || (hl.kind === 'charge' && !hl.unpaid)) {
       moveMap.set(k, hl.kind);
@@ -3926,7 +3943,7 @@ function renderBoard(): string {
         : null;
     const previewMarch =
       !plusPlan &&
-      specialMode !== 'trap' &&
+      specialMode !== 'build' &&
       marchOn &&
       sel &&
       !hasAbility(sel, 'charge') &&
@@ -4021,7 +4038,7 @@ function renderBoard(): string {
       else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
       else if (mv === 'ap') hlOverlays += `<polygon class="hl-tint ap" points="${pts}" />`;
       else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
-      else if (trapSet.has(k)) hlOverlays += `<polygon class="hl-tint trap" points="${pts}" />`;
+      else if (buildSet.has(k)) hlOverlays += `<polygon class="hl-tint build" points="${pts}" />`;
       else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint ap-empty" points="${pts}" />`;
 
       if (!enemyMelee && pathSet.has(k)) {
@@ -4084,8 +4101,12 @@ function renderBoard(): string {
       hoverHex &&
       !(actor && meleeRangeHex(actor, hoverHex))
     ) {
-      const hoverAp = allHl.find((h) => h.kind === 'ap' && eq(h.hex, hoverHex));
-      if (hoverAp && !hoverAp.extra) apMarkHexes.add(key(hoverHex));
+      const dest = hoverHex;
+      const hoverAp = allHl.find(
+        (h): h is Extract<Highlight, { kind: 'ap' }> =>
+          h.kind === 'ap' && eq(h.hex, dest),
+      );
+      if (hoverAp && !hoverAp.extra) apMarkHexes.add(key(dest));
     }
   }
   const placeStaminaMark = (k: string, svg: (x: number, y: number, r: number) => string) => {
@@ -4570,8 +4591,8 @@ function dockSpecials(piece: Piece): AbilityId[] {
 function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (!canControl() || piece.side !== state.turn) return false;
   if (isSleeping(piece) || hasActed(state, piece.id)) return false;
-  if (id === 'trap') {
-    return canTrap(state, piece.id);
+  if (id === 'build') {
+    return canBuild(state, piece.id, buildStructure);
   }
   if (id === 'bash') return canBash(state, piece.id);
   if (id === 'berserk') return canBerserk(state, piece.id);
@@ -4606,8 +4627,25 @@ function renderUnitDock(): string {
         })
         .join('')
     : dockButton('special-action', 'Special', false, { icon: 'special', title: 'No special' });
-  return `<div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
-    ${specialBtns}
+  const buildPick =
+    piece && specialMode === 'build' && hasAbility(piece, 'build')
+      ? `<div class="build-pick" role="group" aria-label="Build structure">
+          ${BUILD_STRUCTURES.map((s) => {
+            const icon = s === 'pikes' ? 'trap' : 'palisade';
+            return dockButton(`build-kind-${s}`, BUILD_STRUCTURE_LABEL[s], true, {
+              icon,
+              pressed: buildStructure === s,
+              title: BUILD_STRUCTURE_BLURB[s],
+              className: 'build-kind',
+            });
+          }).join('')}
+        </div>`
+      : '';
+  return `<div class="unit-dock-wrap">
+    <div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
+      ${specialBtns}
+    </div>
+    ${buildPick}
   </div>`;
 }
 
@@ -4620,7 +4658,7 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is climb / AP spend, red is shoot. Specials (hide / javelin / charge / trap) replace overlapping clicks. Shields up, bash, and berserk fire from the dock.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb / AP spend, red is shoot. Specials (hide / javelin / charge / build) replace overlapping clicks. Shields up, bash, and berserk fire from the dock.</p>';
   let moreStats = '';
 
   if (piece) {
@@ -4911,7 +4949,7 @@ function renderSidebar(): string {
             <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
             <div><dt>Action points</dt><dd>pool + per-turn spend window (Max AP spent / turn). Climb and water upkeep spend AP. Spendable AP extras stay available within the per-turn window (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap-planted pikes are hidden from enemies (they walk in). Trap units are immune and clear pikes by walking over them, or plant/clear as a special. Spawn / stand still does not trigger. Palisade: wood fence, 3 HP — melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). No charge through unless that hit breaks it, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP, shoot damage applies), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Build-planted traps are hidden from enemies (they walk in). Build units are immune and clear pikes by walking over them, or plant/clear traps and palisades as a special. Spawn / stand still does not trigger. Palisade: wood fence, 3 HP — melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). No charge through unless that hit breaks it, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP, shoot damage applies), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
             <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 AP max, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 AP — no climb or spend until AP returns. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or AP spend while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Hex-shield units can Turn on an adjacent rear / −2 hex (spends AP). Spendable AP extras stay available within the per-turn window</dd></div>
@@ -5236,16 +5274,26 @@ function renderRoguePromoAssign(): string {
     ? targets
         .map((p) => {
           const s = UNIT_STATS[p.type];
-          const n = promotionTokensOf(p).length;
-          const gen = hasUnitToken(p, 'general') ? ' · General' : '';
+          const promos = promotionTokensOf(p);
+          const promoList = promos.length
+            ? `<span class="rogue-promo-target-promos">${promos
+                .map((id) => {
+                  const name = UNIT_TOKEN_LABEL[id];
+                  return `<span class="rogue-promo-target-promo" title="${escapeHtml(name)}">
+                    <svg viewBox="-10 -10 20 20" width="18" height="18" aria-hidden="true">${unitTokenGlyphSvg(id, 14)}</svg>
+                    <span>${escapeHtml(name)}</span>
+                  </span>`;
+                })
+                .join('')}</span>`
+            : `<span class="rogue-promo-target-rank">No promotions · ${MAX_UNIT_PROMOTIONS} slots free</span>`;
           return `<button type="button" class="rogue-promo-target" data-rogue-promo-target="${escapeHtml(p.id)}">
             <svg class="side-icon" viewBox="-10 -10 20 20" width="40" height="40" aria-hidden="true">
               <circle cx="0" cy="0" r="9.5" fill="${pieceColor('red')}" stroke="${armorColor(s.armor)}" stroke-width="2" />
               <g fill="${iconInk('red')}" color="${iconInk('red')}">${pieceIconSvg(p.type, 16)}</g>
             </svg>
             <span class="rogue-promo-target-meta">
-              <span class="rogue-promo-target-name">${escapeHtml(s.name)}${gen}</span>
-              <span class="rogue-promo-target-rank">${n}/${MAX_UNIT_PROMOTIONS} promos</span>
+              <span class="rogue-promo-target-name">${escapeHtml(s.name)}</span>
+              ${promoList}
             </span>
           </button>`;
         })
@@ -5634,10 +5682,10 @@ function onHexClick(col: number, row: number) {
     const piece = getPiece(state, selectedId);
     if (
       piece &&
-      specialMode === 'trap' &&
-      highlights.some((h) => h.kind === 'trap' && eq(h.hex, hex))
+      specialMode === 'build' &&
+      highlights.some((h) => h.kind === 'build' && eq(h.hex, hex))
     ) {
-      void placeTrap(hex);
+      void placeBuild(hex);
       return;
     }
     if (piece && plusOnlyHex(hex)) {
@@ -5848,7 +5896,7 @@ function bindBoardOnly() {
           h.kind === 'ap' ||
           h.kind === 'charge' ||
           h.kind === 'plus' ||
-          h.kind === 'trap') &&
+          h.kind === 'build') &&
         eq(h.hex, hex),
     );
     const shootHover = highlights.some((h) => h.kind === 'shoot' && eq(h.hex, hex));
@@ -5858,7 +5906,7 @@ function bindBoardOnly() {
       shootHover;
     const zoneHover = !!sel && redZoneDir(sel, hex) != null;
     const marchHover =
-      specialMode !== 'trap' &&
+      specialMode !== 'build' &&
       !!sel &&
       !hasAbility(sel, 'charge') &&
       canControl() &&
@@ -7755,7 +7803,7 @@ function renderUnitEditor(): string {
           <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
-          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Trap / Shields up / Bash / Berserk replace the Special dock slot (a unit can have several). Shields up, Bash, and Berserk fire when you press the button. Command is the General promotion, not an ability</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Build / Shields up / Bash / Berserk replace the Special dock slot (a unit can have several). Build picks Trap or Palisade, then an adjacent hex. Shields up, Bash, and Berserk fire when you press the button. Command is the General promotion, not an ability</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
@@ -8787,6 +8835,16 @@ function bindEvents() {
         return;
       }
       if (isAbilityId(id)) setSpecialMode(id);
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[id^="build-kind-"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const kind = btn.id.slice('build-kind-'.length);
+      if (!isBuildStructure(kind)) return;
+      buildStructure = kind;
+      if (specialMode !== 'build') specialMode = 'build';
+      refreshHighlights();
+      render();
     });
   });
   app.querySelector('#end-turn')?.addEventListener('click', () => {

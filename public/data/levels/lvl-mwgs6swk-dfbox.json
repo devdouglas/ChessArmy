@@ -213,20 +213,10 @@
             "type": "palisade",
             "col": 4,
             "row": 6
-        },
-        {
-            "type": "palisade",
-            "col": 3,
-            "row": 6
-        },
-        {
-            "type": "palisade",
-            "col": 5,
-            "row": 6
         }
     ],
     "sort": 13,
-    "updatedAt": 1794836077914,
+    "updatedAt": 1794853296873,
     "armies": [
         {
             "type": "cohort",
@@ -237,18 +227,6 @@
         {
             "type": "cohort",
             "col": 4,
-            "row": 9,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 6,
-            "row": 9,
-            "side": "red"
-        },
-        {
-            "type": "cohort",
-            "col": 8,
             "row": 9,
             "side": "red"
         },
@@ -285,6 +263,18 @@
         {
             "type": "barbarian",
             "col": 1,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "wolf",
+            "col": 3,
+            "row": 9,
+            "side": "red"
+        },
+        {
+            "type": "u-mwjiue32r9rf",
+            "col": 5,
             "row": 9,
             "side": "red"
         }

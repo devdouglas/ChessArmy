@@ -650,6 +650,8 @@ export type ActionGlyphId =
   | 'javelin'
   | 'charge'
   | 'trap'
+  | 'build'
+  | 'palisade'
   | 'shields'
   | 'bash'
   | 'berserk';
@@ -721,6 +723,20 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
     return {
       viewBox: '-8 -8 16 16',
       inner: `<path fill="currentColor" d="M-4.8 5.4 L-3.6 -5.2 L-2.2 -5.2 L-3.4 5.4 Z M-1.3 5.4 L-0.1 -5.6 L1.3 -5.6 L0.1 5.4 Z M2.2 5.4 L3.4 -5.2 L4.8 -5.2 L3.6 5.4 Z"/>`,
+    };
+  }
+  if (kind === 'build') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-1.4 6.2 L4.6 -0.8 L6.1 0.7 L0.1 7.7 Z"/>
+        <path fill="currentColor" d="M2.4 -5.2 L6.6 -1 L5.2 0.4 L1  -3.8 Z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" d="M-5.6 1.2 H-1.2 M-5.6 3.4 H-1.2 M-5.6 5.6 H-1.2"/>`,
+    };
+  }
+  if (kind === 'palisade') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-5.4 5.6 V-2.2 L-4 -4.2 L-2.6 -2.2 V5.6 Z M-1.2 5.6 V-2.2 L0.2 -4.2 L1.6 -2.2 V5.6 Z M3 5.6 V-2.2 L4.4 -4.2 L5.8 -2.2 V5.6 Z"/>`,
     };
   }
   if (kind === 'shields') {

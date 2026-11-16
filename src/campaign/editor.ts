@@ -32,7 +32,7 @@ import {
   snapToRegions,
   splitRingByCut,
 } from './geometry';
-import { loadCampaignMap, newId, pushCampaignMap } from './store';
+import { loadCampaignMap, neutralizeOpenGround, newId, pushCampaignMap } from './store';
 
 type Tool = 'pan' | 'select' | 'draw' | 'split' | 'sea-blue' | 'sea-red' | 'erase';
 type Selection =
@@ -294,7 +294,7 @@ export async function mountCampaignEditor(
         <h2>Region</h2>
         <label>Name<input type="text" data-field="name" value="${escapeAttr(region.name)}"/></label>
         <label>Owned by
-          <select data-field="owner">
+          <select data-field="owner"${region.settlement.kind === 'none' ? ' disabled' : ''}>
             <option value="">Neutral</option>
             ${map.factions
               .map(
@@ -304,6 +304,11 @@ export async function mountCampaignEditor(
               .join('')}
           </select>
         </label>
+        ${
+          region.settlement.kind === 'none'
+            ? `<p class="cm-hint">Open ground is always neutral — add a village or capital to assign an owner.</p>`
+            : ''
+        }
         <h2>Settlement</h2>
         <div class="settlement-picks" role="group" aria-label="Settlement">
           <button type="button" data-settle="capital"${region.settlement.kind === 'capital' ? ' class="active"' : ''}>Capital</button>
@@ -371,10 +376,11 @@ export async function mountCampaignEditor(
     });
     panel.querySelector<HTMLSelectElement>('[data-field="owner"]')?.addEventListener('change', (e) => {
       const region = selectedRegion();
-      if (!region) return;
+      if (!region || region.settlement.kind === 'none') return;
       pushUndo();
       const v = (e.target as HTMLSelectElement).value;
       region.ownerId = v || null;
+      neutralizeOpenGround(map.regions);
       markDirty();
       paintMap();
     });
@@ -385,6 +391,7 @@ export async function mountCampaignEditor(
         pushUndo();
         const kind = btn.dataset.settle as 'capital' | 'village' | 'none';
         setSettlement(region, kind);
+        neutralizeOpenGround(map.regions);
         markDirty();
         paintMap();
         paintInspector();
@@ -492,6 +499,7 @@ export async function mountCampaignEditor(
         : { ...region.settlement.at };
     if (kind === 'none') {
       region.settlement = { kind: 'none' };
+      region.ownerId = null;
       return;
     }
     if (kind === 'village') {

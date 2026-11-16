@@ -30,14 +30,20 @@ import {
   type UnitStats,
   type UnitType,
 } from './roster';
-import type { AbilityId } from './abilities';
+import type { AbilityId, BuildStructure } from './abilities';
+import { isBuildStructure } from './abilities';
 import { isExperimentalOn } from './experimental';
 
 export {
   ABILITY_BLURB,
   ABILITY_IDS,
   ABILITY_LABEL,
+  BUILD_STRUCTURES,
+  BUILD_STRUCTURE_BLURB,
+  BUILD_STRUCTURE_LABEL,
   isAbilityId,
+  isBuildStructure,
+  type BuildStructure,
 } from './abilities';
 
 export {
@@ -1045,7 +1051,7 @@ export type Action =
   | { kind: 'charge'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
-  | { kind: 'trap'; pieceId: string; to: Hex }
+  | { kind: 'build'; pieceId: string; to: Hex; structure: BuildStructure }
   | { kind: 'bash'; pieceId: string }
   | { kind: 'berserk'; pieceId: string }
   | { kind: 'shields'; pieceId: string }
@@ -1065,8 +1071,8 @@ export type Highlight =
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
   | { kind: 'shoot-range'; hex: Hex }
-  /** Adjacent hex this unit can step toward. Pike placement. */
-  | { kind: 'trap'; hex: Hex };
+  /** Adjacent hex Build can place on or clear. */
+  | { kind: 'build'; hex: Hex };
 
 /** Ring / hex-face color. Scale is −2..+2. */
 export function armorColor(armor: number): string {
@@ -1595,7 +1601,7 @@ function applyWalkTokens(
       if (tok.type === 'flag') claimFlag(state, piece, tok);
       if (tok.type === 'board') readBoard(state, piece, tok);
       if (tok.type === 'pikes') {
-        if (hasAbility(piece, 'trap')) {
+        if (hasAbility(piece, 'build')) {
           const k = `${h.col},${h.row}`;
           if (!cleared.has(k)) {
             cleared.add(k);
@@ -1707,9 +1713,10 @@ function moveRangeAt(state: GameState, piece: Piece, at: Hex): number {
 function remainingMoveBudget(state: GameState, piece: Piece): number | null {
   const cap = statsOf(piece.type).moveBudget;
   if (cap <= 0) return null;
-  const spent =
-    state.scoutPieceId === piece.id ? (state.scoutMoveSpent ?? 0) : 0;
-  return Math.max(0, cap - spent);
+  // Another unit's lock must not eat this piece's budget (range preview).
+  if (state.scoutPieceId && state.scoutPieceId !== piece.id) return cap;
+  // Count spent even before scoutPieceId is assigned (set on afterAction / march).
+  return Math.max(0, cap - (state.scoutMoveSpent ?? 0));
 }
 
 function capMoveRange(state: GameState, piece: Piece, range: number): number {
@@ -1890,8 +1897,15 @@ function isLegalMovePath(
   const firstRange = activationMoveRange(state, piece);
   const blocked = blockedWalkDirs(piece);
   const via0 = path[firstRange - 1];
-  const secondRange = via0 ? moveRangeAt(state, piece, via0) : statsOf(piece.type).move;
-  if (path.length > firstRange && path.length <= firstRange + secondRange) {
+  const secondRange = via0
+    ? extraMoveRange(state, piece, via0, firstRange)
+    : capMoveRange(state, piece, statsOf(piece.type).move);
+  const budgetLeft = remainingMoveBudget(state, piece);
+  if (
+    path.length > firstRange &&
+    path.length <= firstRange + secondRange &&
+    (budgetLeft === null || path.length <= budgetLeft)
+  ) {
     const opts = movePathOpts(state, piece, from, charging);
     let cur = from;
     let dir: HexDir | null = null;
@@ -1936,7 +1950,7 @@ function isLegalMovePath(
       state,
       piece,
       via,
-      moveRangeAt(state, piece, via),
+      extraMoveRange(state, piece, via, a.dist),
       charging,
     ).get(key(to));
     if (b && pathsEq(b.path, path.slice(i))) return true;
@@ -2008,7 +2022,12 @@ export function stickyMovePlan(
     const via = prev[i - 1];
     const stop = first.get(key(via));
     if (!stop || pieceAt(state, via) || pathHaltsExtra(state, piece, start, via, stop.path)) continue;
-    const tail = straightMoveStops(state, piece, via, moveRangeAt(state, piece, via)).get(key(to));
+    const tail = straightMoveStops(
+      state,
+      piece,
+      via,
+      extraMoveRange(state, piece, via, stop.dist),
+    ).get(key(to));
     if (!tail) continue;
     return { path: [...prev.slice(0, i), ...tail.path], via };
   }
@@ -2272,9 +2291,33 @@ export function javelinIsSpecial(piece: Piece): boolean {
   return hasAbility(piece, 'javelin') && s.meleeDamage > 0 && s.shoot > 0;
 }
 
-/** Adjacent hexes this unit could step toward. Red faces are not spots. Existing pikes are clearable. */
-export function trapSpots(state: GameState, piece: Piece): Hex[] {
-  if (!hasAbility(piece, 'trap')) return [];
+/** Built fence on this hex (not tree / forest). */
+function builtPalisadeAt(state: { tokens: TileToken[] }, h: Hex): TileToken | undefined {
+  return hexToken(state.tokens, h, (t) => t.type === 'palisade');
+}
+
+/** Whether Build with `structure` can place or clear on this already-legal spot. */
+export function buildSpotMatches(
+  state: { tokens: TileToken[] },
+  hex: Hex,
+  structure: BuildStructure,
+): boolean {
+  if (builtPalisadeAt(state, hex)) return structure === 'palisade';
+  if (tokenOnHex(state.tokens, hex, 'pikes')) return structure === 'pikes';
+  return true;
+}
+
+/**
+ * Adjacent hexes Build can use. Red faces are not spots.
+ * Empty walkable hexes: place. Existing pikes / built palisades: clear.
+ * Pass `structure` to keep only matching place/clear targets.
+ */
+export function buildSpots(
+  state: GameState,
+  piece: Piece,
+  structure?: BuildStructure,
+): Hex[] {
+  if (!hasAbility(piece, 'build')) return [];
   const from: Hex = { col: piece.col, row: piece.row };
   const blocked = blockedWalkDirs(piece);
   const out: Hex[] = [];
@@ -2283,11 +2326,22 @@ export function trapSpots(state: GameState, piece: Piece): Hex[] {
     if (blocked.has(dir)) continue;
     const hex = neighborInDir(from, dir, state.orientation);
     if (!inBounds(state, hex)) continue;
-    if (!canWalkStep(state, piece, from, from, hex)) continue;
     if (terrainAt(state, hex) === 'water') continue;
+    if (pieceAt(state, hex)) continue;
+    if (builtPalisadeAt(state, hex)) {
+      if (!structure || structure === 'palisade') out.push(hex);
+      continue;
+    }
+    if (!canWalkStep(state, piece, from, from, hex)) continue;
+    if (structure && !buildSpotMatches(state, hex, structure)) continue;
     out.push(hex);
   }
   return out;
+}
+
+/** @deprecated Use buildSpots. */
+export function trapSpots(state: GameState, piece: Piece): Hex[] {
+  return buildSpots(state, piece);
 }
 
 /** Own turn, ability, not asleep, not already finished. Downhill grant is move-only. */
@@ -2309,10 +2363,19 @@ function specialReady(state: GameState, pieceId: string, id: AbilityId): Piece |
   return piece;
 }
 
-export function canTrap(state: GameState, pieceId: string): boolean {
-  const piece = specialReady(state, pieceId, 'trap');
+export function canBuild(
+  state: GameState,
+  pieceId: string,
+  structure?: BuildStructure,
+): boolean {
+  const piece = specialReady(state, pieceId, 'build');
   if (!piece) return false;
-  return trapSpots(state, piece).length > 0;
+  return buildSpots(state, piece, structure).length > 0;
+}
+
+/** @deprecated Use canBuild. */
+export function canTrap(state: GameState, pieceId: string): boolean {
+  return canBuild(state, pieceId);
 }
 
 /** Armor on one cube face, including Defense promotions. Non-hex armor is the same on every face. */
@@ -3042,11 +3105,13 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   }
   const full = marchRouteInner(state, piece, dest);
   if (!full?.length) return null;
-  const first = moveRangeAt(state, piece, here);
+  const budgetLeft = remainingMoveBudget(state, piece);
+  const first = capMoveRange(state, piece, moveRangeAt(state, piece, here));
   if (first <= 0) return null;
   // Extras are fresh `move` lines paid from spendable AP. Reserve 1 for the base
   // action afterAction will charge — otherwise a spend cap of N walks N+1 chunks.
   // Armed spendMarch still buys one extra when at least 2 AP remain for base+extra.
+  // Move cap still covers the whole march (3+3 must not beat a cap of 5).
   const spendable = apSpendable(piece);
   const extraBudget = Math.max(
     Math.max(0, spendable - 1),
@@ -3062,6 +3127,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   let strike: Hex | null = null;
   for (const next of full) {
     if (taken.length >= speed) break;
+    if (budgetLeft !== null && taken.length >= budgetLeft) break;
     const step = dirBetween(cur, next, state.orientation);
     if (step === null) break;
     const probe: Piece = { ...piece, col: cur.col, row: cur.row, facing };
@@ -3086,11 +3152,15 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
       !chargeForest &&
       !climbedNow
     ) {
-      const add = moveRangeAt(state, piece, cur);
+      const add = extraMoveRange(state, piece, cur, taken.length);
       if (add > 0) {
-        speed += add;
-        extraLeft -= 1;
-        bounds.push(speed);
+        const capped =
+          budgetLeft === null ? speed + add : Math.min(speed + add, budgetLeft);
+        if (capped > speed) {
+          speed = capped;
+          extraLeft -= 1;
+          bounds.push(speed);
+        }
       }
     }
     if (enteredWater || chargeForest) break;
@@ -3176,6 +3246,9 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     spendActionPoints(piece);
   }
   markMoved(piece);
+  if (stats.moveBudget > 0 && taken.length) {
+    state.scoutMoveSpent = (state.scoutMoveSpent ?? 0) + taken.length;
+  }
   if (arrived) piece.walkTo = undefined;
   return anim;
 }
@@ -3443,7 +3516,7 @@ function payDownhill(state: GameState, piece: Piece): void {
 function afterAction(
   state: GameState,
   piece: Piece,
-  kind: 'move' | 'shoot' | 'rotate' | 'trap' | 'bash' | 'berserk',
+  kind: 'move' | 'shoot' | 'rotate' | 'build' | 'bash' | 'berserk',
   enteredWater = false,
   downCount = 0,
   /** Broke after the swim tax — base 1-hex from water does not need another AP. */
@@ -3815,12 +3888,15 @@ type PlusReach = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
 function plusBonusStops(state: GameState, piece: Piece, first: Map<string, StraightStop>): Map<string, PlusReach> {
   const from: Hex = { col: piece.col, row: piece.row };
   const fromKey = key(from);
+  const left = remainingMoveBudget(state, piece);
   const out = new Map<string, PlusReach>();
   for (const [k, stop] of first) {
     if (stop.via) continue;
     const landing = parseKey(k);
     if (downSteps(state, from, stop.path, landing) <= 0) continue;
     if (pathEntersWater(state, from, landing, stop.path)) continue;
+    // Free +1 still burns the move cap.
+    if (left !== null && stop.dist + 1 > left) continue;
     const bonus = straightMoveStops(state, piece, landing, 1);
     for (const [bk, b] of bonus) {
       if (bk === fromKey) continue;
@@ -3874,7 +3950,16 @@ function allMoveStops(
   charging = false,
 ): Map<string, StraightStop> {
   const first = straightMoveStops(state, piece, undefined, undefined, charging);
-  if (!extraMoveAction(state, piece)) return first;
+  const start = { col: piece.col, row: piece.row };
+  const left = remainingMoveBudget(state, piece);
+  const trim = (m: Map<string, StraightStop>) => {
+    for (const k of [...m.keys()]) {
+      if (isBlockedFaceRay(piece, start, parseKey(k), state.orientation)) m.delete(k);
+      else if (left !== null && (m.get(k)?.dist ?? 0) > left) m.delete(k);
+    }
+    return m;
+  };
+  if (!extraMoveAction(state, piece)) return trim(new Map(first));
   const out = new Map(first);
   for (const [k, stop] of straightExtraStops(state, piece, first, charging)) {
     keepBetterStop(out, k, stop);
@@ -3886,11 +3971,7 @@ function allMoveStops(
   for (const [k, stop] of energyBeyondPlus(state, piece, first, plus)) {
     keepBetterStop(out, k, stop);
   }
-  const start = { col: piece.col, row: piece.row };
-  for (const k of [...out.keys()]) {
-    if (isBlockedFaceRay(piece, start, parseKey(k), state.orientation)) out.delete(k);
-  }
-  return out;
+  return trim(out);
 }
 
 export type PlusStep = { landing: Hex; landingPath: Hex[]; bonusPath: Hex[] };
@@ -3944,7 +4025,7 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   const stats = statsOf(piece.type);
   const from: Hex = { col: piece.col, row: piece.row };
   const out: Highlight[] = [];
-  for (const hex of trapSpots(state, piece)) out.push({ kind: 'trap', hex });
+  for (const hex of buildSpots(state, piece)) out.push({ kind: 'build', hex });
 
   const fromTerrain = terrainAt(state, from);
   const reach = allMoveStops(state, piece);
@@ -4214,23 +4295,42 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
   const highlights = legalHighlights(next, piece.id);
 
-  if (action.kind === 'trap') {
-    if (!canTrap(next, piece.id)) return state;
-    if (!trapSpots(next, piece).some((h) => eq(h, action.to))) return state;
+  if (action.kind === 'build') {
+    if (!isBuildStructure(action.structure)) return state;
+    if (!canBuild(next, piece.id, action.structure)) return state;
+    if (!buildSpots(next, piece, action.structure).some((h) => eq(h, action.to))) {
+      return state;
+    }
     reveal(piece);
-    if (tokenOnHex(next.tokens, action.to, 'pikes')) {
+    const fence = builtPalisadeAt(next, action.to);
+    if (action.structure === 'pikes' && tokenOnHex(next.tokens, action.to, 'pikes')) {
       next.tokens = next.tokens.filter(
         (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
       );
       next.log.push(`${unitLog(piece)} clears pikes`);
+    } else if (action.structure === 'palisade' && fence) {
+      next.tokens = next.tokens.filter(
+        (t) => !(t.type === 'palisade' && t.col === action.to.col && t.row === action.to.row),
+      );
+      next.log.push(`${unitLog(piece)} dismantles a palisade`);
     } else if (isSide(piece.side)) {
-      next.tokens = [
-        ...next.tokens,
-        { type: 'pikes', col: action.to.col, row: action.to.row, owner: piece.side },
-      ];
-      next.log.push(`${unitLog(piece)} plants pikes`);
+      if (action.structure === 'pikes') {
+        next.tokens = [
+          ...next.tokens,
+          { type: 'pikes', col: action.to.col, row: action.to.row, owner: piece.side },
+        ];
+        next.log.push(`${unitLog(piece)} plants pikes`);
+      } else {
+        next.tokens = [
+          ...next.tokens,
+          { type: 'palisade', col: action.to.col, row: action.to.row },
+        ];
+        next.log.push(`${unitLog(piece)} builds a palisade`);
+      }
+    } else {
+      return state;
     }
-    afterAction(next, piece, 'trap');
+    afterAction(next, piece, 'build');
     return next;
   }
 
@@ -4626,9 +4726,11 @@ export function allLegalActions(state: GameState): Action[] {
       }
       // shoot-range / apEmpty are display-only
     }
-    if (canTrap(state, p.id)) {
-      for (const to of trapSpots(state, p)) {
-        actions.push({ kind: 'trap', pieceId: p.id, to });
+    if (canBuild(state, p.id)) {
+      for (const to of buildSpots(state, p)) {
+        // AI keeps planting traps; players pick Trap or Palisade in the dock.
+        if (builtPalisadeAt(state, to)) continue;
+        actions.push({ kind: 'build', pieceId: p.id, to, structure: 'pikes' });
       }
     }
     if (canBash(state, p.id)) actions.push({ kind: 'bash', pieceId: p.id });

@@ -759,7 +759,7 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...KIT_TRAITS.hoplite,
     ...stockMobility('hoplite'),
     canHide: false,
-    abilities: ['trap'],
+    abilities: ['build'],
   },
   elephant: {
     name: 'Elephant',
