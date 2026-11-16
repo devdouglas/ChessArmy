@@ -1524,8 +1524,13 @@ button.primary:focus-visible {
 .editor-panel-map,
 .editor-panel-tokens,
 .editor-panel-unit-tokens,
+.editor-panel-promotions,
 .editor-panel-army {
   min-height: 0;
+}
+
+.editor-panel-promotions .editor-promo-blurb {
+  min-height: 2.6em;
 }
 
 .editor-brushes,
@@ -2566,9 +2571,19 @@ button.primary:focus-visible {
   color: #9ad0a8;
 }
 
+.editor-brushes .brush.unit-token.hp2.active {
+  border-color: #c05070;
+  color: #e87890;
+}
+
 .editor-brushes .brush.unit-token.allTerrain.active {
   border-color: #8a7040;
   color: #d0b878;
+}
+
+.editor-brushes .brush.unit-token.general.active {
+  border-color: #c9a227;
+  color: #f0d060;
 }
 
 .editor-label {
@@ -3894,6 +3909,13 @@ svg.board .hex {
   border-radius: 50%;
   background: #2a322c;
   border: 1px solid #5a5040;
+  overflow: hidden;
+}
+
+.rogue-promo-glyph svg {
+  display: block;
+  width: 2.15rem;
+  height: 2.15rem;
 }
 
 .rogue-offer.rogue-promo.range1 .rogue-promo-glyph {
@@ -3916,9 +3938,89 @@ svg.board .hex {
   box-shadow: 0 0 8px rgba(90, 154, 106, 0.25);
 }
 
+.rogue-offer.rogue-promo.hp2 .rogue-promo-glyph {
+  border-color: #c05070;
+  box-shadow: 0 0 8px rgba(232, 120, 144, 0.25);
+}
+
 .rogue-offer.rogue-promo.allTerrain .rogue-promo-glyph {
   border-color: #8a7040;
   box-shadow: 0 0 8px rgba(138, 112, 64, 0.25);
+}
+
+.rogue-promo-block {
+  position: relative;
+}
+
+.rogue-promo-detail,
+.rogue-promo-tip {
+  margin: 0.4rem 0 0;
+  min-height: 2.7rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.rogue-promo-detail {
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+
+.rogue-promo-tip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--ink);
+  background: #141a16;
+  border: 1px solid #4a554c;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rogue-offer.rogue-promo:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo:focus-visible .rogue-promo-tip {
+  opacity: 1;
+}
+
+.rogue-promo-block:has(.rogue-offer.rogue-promo:hover) .rogue-promo-detail,
+.rogue-promo-block:has(.rogue-offer.rogue-promo:focus-visible) .rogue-promo-detail {
+  visibility: hidden;
+}
+
+.rogue-offer.rogue-promo.range1:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.range1:focus-visible .rogue-promo-tip {
+  border-color: #c9a227;
+}
+
+.rogue-offer.rogue-promo.defense1:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.defense1:focus-visible .rogue-promo-tip {
+  border-color: #3d8ee0;
+}
+
+.rogue-offer.rogue-promo.attack1:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.attack1:focus-visible .rogue-promo-tip {
+  border-color: #e07040;
+}
+
+.rogue-offer.rogue-promo.ap1:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.ap1:focus-visible .rogue-promo-tip {
+  border-color: #5a9a6a;
+}
+
+.rogue-offer.rogue-promo.hp2:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.hp2:focus-visible .rogue-promo-tip {
+  border-color: #c05070;
+}
+
+.rogue-offer.rogue-promo.allTerrain:hover .rogue-promo-tip,
+.rogue-offer.rogue-promo.allTerrain:focus-visible .rogue-promo-tip {
+  border-color: #8a7040;
 }
 
 .rogue-promo-overlay {
@@ -4473,7 +4575,8 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
   }
 }
 
-.piece-sel {
+.piece-sel,
+.piece-shields {
   pointer-events: none;
 }
 
@@ -5849,10 +5952,6 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 
   .unit-dock .dock-btn {
     min-height: 3.5rem;
-  }
-
-  .action-bar #cancel-march {
-    min-height: var(--touch);
   }
 
   .sidebar {

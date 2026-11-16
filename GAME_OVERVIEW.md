@@ -18,11 +18,11 @@ Unlocks are per era:
 | Option | What it does |
 |--------|----------------|
 | **Anthony's Lessons** (Tutorial) | Same lockstep vs AI. Always open (if the era has tutorial maps). The home screen calls this **Anthony's Lessons**; the editor category stays Tutorial. Finish one to unlock the next. |
+| **Roguelite** | A 10-battle run on generated maps. Starts 2v2 from the era's combat units. Player units that die stay gone; after each win both sides gain one random recruit. Unlocks after 10 tutorial wins in this era (or all of them, if fewer than 10). |
 | **Campaign** | Saved campaign maps vs AI, editor order. Win one to unlock the next. Locked until every tutorial map in this era is cleared. |
 | **Historical Battle** | Historical maps in editor order, vs AI, no sequence lock. Locked until every tutorial map in this era is cleared. |
 | **Skirmish vs AI** | Pick a skirmish map, or Randomised map at the bottom of the list. Locked until every tutorial map in this era is cleared. |
 | **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. Unlocks after 10 tutorial wins in this era (or all of them, if fewer than 10). |
-| **Roguelite** | A 10-battle run on generated maps. Starts 2v2 from the era's combat units. Player units that die stay gone; after each win both sides gain one random recruit. Unlocks on the same rule as Randomised Battle. |
 | **Editor** | Levels, units, AI checklist. |
 
 Start-screen tools also include **Experimental features**.
@@ -66,7 +66,8 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 **Action points** (per unit pool):
 
 - **AP max** = store capacity. **AP / turn** (`actionPointGain`) is granted at the start of each of that unit’s turns (banks if unspent; no grant in water / while sleeping).
-- **Spend cap / turn** = gain + 1 (yellow window on the AP bar). Storage beyond that is green; spent this turn is red; empty slots grey.
+- Experimental **Resting grants bonus AP** (off by default): a unit that took no action on its side-turn gets **+1** on the next grant (still capped at AP max; sleep / water still skip).
+- **Max AP spent / turn** (`actionPointSpendCap`) is the spend window (yellow on the AP bar). Stock defaults match the old gain+1 rule. Storage beyond that is green; spent this turn is red; empty slots grey.
 - Each action costs **1 AP**. **Climb** and **charge past normal move** cost **+1 AP** on top. Unused steps of an action are lost.
 - Climbing or entering water ends momentum (no chained extra through that hex).
 - Empty pool: bolt badge on the piece. No Rest button — refill is only the per-turn grant.
@@ -129,7 +130,7 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
-**Unit token — General:** stamp on a piece so it counts as a command piece (star). **+1 HP**, **+1 AP max**, **+1** value. All generals on a side must fall to lose by command.
+**Unit promotion — General:** stamp on a piece so it counts as a command piece (star). Counts toward the promotion cap (unique, not a V chevron). **+1 HP**, **+1 AP max**, **+1** value. All generals on a side must fall to lose by command.
 
 **Unit token — Hidden:** starts the match invisible to enemies (any hex). Same reveal rules as **Can hide**: moving, attacking, or taking a hit breaks it for the rest of the match. Owner still sees them. AI always camps while concealed — no walking until they can shoot/melee, or until they are provoked (hit → revealed). If a side's remaining pieces are all still hidden, they all break cover; an AI side then switches to **aggressive**. If every living piece on the board is hidden, everyone unhides.
 
@@ -267,7 +268,7 @@ Controllers: **player**, **ai enemy**, **ai ally**.
 
 ## Level editor
 
-Paint terrain, walls/palisades/trees/forest/pikes/flags/do-not-touch, stamp units and General tokens, erase.
+Paint terrain, walls/palisades/trees/forest/pikes/flags/do-not-touch, stamp units and promotions (including General), erase.
 
 Per level:
 

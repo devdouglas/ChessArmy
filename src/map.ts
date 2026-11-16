@@ -1,5 +1,6 @@
 import {
   beginSideTurn,
+  climbLevelOf,
   defaultArmyControls,
   defaultAiStyles,
   emptyHadKing,
@@ -17,6 +18,7 @@ import {
   actionPointsMax,
   hasUnitToken,
   stampAffiliation,
+  terrainHeight,
   type ArmyControl,
   type AiStyle,
   type GameState,
@@ -792,6 +794,96 @@ function setupWallTokens(cols: number, rows: number): TileToken[] {
   return out;
 }
 
+/** Terrain glyph for a walkable elevation (0 land, 1 hill, 2 plateau, 3 mountain). */
+function terrainForHeight(height: number, prev: Terrain): Terrain {
+  if (height <= 0) {
+    if (prev === 'water' || prev === 'wall') return prev;
+    return 'land';
+  }
+  if (height === 1) return 'high';
+  if (height === 2) return 'plateau';
+  return 'rock';
+}
+
+function pieceAtHex(
+  pieces: Piece[],
+  h: { col: number; row: number },
+): Piece | undefined {
+  return pieces.find((p) => p.col === h.col && p.row === h.row);
+}
+
+/** Max height allowed on a hex (occupant climb, or 3 if empty). */
+function spawnClimbCap(pieces: Piece[], h: { col: number; row: number }): number {
+  const occ = pieceAtHex(pieces, h);
+  return occ ? climbLevelOf(occ) : 3;
+}
+
+/**
+ * Random maps: clamp spawn hexes to each unit's climb level, then carve a
+ * ±1 height ramp so they can walk down to land (no plateau↔land cliffs).
+ */
+export function settleRandomSpawnHeights(state: GameState): void {
+  const { terrain, pieces, orientation, cols, rows } = state;
+  const inBoard = (h: { col: number; row: number }) =>
+    h.col >= 0 && h.col < cols && h.row >= 0 && h.row < rows;
+
+  const setH = (h: { col: number; row: number }, height: number) => {
+    const prev = terrain[h.row][h.col];
+    if (prev === 'wall') return;
+    const capped = Math.min(Math.max(0, height), spawnClimbCap(pieces, h));
+    // Ramp feet prefer land so non-swimmers can leave.
+    if (capped <= 0 && prev === 'water') {
+      terrain[h.row][h.col] = 'land';
+      return;
+    }
+    terrain[h.row][h.col] = terrainForHeight(capped, prev);
+  };
+
+  // 1) Occupied hexes cannot exceed the unit's climb level.
+  for (const p of pieces) {
+    if (!inBoard(p)) continue;
+    const h = terrainHeight(terrain[p.row][p.col]);
+    const climb = climbLevelOf(p);
+    if (h > climb) setH(p, climb);
+  }
+
+  // 2) From each elevated spawn, ensure a descending ±1 staircase to land.
+  const carveRamp = (start: { col: number; row: number }) => {
+    let cur = start;
+    let guard = 8;
+    while (guard-- > 0) {
+      const h = terrainHeight(terrain[cur.row][cur.col]);
+      if (h <= 0) return;
+      const need = h - 1;
+      const ns = neighbors(cur, orientation).filter(inBoard);
+      let next = ns.find((n) => terrainHeight(terrain[n.row][n.col]) === need);
+      if (!next) {
+        // Prefer empty / already-low cells we are allowed to set to `need`.
+        const ranked = [...ns].sort((a, b) => {
+          const ha = terrainHeight(terrain[a.row][a.col]);
+          const hb = terrainHeight(terrain[b.row][b.col]);
+          const ea = pieceAtHex(pieces, a) ? 1 : 0;
+          const eb = pieceAtHex(pieces, b) ? 1 : 0;
+          return ea - eb || Math.abs(ha - need) - Math.abs(hb - need);
+        });
+        next = ranked.find((n) => spawnClimbCap(pieces, n) >= need);
+        if (!next) {
+          // Cannot carve — flatten this spawn one more level and retry.
+          setH(cur, h - 1);
+          continue;
+        }
+        setH(next, need);
+      }
+      cur = next;
+    }
+  };
+
+  for (const p of pieces) {
+    if (!inBoard(p)) continue;
+    if (terrainHeight(terrain[p.row][p.col]) > 0) carveRamp(p);
+  }
+}
+
 function freshGame(
   terrain: Terrain[][],
   log: string,
@@ -882,7 +974,7 @@ export function createInitialState(
   const walls = paintTerrain(terrain, clamped);
   const beltLo = 2;
   const beltHi = Math.max(beltLo, RANDOM_ROWS - 3);
-  return freshGame(
+  const state = freshGame(
     terrain,
     `Red moves first. Map: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau (rows ${beltLo + 1}–${beltHi + 1}).`,
     RANDOM_ORIENTATION,
@@ -891,6 +983,8 @@ export function createInitialState(
     walls,
     aiStyles,
   );
+  settleRandomSpawnHeights(state);
+  return state;
 }
 
 /** Roguelite: randomised terrain on a flat-top hex disk. */
@@ -905,7 +999,7 @@ export function createRogueInitialState(
   const clamped = clampMapOptions(opts);
   const terrain = emptyTerrain(disk.cols, disk.rows);
   const walls = paintTerrain(terrain, clamped);
-  return freshGame(
+  const state = freshGame(
     terrain,
     `Red moves first. Roguelite hex R${disk.radius}: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau.`,
     RANDOM_ORIENTATION,
@@ -915,6 +1009,8 @@ export function createRogueInitialState(
     aiStyles,
     disk.radius,
   );
+  settleRandomSpawnHeights(state);
+  return state;
 }
 
 /** Bounding box + center for a roguelite hex board. */

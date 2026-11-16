@@ -13,6 +13,9 @@ import {
   countUnitToken,
   hasAbility,
   hasAllTerrain,
+  hpBonusOf,
+  hpLeft,
+  hpMax,
   isConcealed,
   isConcealedFrom,
   isRedFaceRay,
@@ -51,19 +54,31 @@ function shootAt(s: GameState, pieceId: string, h: Hex) {
 {
   const stacked = sanitizeUnitTokens([
     'range1',
-    'general',
     'range1',
+    'range1',
+    'range1',
+    'sleep',
+  ]);
+  assert(
+    stacked.filter((t) => t === 'range1').length === 3,
+    'cap stackable promotions at 3',
+  );
+  assert(stacked.includes('sleep'), 'status tokens kept');
+
+  const withGeneral = sanitizeUnitTokens([
+    'range1',
+    'general',
     'range1',
     'range1',
     'general',
     'sleep',
   ]);
+  assert(withGeneral.filter((t) => t === 'general').length === 1, 'General promo stays unique');
   assert(
-    stacked.filter((t) => t === 'range1').length === 3,
-    'cap promotions at 3',
+    withGeneral.filter((t) => t === 'range1').length === 2,
+    'General shares the promo cap with stackables',
   );
-  assert(stacked.filter((t) => t === 'general').length === 1, 'status stays unique');
-  assert(stacked.includes('sleep'), 'other tokens kept');
+  assert(withGeneral.includes('sleep'), 'status tokens kept with General');
 }
 
 const saved = { shoot: UNIT_STATS.archer.shoot, shootMin: UNIT_STATS.archer.shootMin };
@@ -213,10 +228,12 @@ try {
   const apSaved = {
     actionPoints: UNIT_STATS.soldier.actionPoints,
     actionPointGain: UNIT_STATS.soldier.actionPointGain,
+    actionPointSpendCap: UNIT_STATS.soldier.actionPointSpendCap,
   };
   try {
     UNIT_STATS.soldier.actionPoints = 2;
     UNIT_STATS.soldier.actionPointGain = 1;
+    UNIT_STATS.soldier.actionPointSpendCap = 2;
     const s = createStateFromTerrain(emptyTerrain(6, 6), 'promo-ap', 'pointy', [
       {
         type: 'soldier',
@@ -232,9 +249,39 @@ try {
     const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
     assert(actionPointsMax(grunt) === 4, 'max AP 2+2');
     assert(actionPointGainOf(grunt) === 3, 'gain 1+2');
-    assert(apSpendCap(grunt) === 4, 'spend cap gain+1');
+    assert(apSpendCap(grunt) === 4, 'spend cap 2 + 2 AP promos');
   } finally {
     Object.assign(UNIT_STATS.soldier, apSaved);
+  }
+}
+
+{
+  const hpSaved = UNIT_STATS.soldier.hp;
+  try {
+    UNIT_STATS.soldier.hp = 2;
+    const s = createStateFromTerrain(emptyTerrain(6, 6), 'promo-hp', 'pointy', [
+      {
+        type: 'soldier',
+        col: 2,
+        row: 2,
+        side: 'red',
+        unitTokens: ['hp2', 'hp2'],
+      },
+      { type: 'general', col: 0, row: 0, side: 'red' },
+      { type: 'soldier', col: 4, row: 4, side: 'blue' },
+      { type: 'general', col: 5, row: 5, side: 'blue' },
+    ]);
+    const grunt = s.pieces.find((p) => p.side === 'red' && p.type === 'soldier')!;
+    assert(hpBonusOf(grunt) === 4, 'two HP +2 → +4');
+    assert(hpMax(grunt) === 6, 'max HP 2+4');
+    assert(hpLeft(grunt) === 6, 'spawn at full new max');
+    grunt.hp = 3;
+    assert(hpLeft(grunt) === 3, 'wounded stays wounded');
+    const fresh = { ...grunt, hp: undefined, unitTokens: ['hp2'] };
+    assert(hpMax(fresh) === 4, 'one HP +2');
+    assert(hpLeft(fresh) === 4, 'undefined hp = full new max');
+  } finally {
+    UNIT_STATS.soldier.hp = hpSaved;
   }
 }
 
@@ -315,4 +362,4 @@ try {
   assert(isConcealedFrom(s, scout, 'red'), 'enemies cannot see them');
 }
 
-console.log('promotions: Range / Defense / Attack / AP / All terrain');
+console.log('promotions: Range / Defense / Attack / AP / HP / All terrain');

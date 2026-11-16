@@ -45,6 +45,7 @@ const INT_FIELDS = [
   'shoot',
   'shootMin',
   'actionPointGain',
+  'actionPointSpendCap',
   'shootCooldown',
   'value',
   'moveBudget',
@@ -77,6 +78,7 @@ const CLAMP: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> =
   shoot: { min: 0, max: 12 },
   shootMin: { min: 0, max: 12 },
   actionPointGain: { min: 1, max: 3 },
+  actionPointSpendCap: { min: 0, max: 12 },
   shootCooldown: { min: 0, max: 6 },
   value: { min: 0, max: 999 },
   moveBudget: { min: 0, max: 12 },
@@ -184,6 +186,17 @@ export function sanitizeUnitStats(
   if (bool(s.canHide, false) && !abilities.includes('hide')) {
     abilities = [...abilities, 'hide'];
   }
+  const actionPointGain = clampInt(
+    (s as { actionPointGain?: unknown; actions?: unknown }).actionPointGain ??
+      (s as { actions?: unknown }).actions,
+    CLAMP.actionPointGain.min,
+    CLAMP.actionPointGain.max,
+    d.actionPointGain,
+  );
+  const actionPoints = migrateActionPoints(s, d);
+  // Missing spend cap → former formula (gain+1 with pool; else max(1, gain)).
+  const spendFallback =
+    actionPoints > 0 ? actionPointGain + 1 : Math.max(1, actionPointGain);
   const next: UnitStats = {
     name,
     chess,
@@ -203,12 +216,12 @@ export function sanitizeUnitStats(
     shoot: clampInt(s.shoot, CLAMP.shoot.min, CLAMP.shoot.max, d.shoot),
     shootMin: clampInt(s.shootMin, CLAMP.shootMin.min, CLAMP.shootMin.max, d.shootMin),
     shootArc: sanitizeShootArc(s.shootArc ?? d.shootArc),
-    actionPointGain: clampInt(
-      (s as { actionPointGain?: unknown; actions?: unknown }).actionPointGain ??
-        (s as { actions?: unknown }).actions,
-      CLAMP.actionPointGain.min,
-      CLAMP.actionPointGain.max,
-      d.actionPointGain,
+    actionPointGain,
+    actionPointSpendCap: clampInt(
+      s.actionPointSpendCap,
+      CLAMP.actionPointSpendCap.min,
+      CLAMP.actionPointSpendCap.max,
+      spendFallback,
     ),
     shootCooldown: clampInt(
       s.shootCooldown,
@@ -218,7 +231,7 @@ export function sanitizeUnitStats(
     ),
     value: clampInt(s.value, CLAMP.value.min, CLAMP.value.max, d.value),
     moveBudget: clampInt(s.moveBudget, CLAMP.moveBudget.min, CLAMP.moveBudget.max, d.moveBudget),
-    actionPoints: migrateActionPoints(s, d),
+    actionPoints,
     ammo: clampInt(s.ammo, CLAMP.ammo.min, CLAMP.ammo.max, d.ammo),
     hp: clampInt(s.hp, CLAMP.hp.min, CLAMP.hp.max, d.hp),
     meleeDamage: clampInt(

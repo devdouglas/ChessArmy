@@ -90,7 +90,7 @@ if (new Set(shop.promotions).size !== shop.promotions.length) {
   const taken = takeRoguePromotionOffer(shop, 0);
   if (!taken) throw new Error('take promo failed');
   shop = taken.shop;
-  if (shop.promotions.length !== 2) throw new Error('promo shelf not consumed');
+  if (shop.promotions.length !== 0) throw new Error('promo shelf should clear after one pick');
   const stamped = living.map((u, i) =>
     i === 0
       ? {
@@ -102,7 +102,6 @@ if (new Set(shop.promotions).size !== shop.promotions.length) {
   if (!stamped[0]?.unitTokens?.includes(taken.promo)) {
     throw new Error('promo not stamped');
   }
-  // Put promo back for the rest of the script — shelf already consumed is fine.
 }
 
 let bought = 0;

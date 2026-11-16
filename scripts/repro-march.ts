@@ -2,6 +2,7 @@ import { pickAiAction } from '../src/ai';
 import {
   beginSideTurn,
   canOrderMarch,
+  facingOf,
   getPiece,
   isAiControlled,
   marchRoute,
@@ -11,6 +12,7 @@ import {
   actionPointsLeft,
   allLegalActions,
   applyAction,
+  hasActed,
   type GameState,
 } from '../src/engine';
 import { isExperimentalOn, resetExperimental, setExperimental } from '../src/experimental';
@@ -20,6 +22,35 @@ import { UNIT_STATS } from '../src/roster';
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
+}
+
+/**
+ * Stand-in for removed Rest: park this unit in place (no march) and drain leftover
+ * scout AP so finishActivation / auto-walk see them as done — same as old restPiece.
+ * Rotate needs hexArmor, so flip it for the call only.
+ */
+function otherOrder(state: GameState, pieceId: string): GameState {
+  const piece = getPiece(state, pieceId);
+  if (!piece) return state;
+  const stats = UNIT_STATS[piece.type];
+  const savedHex = stats.hexArmor;
+  stats.hexArmor = true;
+  try {
+    let s = state;
+    for (let i = 0; i < 8; i++) {
+      const p = getPiece(s, pieceId);
+      if (!p || p.side !== s.turn) return s;
+      if (hasActed(s, pieceId) && s.scoutPieceId !== pieceId) return s;
+      const dir = (((facingOf(p) + 1) % 6) as HexDir);
+      const next = applyAction(s, { kind: 'rotate', pieceId, dir });
+      if (next === s) return s;
+      s = next;
+      if (s.scoutPieceId !== pieceId) return s;
+    }
+    return s;
+  } finally {
+    stats.hexArmor = savedHex;
+  }
 }
 
 function board(): GameState {
@@ -45,8 +76,11 @@ function forward(s: GameState, steps: number) {
 
 const savedMove = UNIT_STATS.soldier.move;
 
+const savedSpendCap = UNIT_STATS.soldier.actionPointSpendCap;
 try {
   UNIT_STATS.soldier.move = 2;
+  // Cap 1 → base move only (no extras). Multi-turn march without burning the pool.
+  UNIT_STATS.soldier.actionPointSpendCap = 1;
   resetExperimental();
   assert(!isExperimentalOn('walk-orders'), 'march orders default off');
 
@@ -174,13 +208,17 @@ try {
   const rested = board();
   const restLine = forward(rested, 3);
   let restState = setWalkOrder(rested, restLine.piece.id, restLine.path[2]!);
-  restState = passTurn(restState, restLine.piece.id);
+  restState = otherOrder(restState, restLine.piece.id);
   const restedPiece = getPiece(restState, restLine.piece.id)!;
   assert(
     restedPiece.col === restLine.piece.col && restedPiece.row === restLine.piece.row,
-    'rest is another order: no march that turn',
+    'another order: no march that turn',
   );
-  assert(restedPiece.walkTo, 'march order survives a rest');
+  assert(!restedPiece.walkTo, 'another order cancels the march');
+  assert(
+    restState.log.some((l) => l.includes('march cancelled')),
+    'cancel is logged',
+  );
 
   const stepped = board();
   const stepLine = forward(stepped, 4);
@@ -193,30 +231,6 @@ try {
   );
   assert(steppedState.turn === 'blue', 'that step spends the activation');
   assert(steppedPiece.walkTo, 'order stays after the first step');
-
-  const fight = board();
-  const fightLine = forward(fight, 1);
-  const foe = fight.pieces.find((p) => p.side === 'blue')!;
-  fight.pieces.push({ ...foe, id: `${foe.id}-spare`, col: 0, row: 0, hp: 1 });
-  foe.col = fightLine.path[0]!.col;
-  foe.row = fightLine.path[0]!.row;
-  foe.hp = 3;
-  const fighterId = fightLine.piece.id;
-  assert(marchRoute(fight, fightLine.piece, fightLine.path[0]!) === null, 'no march onto a melee hex');
-  const refused = setWalkOrder(fight, fighterId, fightLine.path[0]!);
-  assert(!getPiece(refused, fighterId)!.walkTo, 'melee hex is not stored as a march');
-  assert(
-    !refused.log.some((l) => l.includes('march ordered')),
-    'clicking a melee hex does not log a march',
-  );
-  let struck = applyAction(fight, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
-  assert(getPiece(struck, foe.id)!.hp === 2, 'first melee chips the defender');
-  assert(struck.turn === 'red' && !!struck.scoutPieceId, 'spend energy keeps a second melee');
-  assert(getPiece(struck, fighterId)!.col === fightLine.piece.col, 'a living defender keeps you off the hex');
-  struck = applyAction(struck, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
-  assert(getPiece(struck, foe.id)!.hp === 1, 'the second action melees again');
-  assert(!!!struck.scoutPieceId, 'the second strike spends the extra');
-  assert(!struck.log.some((l) => l.includes('march ordered')), 'the second melee is not a march');
 
   const wood = board();
   const woodLine = forward(wood, 1);
@@ -271,7 +285,7 @@ try {
     wingPath.push(wingAt);
   }
   let held = setWalkOrder(squad, wing.id, wingPath[3]!);
-  held = passTurn(held, leader.id);
+  held = otherOrder(held, leader.id);
   const heldWing = getPiece(held, wing.id)!;
   assert(held.turn === 'red', 'without auto walk the other unit still gets a turn');
   assert(
@@ -298,7 +312,7 @@ try {
     autoPath.push(autoAt);
   }
   let passed = setWalkOrder(auto, autoWing.id, autoPath[3]!);
-  passed = passTurn(passed, autoLead.id);
+  passed = otherOrder(passed, autoLead.id);
   const marched = getPiece(passed, autoWing.id)!;
   assert(passed.turn === 'blue', 'auto walk ends the turn once unordered units have acted');
   assert(
@@ -332,7 +346,7 @@ try {
     waitPath.push(waitAt);
   }
   let still = setWalkOrder(waiting, waitWing.id, waitPath[1]!);
-  still = passTurn(still, waitLead.id);
+  still = otherOrder(still, waitLead.id);
   const stillWing = getPiece(still, waitWing.id)!;
   assert(still.turn === 'red', 'a unit with no destination still to play holds the turn');
   assert(stillWing.col === waitWing.col, 'walker does not march early');
@@ -368,6 +382,33 @@ try {
   assert(movedA.col === pathA[1]!.col && movedA.row === pathA[1]!.row, 'first ordered unit marched');
   assert(movedB.col === pathB[1]!.col && movedB.row === pathB[1]!.row, 'second ordered unit marched');
 
+  // Stock spend window for double-action / AP-extra coverage below.
+  UNIT_STATS.soldier.actionPointSpendCap = savedSpendCap;
+
+  const fight = board();
+  const fightLine = forward(fight, 1);
+  const foe = fight.pieces.find((p) => p.side === 'blue')!;
+  fight.pieces.push({ ...foe, id: `${foe.id}-spare`, col: 0, row: 0, hp: 1 });
+  foe.col = fightLine.path[0]!.col;
+  foe.row = fightLine.path[0]!.row;
+  foe.hp = 3;
+  const fighterId = fightLine.piece.id;
+  assert(marchRoute(fight, fightLine.piece, fightLine.path[0]!) === null, 'no march onto a melee hex');
+  const refused = setWalkOrder(fight, fighterId, fightLine.path[0]!);
+  assert(!getPiece(refused, fighterId)!.walkTo, 'melee hex is not stored as a march');
+  assert(
+    !refused.log.some((l) => l.includes('march ordered')),
+    'clicking a melee hex does not log a march',
+  );
+  let struck = applyAction(fight, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
+  assert(getPiece(struck, foe.id)!.hp === 2, 'first melee chips the defender');
+  assert(struck.turn === 'red' && !!struck.scoutPieceId, 'spend energy keeps a second melee');
+  assert(getPiece(struck, fighterId)!.col === fightLine.piece.col, 'a living defender keeps you off the hex');
+  struck = applyAction(struck, { kind: 'move', pieceId: fighterId, to: fightLine.path[0]! });
+  assert(getPiece(struck, foe.id)!.hp === 1, 'the second action melees again');
+  assert(!!!struck.scoutPieceId, 'the second strike spends the extra');
+  assert(!struck.log.some((l) => l.includes('march ordered')), 'the second melee is not a march');
+
   const last = board();
   const lastLine = forward(last, 1);
   let arrived = setWalkOrder(last, lastLine.piece.id, lastLine.path[0]!);
@@ -392,8 +433,11 @@ try {
     heldPiece.col === stuckLine.piece.col && heldPiece.row === stuckLine.piece.row,
     'the unit stays put when the destination closes',
   );
-  assert(heldPiece.walkTo, 'the order stays so it can be cancelled');
+  assert(heldPiece.walkTo, 'the order stays until another order or arrival');
 
+  const savedPeasantSpend = UNIT_STATS.peasant.actionPointSpendCap;
+  // Cap 1 → 1 hex/turn (move 1). Longer march needs more than two empty AI passes.
+  UNIT_STATS.peasant.actionPointSpendCap = 1;
   const farm = createStateFromTerrain(
     emptyTerrain(10, 8),
     'farm',
@@ -436,6 +480,7 @@ try {
   assert(!home.walkTo, 'arriving still clears the order');
   assert(drained.turn === 'red', 'the turn comes back once the destination is taken');
   assert(drain > 2, 'the march needs more than the old two passes');
+  UNIT_STATS.peasant.actionPointSpendCap = savedPeasantSpend;
 
   const spendBoard = createStateFromTerrain(
     emptyTerrain(10, 8),
@@ -464,7 +509,7 @@ try {
   assert(actionPointsLeft(after) === 0, 'the extra hex spends 1 stamina');
   assert(!after.spendMarch, 'the spend is consumed');
   assert(
-    boosted.log.some((l) => l.includes('spends energy')),
+    boosted.log.some((l) => l.includes('spends AP')),
     'spend energy is logged',
   );
 
@@ -534,23 +579,25 @@ try {
   let dtState = setWalkOrder(dt, dtPiece.id, dtPath[6]!);
   dtState = performMarch(dtState, dtPiece.id);
   let dtAtPiece = getPiece(dtState, dtPiece.id)!;
+  // Pool 2 / spend cap 2 → base + 1 extra (not base + 2 — base is reserved).
   assert(
-    dtAtPiece.col === dtPath[2]!.col && dtAtPiece.row === dtPath[2]!.row,
-    'march spends the whole AP pool (move + extras)',
+    dtAtPiece.col === dtPath[1]!.col && dtAtPiece.row === dtPath[1]!.row,
+    'march spends the whole AP pool (move + extras within cap)',
   );
   assert(actionPointsLeft(dtAtPiece) === 0, 'double time leaves no stamina');
   assert(
-    dtState.log.filter((l) => l.includes('spends AP')).length === 2,
-    'each AP march spend is logged',
+    dtState.log.filter((l) => l.includes('spends AP')).length === 1,
+    'the extra AP march spend is logged (base is silent)',
   );
   dtState = passTurn(dtState);
   assert(dtState.turn === 'red', 'without auto walk the next red turn is waiting');
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
   dtAtPiece.actionPoints = 2;
+  dtAtPiece.apSpentThisTurn = undefined;
   dtState = performMarch(dtState, dtPiece.id);
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
   assert(
-    dtAtPiece.col === dtPath[5]!.col && dtAtPiece.row === dtPath[5]!.row,
+    dtAtPiece.col === dtPath[3]!.col && dtAtPiece.row === dtPath[3]!.row,
     'the next turn spends the refilled pool again',
   );
   assert(actionPointsLeft(dtAtPiece) === 0, 'the second turn also empties stamina');
@@ -577,6 +624,7 @@ try {
   assert(canOrderMarch(reach, reachPiece, reachSteps[2]!), 'past spendable AP range is still a march');
 } finally {
   UNIT_STATS.soldier.move = savedMove;
+  UNIT_STATS.soldier.actionPointSpendCap = savedSpendCap;
   resetExperimental();
 }
 

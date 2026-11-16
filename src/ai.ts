@@ -35,8 +35,14 @@ import {
   sameTeam,
   splashBlast,
   splashHitsEnemy,
+  bashFoes,
+  berserkFoes,
+  shootRangeOf,
+  isSleeping,
+  isConcealedFrom,
   terrainAt,
   terrainHeight,
+  pikesVisibleTo,
   tokenOnHex,
   UNIT_STATS,
   isNoTouch,
@@ -462,6 +468,12 @@ function isWalkAction(
 
 function isAttackAction(state: GameState, action: Action, me: Side): boolean {
   if (action.kind === 'shoot') return shootHitsEnemy(state, action, me);
+  if (action.kind === 'bash' || action.kind === 'berserk') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece) return false;
+    const foes = action.kind === 'bash' ? bashFoes(state, piece) : berserkFoes(state, piece);
+    return foes.length > 0;
+  }
   if (isWalkAction(action)) {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
@@ -514,6 +526,10 @@ function attacksEnemyGeneral(state: GameState, action: Action, me: Side): boolea
     }
     return isEnemyGeneral(state, pieceAt(state, action.at), me);
   }
+  if (action.kind === 'bash' || action.kind === 'berserk') {
+    const foes = action.kind === 'bash' ? bashFoes(state, piece) : berserkFoes(state, piece);
+    return foes.some((t) => isEnemyGeneral(state, t, me));
+  }
   if (action.kind === 'rotate') {
     return hexDamagePushHits(state, piece, {
       col: piece.col,
@@ -534,7 +550,7 @@ function attacksEnemyGeneral(state: GameState, action: Action, me: Side): boolea
   }).some((t) => isEnemyGeneral(state, t, me));
 }
 
-/** True when this walk enters at least one pike hex (origin does not count). */
+/** True when this walk enters a pike hex this side can see (origin does not count). */
 function moveStepsOnPikes(
   state: GameState,
   piece: Piece,
@@ -546,7 +562,11 @@ function moveStepsOnPikes(
   if (eq(from, plan.stop)) return false;
   const ignoreTiles = hasAbility(piece, 'trap');
   for (const h of pathForMove(state, piece, to, charging)) {
-    if (!ignoreTiles && tokenOnHex(state.tokens, h, 'pikes')) return true;
+    if (!ignoreTiles) {
+      const pike = tokenOnHex(state.tokens, h, 'pikes');
+      // Enemy-planted traps are invisible — walk right into them.
+      if (pike && pikesVisibleTo(state, pike, piece.side)) return true;
+    }
     if (hexDamageOn(state, h, piece.side)) return true;
     if (eq(h, plan.stop)) break;
   }
@@ -578,6 +598,11 @@ function victimsOf(state: GameState, action: Action, me: Side): Piece[] {
     })) {
       add(t);
     }
+    return out;
+  }
+  if (action.kind === 'bash' || action.kind === 'berserk') {
+    const foes = action.kind === 'bash' ? bashFoes(state, piece) : berserkFoes(state, piece);
+    for (const t of foes) add(t);
     return out;
   }
   if (!isWalkAction(action)) return out;
@@ -712,6 +737,21 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
 
   const piece = getPiece(state, action.pieceId);
   if (!piece) return -Infinity;
+
+  if (action.kind === 'shields') {
+    const here: Hex = { col: piece.col, row: piece.row };
+    const threatened = state.pieces.some((foe) => {
+      if (!isHostile(state, foe.side, me) || isSleeping(foe)) return false;
+      if (isConcealedFrom(state, piece, foe.side)) return false;
+      const range = shootRangeOf(foe);
+      if (range <= 0) return false;
+      const d = dist(state, here, { col: foe.col, row: foe.row });
+      const min = Math.max(1, UNIT_STATS[foe.type].shootMin);
+      return d >= min && d <= range + terrainHeight(terrainAt(state, { col: foe.col, row: foe.row }));
+    });
+    const base = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
+    return base + (threatened ? 700 : -350);
+  }
 
   const from: Hex = { col: piece.col, row: piece.row };
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;

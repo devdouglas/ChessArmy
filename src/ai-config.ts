@@ -49,7 +49,7 @@ export const AI_RULES = [
     id: 'avoid-pikes',
     category: 'walking',
     label: 'Avoid pikes',
-    blurb: 'Do not walk onto pikes or hex-damage unless that move attacks the enemy general.',
+    blurb: 'Do not walk onto visible pikes or hex-damage unless that move attacks the enemy general. Enemy-planted traps stay hidden and are not avoided.',
   },
   {
     id: 'break-palisades',

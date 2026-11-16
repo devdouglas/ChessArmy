@@ -23,13 +23,19 @@ export const EXPERIMENTAL_RULES = [
     id: 'walk-orders',
     label: 'Walk to destination orders',
     blurb:
-      'Select a unit, then hover or click a tile it can reach, including an enemy or a palisade/tree. The route lights up white. It walks at its move speed — when you click, and again each later turn you give it no other order. A blocked destination is melee each turn until that unit dies or the token breaks, then it takes the hex. Click the destination again to cancel.',
+      'Select a unit, then hover or click a tile it can reach, including an enemy or a palisade/tree. The route lights up white. It walks at its move speed — when you click, and again each later turn you give it no other order. A blocked destination is melee each turn until that unit dies or the token breaks, then it takes the hex. Cancel by selecting the unit and giving it another order.',
   },
   {
     id: 'auto-walk',
     label: 'Auto walk',
     blurb:
       'The turn ends by itself once every unit without a walk destination has acted. Units that already have a destination march on that end-of-turn. If the whole side already has destinations, the turn passes immediately.',
+  },
+  {
+    id: 'rest-bonus-ap',
+    label: 'Resting grants bonus AP',
+    blurb:
+      "A unit that takes no action on its side's turn gains +1 AP at the start of its next turn, on top of the normal AP / turn grant. Still capped at AP max. Sleeping and water skip the bonus, same as the normal grant.",
   },
 ] as const;
 
@@ -42,6 +48,7 @@ const DEFAULTS: Flags = {
   'block-red-shoot': true,
   'walk-orders': false,
   'auto-walk': false,
+  'rest-bonus-ap': false,
 };
 
 const RULE_IDS: ExperimentalRuleId[] = EXPERIMENTAL_RULES.map((r) => r.id);

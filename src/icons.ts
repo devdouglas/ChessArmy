@@ -266,20 +266,31 @@ const ICONS: Record<UnitRole, string> = {
     <rect x="5.25" y="-6.85" width="1.1" height="14.6" rx="0.35"/>
     <path d="M3.45 -8.85 H8.15 V-7.4 H7.3 V-8.6 H6.4 V-6.9 H5.2 V-8.6 H4.3 V-7.4 H3.45 Z"/>
   `,
-  // Wolf — lunge, hackles, open jaws. Snout right.
+  // Wolf — standing side profile, snout right: ears, muzzle, brush tail, legs.
   wolf: `
-    <path fill-rule="evenodd" d="M-5.6 1.6
-      L-8.9 -2.4 L-7.1 -0.2 L-8.2 1.5 L-6.4 0.6
-      L-4.6 -1.7 L-3.5 0.3 L-2.2 -2.1 L-1.1 0.1 L0.2 -1.5
-      L1.5 -0.3 L0.6 -4.7 L2.5 -0.5 L3.2 -5.1 L4.6 -0.6
-      L8.7 -1.3 L9.5 0.2 L7.9 0.5 L8.7 1.5 L7.2 0.9
-      L6.5 2.7 L4.6 1.6 L3.8 3.1
-      C1.6 3.6 -0.4 3.1 -2.2 3.5
-      L-1.2 7.7 L-2.9 7.7 L-3.4 3.8
-      L-4.8 4.1 L-5.6 7.9 L-7.3 7.9
-      C-6.8 4.4 -6.2 2.8 -5.6 1.6 Z
-      M5.7 0.35 L7.6 -0.15 L7.15 1.45 Z
-      M3.55 -1.55 L4.35 -0.85 L2.85 -0.95 Z"/>
+    <path d="M-5.2 0.4
+      L-6.8 -3.6 L-9.6 -4.8 L-11.0 -2.2
+      L-10.4 1.4 L-8.6 3.8 L-6.4 2.6
+      L-5.0 1.2 Z"/>
+    <ellipse cx="-0.4" cy="1.35" rx="5.9" ry="2.55"/>
+    <path fill-rule="evenodd" d="M3.4 -0.1
+      C4.2 -1.8 4.6 -3.4 3.9 -4.9
+      L2.5 -6.6 L4.0 -9.2 L5.15 -5.6
+      L6.5 -8.2 L7.35 -5.0
+      L10.8 -3.5 L11.35 -1.55 L8.3 -1.15
+      L9.15 0.25 L7.0 -0.15
+      L6.15 1.45 L4.15 0.75
+      C3.7 0.45 3.5 0.15 3.4 -0.1 Z
+      M5.7 -2.55 m-0.72 0 a0.72 0.72 0 1 0 1.44 0 a0.72 0.72 0 1 0 -1.44 0"/>
+    <path d="M6.85 -1.7 L9.85 -2.55 L10.45 -0.55 L7.45 -0.4 Z"/>
+    <path d="M-4.4 3.2 L-5.15 8.55 L-3.7 8.55 L-3.05 3.5 Z"/>
+    <path d="M-1.7 3.5 L-2.3 8.55 L-0.85 8.55 L-0.4 3.7 Z"/>
+    <path d="M1.0 3.3 L0.4 8.55 L1.85 8.55 L2.25 3.5 Z"/>
+    <path d="M3.5 3.15 L3.05 8.55 L4.5 8.55 L4.7 3.35 Z"/>
+    <path d="M-5.15 8.55 H-3.55 L-3.95 9.55 H-5.65 Z"/>
+    <path d="M-2.3 8.55 H-0.7 L-1.1 9.55 H-2.8 Z"/>
+    <path d="M0.4 8.55 H2.0 L1.6 9.55 H-0.1 Z"/>
+    <path d="M3.05 8.55 H4.65 L4.25 9.55 H2.55 Z"/>
   `,
   // Delta interceptor
   fighter: `
@@ -638,7 +649,10 @@ export type ActionGlyphId =
   | 'hide'
   | 'javelin'
   | 'charge'
-  | 'trap';
+  | 'trap'
+  | 'shields'
+  | 'bash'
+  | 'berserk';
 
 /** Same drawing as the bottom action buttons. */
 export function actionGlyphSvg(
@@ -707,6 +721,25 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
     return {
       viewBox: '-8 -8 16 16',
       inner: `<path fill="currentColor" d="M-4.8 5.4 L-3.6 -5.2 L-2.2 -5.2 L-3.4 5.4 Z M-1.3 5.4 L-0.1 -5.6 L1.3 -5.6 L0.1 5.4 Z M2.2 5.4 L3.4 -5.2 L4.8 -5.2 L3.6 5.4 Z"/>`,
+    };
+  }
+  if (kind === 'shields') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="none" stroke="currentColor" stroke-width="1.45" d="M0 -6.3 C3.4 -6.3 5.5 -4.5 5.5 -1.4 C5.5 2.2 2.7 5.1 0 6.7 C-2.7 5.1 -5.5 2.2 -5.5 -1.4 C-5.5 -4.5 -3.4 -6.3 0 -6.3 Z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" d="M0 -3.1 V2.5 M-2.15 -0.3 H2.15"/>`,
+    };
+  }
+  if (kind === 'bash') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-6.6 -1.15 H0.6 V-3.7 L6.8 0 L0.6 3.7 V1.15 H-6.6 Z"/>`,
+    };
+  }
+  if (kind === 'berserk') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M0 -6.6 L1.15 -1.7 L6.4 -2.4 L2.15 0.7 L4.5 5.6 L0 2.5 L-4.5 5.6 L-2.15 0.7 L-6.4 -2.4 L-1.15 -1.7 Z"/>`,
     };
   }
   return {
@@ -903,7 +936,13 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
         ? '#2a1810'
         : id === 'javelin'
           ? '#241810'
-          : '#1c2018';
+          : id === 'shields'
+            ? '#10202a'
+            : id === 'bash'
+              ? '#2a2010'
+              : id === 'berserk'
+                ? '#2a1014'
+                : '#1c2018';
   const stroke =
     id === 'hide'
       ? '#6a9a88'
@@ -911,7 +950,13 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
         ? '#e07040'
         : id === 'javelin'
           ? '#c9a227'
-          : '#8aaa70';
+          : id === 'shields'
+            ? '#7ec8ff'
+            : id === 'bash'
+              ? '#e0a050'
+              : id === 'berserk'
+                ? '#e05050'
+                : '#8aaa70';
   return `
       <g class="ability-badge ${id}" transform="translate(${cx}, ${cy})">
         <circle cx="0" cy="0" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>

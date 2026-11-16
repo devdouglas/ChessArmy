@@ -57,6 +57,9 @@ const ACTION_GLYPHS: {
   { id: 'javelin', tag: 'javelin throw', label: 'Javelin', aliases: ['throw'] },
   { id: 'charge', tag: 'charge', label: 'Charge', aliases: [] },
   { id: 'trap', tag: 'trap', label: 'Trap', aliases: [] },
+  { id: 'shields', tag: 'shields up', label: 'Shields up', aliases: ['shields'] },
+  { id: 'bash', tag: 'bash', label: 'Bash', aliases: [] },
+  { id: 'berserk', tag: 'berserk', label: 'Berserk', aliases: [] },
   { id: 'end', tag: 'end turn', label: 'End turn', aliases: ['end'] },
 ];
 

@@ -64,7 +64,9 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   );
   const side = spots.find((h) => h.col !== front.col || h.row !== front.row)!;
   const after = applyAction(s, { kind: 'trap', pieceId: hop.id, to: side });
-  assert(tokenOnHex(after.tokens, side, 'pikes'), 'pikes land on the chosen hex');
+  const planted = tokenOnHex(after.tokens, side, 'pikes');
+  assert(!!planted, 'pikes land on the chosen hex');
+  assert(planted!.owner === 'red', 'planted pikes belong to the trapper');
   assert(!tokenOnHex(after.tokens, front, 'pikes'), 'the faced hex stays empty');
   assert(!!after.scoutPieceId, 'first trap with energy left arms the second action');
   assert(canTrap(after, hop.id), 'trap stays available for the second action');
@@ -95,7 +97,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const walker = immune.pieces.find((p) => p.type === 'hoplite')!;
   walker.facing = hop.facing;
   const step = neighborInDir({ col: walker.col, row: walker.row }, walker.facing, immune.orientation);
-  immune.tokens = [{ type: 'pikes', col: step.col, row: step.row }];
+  immune.tokens = [{ type: 'pikes', col: step.col, row: step.row, owner: 'blue' }];
   const hpBefore = hpLeft(walker);
   const walked = applyAction(immune, { kind: 'move', pieceId: walker.id, to: step });
   const afterWalk = walked.pieces.find((p) => p.id === walker.id)!;
@@ -104,6 +106,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     afterWalk.col === step.col && afterWalk.row === step.row,
     'trap unit still walks onto the pike hex',
   );
+  assert(!tokenOnHex(walked.tokens, step, 'pikes'), 'trap unit clears pikes on move-over');
 
   const second = createStateFromTerrain(emptyTerrain(8, 8), 'trap-second', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
@@ -119,12 +122,12 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     ((hopper.facing + 1) % 6) as HexDir,
     second.orientation,
   );
-  const energyBefore = actionPointsLeft(hopper);
-  assert(energyBefore > 0, 'hoplite has energy for a second action');
+  assert(actionPointsLeft(hopper) > 0, 'hoplite has energy for a second action');
   const afterMove = applyAction(second, { kind: 'move', pieceId: hopper.id, to: firstStep });
   assert(!!afterMove.scoutPieceId, 'a walk with energy left arms the second action');
   assert(canTrap(afterMove, hopper.id), 'trap is legal as the second action');
   const moved = getPiece(afterMove, hopper.id)!;
+  const apAfterMove = actionPointsLeft(moved);
   const plantHex = trapSpots(afterMove, moved).find(
     (h) => h.col !== firstStep.col || h.row !== firstStep.row,
   )!;
@@ -137,7 +140,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   assert(!!!afterTrap.scoutPieceId, 'second-action trap clears the energy lock');
   assert(afterTrap.turn === 'blue', 'second-action trap ends the side (cap 1)');
   assert(
-    actionPointsLeft(getPiece(afterTrap, hopper.id)!) === energyBefore - 1,
+    actionPointsLeft(getPiece(afterTrap, hopper.id)!) === apAfterMove - 1,
     'second-action trap spends 1 energy',
   );
 

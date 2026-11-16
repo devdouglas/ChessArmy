@@ -226,7 +226,7 @@
         }
     ],
     "sort": 13,
-    "updatedAt": 1794684811278,
+    "updatedAt": 1794836077914,
     "armies": [
         {
             "type": "cohort",
@@ -281,6 +281,12 @@
             "col": 9,
             "row": 2,
             "side": "blue"
+        },
+        {
+            "type": "barbarian",
+            "col": 1,
+            "row": 9,
+            "side": "red"
         }
     ]
 }

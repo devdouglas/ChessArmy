@@ -10,11 +10,12 @@ function assert(cond: unknown, msg: string) {
 }
 
 const start = { col: 4, row: 5 };
+/** Preferred hunt step for this layout (Attack toward red). */
+const pref = { col: 5, row: 6 };
 const step = neighborInDir(start, 0, 'pointy');
-const closer = neighborInDir(start, 1, 'pointy');
 
 function board(
-  tokens: { type: 'pikes'; col: number; row: number }[],
+  tokens: { type: 'pikes'; col: number; row: number; owner?: 'red' | 'blue' }[],
   extra: { type: 'soldier' | 'general'; col: number; row: number; side: 'red' | 'blue' }[] = [],
 ): GameState {
   const s = createStateFromTerrain(
@@ -55,23 +56,25 @@ try {
   setAiRule('aggressive', 'hold-position', false);
 
   {
-    const s = board([
-      { type: 'pikes', col: step.col, row: step.row },
-      { type: 'pikes', col: closer.col, row: closer.row },
-    ]);
+    const s = board([{ type: 'pikes', col: pref.col, row: pref.row }]);
     assert(
       allLegalActions(s).some(
-        (a) => a.kind === 'move' && a.to.col === step.col && a.to.row === step.row,
+        (a) => a.kind === 'move' && a.to.col === pref.col && a.to.row === pref.row,
       ),
       'pike hex is a legal walk',
     );
-    const a = pickAiAction(s);
-    assert(a?.kind === 'move', 'AI still moves');
-    assert(
-      !(a.to.col === step.col && a.to.row === step.row) &&
-        !(a.to.col === closer.col && a.to.row === closer.row),
-      'AI does not walk onto pikes toward the hunt',
-    );
+    assert(!pickedMoveTo(s, pref.col, pref.row), 'AI does not walk onto visible ownerless pikes');
+  }
+
+  {
+    // Enemy-planted traps are hidden — AI walks the preferred hunt step onto them.
+    const s = board([{ type: 'pikes', col: pref.col, row: pref.row, owner: 'red' }]);
+    assert(pickedMoveTo(s, pref.col, pref.row), 'AI walks onto enemy-planted traps it cannot see');
+  }
+
+  {
+    const s = board([{ type: 'pikes', col: pref.col, row: pref.row, owner: 'blue' }]);
+    assert(!pickedMoveTo(s, pref.col, pref.row), 'AI still avoids its own visible traps');
   }
 
   {

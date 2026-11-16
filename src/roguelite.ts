@@ -61,7 +61,7 @@ export type RogueShop = {
   purchased: UnitType[];
   /** Gold gained from stars this battle (1 per star). */
   starGold: number;
-  /** Free promotion picks this shop (assign to a survivor). */
+  /** Free promotion choices this shop — take one, shelf clears. */
   promotions: PromotionTokenType[];
 };
 
@@ -121,7 +121,8 @@ export function rollRogueShopOffers(
 export function rollRoguePromotions(
   count = ROGUE_SHOP_SIZE,
 ): PromotionTokenType[] {
-  const pool = [...PROMOTION_TOKEN_TYPES];
+  // Shop never offers General — succession crowns that separately.
+  const pool = PROMOTION_TOKEN_TYPES.filter((t) => t !== 'general');
   const out: PromotionTokenType[] = [];
   const n = Math.max(0, Math.min(Math.floor(count), pool.length));
   for (let i = 0; i < n; i++) {
@@ -175,7 +176,7 @@ export function buyRogueShopOffer(
 }
 
 /**
- * Take promotion offer at index off the shelf (assign separately to a survivor).
+ * Take promotion offer at index — one pick per victory shop, shelf clears.
  * Returns null when the slot is gone.
  */
 export function takeRoguePromotionOffer(
@@ -184,12 +185,10 @@ export function takeRoguePromotionOffer(
 ): { shop: RogueShop; promo: PromotionTokenType } | null {
   const promo = shop.promotions[index];
   if (promo == null) return null;
-  const promotions = shop.promotions.slice();
-  promotions.splice(index, 1);
   return {
     shop: {
       ...shop,
-      promotions,
+      promotions: [],
     },
     promo,
   };
@@ -344,9 +343,7 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
 
 /** Tokens that should ride with a unit into the next battle. */
 function carryTokens(piece: Piece): UnitTokenType[] | undefined {
-  const tokens = unitTokensOf(piece).filter(
-    (t) => t === 'general' || isPromotionToken(t),
-  );
+  const tokens = unitTokensOf(piece).filter(isPromotionToken);
   return tokens.length ? tokens : undefined;
 }
 

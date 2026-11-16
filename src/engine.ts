@@ -267,25 +267,32 @@ export function editorOpensBoardPopup(
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
-/** Stackable promotions on a piece. Cap is shared across all promotion kinds. */
+/** Promotions on a piece. Cap is shared. General is unique; the rest stack. */
 export const MAX_UNIT_PROMOTIONS = 3;
 export const PROMOTION_TOKEN_TYPES = [
+  'general',
   'range1',
   'defense1',
   'attack1',
   'ap1',
+  'hp2',
   'allTerrain',
 ] as const;
 export type PromotionTokenType = (typeof PROMOTION_TOKEN_TYPES)[number];
 
-/** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
-export const UNIT_TOKEN_TYPES = [
-  'general',
+/** Status / story attachments (not promotions). */
+export const STATUS_UNIT_TOKEN_TYPES = [
   'hidden',
   'exhausted',
   'neutral',
   'sleep',
   'story',
+] as const;
+export type StatusUnitTokenType = (typeof STATUS_UNIT_TOKEN_TYPES)[number];
+
+/** Attachments on a piece. Ids must not collide with unit types in the editor brush. */
+export const UNIT_TOKEN_TYPES = [
+  ...STATUS_UNIT_TOKEN_TYPES,
   ...PROMOTION_TOKEN_TYPES,
 ] as const;
 export type UnitTokenType = (typeof UNIT_TOKEN_TYPES)[number];
@@ -300,17 +307,40 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   defense1: 'Defense +1',
   attack1: 'Attack +1',
   ap1: 'AP +1',
+  hp2: 'HP +2',
   allTerrain: 'All terrain',
+};
+
+/** Editor / inspect blurbs when a promotion brush is selected. */
+export const PROMOTION_TOKEN_BLURB: Record<PromotionTokenType, string> = {
+  general:
+    'Command piece. HP +1, AP max +1, value +1. Immune to rout. When command-kill is on, losing every General ends the army.',
+  range1: '+1 shoot range (shooters only). Stacks as a V chevron.',
+  defense1: '+1 armor on every face / ring. Stacks as a V chevron.',
+  attack1: '+1 melee, charge, and shoot damage. Stacks as a V chevron.',
+  ap1: '+1 AP max, +1 AP / turn, and +1 spend cap. Stacks as a V chevron.',
+  hp2: '+2 max HP. Stacks as a V chevron.',
+  allTerrain:
+    'Free climbs, swim without AP/HP upkeep, climb to mountain, Hide on forest. Stacks as a V chevron.',
 };
 
 /** Chevron / swatch fill per promotion kind. */
 export const PROMOTION_TOKEN_COLOR: Record<PromotionTokenType, string> = {
+  general: '#f0d060',
   range1: '#f0d060',
   defense1: '#8ab4e8',
   attack1: '#f0a070',
   ap1: '#9ad0a8',
+  hp2: '#e87890',
   allTerrain: '#d0b878',
 };
+
+/** Stackable promos only (General is unique and uses the star badge). */
+export function isStackablePromotion(
+  v: unknown,
+): v is Exclude<PromotionTokenType, 'general'> {
+  return isPromotionToken(v) && v !== 'general';
+}
 
 export const STORY_WHENS = ['kill', 'touch'] as const;
 export type StoryWhen = (typeof STORY_WHENS)[number];
@@ -356,6 +386,8 @@ export function sanitizeUnitTokens(raw: unknown): UnitTokenType[] {
     if (!isUnitTokenType(item)) continue;
     if (isPromotionToken(item)) {
       if (promos >= MAX_UNIT_PROMOTIONS) continue;
+      // General is a promotion but only one stamp.
+      if (item === 'general' && out.includes('general')) continue;
       out.push(item);
       promos += 1;
       continue;
@@ -374,6 +406,13 @@ export function promotionTokensOf(piece: {
   unitTokens?: UnitTokenType[];
 }): PromotionTokenType[] {
   return unitTokensOf(piece).filter(isPromotionToken);
+}
+
+/** V-chevron promos only — General uses the star badge instead. */
+export function chevronPromotionTokensOf(piece: {
+  unitTokens?: UnitTokenType[];
+}): Exclude<PromotionTokenType, 'general'>[] {
+  return promotionTokensOf(piece).filter(isStackablePromotion);
 }
 
 export function countUnitToken(
@@ -409,9 +448,14 @@ export function attackBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
   return countUnitToken(piece, 'attack1');
 }
 
-/** Stacked AP +1 promotions — +1 max pool and +1 granted each turn. */
+/** Stacked AP +1 promotions — +1 max pool, +1 granted each turn, +1 spend cap. */
 export function apBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
   return countUnitToken(piece, 'ap1');
+}
+
+/** Stacked HP +2 promotions — +2 max HP each. */
+export function hpBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
+  return countUnitToken(piece, 'hp2') * 2;
 }
 
 /** Turn-start AP grant, including AP +1 promotions. */
@@ -553,7 +597,7 @@ export function sanitizeTokens(raw: unknown, cols: number, rows: number): TileTo
     if (seen.has(k)) continue;
     seen.add(k);
     const tok: TileToken = { type: t.type, col, row };
-    if (t.type === 'flag' && isSide(t.owner)) tok.owner = t.owner;
+    if ((t.type === 'flag' || t.type === 'pikes') && isSide(t.owner)) tok.owner = t.owner;
     if (t.noTouch === true) tok.noTouch = true;
     if (t.type === 'board') {
       const text = sanitizeBoardText(t.text);
@@ -811,6 +855,25 @@ function forestHp(tok: TileToken | undefined): number {
   return tok.hp ?? PALISADE_HP;
 }
 
+/** Palisade, tree, or forest. `remaining` 0 means the token is gone. */
+function chipWoodAt(
+  state: GameState,
+  h: Hex,
+  amount: number,
+): { type: TokenType; remaining: number } | null {
+  const tok = hexToken(state.tokens, h, (t) => isWoodHpToken(t.type));
+  if (!tok) return null;
+  const full = isForestToken(tok.type) ? forestHp(tok) : palisadeHp(tok);
+  const remaining = woodRemaining(full, amount);
+  const type = tok.type;
+  if (remaining <= 0) {
+    state.tokens = state.tokens.filter((t) => t !== tok);
+  } else {
+    tok.hp = remaining;
+  }
+  return { type, remaining };
+}
+
 /** Attack strength vs wood HP — 1+2 melee (or shoot) falls a 3 HP fence in one hit. */
 function woodRemaining(hp: number, amount: number): number {
   return Math.max(0, hp - Math.max(0, amount));
@@ -885,10 +948,14 @@ export type Piece = {
   movedThisTurn?: boolean;
   /** Did anything this activation (move, shoot, climb). */
   actedThisTurn?: boolean;
+  /** Took no action on the previous own side-turn. Rest-bonus AP grant. */
+  idleLastTurn?: boolean;
   /** Cube facing (0–5). Missing → defaultFacing(side). Front follows the last walk step. */
   facing?: HexDir;
   /** Took ranged damage since last finished activation. Hold-position AI advances. */
   rangedHit?: boolean;
+  /** Shields up. Ranged attacks do nothing until this side's next turn starts. */
+  shieldsUp?: boolean;
   /** Hostile newly entered this piece's Sight this activation. Hold-position AI advances. */
   losHit?: boolean;
   /** Hostile piece ids this unit has already seen while holding. Missing → not scanned yet. */
@@ -979,6 +1046,9 @@ export type Action =
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
   | { kind: 'trap'; pieceId: string; to: Hex }
+  | { kind: 'bash'; pieceId: string }
+  | { kind: 'berserk'; pieceId: string }
+  | { kind: 'shields'; pieceId: string }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
@@ -1252,7 +1322,11 @@ function ammoLog(piece: Piece, stats: UnitStats): string {
 }
 
 export function hpMax(piece: Piece): number {
-  return statsOf(piece.type).hp + (hasUnitToken(piece, 'general') ? 1 : 0);
+  return (
+    statsOf(piece.type).hp +
+    (hasUnitToken(piece, 'general') ? 1 : 0) +
+    hpBonusOf(piece)
+  );
 }
 
 /** Scoring / AI weight. General token +1. */
@@ -1278,11 +1352,9 @@ export function actionPointsLeft(piece: Piece): number {
   return piece.actionPoints ?? max;
 }
 
-/** Per-turn spend ceiling: gain+1 when a pool exists; otherwise max(1, gain). */
+/** Per-turn spend ceiling from unit stats (+ AP +1 promotions). */
 export function apSpendCap(piece: Piece): number {
-  const gain = actionPointGainOf(piece);
-  if (actionPointsMax(piece) <= 0) return Math.max(1, gain);
-  return gain + 1;
+  return Math.max(0, statsOf(piece.type).actionPointSpendCap) + apBonusOf(piece);
 }
 
 export function apSpentThisTurnOf(piece: Piece): number {
@@ -1491,6 +1563,25 @@ function readBoard(state: GameState, piece: Piece, tok: TileToken): void {
   state.log.push(`${unitLog(piece)} reads a message board`);
 }
 
+/** Planted traps are hidden from hostile eyes. Ownerless (editor) pikes stay visible. */
+export function pikesVisibleTo(
+  state: GameState,
+  tok: TileToken,
+  viewer: Affiliation,
+): boolean {
+  if (tok.type !== 'pikes') return false;
+  if (!tok.owner || !isSide(tok.owner)) return true;
+  return sameTeam(state, tok.owner, viewer);
+}
+
+export function pikesVisible(
+  state: GameState,
+  tok: TileToken,
+  viewers: readonly Affiliation[],
+): boolean {
+  return viewers.some((v) => pikesVisibleTo(state, tok, v));
+}
+
 function applyWalkTokens(
   state: GameState,
   piece: Piece,
@@ -1498,26 +1589,55 @@ function applyWalkTokens(
   path: Hex[],
   stop: Hex,
 ): void {
+  const cleared = new Set<string>();
   for (const h of walkedHexes(from, path, stop)) {
     for (const tok of tokensAt(state.tokens, h)) {
       if (tok.type === 'flag') claimFlag(state, piece, tok);
       if (tok.type === 'board') readBoard(state, piece, tok);
-      if (tok.type === 'pikes' && !hasAbility(piece, 'trap')) {
-        const before = hpLeft(piece);
-        const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
-        const dealt = before - dmg.remaining;
-        if (dealt > 0) {
-          state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
-          state.log.push(
-            dmg.fatal
-              ? `${unitLog(piece)} dies on pikes`
-              : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
-          );
-          if (dmg.fatal) return;
+      if (tok.type === 'pikes') {
+        if (hasAbility(piece, 'trap')) {
+          const k = `${h.col},${h.row}`;
+          if (!cleared.has(k)) {
+            cleared.add(k);
+            state.log.push(`${unitLog(piece)} clears pikes`);
+          }
+        } else {
+          const before = hpLeft(piece);
+          const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
+          const dealt = before - dmg.remaining;
+          if (dealt > 0) {
+            state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
+            state.log.push(
+              dmg.fatal
+                ? `${unitLog(piece)} dies on pikes`
+                : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+            );
+            if (dmg.fatal) {
+              if (cleared.size) {
+                state.tokens = state.tokens.filter(
+                  (t) =>
+                    !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
+                );
+              }
+              return;
+            }
+          }
         }
       }
     }
-    if (strikeFacingPikes(state, piece, h)) return;
+    if (strikeFacingPikes(state, piece, h)) {
+      if (cleared.size) {
+        state.tokens = state.tokens.filter(
+          (t) => !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
+        );
+      }
+      return;
+    }
+  }
+  if (cleared.size) {
+    state.tokens = state.tokens.filter(
+      (t) => !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
+    );
   }
 }
 
@@ -2041,6 +2161,7 @@ export function splashHitsEnemy(
     const t = pieceAt(state, h);
     if (
       t &&
+      !t.shieldsUp &&
       isHostile(state, t.side, shooterSide) &&
       !isConcealedFrom(state, t, shooterSide)
     ) {
@@ -2169,28 +2290,177 @@ export function trapSpots(state: GameState, piece: Piece): Hex[] {
   return out;
 }
 
-export function canTrap(state: GameState, pieceId: string): boolean {
+/** Own turn, ability, not asleep, not already finished. Downhill grant is move-only. */
+function specialReady(state: GameState, pieceId: string, id: AbilityId): Piece | null {
   const piece = getPiece(state, pieceId);
-  if (!piece || piece.side !== state.turn || state.winner) return false;
-  if (!hasAbility(piece, 'trap')) return false;
-  if (isSleeping(piece)) return false;
-  if (hasActed(state, pieceId)) return false;
-  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
-  // Downhill grant is move-only. A leftover scout AP action can trap.
-  if (state.downhillMove && state.scoutPieceId === pieceId) return false;
-  if (
-    !state.scoutPieceId &&
-    (piece.movedThisTurn || piece.actedThisTurn)
-  ) {
-    return false;
-  }
+  if (!piece || piece.side !== state.turn || state.winner) return null;
+  if (!hasAbility(piece, id)) return null;
+  if (isSleeping(piece)) return null;
+  if (hasActed(state, pieceId)) return null;
+  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return null;
+  if (state.downhillMove && state.scoutPieceId === pieceId) return null;
+  if (!state.scoutPieceId && (piece.movedThisTurn || piece.actedThisTurn)) return null;
   if (
     !state.scoutPieceId &&
     state.actedIds.length >= clampUnitsPerTurn(state.unitsPerTurn)
   ) {
-    return false;
+    return null;
   }
+  return piece;
+}
+
+export function canTrap(state: GameState, pieceId: string): boolean {
+  const piece = specialReady(state, pieceId, 'trap');
+  if (!piece) return false;
   return trapSpots(state, piece).length > 0;
+}
+
+/** Armor on one cube face, including Defense promotions. Non-hex armor is the same on every face. */
+function faceArmor(piece: Piece, dir: HexDir): number {
+  return armorOnDir(piece, dir);
+}
+
+export function hasShieldsUp(piece: { shieldsUp?: boolean } | null | undefined): boolean {
+  return !!piece?.shieldsUp;
+}
+
+function hostileNeighbor(state: GameState, piece: Piece, hex: Hex): Piece | null {
+  if (!inBounds(state, hex)) return null;
+  const occ = pieceAt(state, hex);
+  if (!occ || occ.id === piece.id) return null;
+  if (!isHostile(state, occ.side, piece.side)) return null;
+  if (isConcealedFrom(state, occ, piece.side)) return null;
+  return occ;
+}
+
+/** Enemies standing on a non-red face (armor above −2). */
+export function berserkFoes(state: GameState, piece: Piece): Piece[] {
+  if (!hasAbility(piece, 'berserk')) return [];
+  const from: Hex = { col: piece.col, row: piece.row };
+  const out: Piece[] = [];
+  for (let d = 0; d < 6; d++) {
+    const dir = d as HexDir;
+    if (faceArmor(piece, dir) <= -2) continue;
+    const foe = hostileNeighbor(
+      state,
+      piece,
+      neighborInDir(from, dir, state.orientation),
+    );
+    if (foe && !out.some((p) => p.id === foe.id)) out.push(foe);
+  }
+  return out;
+}
+
+export function canBerserk(state: GameState, pieceId: string): boolean {
+  const piece = specialReady(state, pieceId, 'berserk');
+  if (!piece) return false;
+  return berserkFoes(state, piece).length > 0;
+}
+
+export function canShields(state: GameState, pieceId: string): boolean {
+  return !!specialReady(state, pieceId, 'shields');
+}
+
+type BashStep = {
+  victim: Piece;
+  from: Hex;
+  to: Hex | null;
+  outcome: 'slam' | 'unit' | 'token' | 'forest' | 'move';
+  other?: Piece;
+};
+
+/** Why a one-step shove cannot enter `to`. Height the unit could step is fine. */
+function shoveBlocked(
+  state: GameState,
+  victim: Piece,
+  from: Hex,
+  to: Hex,
+): 'wall' | 'height' | 'water' | null {
+  if (isWall(state, to)) return 'wall';
+  const fh = hexHeight(state, from);
+  const th = hexHeight(state, to);
+  if (th > climbLevelOf(victim)) return 'height';
+  if (Math.abs(th - fh) > 1) return 'height';
+  if (terrainAt(state, to) === 'water' && !canPassWater(victim)) return 'water';
+  if (enteringWater(state, from, to) && refusesWaterJump(victim)) return 'water';
+  return null;
+}
+
+function planBash(state: GameState, piece: Piece): BashStep[] {
+  if (!hasAbility(piece, 'bash')) return [];
+  const origin: Hex = { col: piece.col, row: piece.row };
+  const steps: BashStep[] = [];
+  for (let d = 0; d < 6; d++) {
+    const dir = d as HexDir;
+    if (faceArmor(piece, dir) !== 0) continue;
+    const from = neighborInDir(origin, dir, state.orientation);
+    const victim = hostileNeighbor(state, piece, from);
+    if (!victim) continue;
+    const landing = neighborInDir(from, dir, state.orientation);
+    if (!inBounds(state, landing)) {
+      steps.push({ victim, from, to: landing, outcome: 'slam' });
+      continue;
+    }
+    const blocked = shoveBlocked(state, victim, from, landing);
+    if (blocked) {
+      steps.push({ victim, from, to: landing, outcome: 'slam' });
+      continue;
+    }
+    const occ = pieceAt(state, landing);
+    if (occ && occ.id !== victim.id) {
+      steps.push({ victim, from, to: landing, outcome: 'unit', other: occ });
+      continue;
+    }
+    if (isPalisade(state, landing)) {
+      steps.push({ victim, from, to: landing, outcome: 'token' });
+      continue;
+    }
+    if (isForest(state, landing)) {
+      steps.push({ victim, from, to: landing, outcome: 'forest' });
+      continue;
+    }
+    steps.push({ victim, from, to: landing, outcome: 'move' });
+  }
+  return steps;
+}
+
+/** Hostiles a bash would shove, plus hostiles they would collide with. */
+export function bashFoes(state: GameState, piece: Piece): Piece[] {
+  const out: Piece[] = [];
+  const add = (p: Piece | undefined) => {
+    if (!p || !isHostile(state, p.side, piece.side)) return;
+    if (!out.some((x) => x.id === p.id)) out.push(p);
+  };
+  for (const step of planBash(state, piece)) {
+    add(step.victim);
+    add(step.other);
+  }
+  return out;
+}
+
+export function canBash(state: GameState, pieceId: string): boolean {
+  const piece = specialReady(state, pieceId, 'bash');
+  if (!piece) return false;
+  return planBash(state, piece).length > 0;
+}
+
+function noteStrike(
+  state: GameState,
+  victim: Piece,
+  before: number,
+  dmg: { fatal: boolean; remaining: number; routed: boolean },
+): void {
+  const dealt = before - dmg.remaining;
+  if (dealt <= 0 && !dmg.routed) return;
+  state.fxHits = [
+    ...(state.fxHits ?? []),
+    {
+      id: victim.id,
+      fatal: dmg.fatal,
+      dealt: Math.max(dealt, dmg.routed ? 1 : 0),
+      routed: dmg.routed,
+    },
+  ];
 }
 
 export function hasGeneral(pieces: Piece[], side: Side): boolean {
@@ -2395,11 +2665,25 @@ function clearTurnFlags(state: GameState, side: Side): void {
   }
 }
 
+/** Snapshot idle status before turn flags / actedIds are cleared. */
+function noteIdleLastTurn(state: GameState, side: Side): void {
+  for (const p of state.pieces) {
+    if (p.side !== side) continue;
+    p.idleLastTurn =
+      !isSleeping(p) &&
+      !p.actedThisTurn &&
+      !p.movedThisTurn &&
+      !hasActed(state, p.id);
+  }
+}
+
 /**
  * Start of a side's turn: reset spend caps and grant `actionPointGain` into the
  * pool (up to max). Sleeping / water / max≤0 skip the pool grant.
+ * Experimental rest-bonus-ap: +1 if the unit took no action last own turn.
  */
 function grantActionPoints(state: GameState, side: Side): void {
+  const restBonus = isExperimentalOn('rest-bonus-ap');
   for (const p of state.pieces) {
     if (p.side !== side) continue;
     p.apSpentThisTurn = undefined;
@@ -2407,7 +2691,7 @@ function grantActionPoints(state: GameState, side: Side): void {
     if (inWater(state, { col: p.col, row: p.row }) && !hasAllTerrain(p)) continue;
     const max = actionPointsMax(p);
     if (max <= 0) continue;
-    const gain = actionPointGainOf(p);
+    const gain = actionPointGainOf(p) + (restBonus && p.idleLastTurn ? 1 : 0);
     if (gain <= 0) continue;
     const before = actionPointsLeft(p);
     const after = Math.min(max, before + gain);
@@ -2507,6 +2791,9 @@ export function beginSideTurn(state: GameState, newRound = false, kickoff = fals
   if (newRound) state.turnNumber += 1;
   applyTurnLimit(state);
   if (state.winner) return;
+  for (const p of state.pieces) {
+    if (p.side === state.turn) p.shieldsUp = undefined;
+  }
   maybeSucceedGeneral(state, state.turn);
   if (state.winner) return;
   // Kickoff: pieces already spawn full (or exhausted at 0). Do not grant here.
@@ -2710,6 +2997,13 @@ export function canOrderMarch(state: GameState, piece: Piece, goal: Hex): boolea
   return true;
 }
 
+/** Drop a standing march (another order). No-op if none. */
+function clearWalkOrder(state: GameState, piece: Piece): void {
+  if (!piece.walkTo) return;
+  piece.walkTo = undefined;
+  state.log.push(`${unitLog(piece)} march cancelled`);
+}
+
 export function setWalkOrder(state: GameState, pieceId: string, dest: Hex | null): GameState {
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn || state.winner) return state;
@@ -2725,8 +3019,7 @@ export function setWalkOrder(state: GameState, pieceId: string, dest: Hex | null
     p.walkTo = { col: dest.col, row: dest.row };
     next.log.push(`${unitLog(p)} march ordered to ${dest.col},${dest.row}`);
   } else {
-    p.walkTo = undefined;
-    next.log.push(`${unitLog(p)} march cancelled`);
+    clearWalkOrder(next, p);
   }
   return next;
 }
@@ -2751,10 +3044,13 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   if (!full?.length) return null;
   const first = moveRangeAt(state, piece, here);
   if (first <= 0) return null;
-  // Each extra is a fresh line of `move` paid from spendable AP (or one armed spendMarch).
+  // Extras are fresh `move` lines paid from spendable AP. Reserve 1 for the base
+  // action afterAction will charge — otherwise a spend cap of N walks N+1 chunks.
+  // Armed spendMarch still buys one extra when at least 2 AP remain for base+extra.
+  const spendable = apSpendable(piece);
   const extraBudget = Math.max(
-    apSpendable(piece),
-    piece.spendMarch && canSpendActionPoints(piece) ? 1 : 0,
+    Math.max(0, spendable - 1),
+    piece.spendMarch && spendable >= 2 ? 1 : 0,
   );
   let speed = first;
   let extraLeft = extraBudget;
@@ -2924,7 +3220,12 @@ function applyStandingMarches(state: GameState): void {
     const piece = getPiece(state, id);
     if (!piece || !marchEligible(state, piece)) continue;
     const anim = applyOneMarch(state, piece);
-    if (anim) anims.push(anim);
+    if (!anim) continue;
+    anims.push(anim);
+    // performMarch pays the base action via afterAction; end-of-turn marches
+    // must charge it here so extras (spendable-1) do not leave a free AP.
+    const live = getPiece(state, id);
+    if (live) spendActionPoints(live, 1);
   }
   queuedMarches.push(...anims);
 }
@@ -3010,6 +3311,7 @@ function endSideTurn(state: GameState): void {
   checkWin(state);
   if (state.winner) return;
   tickShootCooldowns(state, finished);
+  noteIdleLastTurn(state, finished);
   clearTurnFlags(state, finished);
   state.actedIds = [];
   const next = nextLivingSide(state, finished);
@@ -3141,18 +3443,21 @@ function payDownhill(state: GameState, piece: Piece): void {
 function afterAction(
   state: GameState,
   piece: Piece,
-  kind: 'move' | 'shoot' | 'rotate' | 'trap',
+  kind: 'move' | 'shoot' | 'rotate' | 'trap' | 'bash' | 'berserk',
   enteredWater = false,
   downCount = 0,
+  /** Broke after the swim tax — base 1-hex from water does not need another AP. */
+  freeWaterStep = false,
 ): void {
   markActed(piece);
 
   const downhillFree = state.downhillMove && state.scoutPieceId === piece.id;
+  const free = downhillFree || freeWaterStep;
 
   // Stepping into water from land ends momentum. Already-wet is a normal activation
   // — the turn-start swim cost is a pool penalty (not against the spend cap).
   if (kind === 'move' && enteredWater) {
-    if (!downhillFree && !hasAllTerrain(piece)) spendActionPoints(piece, 1);
+    if (!free && !hasAllTerrain(piece)) spendActionPoints(piece, 1);
     finishActivation(state, piece);
     return;
   }
@@ -3161,21 +3466,21 @@ function afterAction(
   // A drop of 2+ cannot be stepped. The free +1 is part of this same AP —
   // leftover pool AP waits until after that bonus hex.
   if (kind === 'move' && downCount > 0) {
-    if (!downhillFree) spendActionPoints(piece, 1);
+    if (!free) spendActionPoints(piece, 1);
     state.downhillQueued = (state.downhillQueued ?? 0) + downCount;
     payDownhill(state, piece);
     return;
   }
 
   if ((state.downhillQueued ?? 0) > 0 && state.scoutPieceId === piece.id) {
-    if (!downhillFree) spendActionPoints(piece, 1);
+    if (!free) spendActionPoints(piece, 1);
     payDownhill(state, piece);
     return;
   }
 
   if (state.downhillMove) state.downhillMove = false;
 
-  if (!downhillFree) spendActionPoints(piece, 1);
+  if (!free) spendActionPoints(piece, 1);
 
   const leftover = apSpendable(piece);
   if (leftover > 0) {
@@ -3782,7 +4087,8 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
           out.push({ kind: 'shoot-range', hex: h });
         }
       } else if (target && isHostile(state, target.side, piece.side)) {
-        out.push({ kind: 'shoot', hex: h });
+        if (target.shieldsUp) out.push({ kind: 'shoot-range', hex: h });
+        else out.push({ kind: 'shoot', hex: h });
       } else {
         // Visible range only — no thin-air shots for bullets
         out.push({ kind: 'shoot-range', hex: h });
@@ -3828,6 +4134,7 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
   if (next.downhillMove && next.scoutPieceId === piece.id) return state;
   const prevCovered = hexDamageCoveredKeys(next, piece);
+  clearWalkOrder(next, piece);
   piece.facing = dir;
   next.log.push(`${unitLog(piece)} turns`);
   applyHexDamagePush(next, piece, prevCovered);
@@ -3902,6 +4209,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
   if (hasActed(next, piece.id)) return state;
 
+  // Any real order replaces a standing march.
+  clearWalkOrder(next, piece);
+
   const highlights = legalHighlights(next, piece.id);
 
   if (action.kind === 'trap') {
@@ -3913,11 +4223,120 @@ function applyActionInner(state: GameState, action: Action): GameState {
         (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
       );
       next.log.push(`${unitLog(piece)} clears pikes`);
-    } else {
-      next.tokens = [...next.tokens, { type: 'pikes', col: action.to.col, row: action.to.row }];
+    } else if (isSide(piece.side)) {
+      next.tokens = [
+        ...next.tokens,
+        { type: 'pikes', col: action.to.col, row: action.to.row, owner: piece.side },
+      ];
       next.log.push(`${unitLog(piece)} plants pikes`);
     }
     afterAction(next, piece, 'trap');
+    return next;
+  }
+
+  if (action.kind === 'shields') {
+    if (!canShields(next, piece.id)) return state;
+    piece.shieldsUp = true;
+    next.log.push(`${unitLog(piece)} raises shields`);
+    spendActionPoints(piece, 1);
+    markActed(piece);
+    finishActivation(next, piece);
+    return next;
+  }
+
+  if (action.kind === 'bash') {
+    if (!canBash(next, piece.id)) return state;
+    reveal(piece);
+    const amount = Math.max(1, meleeDamageOf(piece));
+    const steps = planBash(next, piece);
+    const bits: string[] = [];
+    const dmgLines: string[] = [];
+    for (const step of steps) {
+      const victim = getPiece(next, step.victim.id);
+      if (!victim) continue;
+      if (step.outcome === 'unit' && step.other && step.to) {
+        const other = getPiece(next, step.other.id);
+        const beforeV = hpLeft(victim);
+        const dmgV = applyDamage(next, victim, amount, 1, step.to);
+        noteStrike(next, victim, beforeV, dmgV);
+        bits.push(hpBit(victim, dmgV.fatal, dmgV.remaining, dmgV.routed));
+        dmgLines.push(dmgLine(next, victim, amount, 1, step.to));
+        if (other) {
+          const beforeO = hpLeft(other);
+          const dmgO = applyDamage(next, other, amount, 1, step.from);
+          noteStrike(next, other, beforeO, dmgO);
+          bits.push(hpBit(other, dmgO.fatal, dmgO.remaining, dmgO.routed));
+          dmgLines.push(dmgLine(next, other, amount, 1, step.from));
+        }
+        continue;
+      }
+      if (step.outcome === 'slam' && step.to) {
+        const before = hpLeft(victim);
+        const dmg = applyDamage(next, victim, amount, 1, step.to);
+        noteStrike(next, victim, before, dmg);
+        bits.push(
+          `${hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed)} slams`,
+        );
+        dmgLines.push(dmgLine(next, victim, amount, 1, step.to));
+        continue;
+      }
+      if ((step.outcome === 'token' || step.outcome === 'forest') && step.to) {
+        const wood = chipWoodAt(next, step.to, 1);
+        const before = hpLeft(victim);
+        const dmg = applyDamage(next, victim, 1, 0, step.to, true);
+        noteStrike(next, victim, before, dmg);
+        const woodBit = wood
+          ? wood.remaining > 0
+            ? `${wood.type} (${wood.remaining} left)`
+            : wood.type
+          : 'token';
+        bits.push(`${hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed)} / ${woodBit}`);
+        dmgLines.push(dmgLine(next, victim, 1, 0, step.to, true));
+      }
+    }
+    for (const step of steps) {
+      if (step.outcome !== 'move' && step.outcome !== 'forest') continue;
+      if (!step.to) continue;
+      const victim = getPiece(next, step.victim.id);
+      if (!victim) continue;
+      const taken = next.pieces.some(
+        (p) => p.id !== victim.id && p.col === step.to!.col && p.row === step.to!.row,
+      );
+      if (taken || isPalisade(next, step.to) || isWall(next, step.to)) continue;
+      victim.col = step.to.col;
+      victim.row = step.to.row;
+      applyWalkTokens(next, victim, step.from, [step.to], step.to);
+    }
+    next.log.push(
+      `${unitLog(piece)} bashes` +
+        (bits.length ? ` ${bits.join(', ')}` : '') +
+        dmgLines.join(''),
+    );
+    afterAction(next, piece, 'bash');
+    return next;
+  }
+
+  if (action.kind === 'berserk') {
+    if (!canBerserk(next, piece.id)) return state;
+    reveal(piece);
+    const fromHex: Hex = { col: piece.col, row: piece.row };
+    const amount = meleeDamageOf(piece);
+    const floor = amount > 0 ? 1 : 0;
+    const bits: string[] = [];
+    const dmgLines: string[] = [];
+    for (const foe of berserkFoes(next, piece)) {
+      const victim = getPiece(next, foe.id);
+      if (!victim) continue;
+      const before = hpLeft(victim);
+      const dmg = applyDamage(next, victim, amount, floor, fromHex);
+      noteStrike(next, victim, before, dmg);
+      bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
+      dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
+    }
+    next.log.push(
+      `${unitLog(piece)} berserks ${bits.join(', ')}` + dmgLines.join(''),
+    );
+    afterAction(next, piece, 'berserk');
     return next;
   }
 
@@ -3929,6 +4348,12 @@ function applyActionInner(state: GameState, action: Action): GameState {
           (h) => (h.kind === 'move' || h.kind === 'ap') && eq(h.hex, action.to),
         );
     if (!hit) return state;
+    const fromHex = { col: piece.col, row: piece.row };
+    // Swim tax already drained the pool; the base 1-hex from water still fires.
+    const freeWaterStep =
+      inWater(next, fromHex) &&
+      hit.kind === 'move' &&
+      !canSpendActionPoints(piece, 1);
     if (charging) {
       if (hit.kind !== 'charge' || hit.unpaid) return state;
       // extra = climb surcharge and/or second chunk → base action +1.
@@ -3941,7 +4366,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
       // Free downhill +1 is already paid by the drop that granted it.
       const freeDownhill =
         !!hit.plus && next.downhillMove && next.scoutPieceId === piece.id;
-      if (!freeDownhill && !canSpendActionPoints(piece, 1)) return state;
+      if (!freeDownhill && !freeWaterStep && !canSpendActionPoints(piece, 1)) {
+        return state;
+      }
     }
 
     reveal(piece);
@@ -4020,7 +4447,6 @@ function applyActionInner(state: GameState, action: Action): GameState {
       );
     }
 
-    const fromHex = { col: piece.col, row: piece.row };
     const prevCovered = hexDamageCoveredKeys(next, piece);
     const walkPath = resolveMovePath(next, piece, action.to, action.path, charging);
     const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
@@ -4063,7 +4489,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       hit.kind === 'ap' && hit.beyondPlus
         ? tailDrop
         : downSteps(next, fromHex, walkPath, plan.stop);
-    afterAction(next, piece, 'move', enteredWater, dropped);
+    afterAction(next, piece, 'move', enteredWater, dropped, freeWaterStep);
     return next;
   }
 
@@ -4097,9 +4523,11 @@ function applyActionInner(state: GameState, action: Action): GameState {
         continue;
       }
       const t = pieceAt(next, h);
-      // Splash hits everyone in the blast — friendlies included
+      // Splash hits everyone in the blast — friendlies included. Shields stop it.
       const splash = splashDamageOf(piece);
-      if (t && splash > 0) {
+      if (t && splash > 0 && t.shieldsUp) {
+        hitBits.push('shields');
+      } else if (t && splash > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
         const dmg = applyDamage(next, t, splash, 0, origin, true);
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
@@ -4136,6 +4564,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const t = pieceAt(next, action.at);
     if (!t || sameTeam(next, t.side, piece.side)) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
+    if (t.shieldsUp) {
+      next.log.push(
+        `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row} — shields hold`,
+      );
+      afterAction(next, piece, 'shoot');
+      return next;
+    }
     if (isForest(next, action.at)) {
       const chip = chipForestAt(next, action.at, shootDamageOf(piece));
       const cover =
@@ -4196,6 +4631,9 @@ export function allLegalActions(state: GameState): Action[] {
         actions.push({ kind: 'trap', pieceId: p.id, to });
       }
     }
+    if (canBash(state, p.id)) actions.push({ kind: 'bash', pieceId: p.id });
+    if (canBerserk(state, p.id)) actions.push({ kind: 'berserk', pieceId: p.id });
+    if (canShields(state, p.id)) actions.push({ kind: 'shields', pieceId: p.id });
     if (statsOf(p.type).hexArmor && !(state.downhillMove && state.scoutPieceId === p.id)) {
       const cur = facingOf(p);
       for (let d = 0; d < 6; d++) {

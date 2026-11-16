@@ -41,6 +41,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "melee",
         "sight": 2
@@ -87,6 +88,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 3,
         "recruitable": true,
         "unitClass": "mounted",
         "sight": 3
@@ -133,6 +135,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 4
@@ -179,6 +182,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 5
@@ -194,7 +198,7 @@
         "shootArc": "arch",
         "actionPointGain": 1,
         "shootCooldown": 0,
-        "value": 1,
+        "value": 2,
         "moveBudget": 0,
         "actionPoints": 3,
         "ammo": 0,
@@ -225,6 +229,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 5
@@ -274,6 +279,7 @@
             "hide",
             "javelin"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 3
@@ -320,6 +326,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 3,
         "recruitable": true,
         "unitClass": "mounted",
         "sight": 4
@@ -353,7 +360,7 @@
         "armorFlankRight": -1,
         "armorRear": -2,
         "hexDamage": true,
-        "damageFront": 0,
+        "damageFront": 1,
         "damageFrontLeft": 0,
         "damageFrontRight": 0,
         "damageFlankLeft": 1,
@@ -365,7 +372,10 @@
         "passWater": false,
         "climbLevel": 1,
         "canHide": false,
-        "abilities": [],
+        "abilities": [
+            "charge"
+        ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "mounted",
         "sight": 4
@@ -412,8 +422,10 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [
-            "javelin"
+            "javelin",
+            "shields"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "melee",
         "sight": 3
@@ -460,8 +472,9 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [
-            "trap"
+            "bash"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "melee",
         "sight": 2
@@ -511,6 +524,7 @@
             "charge",
             "javelin"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "mounted",
         "sight": 3
@@ -526,7 +540,7 @@
         "shootArc": "straight",
         "actionPointGain": 1,
         "shootCooldown": 0,
-        "value": 2,
+        "value": 3,
         "moveBudget": 0,
         "actionPoints": 7,
         "ammo": 0,
@@ -557,8 +571,11 @@
         "climbLevel": 2,
         "canHide": true,
         "abilities": [
-            "hide"
+            "hide",
+            "berserk",
+            "bash"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "melee",
         "sight": 2
@@ -582,7 +599,7 @@
         "meleeDamage": 0,
         "charge": 0,
         "shootDamage": 2,
-        "splashDamage": 1,
+        "splashDamage": 2,
         "armor": 0,
         "hexArmor": true,
         "armorFront": -1,
@@ -591,7 +608,7 @@
         "armorFlankLeft": -2,
         "armorFlankRight": -2,
         "armorRear": -2,
-        "hexDamage": false,
+        "hexDamage": true,
         "damageFront": 0,
         "damageFrontLeft": 0,
         "damageFrontRight": 0,
@@ -605,6 +622,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 6
@@ -651,6 +669,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "other",
         "sight": 4
@@ -697,6 +716,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "hero",
         "sight": 3
@@ -743,6 +763,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 1,
         "recruitable": true,
         "unitClass": "ranged",
         "sight": 6
@@ -789,6 +810,7 @@
         "climbLevel": 0,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 1,
         "recruitable": false,
         "unitClass": "other",
         "sight": 1
@@ -835,6 +857,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": false,
         "unitClass": "melee",
         "sight": 2
@@ -883,6 +906,7 @@
         "abilities": [
             "hide"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": false,
         "unitClass": "hero",
         "sight": 4
@@ -898,7 +922,7 @@
         "shootArc": "straight",
         "actionPointGain": 1,
         "shootCooldown": 0,
-        "value": 3,
+        "value": 1,
         "moveBudget": 3,
         "actionPoints": 2,
         "ammo": 0,
@@ -931,6 +955,7 @@
         "abilities": [
             "hide"
         ],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "melee",
         "sight": 3
@@ -977,6 +1002,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 4,
         "recruitable": true,
         "unitClass": "other",
         "sight": 4
@@ -1023,6 +1049,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 3,
         "recruitable": true,
         "unitClass": "other",
         "sight": 4
@@ -1069,6 +1096,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 3,
         "recruitable": true,
         "unitClass": "other",
         "sight": 5
@@ -1115,6 +1143,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "other",
         "sight": 3
@@ -1161,6 +1190,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 2,
         "recruitable": true,
         "unitClass": "other",
         "sight": 4
@@ -1207,6 +1237,7 @@
         "climbLevel": 2,
         "canHide": false,
         "abilities": [],
+        "actionPointSpendCap": 1,
         "recruitable": true,
         "unitClass": "other",
         "sight": 5
@@ -1233,6 +1264,7 @@
         "shootMin": 0,
         "shootArc": "straight",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 0,
         "value": 4,
         "moveBudget": 4,
@@ -1279,6 +1311,7 @@
         "shootMin": 0,
         "shootArc": "straight",
         "actionPointGain": 2,
+        "actionPointSpendCap": 3,
         "shootCooldown": 1,
         "value": 4,
         "moveBudget": 4,
@@ -1325,6 +1358,7 @@
         "shootMin": 0,
         "shootArc": "arch",
         "actionPointGain": 1,
+        "actionPointSpendCap": 1,
         "shootCooldown": 1,
         "value": 0,
         "moveBudget": 0,
@@ -1371,6 +1405,7 @@
         "shootMin": 2,
         "shootArc": "arch",
         "actionPointGain": 1,
+        "actionPointSpendCap": 1,
         "shootCooldown": 0,
         "value": 3,
         "moveBudget": 0,
@@ -1410,13 +1445,16 @@
         "passUnits": false,
         "infantry": true,
         "king": false,
-        "abilities": [],
+        "abilities": [
+            "trap"
+        ],
         "move": 1,
         "sight": 2,
         "shoot": 0,
         "shootMin": 0,
         "shootArc": "straight",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 0,
         "value": 1,
         "moveBudget": 0,
@@ -1465,6 +1503,7 @@
         "shootMin": 0,
         "shootArc": "arch",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 1,
         "value": 3,
         "moveBudget": 0,
@@ -1511,6 +1550,7 @@
         "shootMin": 0,
         "shootArc": "arch",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 0,
         "value": 0,
         "moveBudget": 0,
@@ -1559,6 +1599,7 @@
         "shootMin": 0,
         "shootArc": "arch",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 0,
         "value": 0,
         "moveBudget": 0,
@@ -1607,6 +1648,7 @@
         "shootMin": 0,
         "shootArc": "straight",
         "actionPointGain": 1,
+        "actionPointSpendCap": 2,
         "shootCooldown": 0,
         "value": 1,
         "moveBudget": 0,
@@ -1655,11 +1697,12 @@
         "shoot": 2,
         "shootMin": 2,
         "shootArc": "arch",
-        "actionPointGain": 1,
+        "actionPointGain": 2,
+        "actionPointSpendCap": 3,
         "shootCooldown": 0,
-        "value": 0,
+        "value": 4,
         "moveBudget": 0,
-        "actionPoints": 5,
+        "actionPoints": 6,
         "ammo": 2,
         "hp": 6,
         "meleeDamage": 1,

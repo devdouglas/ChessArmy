@@ -316,6 +316,8 @@ export type UnitStats = UnitTraits & {
   shootArc: ShootArc;
   /** AP granted at the start of each of this unit's turns. */
   actionPointGain: number;
+  /** Max AP this unit may spend in one of its turns (yellow window). */
+  actionPointSpendCap: number;
   /** Own turns you must sit out shooting after firing (1 = next activation, 2 = two, …). */
   shootCooldown: number;
   value: number;
@@ -449,13 +451,24 @@ export function defaultSight(move: number, shoot: number): number {
 }
 
 export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
-  raw: Record<UnitRole, Omit<UnitStats, 'sight' | 'unitClass' | 'recruitable'>>,
+  raw: Record<
+    UnitRole,
+    Omit<UnitStats, 'sight' | 'unitClass' | 'recruitable' | 'actionPointSpendCap'> & {
+      /** Omitted → former formula: pool ? gain+1 : max(1, gain). */
+      actionPointSpendCap?: number;
+    }
+  >,
 ): Record<UnitRole, UnitStats> => {
   const out = {} as Record<UnitRole, UnitStats>;
   for (const role of STOCK_UNIT_TYPES) {
     const s = raw[role];
+    const spendDefault =
+      s.actionPoints > 0
+        ? s.actionPointGain + 1
+        : Math.max(1, s.actionPointGain);
     out[role] = {
       ...s,
+      actionPointSpendCap: s.actionPointSpendCap ?? spendDefault,
       recruitable:
         role !== 'dummy' && (s.meleeDamage > 0 || s.shoot > 0 || s.charge > 0),
       unitClass: STOCK_UNIT_CLASS[role],

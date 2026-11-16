@@ -7,6 +7,10 @@ import {
   hasAbility,
   javelinIsSpecial,
   canTrap,
+  canBash,
+  canBerserk,
+  canShields,
+  berserkFoes,
   isConcealed,
   isHideCover,
   applyAction,
@@ -44,6 +48,7 @@ import {
   isPalisade,
   isWall,
   pieceVisible,
+  pikesVisible,
   revealPiece,
   viewingSides,
   previewMove,
@@ -100,17 +105,21 @@ import {
   tokenOnHex,
   tokenIsNoTouch,
   MAX_UNIT_PROMOTIONS,
+  PROMOTION_TOKEN_BLURB,
+  PROMOTION_TOKEN_TYPES,
+  STATUS_UNIT_TOKEN_TYPES,
   UNIT_TOKEN_LABEL,
-  UNIT_TOKEN_TYPES,
   actionPointGainOf,
   armorBonusOf,
   armorFaceOf,
   attackBonusOf,
   chargeDamageOf,
+  chevronPromotionTokensOf,
   climbLevelOf,
   countUnitToken,
   hasAllTerrain,
   isPromotionToken,
+  isStackablePromotion,
   meleeDamageOf,
   promotionTokensOf,
   shootDamageOf,
@@ -216,6 +225,7 @@ import {
   resizeTerrain,
   facingFromStamp,
   sanitizeStampFacing,
+  settleRandomSpawnHeights,
   type ArmyEdge,
   type ArmyStamp,
   type MapOptions,
@@ -404,6 +414,14 @@ import {
   isEraAdmin,
   syncAccountProgress,
 } from './account';
+import {
+  mountCampaignEditor,
+  type CampaignEditorHandle,
+} from './campaign/editor';
+import {
+  mountCampaignPlay,
+  type CampaignPlayHandle,
+} from './campaign/play';
 import pkg from '../package.json';
 
 const APP_NAME = 'There Will Be Legions';
@@ -412,7 +430,16 @@ document.title = `${APP_NAME} — v${APP_VERSION}`;
 
 type Mode = 'hotseat' | 'ai';
 type ActionMode = 'move' | 'shoot' | 'charge';
-type Screen = 'start' | 'play' | 'levels' | 'editor' | 'units' | 'ai' | 'experimental';
+type Screen =
+  | 'start'
+  | 'play'
+  | 'levels'
+  | 'editor'
+  | 'units'
+  | 'ai'
+  | 'experimental'
+  | 'campaign-map'
+  | 'campaign-play';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
 type Playlist = { kind: PlaylistKind; ids: string[]; index: number };
 type MapPickKind = 'ai' | 'hotseat' | 'tutorial' | 'campaign';
@@ -473,6 +500,8 @@ let defaultFormationId: string | null = getDefaultFormationId();
 let activeLevelId: string | null = defaultLevelId ?? getActiveLevelId();
 let mode: Mode = 'ai';
 let screen: Screen = 'start';
+let campaignEditor: CampaignEditorHandle | null = null;
+let campaignPlay: CampaignPlayHandle | null = null;
 let selectedPeriod: Period = getSelectedPeriod();
 let randomSetup: RandomSetup | null = null;
 let randomArmies: Omit<RandomSetup, 'kind'> | null = null;
@@ -883,11 +912,14 @@ function confirmRoguePromoAssign(pieceId: string) {
     ...(piece.unitTokens ?? []),
     taken.promo,
   ]);
+  const nextPiece = { ...piece, unitTokens };
+  // HP +2 raises max — bump current HP too so the gain is felt immediately.
+  if (taken.promo === 'hp2') {
+    nextPiece.hp = hpLeft(piece) + 2;
+  }
   state = {
     ...state,
-    pieces: state.pieces.map((p) =>
-      p.id === pieceId ? { ...p, unitTokens } : p,
-    ),
+    pieces: state.pieces.map((p) => (p.id === pieceId ? nextPiece : p)),
   };
   rogueShop = taken.shop;
   roguePromoAssign = null;
@@ -1068,6 +1100,7 @@ function startMatch(reshuffleRandom = true) {
         state.hexRadius,
       ),
     );
+    settleRandomSpawnHeights(state);
   }
   applyLayout(computeLayout(), false);
   render();
@@ -1570,7 +1603,19 @@ function reset(reshuffle = true) {
   startMatch(reshuffle);
 }
 
+function destroyCampaignEditor() {
+  campaignEditor?.destroy();
+  campaignEditor = null;
+}
+
+function destroyCampaignPlay() {
+  campaignPlay?.destroy();
+  campaignPlay = null;
+}
+
 function showStart() {
+  destroyCampaignEditor();
+  destroyCampaignPlay();
   editorPainting = false;
   briefingOpen = false;
   boardPopup = null;
@@ -1590,6 +1635,28 @@ function showStart() {
   render();
 }
 
+async function enterCampaignPlay() {
+  destroyCampaignEditor();
+  destroyCampaignPlay();
+  screen = 'campaign-play';
+  app.classList.remove('start-screen', 'editor-screen');
+  app.innerHTML = '';
+  campaignPlay = await mountCampaignPlay(app, {
+    onBack: () => showStart(),
+  });
+}
+
+async function enterCampaignMap() {
+  destroyCampaignPlay();
+  destroyCampaignEditor();
+  screen = 'campaign-map';
+  app.classList.remove('start-screen', 'editor-screen');
+  app.innerHTML = '';
+  campaignEditor = await mountCampaignEditor(app, {
+    onBack: () => showStart(),
+  });
+}
+
 function skirmishMaps(): SavedLevel[] {
   return levelsInCategory('skirmish', selectedPeriod);
 }
@@ -1598,32 +1665,33 @@ function tutorialMaps(): SavedLevel[] {
   return levelsInCategory('tutorial', selectedPeriod);
 }
 
-/** Other play modes stay shut until every tutorial map in this era is cleared. */
-function tutorialDone(): boolean {
-  const maps = tutorialMaps();
-  return maps.length === 0 || maps.every((l) => hasWonLevel(l.id));
-}
-
-/** Wins needed in this era's tutorials before Randomised / Roguelite open. */
-const TUTORIALS_FOR_RANDOM = 10;
+/** Wins needed in this era's tutorials before other play modes open. */
+const TUTORIALS_TO_UNLOCK = 10;
 
 function tutorialsWonCount(): number {
   return tutorialMaps().filter((l) => hasWonLevel(l.id)).length;
 }
 
-/** Randomised Battle + Roguelite: open after N tutorial wins (or if there are fewer tutorials, all of them). */
-function randomModesUnlocked(): boolean {
+/** Other modes open after N tutorial wins (or all of them, if fewer exist). */
+function tutorialDone(): boolean {
   const maps = tutorialMaps();
   if (!maps.length) return true;
-  const need = Math.min(TUTORIALS_FOR_RANDOM, maps.length);
-  return tutorialsWonCount() >= need;
+  return tutorialsWonCount() >= Math.min(TUTORIALS_TO_UNLOCK, maps.length);
+}
+
+function randomModesUnlocked(): boolean {
+  return tutorialDone();
+}
+
+function tutorialUnlockTitle(): string {
+  const maps = tutorialMaps();
+  const need = Math.min(TUTORIALS_TO_UNLOCK, maps.length || TUTORIALS_TO_UNLOCK);
+  const have = tutorialsWonCount();
+  return `Clear ${need} ${TUTORIAL_PLAY_TITLE} (${have}/${need})`;
 }
 
 function randomModesLockTitle(): string {
-  const maps = tutorialMaps();
-  const need = Math.min(TUTORIALS_FOR_RANDOM, maps.length || TUTORIALS_FOR_RANDOM);
-  const have = tutorialsWonCount();
-  return `Clear ${need} ${TUTORIAL_PLAY_TITLE} (${have}/${need})`;
+  return tutorialUnlockTitle();
 }
 
 function eraPlayLocked(period: Period = selectedPeriod): boolean {
@@ -2215,19 +2283,22 @@ function paintEditorUnitToken(col: number, row: number, first = true) {
   const cur = sanitizeUnitTokens(editorPieces[idx].unitTokens);
   const has = cur.includes(kind);
   const promo = isPromotionToken(kind);
+  const stackable = isStackablePromotion(kind);
   const promoCount = promotionTokensOf({ unitTokens: cur }).length;
   const kindCount = countUnitToken({ unitTokens: cur }, kind);
   if (!editorUnitTokenStroke) {
-    if (promo) {
+    if (stackable) {
       editorUnitTokenStroke =
         promoCount < MAX_UNIT_PROMOTIONS ? 'add' : kindCount > 0 ? 'remove' : 'add';
     } else {
+      // Status tokens and unique General: toggle on/off.
       editorUnitTokenStroke = has ? 'remove' : 'add';
     }
   }
   if (editorUnitTokenStroke === 'add') {
     if (promo) {
       if (promoCount >= MAX_UNIT_PROMOTIONS) return;
+      if (!stackable && has) return;
     } else if (has) {
       return;
     }
@@ -2238,7 +2309,7 @@ function paintEditorUnitToken(col: number, row: number, first = true) {
   let next: typeof cur;
   if (editorUnitTokenStroke === 'add') {
     next = [...cur, kind];
-  } else if (promo) {
+  } else if (stackable) {
     const drop = cur.lastIndexOf(kind);
     next = drop < 0 ? cur : [...cur.slice(0, drop), ...cur.slice(drop + 1)];
   } else {
@@ -3219,16 +3290,42 @@ async function playAnimatedAction(action: Action): Promise<void> {
     action.kind === 'charge' ||
     action.kind === 'shoot' ||
     action.kind === 'rotate' ||
-    action.kind === 'trap'
+    action.kind === 'trap' ||
+    action.kind === 'bash' ||
+    action.kind === 'berserk'
   ) {
     const actor = getPiece(state, action.pieceId);
     if (actor) await showBreakCover(actor);
   }
 
+  if (action.kind === 'berserk') {
+    const actor = getPiece(state, action.pieceId);
+    const g = actor
+      ? document.querySelector<SVGGElement>(
+          `g.piece-unit[data-id="${CSS.escape(actor.id)}"]`,
+        )
+      : null;
+    if (actor && g) {
+      const from = { col: actor.col, row: actor.row };
+      for (const foe of berserkFoes(state, actor)) {
+        await animateMoveAlong(g, actor, [], from, { col: foe.col, row: foe.row });
+      }
+    }
+    state = applyAction(state, action);
+    if (state.turn !== turnBefore) specialMode = null;
+    applyHotseatTint();
+    updateChrome();
+    await playPendingFx();
+    animating = false;
+    return;
+  }
+
   if (
     action.kind === 'skip' ||
     action.kind === 'rotate' ||
-    action.kind === 'trap'
+    action.kind === 'trap' ||
+    action.kind === 'bash' ||
+    action.kind === 'shields'
   ) {
     state = applyAction(state, action);
     if (state.turn !== turnBefore) specialMode = null;
@@ -3565,6 +3662,32 @@ async function placeTrap(hex: Hex) {
   retainSelection(actingId);
   render();
   await maybeAi();
+}
+
+async function useInstantSpecial(kind: 'bash' | 'berserk' | 'shields') {
+  if (!selectedId || animating || !canControl()) return;
+  const ok =
+    kind === 'bash'
+      ? canBash(state, selectedId)
+      : kind === 'berserk'
+        ? canBerserk(state, selectedId)
+        : canShields(state, selectedId);
+  if (!ok) return;
+  const actingId = selectedId;
+  specialMode = null;
+  await playAnimatedAction({ kind, pieceId: actingId });
+  if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
+    selectedId = actingId;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+    render();
+  } else {
+    retainSelection(actingId);
+    render();
+    await maybeAi();
+  }
 }
 
 
@@ -4027,6 +4150,7 @@ function renderBoard(): string {
   for (const t of drawTokens) {
     const banned = tokenIsNoTouch(t);
     if (!editing && t.type === 'notouch') continue;
+    if (!editing && t.type === 'pikes' && !pikesVisible(state, t, viewers)) continue;
     if (
       !editing &&
       t.type === 'tutorial' &&
@@ -4132,9 +4256,17 @@ function renderBoard(): string {
       !editing && hasActed(state, p.id)
         ? actedBadgeSvg(pr * 0.92, 0.2, badgeR)
         : '';
-    // Hide / javelin are live actions, not piece badges. Charge is editor-only here.
+    // Dock actions are not piece badges. Charge is editor-only here.
     const boardAbilities = abilitiesOf(p).filter((id) => {
-      if (id === 'hide' || id === 'javelin') return false;
+      if (
+        id === 'hide' ||
+        id === 'javelin' ||
+        id === 'shields' ||
+        id === 'bash' ||
+        id === 'berserk'
+      ) {
+        return false;
+      }
       if (id === 'charge') return editing;
       return true;
     });
@@ -4154,7 +4286,6 @@ function renderBoard(): string {
     const tokenMarks = unitTokensOf(p).filter(
       (id) =>
         !isPromotionToken(id) &&
-        id !== 'general' &&
         (id === 'story' ||
           (id === 'neutral' && editing) ||
           (editing && (id === 'hidden' || id === 'exhausted'))),
@@ -4173,7 +4304,7 @@ function renderBoard(): string {
               : storyBadgeSvg(cx, cy, badgeR);
       })
       .join('');
-    const promos = promotionTokensOf(p);
+    const promos = chevronPromotionTokensOf(p);
     // Rank stack (Vs + optional general star) above forest/house.
     if (promos.length > 0 || isGeneral) {
       promoSvg += `<g class="piece-promos" transform="translate(${x}, ${y})">${unitRankBadgesSvg(
@@ -4199,6 +4330,11 @@ function renderBoard(): string {
     piecesSvg += `
       <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
         ${sel ? selRing : ''}
+        ${
+          p.shieldsUp
+            ? `<circle class="piece-shields" cx="0" cy="0" r="${(pr + 5.2).toFixed(1)}" fill="none" stroke="#8fd4ff" stroke-width="1.7" stroke-dasharray="2.6 1.8" />`
+            : ''
+        }
         ${pieceBodySvg(shown, pr)}
         <g class="piece-facing" transform="rotate(${rot.toFixed(1)})">
           ${
@@ -4362,6 +4498,8 @@ function renderActionBar(): string {
     hint = canMove ? "In water — 1 hex, can't shoot" : "In water — can't shoot";
   } else if (isSleeping(piece)) {
     hint = 'Sleeping — not active';
+  } else if (piece.shieldsUp) {
+    hint = 'Shields up — ranged immune until your next turn';
   } else if (!canMove && !canShoot && !canCharge) {
     hint = isDepleted(piece)
       ? "Empty — can't shoot"
@@ -4380,7 +4518,7 @@ function renderActionBar(): string {
     !(state.scoutPieceId && state.scoutPieceId !== piece.id)
   ) {
     if (piece.walkTo) {
-      hint = `March ${piece.walkTo.col},${piece.walkTo.row} · click the destination again to cancel`;
+      hint = `March ${piece.walkTo.col},${piece.walkTo.row} · another order cancels`;
     }
   }
 
@@ -4391,12 +4529,10 @@ function renderActionBar(): string {
         ? `<span class="action-flag">empty</span>`
         : '';
 
-  const cancelMarch =
-    piece.walkTo && piece.side === state.turn && canControl() && !choosing
-      ? `<button type="button" id="cancel-march">Cancel march</button>`
-      : '';
-
-  const promos = promotionTokensOf(piece);
+  const promos = [
+    ...(hasUnitToken(piece, 'general') ? (['general'] as const) : []),
+    ...chevronPromotionTokensOf(piece),
+  ];
   const promoIcons = promos.length
     ? `<span class="action-bar-promos">${promos
         .map((id) => {
@@ -4406,7 +4542,7 @@ function renderActionBar(): string {
         .join('')}</span>`
     : '';
 
-  const meta = [cancelMarch, extra, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
+  const meta = [extra, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
     .filter(Boolean)
     .join('');
 
@@ -4437,6 +4573,9 @@ function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (id === 'trap') {
     return canTrap(state, piece.id);
   }
+  if (id === 'bash') return canBash(state, piece.id);
+  if (id === 'berserk') return canBerserk(state, piece.id);
+  if (id === 'shields') return canShields(state, piece.id);
   if (id === 'charge') return legalHighlights(state, piece.id).some((h) => h.kind === 'charge');
   if (id === 'javelin') return !isReloading(piece) && !isDepleted(piece);
   return true;
@@ -4481,7 +4620,7 @@ function statRow(label: string, value: string, note = '', warn = false): string 
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail =
-    '<p class="empty-hint">Click a piece — green is move, gold is climb / AP spend, red is shoot. Specials (hide / javelin / charge / trap) replace overlapping clicks.</p>';
+    '<p class="empty-hint">Click a piece — green is move, gold is climb / AP spend, red is shoot. Specials (hide / javelin / charge / trap) replace overlapping clicks. Shields up, bash, and berserk fire from the dock.</p>';
   let moreStats = '';
 
   if (piece) {
@@ -4520,6 +4659,16 @@ function renderSidebar(): string {
       apWarn = spendable <= 0;
     } else if (maxAp > 0) {
       apNote = `${spendable} spendable / turn (cap ${cap})`;
+    }
+    if (
+      isExperimentalOn('rest-bonus-ap') &&
+      piece.side === state.turn &&
+      !isSleeping(piece) &&
+      !hasActed(state, piece.id) &&
+      !piece.actedThisTurn &&
+      !piece.movedThisTurn
+    ) {
+      apNote = apNote ? `${apNote} · +1 if idle` : '+1 AP if idle';
     }
 
     const vitals = [
@@ -4648,6 +4797,9 @@ function renderSidebar(): string {
       if (s.passWater) extraNotes.push('Move onto water (1 hex/action, no shoot; blocked at 0 AP with 2 HP or less; turn-start AP penalty or 2 HP)');
       if (s.passUnits) extraNotes.push('Pathing through pieces');
     }
+    if (piece.shieldsUp) {
+      extraNotes.push("Shields up — ranged attacks do nothing until this side's next turn");
+    }
     if (hasAbility(piece, 'charge')) extraNotes.push(
       `Charge special: ${chargeDamageOf(piece)} dmg through enemies (armor applies). Inside the normal move this spends nothing. Past that move, picking the tile spends 1 AP. A living blocker stops you unless that hit kills it, or you land empty beyond`,
     );
@@ -4757,9 +4909,9 @@ function renderSidebar(): string {
             <div><dt>Walls</dt><dd>token on a walkable hex; blocks walk and LOS. Rockets demolish, tile stays. House is the same wall rules, house graphic — paint onto a unit in the editor to garrison them. That unit can leave; afterwards nobody can enter</dd></div>
             <div><dt>Palisade</dt><dd>wooden wall token. Units cannot cross. Arch shots go over; straight shots do not. Three melee hits break it (3rd takes the hex). Charge does not pass through unless that hit breaks it. Rockets smash it. Tree is the same, tree graphic</dd></div>
             <div><dt>Forest</dt><dd>three trees, no hex fill. Walkable — units hide behind the trees. Incoming shots chip the trees (3 HP, same as palisade); occupant unharmed until the wood is gone. Occupants can still shoot out. Move through; charge cannot pass through. Units with Can hide are invisible to enemies while in forest, until they move, attack, or are hit</dd></div>
-            <div><dt>Action points</dt><dd>pool + per-turn spend window (gain+1). Climb and water upkeep spend AP. Spendable AP extras stay available within the per-turn window (leftover steps don't carry)</dd></div>
+            <div><dt>Action points</dt><dd>pool + per-turn spend window (Max AP spent / turn). Climb and water upkeep spend AP. Spendable AP extras stay available within the per-turn window (leftover steps don't carry)</dd></div>
             <div><dt>Melee</dt><dd>enter occupied hex; kill takes it; min 1 dmg vs armor. Palisades take 3 melee hits. Rout (shake + dissolve): an enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals never rout</dd></div>
-            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap units are immune and can plant or clear them. Spawn / stand still does not trigger. Palisade: wood fence, 3 HP — melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). No charge through unless that hit breaks it, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP, shoot damage applies), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
+            <div><dt>Tile tokens</dt><dd>Stack on a hex in paint order; forest and house always draw on top. Pikes: walking onto the hex deals 1 damage (armor min 1). Trap-planted pikes are hidden from enemies (they walk in). Trap units are immune and clear pikes by walking over them, or plant/clear as a special. Spawn / stand still does not trigger. Palisade: wood fence, 3 HP — melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). No charge through unless that hit breaks it, arch over. Tree: same as palisade, tree graphic. Forest: three trees, no hex; walkable cover. Shots chip the trees (3 HP, shoot damage applies), occupant unharmed until they fall; shoot out OK; charge cannot pass through. Can hide units are invisible to enemies while in forest until they move, attack, or are hit. Wall: impassable, blocks LOS, rockets smash. House: wall with a house graphic. Paint onto a unit in the editor to start them inside; they can shoot out and leave, then the house seals — nobody re-enters. Flag: walk onto it to capture. Own every flag on the map to win (one flag = take it; several = take them all). Recapture by walking onto an enemy flag. Units already on a flag at kickoff hold it. Board: first friendly walk pops the message; later walks stay quiet — click the hex to reread. Editor: click the board to set the text. Do not touch: paint on a tile or onto another token; AI will not walk that hex (players still can)</dd></div>
             <div><dt>Unit tokens</dt><dd>Paint onto a unit. General: command piece — +1 HP (gold heart first in the row, last remaining), +1 AP max, +1 value; killing every General token on a side can win the match. Hidden: starts the match invisible to enemies (anywhere). Breaks after the unit moves, attacks, or is hit. The Hide ability hides them again when they step onto forest. AI hidden units stay put until they can attack or are provoked. If a visible ally dies and only hidden pieces remain, they break cover and that AI goes aggressive — a kickoff ambush (everyone hidden from the start) stays camped. Exhausted: starts the match with 0 AP — no climb or spend until AP returns. In play the hidden and exhausted icons follow the live status and come back if Hide or an empty pool makes it true again. Neutral: starts unaligned — not in any army, no turn. Any unit that walks onto it converts it to that army, no damage. Grey on the board, no token icon in play. Sleep: not active until hit (melee, shot, splash, pikes). No move, shoot, turn, or AP spend while asleep. Story: a message board popup, either when the unit is killed or when a melee move touches it</dd></div>
             <div><dt>Shield</dt><dd>DMG = attack − shield (melee min 1). Negative shield boosts melee only — shots treat it as 0. Hex: a −2 (red) face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd></div>
             <div><dt>Units / turn</dt><dd>activate up to that many pieces, then End turn. Hex-shield units can Turn on an adjacent rear / −2 hex (spends AP). Spendable AP extras stay available within the per-turn window</dd></div>
@@ -5010,22 +5162,34 @@ function renderEndOverlay(): string {
             }
           </div>
           <div class="rogue-shop-head rogue-promo-head">
-            <span class="rogue-shop-hint">Promotions — pick free, assign to a survivor (keeps until death)</span>
+            <span class="rogue-shop-hint">Promotions — choose one free, assign to a survivor (keeps until death)</span>
           </div>
-          <div class="rogue-shop-offers rogue-shop-promos">
+          <div class="rogue-promo-block">
+            <div class="rogue-shop-offers rogue-shop-promos">
+              ${
+                shop.promotions.length
+                  ? shop.promotions
+                      .map((promo, i) => {
+                        const label = UNIT_TOKEN_LABEL[promo];
+                        const blurb = PROMOTION_TOKEN_BLURB[promo].replace(
+                          / Stacks as a V chevron\./,
+                          '',
+                        );
+                        return `<button type="button" class="rogue-offer rogue-promo ${promo}${canPromo ? '' : ' unaffordable'}" data-rogue-promo="${i}"${canPromo ? '' : ' disabled'}>
+                          <span class="rogue-promo-glyph"><svg viewBox="-12 -12 24 24" width="36" height="36" aria-hidden="true">${unitTokenGlyphSvg(promo, 22)}</svg></span>
+                          <span class="rogue-offer-name">${escapeHtml(label)}</span>
+                          <span class="rogue-offer-cost">free</span>
+                          <span class="rogue-promo-tip">${escapeHtml(blurb)}</span>
+                        </button>`;
+                      })
+                      .join('')
+                  : `<p class="rogue-shop-empty">Promotion taken.</p>`
+              }
+            </div>
             ${
               shop.promotions.length
-                ? shop.promotions
-                    .map((promo, i) => {
-                      const label = UNIT_TOKEN_LABEL[promo];
-                      return `<button type="button" class="rogue-offer rogue-promo ${promo}${canPromo ? '' : ' unaffordable'}" data-rogue-promo="${i}"${canPromo ? '' : ' disabled'}>
-                        <span class="rogue-promo-glyph">${unitTokenGlyphSvg(promo, 22)}</span>
-                        <span class="rogue-offer-name">${escapeHtml(label)}</span>
-                        <span class="rogue-offer-cost">free</span>
-                      </button>`;
-                    })
-                    .join('')
-                : `<p class="rogue-shop-empty">No promotions left.</p>`
+                ? `<p class="rogue-promo-detail">Hover a promotion</p>`
+                : ''
             }
           </div>
         </div>`
@@ -5423,11 +5587,11 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   // The armed second action is a normal move or shot, not another march order.
   if (piece.movedThisTurn || hasActed(state, piece.id)) return false;
   if (eq(hex, { col: piece.col, row: piece.row })) return false;
-  const cancel = !!(piece.walkTo && eq(piece.walkTo, hex));
   // In-range moves (including spendable AP extras) are actions — not march orders.
-  if (!cancel && !canOrderMarch(state, piece, hex)) return false;
-  const acting = !cancel && canActWithSelected() && selectedId === piece.id;
-  void commitMarch(piece.id, cancel ? null : hex, acting);
+  // Re-clicking the destination does not cancel; give another order instead.
+  if (!canOrderMarch(state, piece, hex)) return false;
+  const acting = canActWithSelected() && selectedId === piece.id;
+  void commitMarch(piece.id, hex, acting);
   return true;
 }
 
@@ -6002,13 +6166,13 @@ function renderStartScreen(): string {
     eraClosed
       ? ` disabled title="Under construction"`
       : !tutOpen || empty
-        ? ` disabled title="${!tutOpen ? `Finish ${TUTORIAL_PLAY_TITLE} to unlock` : emptyTitle}"`
+        ? ` disabled title="${!tutOpen ? tutorialUnlockTitle() : emptyTitle}"`
         : ` title="${openTitle}"`;
   const gateMeta = (empty: boolean, emptyMeta: string, openMeta: string) =>
     eraClosed
       ? 'Under construction'
       : !tutOpen
-        ? `Locked · finish ${TUTORIAL_PLAY_TITLE}`
+        ? `Locked · ${tutorialUnlockTitle()}`
         : empty
           ? emptyMeta
           : openMeta;
@@ -6058,6 +6222,10 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${eraClosed ? lockIconHtml() : ''}${TUTORIAL_PLAY_TITLE}</span>
             <span class="start-opt-meta">${eraClosed ? 'Under construction' : tutorialN ? `${mapWord(tutorialN)} · vs AI` : 'No tutorial maps'}</span>
           </button>
+          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Stars pay gold (win / general lives / no losses). General death crowns your strongest unit next turn — wipeout still ends the run. Shop of 3 recruits + 1 free promotion (pick of 3) after each win; enemy gains one free unit.')}>
+            <span class="start-opt-name">${rogueLock}Roguelite</span>
+            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · stars→gold · promos`)}</span>
+          </button>
           <button type="button" class="start-opt" data-start="campaign"${gateAttr(!campaignN, 'Mark saved levels as Campaign in the Editor', 'Pick a campaign map vs AI. Finish one to unlock the next.')}>
             <span class="start-opt-name">${menuLock}Campaign</span>
             <span class="start-opt-meta">${gateMeta(!campaignN, 'No campaign maps', `${mapWord(campaignN)} · vs AI`)}</span>
@@ -6074,13 +6242,15 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${randomLock}Randomised Battle</span>
             <span class="start-opt-meta">${randomGateMeta('Generated map · vs AI')}</span>
           </button>
-          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr('2v2 randomised run. Win 10 battles; killed units are gone for good. Stars pay gold (win / general lives / no losses). General death crowns your strongest unit next turn — wipeout still ends the run. Shop of 3 recruits + 3 free promotions after each win; enemy gains one free unit.')}>
-            <span class="start-opt-name">${rogueLock}Roguelite</span>
-            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL} · stars→gold · promos`)}</span>
+          <button type="button" class="start-opt" data-start="totalwar"
+            title="Strategic Europe campaign map — pan, zoom, inspect regions.">
+            <span class="start-opt-name">Total war</span>
+            <span class="start-opt-meta">Campaign map · Europe</span>
           </button>
         </div>
         <div class="start-tools">
           <button type="button" class="start-reset" data-start="editor">Editor</button>
+          <button type="button" class="start-reset" data-start="tweditor">TW editor</button>
           <button type="button" class="start-reset" data-start="experimental">Experimental features</button>
           <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
         </div>
@@ -6137,6 +6307,8 @@ function bindToolbarEvents() {
       else if (kind === 'roguelite') startRogueRun();
       else if (kind === 'editor') enterLevels(true);
       else if (kind === 'experimental') enterExperimental();
+      else if (kind === 'totalwar') void enterCampaignPlay();
+      else if (kind === 'tweditor') void enterCampaignMap();
     });
   });
   app.querySelector('#reset-progress')?.addEventListener('click', () => {
@@ -6365,14 +6537,36 @@ function unitTokenSwatchSvg(type: UnitTokenType): string {
 }
 
 function renderUnitTokenPanel(): string {
-  const tokens = UNIT_TOKEN_TYPES.map((t) => {
+  const tokens = STATUS_UNIT_TOKEN_TYPES.map((t) => {
     const brush: UnitTokenBrush = `unit:${t}`;
     return `<button type="button" class="brush unit-token ${t}${editorBrush === brush ? ' active' : ''}" data-brush="${brush}">${unitTokenSwatchSvg(t)}<span>${UNIT_TOKEN_LABEL[t]}</span></button>`;
   }).join('');
   return `
     <section class="editor-panel editor-panel-unit-tokens">
       <h3>Unit tokens</h3>
-      <p class="muted">Story opens a message. Promotions stack up to ${MAX_UNIT_PROMOTIONS} as V chevrons — duplicates ok. Clear promotions peels one chevron per paint.</p>
+      <p class="muted">Status stamps on a piece. Story opens a message when painted.</p>
+      <div class="editor-brushes">
+        ${tokens}
+      </div>
+    </section>`;
+}
+
+function renderPromotionPanel(): string {
+  const tokens = PROMOTION_TOKEN_TYPES.map((t) => {
+    const brush: UnitTokenBrush = `unit:${t}`;
+    return `<button type="button" class="brush unit-token ${t}${editorBrush === brush ? ' active' : ''}" data-brush="${brush}">${unitTokenSwatchSvg(t)}<span>${UNIT_TOKEN_LABEL[t]}</span></button>`;
+  }).join('');
+  let blurb = `Stack up to ${MAX_UNIT_PROMOTIONS} (General is unique). Clear peels one stamp per paint.`;
+  if (isUnitTokenBrush(editorBrush)) {
+    const kind = unitTokenFromBrush(editorBrush);
+    if (isPromotionToken(kind)) blurb = PROMOTION_TOKEN_BLURB[kind];
+  } else if (editorBrush === 'clear-promotions') {
+    blurb = 'Peels the last promotion (including General) one paint at a time.';
+  }
+  return `
+    <section class="editor-panel editor-panel-promotions">
+      <h3>Unit promotions</h3>
+      <p class="muted editor-promo-blurb">${escapeHtml(blurb)}</p>
       <div class="editor-brushes">
         ${tokens}
         <button type="button" class="brush unit-token clear-promotions${editorBrush === 'clear-promotions' ? ' active' : ''}" data-brush="clear-promotions">${TRASH_ICON_SVG}<span>Clear promotions</span></button>
@@ -7457,7 +7651,7 @@ function renderUnitEditor(): string {
           ${s.hexArmor ? '' : unitNumField(type, 'armor', 'Armor')}
           ${unitNumField(type, 'value', 'Value/weight')}
           ${unitNumField(type, 'actionPointGain', 'AP / turn')}
-          <p class="muted" style="margin:0;font-size:0.85em">spend/turn = AP/turn + 1</p>
+          ${unitNumField(type, 'actionPointSpendCap', 'Max AP spent / turn')}
           ${unitNumField(type, 'sight', 'Sight')}
         </div>
         <div class="unit-group">
@@ -7555,17 +7749,18 @@ function renderUnitEditor(): string {
           <dd><strong>Armor</strong> −2..+2, subtracted from incoming dmg (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank +2, general +1. Hex armor: a −2 face cannot be walked or shot (Experimental features, both on by default). Rout: enemy on the exact opposite hex, and one of those two faces is −2 (red). Friends and terrain never pin. Generals immune</dd>
           <dd><strong>Hex damage</strong> check to enable. Per-face 0–2. Each live face is facing pikes on the adjacent hex only: enemies take that damage when they enter. Standing there does not pulse again. 0 is outline only</dd>
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
-          <dd><strong>AP / turn</strong> action points granted at turn start. Spend window is gain+1</dd>
+          <dd><strong>AP / turn</strong> action points granted at turn start</dd>
+          <dd><strong>Max AP spent / turn</strong> spend window (yellow on the AP bar). Stock default was formerly gain+1</dd>
           <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
           <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Dude, Wolf, Catapult. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
-          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Trap replace the Special dock slot (a unit can have several). Command is the General unit token, not an ability</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Trap / Shields up / Bash / Berserk replace the Special dock slot (a unit can have several). Shields up, Bash, and Berserk fire when you press the button. Command is the General promotion, not an ability</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
           <dd><strong>Move cap</strong> total steps this activation, including AP extras (0 = none; scout stock 3). Cannot go past it</dd>
-          <dd><strong>AP max</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or for an extra straight-line action within the spend window (gain+1) — still inside the move cap. Unused steps of an action are lost</dd>
+          <dd><strong>AP max</strong> pool. Spend 1 to climb, to stay in water at the start of your turn, or for an extra straight-line action within Max AP spent / turn — still inside the move cap. Unused steps of an action are lost</dd>
           <dd><strong>Move to water</strong> stop on water hexes (that move ends momentum). Can't step in with 0 AP and 2 HP or less. From water: 1 hex per action, cannot shoot. Start of turn in water: 1 AP penalty (not an action), or 2 HP if you can't pay — leftover spendable AP can still buy an extra 1-hex</dd>
           <dd><strong>Climb level</strong> max height: 0 land, Hill lvl.1, Plateau lvl.2, Mountain lvl.3. Step ±1 only</dd>
           <dd><strong>Melee dmg</strong> bump an occupied hex; a kill takes the spot, else stop on the hex before. 0 = cannot melee</dd>
@@ -8583,22 +8778,14 @@ function bindEvents() {
     },
     true,
   );
-  app.querySelector('#cancel-march')?.addEventListener('click', () => {
-    if (!selectedId || animating || !canControl()) return;
-    const piece = getPiece(state, selectedId);
-    if (!piece?.walkTo) return;
-    state = setWalkOrder(state, selectedId, null);
-    hoverHex = null;
-    hoverPath = [];
-    commitPath = [];
-    pendingHex = null;
-    refreshHighlights();
-    render();
-  });
   app.querySelectorAll<HTMLButtonElement>('[id^="special-"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.id.slice('special-'.length);
       if (id === 'action') return;
+      if (id === 'bash' || id === 'berserk' || id === 'shields') {
+        void useInstantSpecial(id);
+        return;
+      }
       if (isAbilityId(id)) setSpecialMode(id);
     });
   });
@@ -8684,6 +8871,20 @@ function render() {
     return;
   }
 
+  if (screen === 'campaign-play') {
+    if (!campaignPlay) {
+      app.innerHTML = `<div class="board-wrap start-wrap"><p class="start-tag">Loading Total war…</p></div>`;
+    }
+    return;
+  }
+
+  if (screen === 'campaign-map') {
+    if (!campaignEditor) {
+      app.innerHTML = `<div class="board-wrap start-wrap"><p class="start-tag">Loading TW editor…</p></div>`;
+    }
+    return;
+  }
+
   if (screen === 'levels') {
     app.innerHTML = renderLevelsOverview();
     bindEvents();
@@ -8732,6 +8933,7 @@ function render() {
             ${renderMapPanel()}
             ${renderTokenPanel()}
             ${renderUnitTokenPanel()}
+            ${renderPromotionPanel()}
           </div>
           ${renderArmySelectPanel()}
         </div>
