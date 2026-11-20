@@ -106,6 +106,27 @@ const ICONS: Record<UnitRole, string> = {
       <path d="M6.05 -1.75 L8.55 0 L6.05 1.75 Z"/>
     </g>
   `,
+  // Horse + leaf-headed javelin
+  lightcavalry: `
+    <g transform="translate(-2.7,0.4) scale(0.7)">
+      <path d="M-5.4 7.2
+        L-5.8 2.2
+        C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
+        C-0.8 -7.4 0.4 -8.4 1.6 -8.8
+        L2.4 -6.6
+        C4.4 -6.2 6.6 -4.8 7.8 -3.2
+        C8.8 -2.0 8.6 -0.4 7.2 0.1
+        C6.2 0.4 5.4 -0.5 4.8 -1.1
+        C3.2 0.6 1.6 2.8 0.6 5.0
+        L0.1 7.2
+        Z"/>
+    </g>
+    <g transform="translate(3.9,-0.2) rotate(-38)">
+      <rect x="-6.4" y="-0.55" width="10.2" height="1.1" rx="0.35"/>
+      <path d="M3.55 -1.7 L8.1 0 L3.55 1.7 Z"/>
+      <path d="M-6.4 -0.9 L-7.9 0 L-6.4 0.9 Z"/>
+    </g>
+  `,
   // Wheel, cab, horse, bow
   chariotarcher: `
     <path fill-rule="evenodd" d="M-3.45 5.05 m-3.55 0 a3.55 3.55 0 1 0 7.1 0 a3.55 3.55 0 1 0 -7.1 0
@@ -194,6 +215,17 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M3.6 -8.8 L7.4 -7.6 L6.6 -4.8 L3.0 -6.0 Z"/>
     <circle cx="5.8" cy="-7.0" r="1.55"/>
   `,
+  // Torsion ballista — frame, bow arms, bolt
+  ballista: `
+    <rect x="-6.8" y="4.4" width="13.6" height="2.2" rx="0.4"/>
+    <circle cx="-4.4" cy="6.9" r="1.45"/>
+    <circle cx="4.4" cy="6.9" r="1.45"/>
+    <rect x="-1.15" y="-1.6" width="2.3" height="6.4" rx="0.35"/>
+    <path d="M-1.15 -0.4 L-7.4 -3.6 L-6.9 -5.1 L-1.15 -2.0 Z"/>
+    <path d="M1.15 -0.4 L7.4 -3.6 L6.9 -5.1 L1.15 -2.0 Z"/>
+    <rect x="-0.55" y="-7.2" width="1.1" height="6.2" rx="0.35"/>
+    <path d="M-1.35 -7.0 L0 -9.5 L1.35 -7.0 Z"/>
+  `,
   // Rifle + large crosshair scope
   sniper: `
     <circle cx="-4.5" cy="-3.2" r="1.6"/>
@@ -256,6 +288,16 @@ const ICONS: Record<UnitRole, string> = {
     <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
     <circle cx="0" cy="-3.15" r="1.95"/>
     <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
+  `,
+  // Worker + claw hammer
+  builder: `
+    <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
+    <circle cx="0" cy="-3.15" r="1.95"/>
+    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
+    <g transform="translate(4.6,-0.4) rotate(-28)">
+      <rect x="-0.55" y="-1.2" width="1.1" height="9.6" rx="0.35"/>
+      <path d="M-2.8 -3.4 H3.05 V-0.55 H0.85 V0.85 H-0.85 V-0.55 H-2.8 Z"/>
+    </g>
   `,
   // Peasant + brim hat. Fork sits right of the brim, tines above it.
   dude: `
@@ -493,6 +535,19 @@ export function tokenGlyphSvg(
       <g transform="scale(${gs.toFixed(3)})">${marks}</g>
     </g>`;
   }
+  if (type === 'bridge') {
+    const gs = size / 10;
+    return `<g class="token-bridge">
+      <g transform="scale(${gs.toFixed(3)})">
+        <ellipse cx="0" cy="5.6" rx="6.6" ry="1.5" fill="#0a1824" opacity="0.28"/>
+        <rect x="-6.4" y="-1.1" width="12.8" height="3.4" rx="0.35" fill="var(--bridge)" stroke="var(--bridge-ink)" stroke-width="0.45"/>
+        <rect x="-6.4" y="-1.1" width="12.8" height="1.05" fill="var(--bridge-hi)" opacity="0.55"/>
+        <path d="M-5.6 -1.1 V2.3 M-2.8 -1.1 V2.3 M0 -1.1 V2.3 M2.8 -1.1 V2.3 M5.6 -1.1 V2.3" fill="none" stroke="var(--bridge-lo)" stroke-width="0.55"/>
+        <rect x="-6.85" y="-2.35" width="1.1" height="5.9" rx="0.25" fill="var(--bridge-hi)" stroke="var(--bridge-ink)" stroke-width="0.35"/>
+        <rect x="5.75" y="-2.35" width="1.1" height="5.9" rx="0.25" fill="var(--bridge-hi)" stroke="var(--bridge-ink)" stroke-width="0.35"/>
+      </g>
+    </g>`;
+  }
   if (type === 'flag') {
     const side = owner ? ` ${owner}` : '';
     return `<g class="token-flag${side}" transform="scale(${s})">
@@ -649,12 +704,16 @@ export type ActionGlyphId =
   | 'hide'
   | 'javelin'
   | 'charge'
+  | 'lunge'
   | 'trap'
   | 'build'
   | 'palisade'
+  | 'bridge'
+  | 'remove'
   | 'shields'
   | 'bash'
-  | 'berserk';
+  | 'berserk'
+  | 'reload';
 
 /** Same drawing as the bottom action buttons. */
 export function actionGlyphSvg(
@@ -719,6 +778,14 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
       inner: `<path fill="currentColor" d="M-6.2 -3.6 L-1.1 0 L-6.2 3.6 Z M-0.6 -3.6 L4.5 0 L-0.6 3.6 Z M5.1 -3.6 L7.4 0 L5.1 3.6 Z"/>`,
     };
   }
+  if (kind === 'lunge') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-6.4 -0.7 H1.2 V-2.6 L7.2 0 L1.2 2.6 V0.7 H-6.4 Z"/>
+        <circle cx="-4.6" cy="0" r="1.15" fill="currentColor"/>
+        <circle cx="-1.2" cy="0" r="1.15" fill="currentColor"/>`,
+    };
+  }
   if (kind === 'trap') {
     return {
       viewBox: '-8 -8 16 16',
@@ -739,6 +806,20 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
       inner: `<path fill="currentColor" d="M-5.4 5.6 V-2.2 L-4 -4.2 L-2.6 -2.2 V5.6 Z M-1.2 5.6 V-2.2 L0.2 -4.2 L1.6 -2.2 V5.6 Z M3 5.6 V-2.2 L4.4 -4.2 L5.8 -2.2 V5.6 Z"/>`,
     };
   }
+  if (kind === 'bridge') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="currentColor" d="M-6.4 -1.6 H6.4 V2.2 H-6.4 Z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" d="M-4.6 -1.6 V2.2 M-1.5 -1.6 V2.2 M1.5 -1.6 V2.2 M4.6 -1.6 V2.2"/>
+        <path fill="currentColor" d="M-7.1 -3.1 H-5.7 V3.7 H-7.1 Z M5.7 -3.1 H7.1 V3.7 H5.7 Z"/>`,
+    };
+  }
+  if (kind === 'remove') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" d="M-4.2 -4.2 L4.2 4.2 M4.2 -4.2 L-4.2 4.2"/>`,
+    };
+  }
   if (kind === 'shields') {
     return {
       viewBox: '-8 -8 16 16',
@@ -756,6 +837,14 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
     return {
       viewBox: '-8 -8 16 16',
       inner: `<path fill="currentColor" d="M0 -6.6 L1.15 -1.7 L6.4 -2.4 L2.15 0.7 L4.5 5.6 L0 2.5 L-4.5 5.6 L-2.15 0.7 L-6.4 -2.4 L-1.15 -1.7 Z"/>`,
+    };
+  }
+  if (kind === 'reload') {
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"
+          d="M 2.6 -3.4 A 4.2 4.2 0 1 1 -1.4 3.6"/>
+        <path fill="currentColor" d="M1.1 -4.6 L3.2 -1.9 L4.5 -4.5 Z"/>`,
     };
   }
   return {
@@ -950,29 +1039,33 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
       ? '#14201c'
       : id === 'charge'
         ? '#2a1810'
-        : id === 'javelin'
-          ? '#241810'
-          : id === 'shields'
-            ? '#10202a'
-            : id === 'bash'
-              ? '#2a2010'
-              : id === 'berserk'
-                ? '#2a1014'
-                : '#1c2018';
+        : id === 'lunge'
+          ? '#201828'
+          : id === 'javelin'
+            ? '#241810'
+            : id === 'shields'
+              ? '#10202a'
+              : id === 'bash'
+                ? '#2a2010'
+                : id === 'berserk'
+                  ? '#2a1014'
+                  : '#1c2018';
   const stroke =
     id === 'hide'
       ? '#6a9a88'
       : id === 'charge'
         ? '#e07040'
-        : id === 'javelin'
-          ? '#c9a227'
-          : id === 'shields'
-            ? '#7ec8ff'
-            : id === 'bash'
-              ? '#e0a050'
-              : id === 'berserk'
-                ? '#e05050'
-                : '#8aaa70';
+        : id === 'lunge'
+          ? '#c080e0'
+          : id === 'javelin'
+            ? '#c9a227'
+            : id === 'shields'
+              ? '#7ec8ff'
+              : id === 'bash'
+                ? '#e0a050'
+                : id === 'berserk'
+                  ? '#e05050'
+                  : '#8aaa70';
   return `
       <g class="ability-badge ${id}" transform="translate(${cx}, ${cy})">
         <circle cx="0" cy="0" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>
@@ -1161,17 +1254,20 @@ export const ICON_LABEL: Record<UnitRole, string> = {
   archer: 'bow',
   javelin: 'javelins',
   horsearcher: 'horse bow',
+  lightcavalry: 'horse javelin',
   chariotarcher: 'chariot bow',
   cohort: 'soldier scutum gladius',
   hoplite: 'aspis',
   elephant: 'war elephant',
   barbarian: 'axe',
   catapult: 'onager',
+  ballista: 'torsion bolt',
   tank: 'tracked hull',
   general: 'officer',
   tower: 'keep',
   dummy: 'scarecrow',
   peasant: 'fork',
+  builder: 'hammer',
   dude: 'hat',
   wolf: 'wolf',
   fighter: 'delta fighter',

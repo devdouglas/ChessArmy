@@ -76,6 +76,13 @@ export const AI_RULES = [
     blurb: 'If a unit can shoot or melee, it shoots. Unchecked: melee instead. Attacking when possible is always on.',
   },
   {
+    id: 'use-abilities',
+    category: 'melee',
+    label: 'Use abilities',
+    blurb:
+      'Bash and berserk when they damage. Javelin kits prefer throw over melee even if Shoot first is off. Unchecked: those specials are ignored.',
+  },
+  {
     id: 'strongest-first',
     category: 'melee',
     label: 'Strongest first',

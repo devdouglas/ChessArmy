@@ -56,12 +56,16 @@ const ACTION_GLYPHS: {
   { id: 'hide', tag: 'hide', label: 'Hide', aliases: [] },
   { id: 'javelin', tag: 'javelin throw', label: 'Javelin', aliases: ['throw'] },
   { id: 'charge', tag: 'charge', label: 'Charge', aliases: [] },
+  { id: 'lunge', tag: 'lunge', label: 'Lunge', aliases: [] },
   { id: 'build', tag: 'build', label: 'Build', aliases: ['trap'] },
   { id: 'trap', tag: 'trap', label: 'Trap', aliases: [] },
   { id: 'palisade', tag: 'palisade', label: 'Palisade', aliases: ['fence'] },
+  { id: 'bridge', tag: 'bridge', label: 'Bridge', aliases: [] },
+  { id: 'remove', tag: 'remove', label: 'Remove', aliases: ['clear', 'dismantle'] },
   { id: 'shields', tag: 'shields up', label: 'Shields up', aliases: ['shields'] },
   { id: 'bash', tag: 'bash', label: 'Bash', aliases: [] },
   { id: 'berserk', tag: 'berserk', label: 'Berserk', aliases: [] },
+  { id: 'reload', tag: 'reload', label: 'Reload', aliases: ['reloading'] },
   { id: 'end', tag: 'end turn', label: 'End turn', aliases: ['end'] },
 ];
 

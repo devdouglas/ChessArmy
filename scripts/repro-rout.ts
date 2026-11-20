@@ -113,7 +113,7 @@ try {
     const s = board();
     const v = victim(s)!;
     const a = attacker(s);
-    assert(wouldRout(s, v, { col: a.col, row: a.row }), 'enemy on opposite → would rout');
+    assert(wouldRout(s, v, { col: a.col, row: a.row }), 'two hostiles opposite + red face → would rout');
     const plan = previewMove(s, a, at);
     assert(plan.hits.length === 1 && plan.hits[0].routed, 'preview marks routed');
     assert(plan.hits[0].fatal && plan.hits[0].remaining === 0, 'rout is fatal');
@@ -251,7 +251,15 @@ try {
     assert(!wouldRout(s, v, { col: a.col, row: a.row }), 'general unit never routs from front sandwich');
   }
 
-  console.log('rout: opposite-unit sandwich with a red face; terrain does not pin; generals hold');
+  {
+    // Lone adjacent enemy is not a pinch — a distant shot must not invent the other half.
+    const s = board({ pin: null });
+    const v = victim(s)!;
+    const far: Hex = { col: 7, row: 5 };
+    assert(!wouldRout(s, v, far), 'shot axis + one adjacent enemy is not a two-unit pinch');
+  }
+
+  console.log('rout: two-unit pinch + red face; any hit routs; terrain does not pin; generals hold');
 } finally {
   UNIT_STATS.soldier.hexArmor = saved.hexArmor;
   UNIT_STATS.soldier.armorFront = saved.armorFront;

@@ -1,7 +1,8 @@
 /**
  * AI picker. Checklist sections match this order:
  * 1 Walking — do-not-touch / flags / pikes / palisades / keep-line / general last.
- * 2 Melee or shooting — if anyone can hit, they do (shoot-first, strongest, value, king restraint).
+ * 2 Melee or shooting — if anyone can hit, they do (shoot-first, use-abilities,
+ *   strongest, value, king restraint). Bash / berserk / javelin when they make sense.
  * 3 Targeting — hunt: nearest enemy (Attack); else advance the front; else guard owned flags.
  * 4 Chasing — close on that hunt, prefer high ground. Empty AP cannot climb;
  *   skip that unit's walks toward higher ground rather than pacing for nothing.
@@ -35,8 +36,11 @@ import {
   sameTeam,
   splashBlast,
   splashHitsEnemy,
+  rangedTargetVisible,
+  bashDamages,
   bashFoes,
   berserkFoes,
+  javelinIsSpecial,
   shootRangeOf,
   isSleeping,
   isConcealedFrom,
@@ -457,7 +461,7 @@ function shootHitsEnemy(state: GameState, action: Action, me: Side): boolean {
     return splashHitsEnemy(state, action.at, from, me);
   }
   const t = pieceAt(state, action.at);
-  return !!(t && isHostile(state, t.side, me));
+  return !!(t && isHostile(state, t.side, me) && rangedTargetVisible(state, t, me));
 }
 
 function isWalkAction(
@@ -466,13 +470,42 @@ function isWalkAction(
   return action.kind === 'move' || action.kind === 'charge';
 }
 
-function isAttackAction(state: GameState, action: Action, me: Side): boolean {
-  if (action.kind === 'shoot') return shootHitsEnemy(state, action, me);
-  if (action.kind === 'bash' || action.kind === 'berserk') {
+function isAbilityAction(
+  action: Action,
+): action is Extract<Action, { kind: 'bash' | 'berserk' }> {
+  return action.kind === 'bash' || action.kind === 'berserk';
+}
+
+/** Bash / berserk that actually hurts — free shove alone does not count. */
+function abilityMakesSense(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind === 'berserk') {
     const piece = getPiece(state, action.pieceId);
     if (!piece) return false;
-    const foes = action.kind === 'bash' ? bashFoes(state, piece) : berserkFoes(state, piece);
-    return foes.length > 0;
+    return berserkFoes(state, piece).length > 0;
+  }
+  if (action.kind === 'bash') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece) return false;
+    return bashDamages(state, piece) && bashFoes(state, piece).length > 0;
+  }
+  if (action.kind === 'shoot') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece || !javelinIsSpecial(piece)) return false;
+    return shootHitsEnemy(state, action, me);
+  }
+  return false;
+}
+
+function isAttackAction(state: GameState, action: Action, me: Side): boolean {
+  if (action.kind === 'shoot') return shootHitsEnemy(state, action, me);
+  if (action.kind === 'lunge') {
+    const piece = getPiece(state, action.pieceId);
+    if (!piece) return false;
+    // Lunge always targets at least one hostile by legality.
+    return true;
+  }
+  if (action.kind === 'bash' || action.kind === 'berserk') {
+    return abilityMakesSense(state, action, me);
   }
   if (isWalkAction(action)) {
     const piece = getPiece(state, action.pieceId);
@@ -753,6 +786,12 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     return base + (threatened ? 700 : -350);
   }
 
+  if (action.kind === 'reload') {
+    // Prefer clearing a shot over idling / aimless walks while locked out.
+    const left = piece.shootCooldown ?? 0;
+    return 280 + (left <= 1 ? 180 : 0);
+  }
+
   const from: Hex = { col: piece.col, row: piece.row };
   let score = on('value-scoring') ? scoreKillDelta(state, applyAction(state, action), me) : 0;
 
@@ -775,7 +814,20 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
       const t = pieceAt(state, action.at);
       if (t && isHostile(state, t.side, me)) score += combatValue(t) * 22;
     }
+    if (action.kind === 'bash' || action.kind === 'berserk') {
+      const foes =
+        action.kind === 'bash' ? bashFoes(state, piece) : berserkFoes(state, piece);
+      for (const t of foes) score += combatValue(t) * 22;
+      if (foes.length > 1) score += 500 * (foes.length - 1);
+    }
     score += Math.random() * 0.3;
+    return score;
+  }
+
+  // Soft shove: legal bash that only displaces — never preferred over a real hit.
+  if (action.kind === 'bash' && on('use-abilities')) {
+    const foes = bashFoes(state, piece);
+    score += 40 * foes.length;
     return score;
   }
 
@@ -908,7 +960,10 @@ function othersFirst(state: GameState, pool: Action[], on: RuleOn): Action[] {
   return rest.length ? rest : pool;
 }
 
-/** Same piece can shoot and melee: keep shots if shoot-first, else melee. */
+/**
+ * Same piece can shoot and melee: keep shots if shoot-first (or javelin + use-abilities),
+ * else melee. Damaging bash / berserk beat that piece's walk melee when abilities are on.
+ */
 function resolveShootMelee(
   state: GameState,
   attacks: Action[],
@@ -919,7 +974,7 @@ function resolveShootMelee(
   const other: Action[] = [];
   for (const a of attacks) {
     if (
-      (a.kind === 'shoot' || isWalkAction(a)) &&
+      (a.kind === 'shoot' || isWalkAction(a) || isAbilityAction(a)) &&
       isAttackAction(state, a, me)
     ) {
       const list = byPiece.get(a.pieceId) ?? [];
@@ -930,15 +985,24 @@ function resolveShootMelee(
     }
   }
   const shootFirst = on('shoot-first');
+  const useAbilities = on('use-abilities');
   const out = [...other];
-  for (const list of byPiece.values()) {
+  for (const [pieceId, list] of byPiece) {
     const shots = list.filter((a) => a.kind === 'shoot');
     const melees = list.filter((a) => isWalkAction(a));
+    const specials = list.filter((a) => isAbilityAction(a));
+    const piece = getPiece(state, pieceId);
+    const preferJavelin =
+      useAbilities && !!piece && javelinIsSpecial(piece) && shots.length > 0;
+    const keep: Action[] = [];
     if (shots.length && melees.length) {
-      out.push(...(shootFirst ? shots : melees));
+      keep.push(...(shootFirst || preferJavelin ? shots : melees));
     } else {
-      out.push(...list);
+      keep.push(...shots, ...melees);
     }
+    // Damaging bash / berserk stay in the pool; score picks them when multi-hit wins.
+    if (useAbilities) keep.push(...specials);
+    out.push(...(keep.length ? keep : list));
   }
   return out.length ? out : attacks;
 }
@@ -1005,6 +1069,7 @@ export function pickAiAction(state: GameState): Action | null {
   const actions = raw.filter((a) => {
     if (!hiddenCamperOk(state, a, me)) return false;
     if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
+    if (!on('use-abilities') && isAbilityAction(a)) return false;
     if (
       on('never-capture-flags') &&
       moveCapturesFlag(state, a, me) &&

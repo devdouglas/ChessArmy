@@ -40,6 +40,10 @@
   --palisade-lo: #3d2814;
   --palisade-ink: #2a1c10;
   --palisade-stroke: #2a1c10;
+  --bridge: #7a5a34;
+  --bridge-hi: #9a7344;
+  --bridge-lo: #4a3418;
+  --bridge-ink: #2a1c10;
   --tree: #3a6a38;
   --tree-hi: #5a8a48;
   --tree-lo: #244828;
@@ -157,6 +161,10 @@ html[data-period='ancient'] {
   --palisade-lo: #4a3018;
   --palisade-ink: #2c1a0c;
   --palisade-stroke: #2c1a0c;
+  --bridge: #8a6238;
+  --bridge-hi: #aa7a48;
+  --bridge-lo: #523018;
+  --bridge-ink: #2c1a0c;
   --tree: #4a7038;
   --tree-hi: #6a8a48;
   --tree-lo: #2e4a24;
@@ -249,6 +257,10 @@ html[data-period='futuristic'] {
   --palisade-lo: #2e1c10;
   --palisade-ink: #140c08;
   --palisade-stroke: #140c08;
+  --bridge: #6a4828;
+  --bridge-hi: #8a6238;
+  --bridge-lo: #3a2410;
+  --bridge-ink: #140c08;
   --tree: #1a5848;
   --tree-hi: #28a878;
   --tree-lo: #0c3028;
@@ -5260,7 +5272,7 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 
 .build-pick {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
   padding: 0 0.5rem;
 }

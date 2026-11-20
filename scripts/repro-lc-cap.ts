@@ -12,10 +12,10 @@ import { createStateFromTerrain, emptyTerrain } from '../src/map';
 import { UNIT_STATS, DEFAULT_UNIT_STATS } from '../src/roster';
 import { setExperimental } from '../src/experimental';
 
-const type = 'light-cavalry-test';
+const type = 'lightcavalry';
 UNIT_STATS[type] = {
-  ...DEFAULT_UNIT_STATS.scout,
-  name: 'Light cavalry',
+  ...DEFAULT_UNIT_STATS.lightcavalry,
+  // Cap repro: force the moveBudget=5 / AP pool shape under test.
   move: 3,
   moveBudget: 5,
   actionPointGain: 2,

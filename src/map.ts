@@ -80,6 +80,12 @@ export const DEFAULT_MAP: MapOptions = {
   plateauCount: 5,
 };
 
+/** Roguelite random maps — same as DEFAULT_MAP but denser forest. */
+export const DEFAULT_ROGUE_MAP: MapOptions = {
+  ...DEFAULT_MAP,
+  forestCount: 5,
+};
+
 /** Back rank files 1→8 */
 const BACK: UnitType[] = [
   'sniper',
@@ -989,7 +995,7 @@ export function createInitialState(
 
 /** Roguelite: randomised terrain on a flat-top hex disk. */
 export function createRogueInitialState(
-  opts: MapOptions = DEFAULT_MAP,
+  opts: MapOptions = DEFAULT_ROGUE_MAP,
   armies?: ArmyStamp[] | null,
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,

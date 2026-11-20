@@ -4,6 +4,7 @@ export const ABILITY_IDS = [
   'hide',
   'javelin',
   'charge',
+  'lunge',
   'build',
   'shields',
   'bash',
@@ -12,26 +13,33 @@ export const ABILITY_IDS = [
 
 export type AbilityId = (typeof ABILITY_IDS)[number];
 
-/** What Build can place (or clear) on an adjacent hex. */
-export const BUILD_STRUCTURES = ['pikes', 'palisade'] as const;
+/** What Build can place, or Remove for any buildable token. */
+export const BUILD_STRUCTURES = ['pikes', 'palisade', 'bridge', 'remove'] as const;
 export type BuildStructure = (typeof BUILD_STRUCTURES)[number];
 
 export const BUILD_STRUCTURE_LABEL: Record<BuildStructure, string> = {
   pikes: 'Trap',
   palisade: 'Palisade',
+  bridge: 'Bridge',
+  remove: 'Remove',
 };
 
 export const BUILD_STRUCTURE_BLURB: Record<BuildStructure, string> = {
   pikes:
-    'Hidden pikes. Enemies cannot see them and take damage walking in. Build units are immune and clear them by walking over or building again.',
+    'Hidden pikes. Enemies cannot see them and take damage walking in. Build units are immune but do not clear them by walking over — use Remove.',
   palisade:
-    'Wooden fence, 3 HP. Blocks walk and charge (unless the hit breaks it). Arch shots go over; straight shots do not. Build again on it to dismantle.',
+    'Wooden fence, 3 HP. Blocks walk and charge (unless the hit breaks it). Arch shots go over; straight shots do not. Use Remove to dismantle.',
+  bridge:
+    'Planks on an adjacent water hex. Units walk it like land — no swim, no water upkeep. Use Remove to dismantle.',
+  remove:
+    'Clear an adjacent trap, palisade, or bridge. Trees and forest stay. Red faces are not spots.',
 };
 
 export const ABILITY_LABEL: Record<AbilityId, string> = {
   hide: 'Hide',
   javelin: 'Javelin',
   charge: 'Charge',
+  lunge: 'Lunge',
   build: 'Build',
   shields: 'Shields up',
   bash: 'Bash',
@@ -44,10 +52,12 @@ export const ABILITY_BLURB: Record<AbilityId, string> = {
     'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
   charge:
     'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no AP mark. A destination past that move shows the normal AP bolt and spends 1 when you pick it. With no AP left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. No walk-to orders.',
+  lunge:
+    'Thrust two hexes in a straight line. Hits both tiles. Damage is melee (Attack + stacks); kits with 0 melee still thrust for 1 (+ Attack). Far-hex kill: stay put — otherwise step to the far hex when empty. Also a promotion for archers and other zero-melee kits.',
   build:
-    'Pick Trap or Palisade, then an adjacent hex this unit could step toward (red faces are not spots). Empty hex: place it. Existing trap/palisade: clear it. Immune to pikes — walking onto them clears the trap. Can spend AP as a second action.',
+    'Pick Trap, Palisade, Bridge, or Remove, then an adjacent hex (red faces are not spots). Trap/Palisade place on empty ground. Bridge places on empty water. Remove clears any adjacent trap, palisade, or bridge. Immune to pikes — walking onto them does not clear them. Can spend AP as a second action.',
   shields:
-    'Ranged attacks do nothing until this side\'s next turn. Ends this activation — leftover AP cannot be spent.',
+    'Until this side\'s next turn: invisible to enemies but still aimable. The first ranged hit that turn reveals them and they stop being a ranged target (later shots cannot lock them). Hits deal no damage while shields are up. Ends this activation — leftover AP cannot be spent.',
   bash:
     'Push every enemy on a green face (armor 0) one hex straight back. Hitting a unit damages both (this unit’s melee, minimum 1, armor applies). A wall or ground they cannot step onto damages the pushed unit. A palisade, tree, or forest deals 1 to both — positive armor soaks that 1, negative armor does not add.',
   berserk:

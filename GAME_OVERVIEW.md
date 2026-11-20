@@ -89,7 +89,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets) — Experimental features, two toggles, both on by default. Facing is a first-class action for these units.
 
-**Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Triggers when an **enemy stands on the exact opposite hex** and **one of those two faces is −2 (red)**. Friends and terrain never pin.
+**Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Needs **two hostiles on opposite adjacent hexes** with **one of those faces −2 (red)**. Any hit while pinched routs (either pincher or a third unit). A lone shot/melee with only one neighbor does not. Friends and terrain never pin.
 
 **Hex damage:** per-face 0–2. Each live face is facing pikes on the **adjacent** hex only: enemies take that damage when they **enter**. Standing there does not pulse again.
 
@@ -126,11 +126,12 @@ Editor paints the whole grid. Click a placed unit to turn it one hex face (saved
 | **Palisade** | Fence, **3 HP**. Melee attack strength chips it (Attack +1 counts; 3 attack fells it in one hit). Charge/splash also. Random maps use these instead of walls. |
 | **Tree** | Same as palisade, tree graphic. |
 | **Forest** | Three trees, no hex fill/stroke. Walkable cover — units render behind the trees. Incoming shots chip the wood (3 HP, same as palisade); occupant unharmed until felled. Shoot out OK. Charge cannot pass through. **Can hide** units are invisible to enemies here until they move, attack, or are hit. |
+| **Bridge** | On water only. Walk like land — no swim, no water upkeep, shoot OK. Build places it; Remove clears it. |
 | **Flag** | Capture by standing on it. All flags held = win. Seeded owner if a piece starts on it. |
 | **Board** | Message sign. First friendly walk pops the text; later walks do not. Click the hex to reread. Editor: click to set the message. |
 | **Do not touch** | AI will not walk this hex (standalone, or painted onto another token). |
 
-**Unit promotion — General:** stamp on a piece so it counts as a command piece (star). Counts toward the promotion cap (unique, not a V chevron). **+1 HP**, **+1 AP max**, **+1** value. All generals on a side must fall to lose by command.
+**Unit promotion — General:** stamp on a piece so it counts as a command piece (star). Unique, not a V chevron — **does not use** one of the 3 stackable promotion slots. **+1 HP**, **+1 AP max**, **+1** value. All generals on a side must fall to lose by command.
 
 **Unit token — Hidden:** starts the match invisible to enemies (any hex). Same reveal rules as **Can hide**: moving, attacking, or taking a hit breaks it for the rest of the match. Owner still sees them. AI always camps while concealed — no walking until they can shoot/melee, or until they are provoked (hit → revealed). If a side's remaining pieces are all still hidden, they all break cover; an AI side then switches to **aggressive**. If every living piece on the board is hidden, everyone unhides.
 

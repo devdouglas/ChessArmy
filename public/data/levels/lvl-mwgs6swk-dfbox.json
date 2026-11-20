@@ -216,7 +216,7 @@
         }
     ],
     "sort": 13,
-    "updatedAt": 1794853296873,
+    "updatedAt": 1794898664557,
     "armies": [
         {
             "type": "cohort",
@@ -277,6 +277,36 @@
             "col": 5,
             "row": 9,
             "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 2,
+            "side": "red"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 1,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 3,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 4,
+            "side": "blue"
+        },
+        {
+            "type": "peasant",
+            "col": 0,
+            "row": 5,
+            "side": "blue"
         }
     ]
 }

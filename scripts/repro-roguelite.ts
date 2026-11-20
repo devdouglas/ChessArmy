@@ -14,20 +14,27 @@ import {
 import { distance } from '../src/hex';
 import {
   ROGUE_GOAL,
+  ROGUE_PROMO_START,
   ROGUE_SHOP_SIZE,
   ROGUE_START_COUNT,
   ROGUE_START_GOLD,
   advanceRogueRun,
+  applyRogueEnemyPromotions,
   buyRogueShopOffer,
   createRogueRun,
   openRogueShop,
   pickRogueKnight,
+  pickRogueUnit,
   rogueArmyStamps,
+  rogueBattleLabel,
+  rogueEnemyPromoCount,
+  rogueMaxUnitValue,
   rogueUnitCost,
   rogueUnitPool,
   survivorUnits,
   takeRoguePromotionOffer,
 } from '../src/roguelite';
+import { isStackablePromotion, statsOf } from '../src/engine';
 
 const period = 'ancient' as const;
 const pool = rogueUnitPool(period);
@@ -87,10 +94,14 @@ if (new Set(shop.promotions).size !== shop.promotions.length) {
   throw new Error('promo offers not distinct');
 }
 {
-  const taken = takeRoguePromotionOffer(shop, 0);
+  const taken = takeRoguePromotionOffer(run, shop, 0);
   if (!taken) throw new Error('take promo failed');
+  run = taken.run;
   shop = taken.shop;
-  if (shop.promotions.length !== 0) throw new Error('promo shelf should clear after one pick');
+  if (!shop.freePromoTaken) throw new Error('free promo should be marked taken');
+  if (shop.promotions.length !== Math.min(ROGUE_SHOP_SIZE, 5) - 1) {
+    throw new Error('free take removes one offer, keeps the rest');
+  }
   const stamped = living.map((u, i) =>
     i === 0
       ? {
@@ -127,8 +138,70 @@ for (let b = 2; b < ROGUE_GOAL; b++) {
   const adv = advanceRogueRun(run, run.playerArmy, []);
   if (!adv) throw new Error(`advance ${b}`);
   run = adv;
+  const cap = rogueMaxUnitValue(run.battle);
+  const newest = run.enemyArmy[run.enemyArmy.length - 1]!;
+  if (statsOf(newest.type).value > cap) {
+    throw new Error(
+      `enemy ${newest.type} value ${statsOf(newest.type).value} > cap ${cap} at battle ${run.battle}`,
+    );
+  }
+  const promoN = run.enemyArmy.reduce(
+    (n, u) => n + (u.unitTokens ?? []).filter(isStackablePromotion).length,
+    0,
+  );
+  const expectPromo = rogueEnemyPromoCount(run.battle);
+  if (promoN !== Math.min(expectPromo, run.enemyArmy.length * 3)) {
+    // Cap is MAX_UNIT_PROMOTIONS per unit; with few units early, may clip.
+    if (run.battle >= ROGUE_PROMO_START && promoN < 1) {
+      throw new Error(`expected enemy promos at battle ${run.battle}, got ${promoN}`);
+    }
+    if (promoN > expectPromo) {
+      throw new Error(`too many enemy promos ${promoN} > ${expectPromo} at ${run.battle}`);
+    }
+  }
 }
 if (run.battle !== ROGUE_GOAL) throw new Error(`expected battle ${ROGUE_GOAL}, got ${run.battle}`);
+
+if (rogueMaxUnitValue(4) !== 5) throw new Error('battle 4 cap should be 5');
+if (rogueEnemyPromoCount(6) !== 0) throw new Error('no promos before 7');
+if (rogueEnemyPromoCount(7) !== 1) throw new Error('1 promo at 7');
+if (rogueEnemyPromoCount(10) !== 4) throw new Error('4 promos at 10');
+
+{
+  // Value gate: battle 1 must not roll elephants (value 5+).
+  for (let i = 0; i < 40; i++) {
+    const t = pickRogueUnit(period, undefined, rogueMaxUnitValue(1));
+    if (statsOf(t).value > 2) throw new Error(`battle-1 pick ${t} value ${statsOf(t).value}`);
+  }
+}
+
+{
+  const stamped = applyRogueEnemyPromotions(
+    [
+      { type: 'hoplite' },
+      { type: 'cohort' },
+      { type: 'javelin' },
+    ],
+    2,
+  );
+  const n = stamped.reduce(
+    (c, u) => c + (u.unitTokens ?? []).filter(isStackablePromotion).length,
+    0,
+  );
+  if (n !== 2) throw new Error(`apply promos stamped ${n}, want 2`);
+}
+
+{
+  // Endless: past goal still advances.
+  const past = advanceRogueRun(run, run.playerArmy, []);
+  if (!past || past.battle !== ROGUE_GOAL + 1) {
+    throw new Error('should continue past goal');
+  }
+  if (rogueBattleLabel(past) !== `Battle ${ROGUE_GOAL + 1}`) {
+    throw new Error(`endless label ${rogueBattleLabel(past)}`);
+  }
+  run = past;
+}
 
 console.log('roguelite ok', {
   pool: pool.length,

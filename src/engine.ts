@@ -27,6 +27,7 @@ import {
   HEX_DAMAGE_SIDES,
   statsOf,
   type HexArmorSide,
+  type ShootArc,
   type UnitStats,
   type UnitType,
 } from './roster';
@@ -210,6 +211,7 @@ export const TOKEN_TYPES = [
   'palisade',
   'tree',
   'forest',
+  'bridge',
   'flag',
   'board',
   'tutorial',
@@ -238,6 +240,7 @@ export const TOKEN_LABEL: Record<TokenType, string> = {
   palisade: 'Palisade',
   tree: 'Tree',
   forest: 'Forest',
+  bridge: 'Bridge',
   flag: 'Flag',
   board: 'Board',
   tutorial: 'Tutorial',
@@ -273,7 +276,7 @@ export function editorOpensBoardPopup(
 export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
-/** Promotions on a piece. Cap is shared. General is unique; the rest stack. */
+/** Stackable promotions per piece (V chevrons). General is separate and does not use a slot. */
 export const MAX_UNIT_PROMOTIONS = 3;
 export const PROMOTION_TOKEN_TYPES = [
   'general',
@@ -283,6 +286,7 @@ export const PROMOTION_TOKEN_TYPES = [
   'ap1',
   'hp2',
   'allTerrain',
+  'lunge',
 ] as const;
 export type PromotionTokenType = (typeof PROMOTION_TOKEN_TYPES)[number];
 
@@ -315,19 +319,22 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   ap1: 'AP +1',
   hp2: 'HP +2',
   allTerrain: 'All terrain',
+  lunge: 'Lunge',
 };
 
 /** Editor / inspect blurbs when a promotion brush is selected. */
 export const PROMOTION_TOKEN_BLURB: Record<PromotionTokenType, string> = {
   general:
-    'Command piece. HP +1, AP max +1, value +1. Immune to rout. When command-kill is on, losing every General ends the army.',
+    'Command piece. HP +1, AP max +1, value +1. Immune to rout. Does not use a promotion slot. When command-kill is on, losing every General ends the army.',
   range1: '+1 shoot range (shooters only). Stacks as a V chevron.',
   defense1: '+1 armor on every face / ring. Stacks as a V chevron.',
-  attack1: '+1 melee, charge, and shoot damage. Stacks as a V chevron.',
+  attack1: '+1 melee, charge, shoot, and lunge damage. Stacks as a V chevron.',
   ap1: '+1 AP max, +1 AP / turn, and +1 spend cap. Stacks as a V chevron.',
   hp2: '+2 max HP. Stacks as a V chevron.',
   allTerrain:
     'Free climbs, swim without AP/HP upkeep, climb to mountain, Hide on forest. Stacks as a V chevron.',
+  lunge:
+    'Gain Lunge: thrust two hexes, melee both tiles. Zero-melee kits still thrust for 1 (+ Attack). Stacks as a V chevron.',
 };
 
 /** Chevron / swatch fill per promotion kind. */
@@ -339,6 +346,7 @@ export const PROMOTION_TOKEN_COLOR: Record<PromotionTokenType, string> = {
   ap1: '#9ad0a8',
   hp2: '#e87890',
   allTerrain: '#d0b878',
+  lunge: '#c080e0',
 };
 
 /** Stackable promos only (General is unique and uses the star badge). */
@@ -387,15 +395,19 @@ export function isPromotionToken(v: unknown): v is PromotionTokenType {
 export function sanitizeUnitTokens(raw: unknown): UnitTokenType[] {
   if (!Array.isArray(raw)) return [];
   const out: UnitTokenType[] = [];
-  let promos = 0;
+  let stackable = 0;
   for (const item of raw) {
     if (!isUnitTokenType(item)) continue;
     if (isPromotionToken(item)) {
-      if (promos >= MAX_UNIT_PROMOTIONS) continue;
-      // General is a promotion but only one stamp.
-      if (item === 'general' && out.includes('general')) continue;
+      // General is unique and does not consume a stackable slot.
+      if (item === 'general') {
+        if (out.includes('general')) continue;
+        out.push(item);
+        continue;
+      }
+      if (stackable >= MAX_UNIT_PROMOTIONS) continue;
       out.push(item);
-      promos += 1;
+      stackable += 1;
       continue;
     }
     if (out.includes(item)) continue;
@@ -666,6 +678,10 @@ export function isForestToken(type: TokenType | undefined): boolean {
   return type === 'forest';
 }
 
+export function isBridgeToken(type: TokenType | undefined): boolean {
+  return type === 'bridge';
+}
+
 export function isWoodHpToken(type: TokenType | undefined): boolean {
   return isPalisadeToken(type) || isForestToken(type);
 }
@@ -700,6 +716,13 @@ export function isForest(
   return !!hexToken(state.tokens, h, (t) => isForestToken(t.type));
 }
 
+export function isBridge(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return !!hexToken(state.tokens, h, (t) => isBridgeToken(t.type));
+}
+
 export function isHideToken(type: TokenType | undefined): boolean {
   return isForestToken(type);
 }
@@ -730,7 +753,29 @@ export function hasHide(piece: Piece): boolean {
   return hasAbility(piece, 'hide') || hasUnitToken(piece, 'hidden');
 }
 
+/** Shields cloak: invisible to hostiles until the first ranged hit that turn. */
+export function shieldsConceal(
+  piece: { shieldsUp?: boolean; shieldsStruck?: boolean } | null | undefined,
+): boolean {
+  return !!piece?.shieldsUp && !piece.shieldsStruck;
+}
+
+/** After the first shields hit — still shielded, but no longer a ranged target. */
+export function shieldsBlockTargeting(
+  piece: { shieldsUp?: boolean; shieldsStruck?: boolean } | null | undefined,
+): boolean {
+  return !!piece?.shieldsUp && !!piece.shieldsStruck;
+}
+
+/** Absorb a ranged hit on shields. First hit reveals + locks targeting; never deals damage. */
+export function strikeShields(piece: Piece): boolean {
+  if (!piece.shieldsUp) return false;
+  piece.shieldsStruck = true;
+  return true;
+}
+
 export function isConcealed(state: GameState, piece: Piece): boolean {
+  if (shieldsConceal(piece)) return true;
   if (!hasHide(piece)) return false;
   if (hasUnitToken(piece, 'hidden')) return true;
   return isHideCover(state, { col: piece.col, row: piece.row });
@@ -861,18 +906,34 @@ function forestHp(tok: TileToken | undefined): number {
   return tok.hp ?? PALISADE_HP;
 }
 
+/** Breakable wood on a hex (palisade / tree / forest). */
+export function woodTokenAt(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): TileToken | undefined {
+  return hexToken(state.tokens, h, (t) => isWoodHpToken(t.type));
+}
+
+export function hasBreakableWood(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return !!woodTokenAt(state, h);
+}
+
 /** Palisade, tree, or forest. `remaining` 0 means the token is gone. */
 function chipWoodAt(
   state: GameState,
   h: Hex,
   amount: number,
 ): { type: TokenType; remaining: number } | null {
-  const tok = hexToken(state.tokens, h, (t) => isWoodHpToken(t.type));
+  const tok = woodTokenAt(state, h);
   if (!tok) return null;
   const full = isForestToken(tok.type) ? forestHp(tok) : palisadeHp(tok);
   const remaining = woodRemaining(full, amount);
   const type = tok.type;
-  if (remaining <= 0) {
+  // Felled forest stays on the hex so Hide cover remains; palisade/tree still vanish.
+  if (remaining <= 0 && !isForestToken(type)) {
     state.tokens = state.tokens.filter((t) => t !== tok);
   } else {
     tok.hp = remaining;
@@ -880,7 +941,7 @@ function chipWoodAt(
   return { type, remaining };
 }
 
-/** Attack strength vs wood HP — 1+2 melee (or shoot) falls a 3 HP fence in one hit. */
+/** Melee / shoot / splash amount vs wood HP (e.g. dmg 2 vs 3 HP → 1 left). */
 function woodRemaining(hp: number, amount: number): number {
   return Math.max(0, hp - Math.max(0, amount));
 }
@@ -902,15 +963,21 @@ function chipForestAt(
 ): { remaining: number } | null {
   const tok = hexToken(state.tokens, h, (t) => isForestToken(t.type));
   if (!tok) return null;
-  const remaining = woodRemaining(forestHp(tok), amount);
-  if (remaining <= 0) {
-    state.tokens = state.tokens.filter(
-      (t) => !(isForestToken(t.type) && t.col === h.col && t.row === h.row),
-    );
-  } else {
-    tok.hp = remaining;
-  }
+  const before = forestHp(tok);
+  // Already felled — no more wood soak; token stays for Hide.
+  if (before <= 0) return { remaining: 0 };
+  const remaining = woodRemaining(before, amount);
+  tok.hp = remaining;
   return { remaining };
+}
+
+/** True when forest wood still soaks shots (hp > 0). Felled forest (0) still hides. */
+export function forestSoaksShot(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  const tok = hexToken(state.tokens, h, (t) => isForestToken(t.type));
+  return !!tok && forestHp(tok) > 0;
 }
 
 export function isWalkableTerrain(t: Terrain): boolean {
@@ -960,8 +1027,10 @@ export type Piece = {
   facing?: HexDir;
   /** Took ranged damage since last finished activation. Hold-position AI advances. */
   rangedHit?: boolean;
-  /** Shields up. Ranged attacks do nothing until this side's next turn starts. */
+  /** Shields up until this side's next turn. Invisible + targetable until first ranged hit. */
   shieldsUp?: boolean;
+  /** First ranged hit while shields were up this enemy period — now visible and not targetable. */
+  shieldsStruck?: boolean;
   /** Hostile newly entered this piece's Sight this activation. Hold-position AI advances. */
   losHit?: boolean;
   /** Hostile piece ids this unit has already seen while holding. Missing → not scanned yet. */
@@ -1049,12 +1118,14 @@ export type GameState = {
 export type Action =
   | { kind: 'move'; pieceId: string; to: Hex; path?: Hex[] }
   | { kind: 'charge'; pieceId: string; to: Hex; path?: Hex[] }
+  | { kind: 'lunge'; pieceId: string; to: Hex }
   | { kind: 'shoot'; pieceId: string; at: Hex }
   | { kind: 'rotate'; pieceId: string; dir: HexDir }
   | { kind: 'build'; pieceId: string; to: Hex; structure: BuildStructure }
   | { kind: 'bash'; pieceId: string }
   | { kind: 'berserk'; pieceId: string }
   | { kind: 'shields'; pieceId: string }
+  | { kind: 'reload'; pieceId: string }
   | { kind: 'skip' }; // scout skip remaining action
 
 export type Highlight =
@@ -1067,6 +1138,8 @@ export type Highlight =
   | { kind: 'apEmpty'; hex: Hex; cost: number; extra?: boolean }
   /** Crash through enemies. `extra` is past the normal move (spends 1). `unpaid` is that same tile with no AP left — display only. */
   | { kind: 'charge'; hex: Hex; cost: number; extra?: boolean; unpaid?: boolean }
+  /** Lunge far hex — melee both tiles along the line. */
+  | { kind: 'lunge'; hex: Hex }
   /** Valid fire target (enemy, or empty for splash). */
   | { kind: 'shoot'; hex: Hex }
   /** In weapon range + LOS, but not a legal shot (empty air / friendly). */
@@ -1458,22 +1531,32 @@ function addHpLost(state: GameState, side: Side, dealt: number): void {
 }
 
 /**
- * Generals hold. Otherwise: a hostile on the exact opposite hex, and
- * one of those two faces is −2 (red). Friends never pin. Terrain does not.
+ * Generals hold. Otherwise: hostiles on two opposite adjacent hexes, and
+ * one of those faces is −2 (red). Any hit while pinched routs. Friends /
+ * terrain never pin. Attack direction does not invent a pincher.
  */
-export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean {
-  if (!from) return false;
+export function wouldRout(state: GameState, victim: Piece, _from?: Hex): boolean {
   if (hasUnitToken(victim, 'general')) return false;
+  return isPinched(state, victim);
+}
+
+/** Two hostiles on opposite neighbors, with a −2 face on that axis. */
+export function isPinched(state: GameState, victim: Piece): boolean {
   const at: Hex = { col: victim.col, row: victim.row };
-  const incoming = incomingDir(from, at, state.orientation);
-  if (incoming === null) return false;
-  const oppDir = (((incoming + 3) % 6) + 6) % 6 as HexDir;
-  const opp = neighborInDir(at, oppDir, state.orientation);
-  const occ = pieceAt(state, opp);
-  if (!occ || occ.id === victim.id || !isHostile(state, occ.side, victim.side)) {
-    return false;
+  for (let d = 0; d < 3; d++) {
+    const a = d as HexDir;
+    const b = (((d + 3) % 6) + 6) % 6 as HexDir;
+    const ha = neighborInDir(at, a, state.orientation);
+    const hb = neighborInDir(at, b, state.orientation);
+    const oa = pieceAt(state, ha);
+    const ob = pieceAt(state, hb);
+    if (!oa || !ob) continue;
+    if (oa.id === victim.id || ob.id === victim.id) continue;
+    if (!isHostile(state, oa.side, victim.side)) continue;
+    if (!isHostile(state, ob.side, victim.side)) continue;
+    if (armorOnDir(victim, a) <= -2 || armorOnDir(victim, b) <= -2) return true;
   }
-  return armorOnDir(victim, incoming) <= -2 || armorOnDir(victim, oppDir) <= -2;
+  return false;
 }
 
 function armorOnDir(piece: Piece, dir: HexDir): number {
@@ -1542,6 +1625,71 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
   return dmg.fatal;
 }
 
+/** Trap tile on this hex (Build units are immune). */
+function trapDamageAt(
+  state: { tokens: TileToken[] },
+  piece: Piece,
+  hex: Hex,
+): number {
+  if (hasAbility(piece, 'build')) return 0;
+  return tokenOnHex(state.tokens, hex, 'pikes') ? PIKE_DAMAGE : 0;
+}
+
+/**
+ * Preview trap + facing-pike damage for entering `hex`.
+ * Returns remaining HP (0 if dead/routed). Does not mutate.
+ */
+function previewEnterHazards(
+  state: GameState,
+  piece: Piece,
+  hex: Hex,
+  hp: number,
+): number {
+  let left = hp;
+  const trap = trapDamageAt(state, piece, hex);
+  if (trap > 0) {
+    if (wouldRout(state, piece)) return 0;
+    left -= netDamage(piece, trap, 1);
+    if (left <= 0) return 0;
+  }
+  const face = hexDamageOn(state, hex, piece.side);
+  if (face) {
+    if (wouldRout(state, piece, face.from)) return 0;
+    left -= netDamage(piece, face.amount, 1, face.from, state.orientation, true);
+    if (left <= 0) return 0;
+  }
+  return left;
+}
+
+/**
+ * Apply trap then facing pikes for entering `hex`.
+ * True when the walker is dead/routed (and removed).
+ */
+function applyEnterHazards(state: GameState, piece: Piece, hex: Hex): boolean {
+  if (!getPiece(state, piece.id)) return true;
+  const trap = trapDamageAt(state, piece, hex);
+  if (trap > 0) {
+    const before = hpLeft(piece);
+    const dmg = applyDamage(state, piece, trap, 1);
+    const dealt = before - dmg.remaining;
+    if (dealt > 0 || dmg.routed) {
+      state.fxHits = [
+        ...(state.fxHits ?? []),
+        { id: piece.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
+      ];
+      state.log.push(
+        dmg.routed
+          ? `${unitLog(piece)} routs on pikes`
+          : dmg.fatal
+            ? `${unitLog(piece)} dies on pikes`
+            : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+      );
+    }
+    if (dmg.fatal) return true;
+  }
+  return strikeFacingPikes(state, piece, hex);
+}
+
 function pushFxCopy(state: GameState, text: string, at: Hex, title?: string): void {
   const clean = sanitizeBoardText(text);
   if (!clean) return;
@@ -1594,56 +1742,16 @@ function applyWalkTokens(
   from: Hex,
   path: Hex[],
   stop: Hex,
+  /** When set (from MovePlan), use these enter-hexes — includes a melee hex the walker dies on. */
+  hazardHexes?: Hex[],
 ): void {
-  const cleared = new Set<string>();
-  for (const h of walkedHexes(from, path, stop)) {
+  const hexes = hazardHexes?.length ? hazardHexes : walkedHexes(from, path, stop);
+  for (const h of hexes) {
     for (const tok of tokensAt(state.tokens, h)) {
       if (tok.type === 'flag') claimFlag(state, piece, tok);
       if (tok.type === 'board') readBoard(state, piece, tok);
-      if (tok.type === 'pikes') {
-        if (hasAbility(piece, 'build')) {
-          const k = `${h.col},${h.row}`;
-          if (!cleared.has(k)) {
-            cleared.add(k);
-            state.log.push(`${unitLog(piece)} clears pikes`);
-          }
-        } else {
-          const before = hpLeft(piece);
-          const dmg = applyDamage(state, piece, PIKE_DAMAGE, 1);
-          const dealt = before - dmg.remaining;
-          if (dealt > 0) {
-            state.fxHits = [...(state.fxHits ?? []), { id: piece.id, fatal: dmg.fatal, dealt }];
-            state.log.push(
-              dmg.fatal
-                ? `${unitLog(piece)} dies on pikes`
-                : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
-            );
-            if (dmg.fatal) {
-              if (cleared.size) {
-                state.tokens = state.tokens.filter(
-                  (t) =>
-                    !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
-                );
-              }
-              return;
-            }
-          }
-        }
-      }
     }
-    if (strikeFacingPikes(state, piece, h)) {
-      if (cleared.size) {
-        state.tokens = state.tokens.filter(
-          (t) => !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
-        );
-      }
-      return;
-    }
-  }
-  if (cleared.size) {
-    state.tokens = state.tokens.filter(
-      (t) => !(t.type === 'pikes' && cleared.has(`${t.col},${t.row}`)),
-    );
+    if (applyEnterHazards(state, piece, h)) return;
   }
 }
 
@@ -1695,10 +1803,15 @@ export type MovePlan = {
   facing: HexDir;
   /** Neutral piece ids a General claims on this walk. */
   converts: string[];
+  /** Hexes entered for trap / facing-pike checks (includes a melee hex even if the walker dies there). */
+  hazardHexes: Hex[];
+  /** Walker died on trap / facing pikes before finishing the planned hits. */
+  walkerDead?: boolean;
 };
 
-function inWater(state: GameState, h: Hex): boolean {
-  return terrainAt(state, h) === 'water';
+/** Open water — wet for move / upkeep / shoot. A bridge makes the hex dry. */
+function inWater(state: { tokens: TileToken[]; terrain: Terrain[][] }, h: Hex): boolean {
+  return terrainAt(state, h) === 'water' && !isBridge(state, h);
 }
 
 /** Move range from `at`. Water is always 1 hex. Move 0 stays planted. Height does not add steps. */
@@ -1789,6 +1902,9 @@ export function previewMove(
   let stop = from;
   let facing = facingOf(piece);
   let prev = from;
+  let walkerHp = hpLeft(piece);
+  let walkerDead = false;
+  const hazardHexes: Hex[] = [];
 
   const strike = (victim: Piece, atkFrom: Hex, amount: number): boolean => {
     if (amount <= 0) return false;
@@ -1808,6 +1924,15 @@ export function previewMove(
     return dead;
   };
 
+  /** Trap / facing spears before any fight on this hex. */
+  const enterHazards = (h: Hex): boolean => {
+    hazardHexes.push(h);
+    walkerHp = previewEnterHazards(state, piece, h, walkerHp);
+    if (walkerHp > 0) return false;
+    walkerDead = true;
+    return true;
+  };
+
   for (let i = 0; i < path.length; i++) {
     const h = path[i];
     const step = dirBetween(prev, h, state.orientation);
@@ -1817,12 +1942,18 @@ export function previewMove(
       const pal = hexToken(state.tokens, h, (t) => isPalisadeToken(t.type));
       if (pal) {
         if (melee <= 0) break;
+        // Breaking wood still means stepping onto the hex — hazards first.
+        if (enterHazards(h)) break;
         const remaining = woodRemaining(palisadeHp(pal), melee);
         palisadeHits.push({ hex: h, remaining, destroyed: remaining <= 0 });
         if (remaining > 0) break;
         stop = h;
         prev = h;
         continue;
+      }
+      if (enterHazards(h)) {
+        stop = h;
+        break;
       }
       stop = h;
       prev = h;
@@ -1834,14 +1965,21 @@ export function previewMove(
     }
     if (isNeutralSide(occ.side)) {
       if (!canConvert(piece, occ)) break;
+      if (enterHazards(h)) break;
       converts.push(occ.id);
       const isDest = i === path.length - 1;
-      if (isDest) break;
+      if (isDest) {
+        stop = h;
+        break;
+      }
+      stop = h;
       prev = h;
       continue;
     }
     const isDest = i === path.length - 1;
     const charging = charge > 0 && !isDest;
+    // Entering their hex: spears / traps resolve before the hit.
+    if (enterHazards(h)) break;
     // A hop (pass through, don't land) still deals charge damage.
     if (!isDest && !charging) {
       if (abilityCharge > 0) strike(occ, prev, abilityCharge);
@@ -1860,7 +1998,7 @@ export function previewMove(
     prev = h;
   }
 
-  return { stop, hits, palisadeHits, facing, converts };
+  return { stop, hits, palisadeHits, facing, converts, hazardHexes, walkerDead };
 }
 
 function pathsEq(a: Hex[], b: Hex[]): boolean {
@@ -2051,7 +2189,7 @@ export function getPiece(state: GameState, id: string): Piece | undefined {
   return state.pieces.find((p) => p.id === id);
 }
 
-export function terrainAt(state: GameState, h: Hex): Terrain {
+export function terrainAt(state: { terrain: Terrain[][] }, h: Hex): Terrain {
   return state.terrain[h.row]?.[h.col] ?? 'rock';
 }
 
@@ -2089,29 +2227,39 @@ export function pieceSees(state: GameState, viewer: Piece, target: Piece): boole
   return eq(origin, dest) || losClear(state, origin, dest, true, viewer.side);
 }
 
+function shootLosMode(arc: ShootArc): { overUnits: boolean; overWood: boolean } {
+  if (arc === 'arch') return { overUnits: true, overWood: true };
+  if (arc === 'laser') return { overUnits: true, overWood: false };
+  return { overUnits: false, overWood: false };
+}
+
 function losClear(
   state: GameState,
   from: Hex,
   to: Hex,
-  overUnits: boolean,
+  mode: boolean | { overUnits: boolean; overWood: boolean },
   viewer: Affiliation,
 ): boolean {
+  const opts =
+    typeof mode === 'boolean'
+      ? { overUnits: mode, overWood: mode }
+      : mode;
   const cells = line(from, to, state.orientation);
   const fromH = hexHeight(state, from);
   // Wall always blocks. Intermediate terrain higher than the shooter blocks.
   // Same/lower elevation is clear (ridge / plateau). Pieces block only from height 0.
-  // Arch: fire over units even from low. Terrain LOS unchanged.
+  // Arch: over units + wood. Laser: over units only. Straight: neither.
   // Destination may be elevated / occupied / wall — you can shoot *onto* it.
   // Hidden enemies do not block — you cannot see them.
   for (let i = 0; i < cells.length - 1; i++) {
-    const h = cells[i];
+    const h = cells[i]!;
     if (isWall(state, h)) return false;
-    if ((isPalisade(state, h) || isForest(state, h)) && !overUnits) return false;
+    if ((isPalisade(state, h) || isForest(state, h)) && !opts.overWood) return false;
     if (hexHeight(state, h) > fromH) return false;
     const blocker = pieceAt(state, h);
     if (
       fromH === 0 &&
-      !overUnits &&
+      !opts.overUnits &&
       blocker &&
       !isConcealedFrom(state, blocker, viewer)
     ) {
@@ -2119,6 +2267,15 @@ function losClear(
     }
   }
   return true;
+}
+
+/** Hexes a laser damages: every cell from shooter to aim, excluding the shooter. */
+export function laserBeamHexes(
+  state: { orientation: HexOrientation },
+  from: Hex,
+  to: Hex,
+): Hex[] {
+  return line(from, to, state.orientation);
 }
 
 /**
@@ -2170,6 +2327,17 @@ function inSolidShadow(state: GameState, from: Hex, at: Hex, n: Hex): boolean {
 }
 
 /** True if aiming splash at `at` would damage at least one enemy. */
+/** Ranged aim may lock a shields-cloaked enemy even though they are not drawn. */
+export function rangedTargetVisible(
+  state: GameState,
+  target: Piece,
+  shooterSide: Affiliation,
+): boolean {
+  if (shieldsBlockTargeting(target)) return false;
+  if (shieldsConceal(target) && isHostile(state, target.side, shooterSide)) return true;
+  return !isConcealedFrom(state, target, shooterSide);
+}
+
 export function splashHitsEnemy(
   state: GameState,
   at: Hex,
@@ -2178,12 +2346,7 @@ export function splashHitsEnemy(
 ): boolean {
   for (const h of splashBlast(state, at, from)) {
     const t = pieceAt(state, h);
-    if (
-      t &&
-      !t.shieldsUp &&
-      isHostile(state, t.side, shooterSide) &&
-      !isConcealedFrom(state, t, shooterSide)
-    ) {
+    if (t && isHostile(state, t.side, shooterSide) && rangedTargetVisible(state, t, shooterSide)) {
       return true;
     }
   }
@@ -2269,14 +2432,26 @@ function cloneState(state: GameState): GameState {
 }
 
 export function abilitiesOf(piece: Piece): AbilityId[] {
-  const base = piece.abilities ?? statsOf(piece.type).abilities ?? [];
+  const base = [...(piece.abilities ?? statsOf(piece.type).abilities ?? [])];
   // All terrain carries Hide on forest / other hide cover.
-  if (!hasAllTerrain(piece) || base.includes('hide')) return base;
-  return [...base, 'hide'];
+  if (hasAllTerrain(piece) && !base.includes('hide')) base.push('hide');
+  // Lunge promotion grants the ability (including to zero-melee kits).
+  if (hasUnitToken(piece, 'lunge') && !base.includes('lunge')) base.push('lunge');
+  return base;
 }
 
 export function hasAbility(piece: Piece, id: AbilityId): boolean {
   return abilitiesOf(piece).includes(id);
+}
+
+/**
+ * Lunge thrust damage. Attack +1 stacks. Kits with 0 melee still thrust for 1
+ * when they have Lunge (ability or promotion).
+ */
+export function lungeDamageOf(piece: Piece): number {
+  if (!hasAbility(piece, 'lunge')) return 0;
+  const base = statsOf(piece.type).meleeDamage;
+  return (base > 0 ? base : 1) + attackBonusOf(piece);
 }
 
 /** Charge crash damage. Ability gates it; 0 on the stat still hits for 1. */
@@ -2296,21 +2471,38 @@ function builtPalisadeAt(state: { tokens: TileToken[] }, h: Hex): TileToken | un
   return hexToken(state.tokens, h, (t) => t.type === 'palisade');
 }
 
-/** Whether Build with `structure` can place or clear on this already-legal spot. */
-export function buildSpotMatches(
+/** Buildable tokens Remove can clear (trap / palisade / bridge — not tree or forest). */
+export function buildableTokenAt(
   state: { tokens: TileToken[] },
+  h: Hex,
+): TileToken | undefined {
+  return (
+    builtPalisadeAt(state, h) ??
+    hexToken(state.tokens, h, (t) => t.type === 'bridge') ??
+    hexToken(state.tokens, h, (t) => t.type === 'pikes')
+  );
+}
+
+/** Whether Build with `structure` can act on this already-legal spot. */
+export function buildSpotMatches(
+  state: { tokens: TileToken[]; terrain: Terrain[][] },
   hex: Hex,
   structure: BuildStructure,
 ): boolean {
-  if (builtPalisadeAt(state, hex)) return structure === 'palisade';
-  if (tokenOnHex(state.tokens, hex, 'pikes')) return structure === 'pikes';
-  return true;
+  const built = buildableTokenAt(state, hex);
+  if (structure === 'remove') return !!built;
+  if (structure === 'bridge') {
+    return terrainAt(state, hex) === 'water' && !built;
+  }
+  // Trap / Palisade only place on empty ground (no buildable token, not water).
+  if (terrainAt(state, hex) === 'water') return false;
+  return !built;
 }
 
 /**
  * Adjacent hexes Build can use. Red faces are not spots.
- * Empty walkable hexes: place. Existing pikes / built palisades: clear.
- * Pass `structure` to keep only matching place/clear targets.
+ * Trap/Palisade: empty walkable land. Bridge: empty water. Remove: adjacent buildables.
+ * Pass `structure` to keep only matching targets.
  */
 export function buildSpots(
   state: GameState,
@@ -2326,12 +2518,19 @@ export function buildSpots(
     if (blocked.has(dir)) continue;
     const hex = neighborInDir(from, dir, state.orientation);
     if (!inBounds(state, hex)) continue;
-    if (terrainAt(state, hex) === 'water') continue;
     if (pieceAt(state, hex)) continue;
-    if (builtPalisadeAt(state, hex)) {
-      if (!structure || structure === 'palisade') out.push(hex);
+    const built = buildableTokenAt(state, hex);
+    if (built) {
+      if (!structure || structure === 'remove') out.push(hex);
       continue;
     }
+    const water = terrainAt(state, hex) === 'water';
+    if (water) {
+      // Bridge only — trap/palisade stay on land.
+      if (!structure || structure === 'bridge') out.push(hex);
+      continue;
+    }
+    if (structure === 'bridge') continue;
     if (!canWalkStep(state, piece, from, from, hex)) continue;
     if (structure && !buildSpotMatches(state, hex, structure)) continue;
     out.push(hex);
@@ -2344,7 +2543,7 @@ export function trapSpots(state: GameState, piece: Piece): Hex[] {
   return buildSpots(state, piece);
 }
 
-/** Own turn, ability, not asleep, not already finished. Downhill grant is move-only. */
+/** Own turn, ability, not asleep, not already finished. Downhill bonus can be forfeited. */
 function specialReady(state: GameState, pieceId: string, id: AbilityId): Piece | null {
   const piece = getPiece(state, pieceId);
   if (!piece || piece.side !== state.turn || state.winner) return null;
@@ -2352,7 +2551,6 @@ function specialReady(state: GameState, pieceId: string, id: AbilityId): Piece |
   if (isSleeping(piece)) return null;
   if (hasActed(state, pieceId)) return null;
   if (state.scoutPieceId && state.scoutPieceId !== pieceId) return null;
-  if (state.downhillMove && state.scoutPieceId === pieceId) return null;
   if (!state.scoutPieceId && (piece.movedThisTurn || piece.actedThisTurn)) return null;
   if (
     !state.scoutPieceId &&
@@ -2361,6 +2559,16 @@ function specialReady(state: GameState, pieceId: string, id: AbilityId): Piece |
     return null;
   }
   return piece;
+}
+
+/** Drop the free downhill +1 — any other action overrules it. */
+function forfeitDownhill(state: GameState, piece: Piece): void {
+  if (!(state.downhillMove && state.scoutPieceId === piece.id)) return;
+  state.downhillMove = false;
+  state.downhillQueued = 0;
+  const left = apSpendable(piece);
+  // Keep the scout lock so the overruling action can spend this slot (or leftover AP).
+  state.scoutActionsLeft = Math.max(1, left);
 }
 
 export function canBuild(
@@ -2424,6 +2632,24 @@ export function canShields(state: GameState, pieceId: string): boolean {
   return !!specialReady(state, pieceId, 'shields');
 }
 
+/** Spend 1 AP to cut remaining shootCooldown by 1. Available while reloading. */
+export function canReload(state: GameState, pieceId: string): boolean {
+  const piece = getPiece(state, pieceId);
+  if (!piece || piece.side !== state.turn || state.winner) return false;
+  if (!isReloading(piece)) return false;
+  if (isSleeping(piece)) return false;
+  if (hasActed(state, pieceId)) return false;
+  if (state.scoutPieceId && state.scoutPieceId !== pieceId) return false;
+  if (!state.scoutPieceId && (piece.movedThisTurn || piece.actedThisTurn)) return false;
+  if (
+    !state.scoutPieceId &&
+    state.actedIds.length >= clampUnitsPerTurn(state.unitsPerTurn)
+  ) {
+    return false;
+  }
+  return canSpendActionPoints(piece, 1);
+}
+
 type BashStep = {
   victim: Piece;
   from: Hex;
@@ -2444,7 +2670,7 @@ function shoveBlocked(
   const th = hexHeight(state, to);
   if (th > climbLevelOf(victim)) return 'height';
   if (Math.abs(th - fh) > 1) return 'height';
-  if (terrainAt(state, to) === 'water' && !canPassWater(victim)) return 'water';
+  if (inWater(state, to) && !canPassWater(victim)) return 'water';
   if (enteringWater(state, from, to) && refusesWaterJump(victim)) return 'water';
   return null;
 }
@@ -2501,10 +2727,45 @@ export function bashFoes(state: GameState, piece: Piece): Piece[] {
   return out;
 }
 
+/** True when bash deals damage (slam / collide / wood), not a free shove. */
+export function bashDamages(state: GameState, piece: Piece): boolean {
+  return planBash(state, piece).some((s) => s.outcome !== 'move');
+}
+
 export function canBash(state: GameState, pieceId: string): boolean {
   const piece = specialReady(state, pieceId, 'bash');
   if (!piece) return false;
   return planBash(state, piece).length > 0;
+}
+
+/** Far hexes a lunge can thrust to (straight line, 2 steps). */
+export function lungeSpots(state: GameState, piece: Piece): Hex[] {
+  if (lungeDamageOf(piece) <= 0) return [];
+  const from: Hex = { col: piece.col, row: piece.row };
+  const out: Hex[] = [];
+  for (let d = 0; d < 6; d++) {
+    const dir = d as HexDir;
+    const near = neighborInDir(from, dir, state.orientation);
+    const far = neighborInDir(near, dir, state.orientation);
+    if (!inBounds(state, near) || !inBounds(state, far)) continue;
+    if (isWall(state, near) || isWall(state, far)) continue;
+    if (isPalisade(state, near) || isPalisade(state, far)) continue;
+    if (!canWalkStep(state, piece, from, from, near)) continue;
+    if (!canWalkStep(state, piece, from, near, far)) continue;
+    const nearOcc = hostileNeighbor(state, piece, near);
+    const farOcc = hostileNeighbor(state, piece, far);
+    if (!nearOcc && !farOcc) continue;
+    const farAny = pieceAt(state, far);
+    if (farAny && sameTeam(state, farAny.side, piece.side)) continue;
+    out.push(far);
+  }
+  return out;
+}
+
+export function canLunge(state: GameState, pieceId: string): boolean {
+  const piece = specialReady(state, pieceId, 'lunge');
+  if (!piece) return false;
+  return lungeSpots(state, piece).length > 0;
 }
 
 function noteStrike(
@@ -2797,8 +3058,12 @@ export function refusesWaterJump(piece: Piece): boolean {
   return actionPointsLeft(piece) <= 0;
 }
 
-function enteringWater(state: GameState, from: Hex, to: Hex): boolean {
-  return terrainAt(state, to) === 'water' && terrainAt(state, from) !== 'water';
+function enteringWater(
+  state: { tokens: TileToken[]; terrain: Terrain[][] },
+  from: Hex,
+  to: Hex,
+): boolean {
+  return inWater(state, to) && !inWater(state, from);
 }
 
 /** Start of a side's turn: each unit in water spends 1 AP, or takes 2 HP. */
@@ -2855,7 +3120,10 @@ export function beginSideTurn(state: GameState, newRound = false, kickoff = fals
   applyTurnLimit(state);
   if (state.winner) return;
   for (const p of state.pieces) {
-    if (p.side === state.turn) p.shieldsUp = undefined;
+    if (p.side === state.turn) {
+      p.shieldsUp = undefined;
+      p.shieldsStruck = undefined;
+    }
   }
   maybeSucceedGeneral(state, state.turn);
   if (state.winner) return;
@@ -2920,7 +3188,7 @@ function marchCombatAt(state: GameState, piece: Piece, hex: Hex): boolean {
 
 function marchStepTerrain(state: GameState, piece: Piece, fromHex: Hex, toHex: Hex): boolean {
   const t = terrainAt(state, toHex);
-  if (t === 'water' && !canPassWater(piece)) return false;
+  if (inWater(state, toHex) && !canPassWater(piece)) return false;
   if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
   if (terrainHeight(t) > climbLevelOf(piece)) return false;
   if (Math.abs(hexHeight(state, toHex) - hexHeight(state, fromHex)) > 1) return false;
@@ -3000,7 +3268,7 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
   if (goalOcc && goalOcc.id !== piece.id) return null;
   const tGoal = terrainAt(state, goal);
   if (isWall(state, goal) || isPalisade(state, goal)) return null;
-  if (tGoal === 'water' && !canPassWater(piece)) return null;
+  if (inWater(state, goal) && !canPassWater(piece)) return null;
   if (terrainHeight(tGoal) > climbLevelOf(piece)) return null;
 
   type Node = { hex: Hex; facing: HexDir; prev: Node | null };
@@ -3142,7 +3410,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     taken.push(next);
     facing = step;
     cur = next;
-    const enteredWater = terrainAt(state, here) !== 'water' && terrainAt(state, next) === 'water';
+    const enteredWater = enteringWater(state, here, next);
     const chargeForest = stats.charge > 0 && isForest(state, next);
     const climbedNow = taken.some((h) => hexHeight(state, h) > hexHeight(state, here));
     if (
@@ -3180,11 +3448,23 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   if (strike && dirBetween(approach, strike, state.orientation) === null) strike = null;
   if (!taken.length && !strike) return null;
   let landed = approach;
-  if (strike) {
-    const took = applyMarchStrike(state, piece, approach, strike);
-    if (took && getPiece(state, piece.id)) {
-      landed = strike;
-      taken.push(strike);
+  reveal(piece);
+  const prevCovered = hexDamageCoveredKeys(state, piece);
+  // Hazards on tiles walked this chunk, then on the melee hex before the strike.
+  if (taken.length) applyWalkTokens(state, piece, here, taken, landed);
+  if (strike && getPiece(state, piece.id)) {
+    if (applyEnterHazards(state, piece, strike)) {
+      // Died on spears / trap entering the fight — no hit.
+    } else {
+      const took = applyMarchStrike(state, piece, approach, strike);
+      if (took && getPiece(state, piece.id)) {
+        landed = strike;
+        taken.push(strike);
+        for (const tok of tokensAt(state.tokens, strike)) {
+          if (tok.type === 'flag') claimFlag(state, piece, tok);
+          if (tok.type === 'board') readBoard(state, piece, tok);
+        }
+      }
     }
   }
   if (!getPiece(state, piece.id)) {
@@ -3205,8 +3485,6 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
     path: animPath,
     stop: landed,
   };
-  reveal(piece);
-  const prevCovered = hexDamageCoveredKeys(state, piece);
   const climbed = taken.some((h) => hexHeight(state, h) > hexHeight(state, here));
   if (!eq(landed, here)) {
     piece.col = landed.col;
@@ -3226,7 +3504,6 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   } else if (taken.length) {
     state.log.push(`${unitLog(piece)} marches to ${approach.col},${approach.row}`);
   }
-  if (taken.length) applyWalkTokens(state, piece, here, taken, landed);
   if (!getPiece(state, piece.id)) return anim;
   if (!eq(landed, here)) applyHexDamagePush(state, piece, prevCovered);
   if (!getPiece(state, piece.id)) return anim;
@@ -3269,8 +3546,7 @@ export function performMarch(state: GameState, pieceId: string): GameState {
   if (!live) return next;
   // Base action AP is paid in afterAction. Extras / climb already spent in applyOneMarch.
   // Leftover spendable AP (unused double time, drop grants) stay as further actions.
-  const enteredWater =
-    terrainAt(next, anim.from) !== 'water' && terrainAt(next, anim.stop) === 'water';
+  const enteredWater = enteringWater(next, anim.from, anim.stop);
   const dropped = downSteps(next, anim.from, anim.path, anim.stop);
   afterAction(next, live, 'move', enteredWater, dropped);
   return next;
@@ -3516,7 +3792,15 @@ function payDownhill(state: GameState, piece: Piece): void {
 function afterAction(
   state: GameState,
   piece: Piece,
-  kind: 'move' | 'shoot' | 'rotate' | 'build' | 'bash' | 'berserk',
+  kind:
+    | 'move'
+    | 'shoot'
+    | 'rotate'
+    | 'build'
+    | 'bash'
+    | 'berserk'
+    | 'reload'
+    | 'lunge',
   enteredWater = false,
   downCount = 0,
   /** Broke after the swim tax — base 1-hex from water does not need another AP. */
@@ -3609,7 +3893,7 @@ function movePathOpts(
       if (!inBounds(state, h)) return false;
       const t = terrainAt(state, h);
       if (isWall(state, h)) return false;
-      if (t === 'water' && !canPassWater(piece)) return false;
+      if (inWater(state, h) && !canPassWater(piece)) return false;
       if (terrainHeight(t) > climb) return false;
       const occ = occupantAt(state, piece, from, h);
       if (isPalisade(state, h)) {
@@ -3631,7 +3915,7 @@ function movePathOpts(
         return melee > 0 && breaksPalisadeAt(state, h, melee);
       }
       if (isForest(state, h) && charge > 0) return false;
-      if (t === 'water') return false;
+      if (inWater(state, h)) return false;
       if (terrainHeight(t) > climb) return false;
       if (stats.passUnits) return true;
       const occ = occupantAt(state, piece, from, h);
@@ -3654,10 +3938,9 @@ function canWalkStep(
   fromHex: Hex,
   toHex: Hex,
 ): boolean {
-  const t = terrainAt(state, toHex);
   if (isWall(state, toHex)) return false;
   if (isPalisade(state, toHex)) return meleeDamageOf(piece) > 0;
-  if (t === 'water' && !canPassWater(piece)) return false;
+  if (inWater(state, toHex) && !canPassWater(piece)) return false;
   if (enteringWater(state, fromHex, toHex) && refusesWaterJump(piece)) return false;
   const fh = hexHeight(state, fromHex);
   const th = hexHeight(state, toHex);
@@ -3677,9 +3960,9 @@ function pathClimbs(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolea
 }
 
 function pathEntersWater(state: GameState, from: Hex, dest: Hex, path: Hex[]): boolean {
-  if (terrainAt(state, from) === 'water') return false;
-  if (terrainAt(state, dest) === 'water') return true;
-  return path.some((p) => terrainAt(state, p) === 'water');
+  if (inWater(state, from)) return false;
+  if (inWater(state, dest)) return true;
+  return path.some((p) => inWater(state, p));
 }
 
 function pathSpendsAp(
@@ -4028,6 +4311,11 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
   for (const hex of buildSpots(state, piece)) out.push({ kind: 'build', hex });
 
   const fromTerrain = terrainAt(state, from);
+  if (lungeDamageOf(piece) > 0) {
+    for (const hex of lungeSpots(state, piece)) {
+      out.push({ kind: 'lunge', hex });
+    }
+  }
   const reach = allMoveStops(state, piece);
 
   const inDownhill = state.downhillMove && state.scoutPieceId === piece.id;
@@ -4116,21 +4404,20 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
     for (const [k, { dist, via }] of allMoveStops(state, spared)) {
       if (reach.has(k)) continue;
       const h = parseKey(k);
-      if (terrainAt(state, h) !== 'water') continue;
+      if (!inWater(state, h)) continue;
       out.push({ kind: 'apEmpty', hex: h, cost: dist, extra: !!via });
     }
   }
 
   // Shoot — show full LOS range; only enemy (or splash aim) is actionable.
-  // The downhill grant is a move, not a shot.
+  // Downhill bonus is optional — shooting forfeits it.
   if (
-    (state.downhillMove && state.scoutPieceId === piece.id) ||
     stats.shoot <= 0 ||
     isReloading(piece) ||
     isDepleted(piece) ||
-    fromTerrain === 'water'
+    inWater(state, from)
   ) {
-    return out; // move highlights only while reloading / empty / in water / no gun / downhill
+    return out; // move highlights only while reloading / empty / in water / no gun
   }
 
   const shootRange = shootRangeOf(piece) + terrainHeight(fromTerrain);
@@ -4146,18 +4433,21 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
       if (d < shootMin || d + highTargetTax(state, h) > shootRange) continue;
       const terrain = terrainAt(state, h);
       if (terrain === 'rock' && !isWall(state, h)) continue; // can't shoot into rock
-      // Walls / palisades: only rockets can impact (to demolish); bullets treat like blocked aim
-      if (isBlockedWalk(state, h) && !splash) continue;
-      // Splash (bazooka/tank) can't impact on water — except cover sitting on it
-      if (splash && terrain === 'water' && !isBlockedWalk(state, h)) continue;
-      if (!losClear(state, from, h, stats.shootArc === 'arch', piece.side)) continue;
+      // Stone walls / houses: rockets only. Wood (palisade / tree) is a bullet target.
+      if (isWall(state, h) && !splash) continue;
+      // Splash (bazooka/tank) can't impact on open water — bridges / cover are fine
+      if (splash && inWater(state, h) && !isBlockedWalk(state, h)) continue;
+      if (!losClear(state, from, h, shootLosMode(stats.shootArc), piece.side)) continue;
 
       const rawTarget = pieceAt(state, h);
       const target =
-        rawTarget && isConcealedFrom(state, rawTarget, piece.side)
-          ? undefined
-          : rawTarget;
-      // Never highlight friendly-occupied tiles as shoot range
+        rawTarget && rangedTargetVisible(state, rawTarget, piece.side)
+          ? rawTarget
+          : undefined;
+
+      // Laser uses the same aim targets as arch/straight (enemy / wood).
+      // Difference is resolve: the beam damages every unit on the line.
+      // Never highlight friendly-occupied tiles as shoot targets.
       if (target && sameTeam(state, target.side, piece.side)) continue;
 
       if (splash) {
@@ -4168,8 +4458,10 @@ export function rangeHighlights(state: GameState, pieceId: string): Highlight[] 
           out.push({ kind: 'shoot-range', hex: h });
         }
       } else if (target && isHostile(state, target.side, piece.side)) {
-        if (target.shieldsUp) out.push({ kind: 'shoot-range', hex: h });
-        else out.push({ kind: 'shoot', hex: h });
+        out.push({ kind: 'shoot', hex: h });
+      } else if (hasBreakableWood(state, h)) {
+        // Empty palisade / tree / forest — chip with shoot damage
+        out.push({ kind: 'shoot', hex: h });
       } else {
         // Visible range only — no thin-air shots for bullets
         out.push({ kind: 'shoot-range', hex: h });
@@ -4213,7 +4505,7 @@ export function rotatePiece(state: GameState, pieceId: string, dir: HexDir): Gam
   if (isSleeping(piece)) return state;
   if (hasActed(next, piece.id)) return state;
   if (next.scoutPieceId && next.scoutPieceId !== piece.id) return state;
-  if (next.downhillMove && next.scoutPieceId === piece.id) return state;
+  forfeitDownhill(next, piece);
   const prevCovered = hexDamageCoveredKeys(next, piece);
   clearWalkOrder(next, piece);
   piece.facing = dir;
@@ -4276,8 +4568,10 @@ function applyActionInner(state: GameState, action: Action): GameState {
       next.log.push(
         `${scout ? unitLog(scout) : sideLog(next.turn, 'Scout')} skips remaining action`,
       );
-      if (scout) finishActivation(next, scout);
-      else {
+      if (scout) {
+        forfeitDownhill(next, scout);
+        finishActivation(next, scout);
+      } else {
         clearScoutLock(next);
         checkWin(next);
       }
@@ -4293,6 +4587,11 @@ function applyActionInner(state: GameState, action: Action): GameState {
   // Any real order replaces a standing march.
   clearWalkOrder(next, piece);
 
+  // Downhill +1 is optional — anything but the free bonus walk forfeits it.
+  if (action.kind !== 'move' && action.kind !== 'charge') {
+    forfeitDownhill(next, piece);
+  }
+
   const highlights = legalHighlights(next, piece.id);
 
   if (action.kind === 'build') {
@@ -4303,32 +4602,50 @@ function applyActionInner(state: GameState, action: Action): GameState {
     }
     reveal(piece);
     const fence = builtPalisadeAt(next, action.to);
-    if (action.structure === 'pikes' && tokenOnHex(next.tokens, action.to, 'pikes')) {
-      next.tokens = next.tokens.filter(
-        (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
-      );
-      next.log.push(`${unitLog(piece)} clears pikes`);
-    } else if (action.structure === 'palisade' && fence) {
-      next.tokens = next.tokens.filter(
-        (t) => !(t.type === 'palisade' && t.col === action.to.col && t.row === action.to.row),
-      );
-      next.log.push(`${unitLog(piece)} dismantles a palisade`);
-    } else if (isSide(piece.side)) {
-      if (action.structure === 'pikes') {
-        next.tokens = [
-          ...next.tokens,
-          { type: 'pikes', col: action.to.col, row: action.to.row, owner: piece.side },
-        ];
-        next.log.push(`${unitLog(piece)} plants pikes`);
+    const bridge = tokenOnHex(next.tokens, action.to, 'bridge');
+    const pikes = tokenOnHex(next.tokens, action.to, 'pikes');
+    if (action.structure === 'remove') {
+      if (pikes) {
+        next.tokens = next.tokens.filter(
+          (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
+        );
+        next.log.push(`${unitLog(piece)} clears pikes`);
+      } else if (fence) {
+        next.tokens = next.tokens.filter(
+          (t) => !(t.type === 'palisade' && t.col === action.to.col && t.row === action.to.row),
+        );
+        next.log.push(`${unitLog(piece)} dismantles a palisade`);
+      } else if (bridge) {
+        next.tokens = next.tokens.filter(
+          (t) => !(t.type === 'bridge' && t.col === action.to.col && t.row === action.to.row),
+        );
+        next.log.push(`${unitLog(piece)} dismantles a bridge`);
       } else {
-        next.tokens = [
-          ...next.tokens,
-          { type: 'palisade', col: action.to.col, row: action.to.row },
-        ];
-        next.log.push(`${unitLog(piece)} builds a palisade`);
+        return state;
       }
-    } else {
+    } else if (fence || bridge || pikes) {
       return state;
+    } else if (!isSide(piece.side)) {
+      return state;
+    } else if (action.structure === 'pikes') {
+      next.tokens = [
+        ...next.tokens,
+        { type: 'pikes', col: action.to.col, row: action.to.row, owner: piece.side },
+      ];
+      next.log.push(`${unitLog(piece)} plants pikes`);
+    } else if (action.structure === 'bridge') {
+      if (terrainAt(next, action.to) !== 'water') return state;
+      next.tokens = [
+        ...next.tokens,
+        { type: 'bridge', col: action.to.col, row: action.to.row },
+      ];
+      next.log.push(`${unitLog(piece)} builds a bridge`);
+    } else {
+      next.tokens = [
+        ...next.tokens,
+        { type: 'palisade', col: action.to.col, row: action.to.row },
+      ];
+      next.log.push(`${unitLog(piece)} builds a palisade`);
     }
     afterAction(next, piece, 'build');
     return next;
@@ -4341,6 +4658,18 @@ function applyActionInner(state: GameState, action: Action): GameState {
     spendActionPoints(piece, 1);
     markActed(piece);
     finishActivation(next, piece);
+    return next;
+  }
+
+  if (action.kind === 'reload') {
+    if (!canReload(next, piece.id)) return state;
+    // Keep firedThisTurn so the end-of-turn tick still skips once after a fire.
+    piece.shootCooldown = Math.max(0, (piece.shootCooldown ?? 0) - 1);
+    next.log.push(
+      `${unitLog(piece)} reloads` +
+        ((piece.shootCooldown ?? 0) > 0 ? ` (${piece.shootCooldown} left)` : ''),
+    );
+    afterAction(next, piece, 'reload');
     return next;
   }
 
@@ -4440,6 +4769,65 @@ function applyActionInner(state: GameState, action: Action): GameState {
     return next;
   }
 
+  if (action.kind === 'lunge') {
+    if (!canLunge(next, piece.id)) return state;
+    if (!lungeSpots(next, piece).some((h) => eq(h, action.to))) return state;
+    reveal(piece);
+    const fromHex: Hex = { col: piece.col, row: piece.row };
+    let dir: HexDir | null = null;
+    let near: Hex | null = null;
+    for (let d = 0; d < 6; d++) {
+      const n = neighborInDir(fromHex, d as HexDir, next.orientation);
+      const f = neighborInDir(n, d as HexDir, next.orientation);
+      if (eq(f, action.to)) {
+        dir = d as HexDir;
+        near = n;
+        break;
+      }
+    }
+    if (dir == null || !near) return state;
+    const far = action.to;
+    const amount = lungeDamageOf(piece);
+    const floor = amount > 0 ? 1 : 0;
+    const bits: string[] = [];
+    const dmgLines: string[] = [];
+    let killedFar = false;
+    for (const h of [near, far]) {
+      const foe = hostileNeighbor(next, piece, h);
+      if (!foe) continue;
+      const victim = getPiece(next, foe.id);
+      if (!victim) continue;
+      const before = hpLeft(victim);
+      const dmg = applyDamage(next, victim, amount, floor, fromHex);
+      noteStrike(next, victim, before, dmg);
+      bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
+      dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
+      if (eq(h, far) && dmg.fatal) killedFar = true;
+    }
+    const nearClear = !pieceAt(next, near);
+    const farClear = !pieceAt(next, far);
+    let stepped = false;
+    if (!killedFar && nearClear && farClear) {
+      piece.col = far.col;
+      piece.row = far.row;
+      applyWalkTokens(next, piece, fromHex, [near, far], far);
+      settleHide(next, piece, fromHex);
+      stepped = true;
+    }
+    next.log.push(
+      `${unitLog(piece)} lunges` +
+        (bits.length ? ` ${bits.join(', ')}` : '') +
+        (stepped
+          ? ` → ${far.col},${far.row}`
+          : killedFar
+            ? ' — holds (kill on far hex)'
+            : '') +
+        dmgLines.join(''),
+    );
+    afterAction(next, piece, 'lunge');
+    return next;
+  }
+
   if (action.kind === 'move' || action.kind === 'charge') {
     const charging = action.kind === 'charge';
     const hit = charging
@@ -4473,39 +4861,50 @@ function applyActionInner(state: GameState, action: Action): GameState {
 
     reveal(piece);
     const plan = previewMove(next, piece, action.to, action.path, { charging });
+    const walkPath = resolveMovePath(next, piece, action.to, action.path, charging);
+    const prevCovered = hexDamageCoveredKeys(next, piece);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
-    for (const id of plan.converts) {
-      const claimed = getPiece(next, id);
-      if (!claimed || !isNeutralSide(claimed.side) || !isSide(piece.side)) continue;
-      hitBits.push(unitLog(claimed));
-      claimed.side = piece.side;
-      dropUnitToken(claimed, 'neutral');
-      const flag = tokenOnHex(next.tokens, { col: claimed.col, row: claimed.row }, 'flag');
-      if (flag) flag.owner = piece.side;
+
+    // Traps / facing spears resolve on enter — before melee / charge hits.
+    for (const h of plan.hazardHexes) {
+      if (applyEnterHazards(next, piece, h)) break;
     }
 
-    for (const mh of plan.hits) {
-      const victim = getPiece(next, mh.id);
-      if (!victim) continue;
-      tellStory(next, victim, 'touch');
-      applyDamage(next, victim, mh.amount, 1, mh.from);
-      hitBits.push(hpBit(victim, mh.fatal, mh.remaining, mh.routed));
-      dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
-    }
+    const walkerLive = !!getPiece(next, piece.id);
+    if (walkerLive) {
+      for (const id of plan.converts) {
+        const claimed = getPiece(next, id);
+        if (!claimed || !isNeutralSide(claimed.side) || !isSide(piece.side)) continue;
+        hitBits.push(unitLog(claimed));
+        claimed.side = piece.side;
+        dropUnitToken(claimed, 'neutral');
+        const flag = tokenOnHex(next.tokens, { col: claimed.col, row: claimed.row }, 'flag');
+        if (flag) flag.owner = piece.side;
+      }
 
-    for (const ph of plan.palisadeHits) {
-      const tok = hexToken(next.tokens, ph.hex, (t) => isPalisadeToken(t.type));
-      if (!tok) continue;
-      if (ph.destroyed) {
-        next.tokens = next.tokens.filter(
-          (t) =>
-            !(isPalisadeToken(t.type) && t.col === ph.hex.col && t.row === ph.hex.row),
-        );
-        hitBits.push(tok.type);
-      } else {
-        tok.hp = ph.remaining;
-        hitBits.push(`${tok.type} (${ph.remaining} left)`);
+      for (const mh of plan.hits) {
+        const victim = getPiece(next, mh.id);
+        if (!victim) continue;
+        tellStory(next, victim, 'touch');
+        applyDamage(next, victim, mh.amount, 1, mh.from);
+        hitBits.push(hpBit(victim, mh.fatal, mh.remaining, mh.routed));
+        dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
+      }
+
+      for (const ph of plan.palisadeHits) {
+        const tok = hexToken(next.tokens, ph.hex, (t) => isPalisadeToken(t.type));
+        if (!tok) continue;
+        if (ph.destroyed) {
+          next.tokens = next.tokens.filter(
+            (t) =>
+              !(isPalisadeToken(t.type) && t.col === ph.hex.col && t.row === ph.hex.row),
+          );
+          hitBits.push(tok.type);
+        } else {
+          tok.hp = ph.remaining;
+          hitBits.push(`${tok.type} (${ph.remaining} left)`);
+        }
       }
     }
 
@@ -4537,27 +4936,31 @@ function applyActionInner(state: GameState, action: Action): GameState {
           apTag +
           dmgLines.join(''),
       );
-    } else if (bounced) {
+    } else if (walkerLive && bounced) {
       next.log.push(
         `${unitLog(piece)} stops short of ${action.to.col},${action.to.row}${apTag}`,
       );
-    } else {
+    } else if (walkerLive) {
       next.log.push(
         `${unitLog(piece)} moves to ${action.to.col},${action.to.row}${apTag}`,
       );
     }
 
-    const prevCovered = hexDamageCoveredKeys(next, piece);
-    const walkPath = resolveMovePath(next, piece, action.to, action.path, charging);
     const enteredWater = !inWater(next, fromHex) && inWater(next, plan.stop);
     const taken = next.pieces.some(
       (p) => p.id !== piece.id && p.col === plan.stop.col && p.row === plan.stop.row,
     );
     const palStanding = isPalisade(next, plan.stop);
-    if (!taken && !palStanding) {
+    if (walkerLive && !taken && !palStanding) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
-      applyWalkTokens(next, piece, fromHex, walkPath, plan.stop);
+      // Flags / boards on hexes we occupy (hazards already resolved above).
+      for (const h of walkedHexes(fromHex, walkPath, plan.stop)) {
+        for (const tok of tokensAt(next.tokens, h)) {
+          if (tok.type === 'flag') claimFlag(next, piece, tok);
+          if (tok.type === 'board') readBoard(next, piece, tok);
+        }
+      }
       settleHide(next, piece, fromHex);
     }
     if (piece.walkTo && piece.col === piece.walkTo.col && piece.row === piece.walkTo.row) {
@@ -4612,20 +5015,25 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const blast = splashBlast(next, action.at, fromHex);
     const hitBits: string[] = [];
     const dmgLines: string[] = [];
+    const splash = splashDamageOf(piece);
     for (const h of blast) {
-      if (isForest(next, h)) {
-        const chip = chipForestAt(next, h, splashDamageOf(piece));
-        if (chip) {
+      // Breakable wood takes the same blast damage units do (not a free demolish).
+      if (hasBreakableWood(next, h)) {
+        const forestSoak = forestSoaksShot(next, h);
+        const wood = chipWoodAt(next, h, splash);
+        if (wood) {
           hitBits.push(
-            chip.remaining > 0 ? `forest (${chip.remaining} left)` : 'forest',
+            wood.remaining > 0
+              ? `${TOKEN_LABEL[wood.type]} (${wood.remaining} left)`
+              : TOKEN_LABEL[wood.type],
           );
         }
-        continue;
+        // Live forest wood soaks the occupant; felled forest still hides but no longer soaks.
+        if (forestSoak) continue;
       }
       const t = pieceAt(next, h);
-      // Splash hits everyone in the blast — friendlies included. Shields stop it.
-      const splash = splashDamageOf(piece);
-      if (t && splash > 0 && t.shieldsUp) {
+      // Splash hits everyone in the blast — friendlies included. Shields absorb (no dmg).
+      if (t && splash > 0 && strikeShields(t)) {
         hitBits.push('shields');
       } else if (t && splash > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
@@ -4633,22 +5041,14 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
         dmgLines.push(dmgLine(next, t, splash, 0, origin, true));
       }
-      // Concrete walls and palisades crumble under rockets; the tile underneath stays
-      if (isBlockedWalk(next, h)) {
-        const tok = hexToken(
-          next.tokens,
-          h,
-          (item) => isWallToken(item.type) || isPalisadeToken(item.type),
-        );
-        const kind = tok?.type ?? (isPalisade(next, h) ? 'palisade' : 'wall');
+      // Stone walls / houses still crumble under rockets; tile underneath stays.
+      if (isWall(next, h)) {
+        const tok = hexToken(next.tokens, h, (item) => isWallToken(item.type));
+        const kind = tok?.type ?? 'wall';
         if (terrainAt(next, h) === 'wall') next.terrain[h.row][h.col] = 'land';
         next.tokens = next.tokens.filter(
           (item) =>
-            !(
-              (isWallToken(item.type) || isPalisadeToken(item.type)) &&
-              item.col === h.col &&
-              item.row === h.row
-            ),
+            !(isWallToken(item.type) && item.col === h.col && item.row === h.row),
         );
         hitBits.push(kind);
       }
@@ -4660,19 +5060,68 @@ function applyActionInner(state: GameState, action: Action): GameState {
         ammoLog(piece, stats) +
         dmgLines.join(''),
     );
+  } else if (stats.shootArc === 'laser') {
+    const fromHex: Hex = { col: piece.col, row: piece.row };
+    const beam = laserBeamHexes(next, fromHex, action.at);
+    const shot = shootDamageOf(piece);
+    const hitBits: string[] = [];
+    const dmgLines: string[] = [];
+    for (const h of beam) {
+      const forestSoak = forestSoaksShot(next, h);
+      const wood = chipWoodAt(next, h, shot);
+      if (wood) {
+        hitBits.push(
+          wood.remaining > 0
+            ? `${TOKEN_LABEL[wood.type]} (${wood.remaining} left)`
+            : TOKEN_LABEL[wood.type],
+        );
+        // Live forest wood soaks; felled forest no longer protects the occupant.
+        if (forestSoak) continue;
+      }
+      const t = pieceAt(next, h);
+      if (!t || t.id === piece.id) continue;
+      if (strikeShields(t)) {
+        hitBits.push(`${unitLog(t)} shields`);
+        continue;
+      }
+      const dmg = applyDamage(next, t, shot, 0, fromHex, true);
+      hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
+      dmgLines.push(dmgLine(next, t, shot, 0, fromHex, true));
+    }
+    next.log.push(
+      `${unitLog(piece)} lasers toward ${action.at.col},${action.at.row}` +
+        (hitBits.length ? ` — hits ${hitBits.join(' + ')}` : ' — no hits') +
+        (stats.shootCooldown > 0 ? ' — reloading' : '') +
+        ammoLog(piece, stats) +
+        dmgLines.join(''),
+    );
   } else {
     const t = pieceAt(next, action.at);
-    if (!t || sameTeam(next, t.side, piece.side)) return state;
     const fromHex: Hex = { col: piece.col, row: piece.row };
-    if (t.shieldsUp) {
+    const shot = shootDamageOf(piece);
+    if (!t || sameTeam(next, t.side, piece.side)) {
+      const wood = chipWoodAt(next, action.at, shot);
+      if (!wood) return state;
+      next.log.push(
+        `${unitLog(piece)} shoots ${TOKEN_LABEL[wood.type]} at ${action.at.col},${action.at.row}` +
+          (wood.remaining > 0
+            ? ` — ${wood.remaining} left`
+            : ' — destroyed') +
+          (stats.shootCooldown > 0 ? ' — reloading' : '') +
+          ammoLog(piece, stats),
+      );
+      afterAction(next, piece, 'shoot');
+      return next;
+    }
+    if (strikeShields(t)) {
       next.log.push(
         `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row} — shields hold`,
       );
       afterAction(next, piece, 'shoot');
       return next;
     }
-    if (isForest(next, action.at)) {
-      const chip = chipForestAt(next, action.at, shootDamageOf(piece));
+    if (isForest(next, action.at) && forestSoaksShot(next, action.at)) {
+      const chip = chipForestAt(next, action.at, shot);
       const cover =
         chip && chip.remaining > 0
           ? `forest (${chip.remaining} left)`
@@ -4686,7 +5135,6 @@ function applyActionInner(state: GameState, action: Action): GameState {
       afterAction(next, piece, 'shoot');
       return next;
     }
-    const shot = shootDamageOf(piece);
     const dmg = applyDamage(next, t, shot, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
@@ -4726,17 +5174,22 @@ export function allLegalActions(state: GameState): Action[] {
       }
       // shoot-range / apEmpty are display-only
     }
-    if (canBuild(state, p.id)) {
-      for (const to of buildSpots(state, p)) {
-        // AI keeps planting traps; players pick Trap or Palisade in the dock.
-        if (builtPalisadeAt(state, to)) continue;
+    if (canBuild(state, p.id, 'pikes')) {
+      for (const to of buildSpots(state, p, 'pikes')) {
+        // AI keeps planting traps; players pick Trap / Palisade / Bridge / Remove in the dock.
         actions.push({ kind: 'build', pieceId: p.id, to, structure: 'pikes' });
       }
     }
     if (canBash(state, p.id)) actions.push({ kind: 'bash', pieceId: p.id });
     if (canBerserk(state, p.id)) actions.push({ kind: 'berserk', pieceId: p.id });
+    if (canLunge(state, p.id)) {
+      for (const to of lungeSpots(state, p)) {
+        actions.push({ kind: 'lunge', pieceId: p.id, to });
+      }
+    }
     if (canShields(state, p.id)) actions.push({ kind: 'shields', pieceId: p.id });
-    if (statsOf(p.type).hexArmor && !(state.downhillMove && state.scoutPieceId === p.id)) {
+    if (canReload(state, p.id)) actions.push({ kind: 'reload', pieceId: p.id });
+    if (statsOf(p.type).hexArmor) {
       const cur = facingOf(p);
       for (let d = 0; d < 6; d++) {
         if (d === cur) continue;

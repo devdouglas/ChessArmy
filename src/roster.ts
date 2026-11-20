@@ -14,17 +14,20 @@ export type UnitRole =
   | 'archer'
   | 'javelin'
   | 'horsearcher'
+  | 'lightcavalry'
   | 'chariotarcher'
   | 'cohort'
   | 'hoplite'
   | 'elephant'
   | 'barbarian'
   | 'catapult'
+  | 'ballista'
   | 'tank'
   | 'general'
   | 'tower'
   | 'dummy'
   | 'peasant'
+  | 'builder'
   | 'dude'
   | 'wolf'
   | 'fighter'
@@ -45,17 +48,20 @@ export const STOCK_UNIT_TYPES: UnitRole[] = [
   'archer',
   'javelin',
   'horsearcher',
+  'lightcavalry',
   'chariotarcher',
   'cohort',
   'hoplite',
   'elephant',
   'barbarian',
   'catapult',
+  'ballista',
   'tank',
   'general',
   'tower',
   'dummy',
   'peasant',
+  'builder',
   'dude',
   'wolf',
   'fighter',
@@ -110,17 +116,20 @@ export const STOCK_UNIT_CLASS: Record<UnitRole, UnitClass> = {
   archer: 'ranged',
   javelin: 'ranged',
   horsearcher: 'mounted',
+  lightcavalry: 'mounted',
   chariotarcher: 'mounted',
   cohort: 'melee',
   hoplite: 'melee',
   elephant: 'mounted',
   barbarian: 'melee',
   catapult: 'ranged',
+  ballista: 'ranged',
   tank: 'other',
   general: 'hero',
   tower: 'ranged',
   dummy: 'other',
   peasant: 'melee',
+  builder: 'melee',
   dude: 'melee',
   wolf: 'melee',
   fighter: 'other',
@@ -149,17 +158,20 @@ export const UNIT_ROLE_LABEL: Record<UnitRole, string> = {
   archer: 'Archer',
   javelin: 'Javelin',
   horsearcher: 'Horse archer',
+  lightcavalry: 'Light cavalry',
   chariotarcher: 'Chariot archer',
   cohort: 'Cohort',
   hoplite: 'Hoplite',
   elephant: 'Elephant',
   barbarian: 'Barbarian',
   catapult: 'Catapult',
+  ballista: 'Ballista',
   tank: 'Tank',
   general: 'General',
   tower: 'Tower',
   dummy: 'Dummy',
   peasant: 'Peasant',
+  builder: 'Builder',
   dude: 'Dude',
   wolf: 'Wolf',
   fighter: 'Fighter',
@@ -176,18 +188,25 @@ export function sanitizeUnitCategory(raw: unknown): UnitCategory {
   return 'modern';
 }
 
-/** How a shot treats pieces on the line. Terrain LOS is unchanged. */
-export type ShootArc = 'straight' | 'arch';
+/**
+ * How a shot treats pieces / wood on the line. Terrain height + walls still block.
+ * - straight: units, palisades, forest block from low
+ * - arch: fire over units, palisades, forest
+ * - laser: target like arch (through units); on hit, every unit on the beam takes damage; wood still blocks
+ */
+export type ShootArc = 'straight' | 'arch' | 'laser';
 
-export const SHOOT_ARCS: ShootArc[] = ['straight', 'arch'];
+export const SHOOT_ARCS: ShootArc[] = ['straight', 'arch', 'laser'];
 
 export const SHOOT_ARC_LABEL: Record<ShootArc, string> = {
   straight: 'Straight',
   arch: 'Arch',
+  laser: 'Laser',
 };
 
 export function sanitizeShootArc(raw: unknown): ShootArc {
-  return raw === 'arch' ? 'arch' : 'straight';
+  if (raw === 'arch' || raw === 'laser') return raw;
+  return 'straight';
 }
 
 /** Kit-only specials. Copied with the unit; kit dropdown overwrites these. */
@@ -228,17 +247,20 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
   archer: { passUnits: false, infantry: true, king: false },
   javelin: { passUnits: false, infantry: true, king: false },
   horsearcher: { passUnits: true, infantry: false, king: false },
+  lightcavalry: { passUnits: true, infantry: false, king: false },
   chariotarcher: { passUnits: false, infantry: false, king: false },
   cohort: { passUnits: false, infantry: true, king: false },
   hoplite: { passUnits: false, infantry: true, king: false },
   elephant: { passUnits: false, infantry: false, king: false },
   barbarian: { passUnits: false, infantry: true, king: false },
   catapult: { passUnits: false, infantry: false, king: false },
+  ballista: { passUnits: false, infantry: false, king: false },
   tank: { passUnits: false, infantry: false, king: false },
   general: { passUnits: false, infantry: false, king: true },
   tower: { passUnits: false, infantry: false, king: false },
   dummy: { passUnits: false, infantry: false, king: false },
   peasant: { passUnits: false, infantry: true, king: false },
+  builder: { passUnits: false, infantry: true, king: false },
   dude: { passUnits: false, infantry: true, king: false },
   wolf: { passUnits: true, infantry: false, king: false },
   fighter: { passUnits: true, infantry: false, king: false },
@@ -253,6 +275,7 @@ export const KIT_TRAITS: Record<UnitRole, UnitTraits> = {
 const HEAVY_KITS: ReadonlySet<UnitRole> = new Set([
   'elephant',
   'catapult',
+  'ballista',
   'tank',
   'dummy',
 ]);
@@ -673,6 +696,35 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     canHide: false,
     abilities: [],
   },
+  lightcavalry: {
+    name: 'Light cavalry',
+    chess: 'Eques',
+    category: 'ancient',
+    role: 'lightcavalry',
+    move: 3,
+    shoot: 2,
+    shootMin: 1,
+    shootArc: 'arch',
+    actionPointGain: 2,
+    shootCooldown: 0,
+    value: 3,
+    moveBudget: 5,
+    actionPoints: 5,
+    ammo: 0,
+    hp: 1,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.lightcavalry,
+    ...stockMobility('lightcavalry'),
+    climbLevel: 1,
+    canHide: false,
+    abilities: ['javelin'],
+  },
   chariotarcher: {
     name: 'Chariot archer',
     chess: 'Quadriga',
@@ -845,6 +897,34 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     canHide: false,
     abilities: [],
   },
+  ballista: {
+    name: 'Ballista',
+    chess: 'Scorpio',
+    category: 'ancient',
+    role: 'ballista',
+    move: 1,
+    shoot: 5,
+    shootMin: 2,
+    shootArc: 'laser',
+    actionPointGain: 1,
+    shootCooldown: 2,
+    value: 6,
+    moveBudget: 0,
+    actionPoints: 2,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 0,
+    charge: 0,
+    shootDamage: 2,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.ballista,
+    ...stockMobility('ballista'),
+    canHide: false,
+    abilities: [],
+  },
   tank: {
     name: 'Tank',
     chess: 'Queen',
@@ -984,6 +1064,34 @@ export const DEFAULT_UNIT_STATS: Record<UnitRole, UnitStats> = ((
     ...stockMobility('peasant'),
     canHide: false,
     abilities: [],
+  },
+  builder: {
+    name: 'Builder',
+    chess: 'Hammer',
+    category: 'ancient',
+    role: 'builder',
+    move: 1,
+    shoot: 0,
+    shootMin: 0,
+    shootArc: 'straight',
+    actionPointGain: 1,
+    shootCooldown: 0,
+    value: 1,
+    moveBudget: 0,
+    actionPoints: 3,
+    ammo: 0,
+    hp: 2,
+    meleeDamage: 1,
+    charge: 0,
+    shootDamage: 1,
+    splashDamage: 0,
+    armor: 0,
+    ...hexArmorDefaults(0),
+    ...hexDamageDefaults(),
+    ...KIT_TRAITS.builder,
+    ...stockMobility('builder'),
+    canHide: false,
+    abilities: ['build'],
   },
   dude: {
     name: 'Dude',

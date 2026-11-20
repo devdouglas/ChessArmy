@@ -97,18 +97,24 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   });
   assert(isPalisade(fenced, fenceHex), 'palisade lands on the chosen hex');
   assert(
-    buildSpots(fenced, getPiece(fenced, fencer.id)!).some(
+    buildSpots(fenced, getPiece(fenced, fencer.id)!, 'remove').some(
       (h) => h.col === fenceHex.col && h.row === fenceHex.row,
     ),
-    'built palisade stays a build spot',
+    'built palisade is a remove spot',
+  );
+  assert(
+    !buildSpots(fenced, getPiece(fenced, fencer.id)!, 'palisade').some(
+      (h) => h.col === fenceHex.col && h.row === fenceHex.row,
+    ),
+    'palisade place does not target an existing fence',
   );
   const clearedFence = applyAction(fenced, {
     kind: 'build',
     pieceId: fencer.id,
     to: fenceHex,
-    structure: 'palisade',
+    structure: 'remove',
   });
-  assert(!isPalisade(clearedFence, fenceHex), 'build clears a palisade');
+  assert(!isPalisade(clearedFence, fenceHex), 'remove dismantles a palisade');
 
   const clearBoard = createStateFromTerrain(emptyTerrain(8, 8), 'build-clear', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
@@ -120,16 +126,24 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
   const clearer = clearBoard.pieces.find((p) => p.type === 'hoplite')!;
   clearer.facing = hop.facing;
   assert(
-    buildSpots(clearBoard, clearer).some((h) => h.col === side.col && h.row === side.row),
-    'existing pikes stay a build spot',
+    buildSpots(clearBoard, clearer, 'remove').some(
+      (h) => h.col === side.col && h.row === side.row,
+    ),
+    'existing pikes are a remove spot',
+  );
+  assert(
+    !buildSpots(clearBoard, clearer, 'pikes').some(
+      (h) => h.col === side.col && h.row === side.row,
+    ),
+    'trap place does not target existing pikes',
   );
   const cleared = applyAction(clearBoard, {
     kind: 'build',
     pieceId: clearer.id,
     to: side,
-    structure: 'pikes',
+    structure: 'remove',
   });
-  assert(!tokenOnHex(cleared.tokens, side, 'pikes'), 'build clears pikes on the chosen hex');
+  assert(!tokenOnHex(cleared.tokens, side, 'pikes'), 'remove clears pikes on the chosen hex');
 
   const immune = createStateFromTerrain(emptyTerrain(8, 8), 'build-immune', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
@@ -149,7 +163,7 @@ assert(UNIT_STATS.cohort.meleeDamage > 0 && UNIT_STATS.cohort.shoot > 0, 'cohort
     afterWalk.col === step.col && afterWalk.row === step.row,
     'build unit still walks onto the pike hex',
   );
-  assert(!tokenOnHex(walked.tokens, step, 'pikes'), 'build unit clears pikes on move-over');
+  assert(!!tokenOnHex(walked.tokens, step, 'pikes'), 'build unit leaves traps in place on move-over');
 
   const second = createStateFromTerrain(emptyTerrain(8, 8), 'build-second', 'pointy', [
     { type: 'hoplite', col: 3, row: 4, side: 'red' },
