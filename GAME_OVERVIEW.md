@@ -1,6 +1,6 @@
 # There Will Be Legions — game overview
 
-Hex army-chess. Kill the enemy **General** (only if they fielded one), wipe the army, or hold every **flag**. Four colours. You are usually **Red**.
+Hex Warfare. Kill the enemy **General** (only if they fielded one), wipe the army, or hold every **flag**. Four colours. You are usually **Red**.
 
 Stock numbers below are the built-in roster. **Units** can override them live; a new match respawns ammo and HP.
 

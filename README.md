@@ -1,6 +1,6 @@
 # There Will Be Legions
 
-Hex army-chess. Kill the enemy **General** (only if they fielded one), wipe the army, or hold every **flag**. You are usually **Red**. Default is vs AI (Blue); **Hotseat** (from inside a match) is two humans.
+Hex Warfare. Kill the enemy **General** (only if they fielded one), wipe the army, or hold every **flag**. You are usually **Red**. Default is vs AI (Blue); **Hotseat** (from inside a match) is two humans.
 
 Full rules, roster, and play modes: [`GAME_OVERVIEW.md`](GAME_OVERVIEW.md). Rules also live in `src/engine.ts`. Vite + SVG UI is throwaway.
 

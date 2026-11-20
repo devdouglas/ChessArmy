@@ -4696,6 +4696,71 @@ function statRow(label: string, value: string, note = '', warn = false): string 
   }</dd></div>`;
 }
 
+function renderMapParams(): string {
+  const pl = playlist;
+  const plLvl = playlistLevel();
+  const maxT = maxTerrainCells();
+  const hotseatBtn =
+    mode === 'hotseat'
+      ? ''
+      : `<button type="button" id="start-hotseat">Start hotseat</button>`;
+  const hostileMatch = participatingSides(state).some(
+    (s) => state.controls[s] === 'ai-hostile',
+  );
+  const modeHint = matchHasEnemies(state)
+    ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
+      ? hostileMatch
+        ? 'vs hostile + allies'
+        : 'vs AI + allies'
+      : hostileMatch
+        ? 'vs hostile'
+        : 'vs AI'
+    : participatingSides(state).filter((s) => isPlayerControlled(state, s))
+          .length > 1
+      ? 'Hotseat'
+      : mode === 'hotseat'
+        ? 'Hotseat'
+        : 'vs AI';
+  const playing = activeLevelId
+    ? (() => {
+        const l = getLevel(activeLevelId);
+        return l ? levelLabel(l) : 'Level';
+      })()
+    : 'Random map';
+  const levelSelect = pl
+    ? ''
+    : `<button type="button" id="open-levels">Levels</button>
+        <span class="map-hint">${escapeHtml(playing)} · ${modeHint}</span>`;
+  if (pl) {
+    return `<div class="map-params">
+        <button type="button" id="new-map">Restart level</button>
+        ${hotseatBtn}
+        <button type="button" id="edit-this-level">Edit level</button>
+        <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
+      </div>`;
+  }
+  if (!activeLevelId) {
+    return `<div class="map-params">
+        ${levelSelect}
+        <button type="button" id="new-map">New map</button>
+        ${hotseatBtn}
+        <button type="button" id="edit-current-map">Edit this map</button>
+        <label>Water <input type="number" id="map-water" min="0" max="${maxT}" value="${mapOpts.waterCount}" /></label>
+        <label>Hill <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
+        <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
+        <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
+        <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
+        <label>Forests <input type="number" id="map-forest" min="0" max="${maxT}" value="${mapOpts.forestCount}" /></label>
+      </div>`;
+  }
+  return `<div class="map-params">
+        ${levelSelect}
+        <button type="button" id="new-map">Restart level</button>
+        ${hotseatBtn}
+        <button type="button" id="edit-this-level">Edit level</button>
+      </div>`;
+}
+
 function renderSidebar(): string {
   const piece = selectedId ? getPiece(state, selectedId) : null;
   let detail = '';
@@ -4704,9 +4769,12 @@ function renderSidebar(): string {
     const s = UNIT_STATS[piece.type];
     const maxAp = actionPointsMax(piece);
     const vitals = [
-      ...(maxAp > 0 ? [statRow('AP', pieceApPipsHtml(piece))] : []),
       statRow('HP', hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side)),
-      ...(s.shootCooldown > 0
+      statRow(
+        'Move',
+        s.moveBudget > 0 ? `${s.move} (max ${s.moveBudget})` : String(s.move),
+      ),
+      ...(s.shoot > 0 && s.shootCooldown > 0
         ? [
             statRow(
               'Reload',
@@ -4719,9 +4787,10 @@ function renderSidebar(): string {
           ]
         : []),
       statRow('Melee DMG', String(meleeDamageOf(piece))),
-      ...(s.shoot > 0 || s.shootDamage > 0
+      ...(s.shoot > 0
         ? [statRow('Range DMG', String(shootDamageOf(piece) || s.shootDamage))]
         : []),
+      ...(maxAp > 0 ? [statRow('AP', pieceApPipsHtml(piece))] : []),
     ];
 
     detail = `
@@ -4747,6 +4816,7 @@ function renderSidebar(): string {
 
   return `
     <div class="sidebar has-log">
+      ${renderMapParams()}
       <div class="log-block">
         <h2>Log</h2>
         <div class="log">${log}</div>
@@ -6043,9 +6113,8 @@ function renderStartScreen(): string {
   return `
     <div class="board-wrap start-wrap">
       <div class="start-screen">
-        <p class="start-kicker">Hex army-chess</p>
-        <h2 class="start-title"><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h2>
-        <p class="start-tag">Kill the enemy General — or the whole army.</p>
+        <p class="start-kicker">Hex Warfare ${appVerHtml()}</p>
+        <h2 class="start-title"><span class="app-name">${APP_NAME}</span></h2>
         <div class="period-picks" role="radiogroup" aria-label="Period">${periodPicks}</div>
         <div class="start-menu">
           <button type="button" class="start-opt" data-start="tutorial"${eraClosed || !tutorialN ? ' disabled' : ''}
@@ -8680,7 +8749,6 @@ function render() {
   ) {
     ensureRogueShop();
   }
-  const maxT = maxTerrainCells();
   applyPeriodTheme(activePeriod());
   applyHotseatTint();
   app.classList.toggle('start-screen', screen === 'start');
@@ -8778,71 +8846,9 @@ function render() {
     return;
   }
 
-  const pl = playlist;
-  const plLvl = playlistLevel();
-  const hotseatBtn =
-    mode === 'hotseat'
-      ? ''
-      : `<button type="button" id="start-hotseat">Start hotseat</button>`;
-  const hostileMatch = participatingSides(state).some(
-    (s) => state.controls[s] === 'ai-hostile',
-  );
-  const modeHint = matchHasEnemies(state)
-    ? participatingSides(state).some((s) => state.controls[s] === 'ai-ally')
-      ? hostileMatch
-        ? 'vs hostile + allies'
-        : 'vs AI + allies'
-      : hostileMatch
-        ? 'vs hostile'
-        : 'vs AI'
-    : participatingSides(state).filter((s) => isPlayerControlled(state, s))
-          .length > 1
-      ? 'Hotseat'
-      : mode === 'hotseat'
-        ? 'Hotseat'
-        : 'vs AI';
-  const playing = activeLevelId
-    ? (() => {
-        const l = getLevel(activeLevelId);
-        return l ? levelLabel(l) : 'Level';
-      })()
-    : 'Random map';
-  const levelSelect = pl
-    ? ''
-    : `<button type="button" id="open-levels">Levels</button>
-        <span class="map-hint">${escapeHtml(playing)} · ${modeHint}</span>`;
-  const mapParams = pl
-    ? `<div class="map-params">
-        <button type="button" id="new-map">Restart level</button>
-        ${hotseatBtn}
-        <button type="button" id="edit-this-level">Edit level</button>
-        <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
-      </div>`
-    : !activeLevelId
-    ? `<div class="map-params">
-        ${levelSelect}
-        <button type="button" id="new-map">New map</button>
-        ${hotseatBtn}
-        <button type="button" id="edit-current-map">Edit this map</button>
-        <label>Water <input type="number" id="map-water" min="0" max="${maxT}" value="${mapOpts.waterCount}" /></label>
-        <label>Hill <input type="number" id="map-high" min="0" max="${maxT}" value="${mapOpts.highCount}" /></label>
-        <label>Plateau <input type="number" id="map-plateau" min="0" max="${maxT}" value="${mapOpts.plateauCount}" /></label>
-        <label>Mountain <input type="number" id="map-rock" min="0" max="${maxT}" value="${mapOpts.rockCount}" /></label>
-        <label>Palisades <input type="number" id="map-palisade" min="0" max="${maxT}" value="${mapOpts.palisadeCount}" /></label>
-        <label>Forests <input type="number" id="map-forest" min="0" max="${maxT}" value="${mapOpts.forestCount}" /></label>
-        <span class="map-hint">mid belt · climb costs AP · water 1 hex/action, turn-start AP penalty or 2 HP · heights ±1 · elevation +shoot / dest −range</span>
-      </div>`
-    : `<div class="map-params">
-        ${levelSelect}
-        <button type="button" id="new-map">Restart level</button>
-        ${hotseatBtn}
-        <button type="button" id="edit-this-level">Edit level</button>
-      </div>`;
-
   app.innerHTML = `
     <div class="board-wrap ${gameOverClass()}">
       ${renderToolbar()}
-      ${mapParams}
       ${starGoalsHtml()}
       <div class="board-stage">
         <div class="turns-left-slot">${turnsLeftHtml()}</div>
