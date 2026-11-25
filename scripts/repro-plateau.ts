@@ -10,7 +10,6 @@ import {
   actionPointsLeft,
   type GameState,
 } from '../src/engine';
-import { resetExperimental, setExperimental } from '../src/experimental';
 import { neighborInDir, type Hex, type HexDir } from '../src/hex';
 import { UNIT_STATS } from '../src/roster';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
@@ -477,7 +476,6 @@ try {
   }
 
   {
-    setExperimental('walk-orders', true);
     const s = make(high, { high: [high] }, 'cohort');
     const p = s.pieces.find((x) => x.side === 'red' && x.type === 'cohort')!;
     p.actionPoints = 0;
@@ -487,7 +485,6 @@ try {
     assert(live.col === from.col && live.row === from.row, 'march steps hill→land');
     assert(moved.downhillMove, 'a downhill march leaves the extra move');
     assert(moved.turn === 'red', 'downhill march does not end the turn');
-    resetExperimental();
   }
 
   {
@@ -518,7 +515,6 @@ try {
     assert(bonus.scoutPieceId === p.id, 'leftover AP stays locked to the scout');
   }
 } finally {
-  resetExperimental();
   Object.assign(UNIT_STATS.soldier, {
     shoot: saved.shoot,
     shootMin: saved.shootMin,

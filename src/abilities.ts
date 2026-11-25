@@ -49,9 +49,9 @@ export const ABILITY_LABEL: Record<AbilityId, string> = {
 export const ABILITY_BLURB: Record<AbilityId, string> = {
   hide: 'Hide in forest. Enemies cannot see this unit until it moves, attacks, or is hit. Stepping onto forest again hides it.',
   javelin:
-    'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker.',
+    'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker. Walk-to orders still work.',
   charge:
-    'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no AP mark. A destination past that move shows the normal AP bolt and spends 1 when you pick it. With no AP left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. No walk-to orders.',
+    'Crash through enemies along the charge paths. A crash inside the normal move spends nothing and shows no AP mark. A destination past that move shows the normal AP bolt and spends 1 when you pick it. With no AP left, that tile shows the crossed bolt instead. No icon on the piece in play. Hopping over a unit still deals charge damage. Walk-to orders still work when Charge is off.',
   lunge:
     'Thrust two hexes in a straight line. Hits both tiles. Damage is melee (Attack + stacks); kits with 0 melee still thrust for 1 (+ Attack). Far-hex kill: stay put — otherwise step to the far hex when empty. Also a promotion for archers and other zero-melee kits.',
   build:

@@ -25,8 +25,6 @@ Unlocks are per era:
 | **Randomised Battle** | Skip the list. Setup popup, then a generated map vs AI. Unlocks after 10 tutorial wins in this era (or all of them, if fewer than 10). |
 | **Editor** | Levels, units, AI checklist. |
 
-Start-screen tools also include **Experimental features**.
-
 **Start hotseat** (in-match, next to Restart level): same map, both sides human, no AI. Page background tints to the active colour on each turn switch.
 
 **Reset progress** clears tutorial + campaign wins (and their best stars).
@@ -66,7 +64,7 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 **Action points** (per unit pool):
 
 - **AP max** = store capacity. **AP / turn** (`actionPointGain`) is granted at the start of each of that unit’s turns (banks if unspent; no grant in water / while sleeping).
-- Experimental **Resting grants bonus AP** (off by default): a unit that took no action on its side-turn gets **+1** on the next grant (still capped at AP max; sleep / water still skip).
+- **Resting** grants bonus AP: a unit that took no action on its side-turn gets **+1** on the next grant (still capped at AP max; sleep / water still skip).
 - **Max AP spent / turn** (`actionPointSpendCap`) is the spend window (yellow on the AP bar). Stock defaults match the old gain+1 rule. Storage beyond that is green; spent this turn is red; empty slots grey.
 - Each action costs **1 AP**. **Climb** and **charge past normal move** cost **+1 AP** on top. Unused steps of an action are lost.
 - Climbing or entering water ends momentum (no chained extra through that hex).
@@ -87,7 +85,11 @@ Teams: **player** and **ai-ally** colours fight together against **ai-enemy**. D
 
 **Armor** −2…+2, subtracted from incoming damage (shots ignore negatives). Ring / hex: −2 red, −1 orange, 0 green, +1 blue, +2 purple. Stock: tank/dreadnought +2, general/elephant/cruiser +1.
 
-**Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets) — Experimental features, two toggles, both on by default. Facing is a first-class action for these units.
+**Hex armor:** per-face armor. A **−2** face cannot be walked or shot (those hexes are not legal dests or fire targets). Facing is a first-class action for these units.
+
+**Walk orders:** select a unit, then click a tile beyond its current action range (including an enemy or a palisade/tree). The route lights white. It walks at move speed each turn you give it no other order. A blocked destination is melee each turn until the target dies or the token breaks. Cancel by selecting the unit and giving another order.
+
+**Auto walk:** the turn ends once every unit without a walk destination has acted. Units that already have a destination march on that end-of-turn. If the whole side already has destinations, the turn passes immediately.
 
 **Rout:** the unit breaks (any leftover HP), shake + dissolve. **Generals never rout** (unit type or General token). Needs **two hostiles on opposite adjacent hexes** with **one of those faces −2 (red)**. Any hit while pinched routs (either pincher or a third unit). A lone shot/melee with only one neighbor does not. Friends and terrain never pin.
 

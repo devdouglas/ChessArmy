@@ -5,7 +5,6 @@ export const BARBARIAN_ID = 'barbarians';
 
 export type TurnPhase =
   | 'taxes'
-  | 'recruit'
   | 'upkeep'
   | 'move'
   | 'invasions'
@@ -13,7 +12,6 @@ export type TurnPhase =
 
 export const TURN_PHASES: TurnPhase[] = [
   'taxes',
-  'recruit',
   'upkeep',
   'move',
   'invasions',
@@ -32,6 +30,10 @@ export type PlayerSeat = {
   factionId: string;
   coins: number;
   tokens: TokenPool;
+  /** AI-controlled seat (campaign bot). */
+  isAi?: boolean;
+  /** Capital the AI expands / invades toward. */
+  aiTargetCapitalId?: string;
 };
 
 /** One stack on the board (loose men or an army token). */
@@ -63,6 +65,8 @@ export type Siege = {
   defenderFactionId: string;
   attackerStackIds: string[];
   defenderStackIds: string[];
+  /** Attacker end-turns completed while this siege lasts (0 = just started). */
+  days: number;
 };
 
 export type PendingInvasion = {
@@ -72,7 +76,12 @@ export type PendingInvasion = {
   attackerStackIds: string[];
   fromRegionIds: string[];
   defenderFactionId: string | null;
-  status: 'pending' | 'battle' | 'siege';
+  /**
+   * pending = attacker Wait/Attack (defending ★ present).
+   * awaiting_defender = Attack declared — Retreat / Defend / Battle.
+   * battle = keep for later.
+   */
+  status: 'pending' | 'awaiting_defender' | 'battle' | 'siege';
   treachery: boolean;
   /** stackId → was supplied when battle opened / invasion queued for battle. */
   enteredSupplied: Record<string, boolean>;
@@ -130,9 +139,19 @@ export function isPlayerFaction(state: MatchState, factionId: string): boolean {
   return state.seats.some((s) => s.factionId === factionId);
 }
 
+/** True wild barbarians only (not unpicked homeland neutrals). */
 export function isBarbarianFaction(state: MatchState, factionId: string | null): boolean {
   if (!factionId) return false;
-  if (factionId === BARBARIAN_ID) return true;
+  return factionId === BARBARIAN_ID;
+}
+
+/**
+ * Unpicked map factions: start with capital+town garrisons, no turns,
+ * no recruit — retreat / defend when invaded.
+ */
+export function isNeutralFaction(state: MatchState, factionId: string | null): boolean {
+  if (!factionId) return false;
+  if (factionId === BARBARIAN_ID) return false;
   if (factionId.startsWith('rebel:')) return false;
   return !isPlayerFaction(state, factionId);
 }
@@ -193,15 +212,24 @@ export function makeStack(
 
 /**
  * Build a fresh match after players pick seats (order = turn order).
- * Unpicked capitals become barbarian; players get 1 unit on capital + each village.
+ * Seats (player + AI) and unpicked homeland factions all get 1 unit on capital + each village.
+ * True barbarian capitals/villages (map owner = barbarians) get 1 barbarian garrison.
+ * Ownerless villages stay empty (claimable); ownerless capitals still get a barbarian garrison.
+ * Unpicked factions are neutrals (no turns / recruit; auto retreat-defend).
+ * Pass `aiFactionIds` for seats the campaign AI controls.
  */
-export function createMatch(map: CampaignMap, factionIds: string[]): MatchState {
+export function createMatch(
+  map: CampaignMap,
+  factionIds: string[],
+  opts?: { aiFactionIds?: string[] },
+): MatchState {
   const unique = [...new Set(factionIds)];
   if (unique.length < 1) throw new Error('Need at least one player');
   for (const id of unique) {
     if (id === BARBARIAN_ID) throw new Error('Cannot play as barbarians');
     if (!map.factions.some((f) => f.id === id)) throw new Error(`Unknown faction ${id}`);
   }
+  const aiSet = new Set(opts?.aiFactionIds ?? []);
 
   const regionOwners: Record<string, string | null> = {};
   const homeRegions: Record<string, string[]> = {};
@@ -221,6 +249,7 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
       factionId,
       coins: 1,
       tokens: emptyTokenPool(),
+      ...(aiSet.has(factionId) ? { isAi: true as const } : {}),
     })),
     stacks: [],
     supplyGrants: [],
@@ -242,10 +271,14 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
   };
 
   const picked = new Set(unique);
+  /** Seat + unpicked homeland factions (not the barbarians filler). */
+  const garrisonFactions = new Set(
+    map.factions.map((f) => f.id).filter((id) => id !== BARBARIAN_ID),
+  );
 
   for (const cap of capitalRegions(map)) {
     const homeOwner = map.regions.find((r) => r.id === cap.id)?.ownerId;
-    if (homeOwner && picked.has(homeOwner)) {
+    if (homeOwner && garrisonFactions.has(homeOwner)) {
       state.stacks.push(
         makeStack(state, {
           factionId: homeOwner,
@@ -255,7 +288,7 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
         }),
       );
     } else {
-      // Barbarian capital
+      // No homeland owner → true barbarian capital
       state.regionOwners[cap.id] = BARBARIAN_ID;
       state.stacks.push(
         makeStack(state, {
@@ -270,7 +303,7 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
 
   for (const v of villageRegions(map)) {
     const owner = map.regions.find((r) => r.id === v.id)?.ownerId;
-    if (owner && picked.has(owner)) {
+    if (owner && garrisonFactions.has(owner)) {
       state.stacks.push(
         makeStack(state, {
           factionId: owner,
@@ -279,19 +312,36 @@ export function createMatch(map: CampaignMap, factionIds: string[]): MatchState 
           kind: 'loose',
         }),
       );
+    } else if (owner === BARBARIAN_ID) {
+      state.regionOwners[v.id] = BARBARIAN_ID;
+      state.stacks.push(
+        makeStack(state, {
+          factionId: BARBARIAN_ID,
+          regionId: v.id,
+          units: 1,
+          kind: 'loose',
+        }),
+      );
     }
+    // ownerless village → empty, claimable (no garrison)
   }
 
-  // Ownership requires presence — empty regions are neutral
+  // Ownership requires presence — empty regions are unowned
   for (const rid of Object.keys(state.regionOwners)) {
-    const occupied = state.stacks.some((s) => s.regionId === rid && !s.rebelOf);
+    const occupied = state.stacks.some((s) => s.regionId === rid);
     if (!occupied) state.regionOwners[rid] = null;
   }
 
+  const neutrals = [...garrisonFactions].filter((id) => !picked.has(id));
+  const seatNames = unique.map((id) => {
+    const name = map.factions.find((f) => f.id === id)?.name ?? id;
+    return aiSet.has(id) ? `${name} (AI)` : name;
+  });
+  const neutralNames = neutrals.map(
+    (id) => `${map.factions.find((f) => f.id === id)?.name ?? id} (neutral)`,
+  );
   state.log.push(
-    `Match started: ${unique
-      .map((id) => map.factions.find((f) => f.id === id)?.name ?? id)
-      .join(', ')}`,
+    `Match started: ${[...seatNames, ...neutralNames].join(', ')}`,
   );
   return state;
 }
@@ -317,6 +367,13 @@ export function loadMatch(): MatchState | null {
     if (!Array.isArray(parsed.seats) || !Array.isArray(parsed.stacks)) return null;
     parsed.lastCapturedCapitalByFaction ??= {};
     parsed.lastFormedArmyByFaction ??= {};
+    for (const sg of parsed.sieges ?? []) {
+      if (typeof sg.days !== 'number') sg.days = 0;
+    }
+    // Legacy saves: recruit phase removed → upkeep
+    if (parsed.phase?.kind === 'play' && (parsed.phase.phase as string) === 'recruit') {
+      parsed.phase.phase = 'upkeep';
+    }
     return parsed;
   } catch {
     return null;

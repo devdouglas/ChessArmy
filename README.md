@@ -31,7 +31,7 @@ Home screen, filtered by era (**Ancient** / **Modern** / **Futuristic**). Modern
 - **Anthony's Lessons** (Tutorial) — always open if the era has tutorial maps. Finish one to unlock the next.
 - **Campaign**, **Historical Battle**, **Skirmish vs AI** — locked until every tutorial map in this era is cleared.
 - **Randomised Battle** and **Roguelite** — unlock after 10 tutorial wins in this era (or all of them, if the era has fewer than 10).
-- **Editor**, plus **Experimental features** and **Reset progress**.
+- **Editor**, plus **Reset progress**.
 
 **Roguelite** is a 10-battle run on generated maps: starts 2v2, permanent player losses, both sides gain a recruit after each win.
 

@@ -2,6 +2,7 @@ import {
   ammoLeft,
   isPromotionToken,
   isReloading,
+  MAX_UNIT_PROMOTIONS,
   PALISADE_HP,
   PROMOTION_TOKEN_COLOR,
   roleOf,
@@ -917,7 +918,7 @@ export function actionPointsPipsHtml(opts: {
 export const SHOT_ARROW =
   'M0 -6.5 L3.6 -1.15 H1.35 V3.35 H2.55 L1.15 6.5 H-1.15 L-2.55 3.35 H-1.35 V-1.15 H-3.6 Z';
 
-/** Shot pips — gold ready, orange reloading, grey spent. `unlimited` adds ∞ beside the arrow. */
+/** Shot pips — gold ready, orange reloading, grey spent. */
 export function shotPipsHtml(
   left: number,
   max: number,
@@ -931,7 +932,6 @@ export function shotPipsHtml(
     const cls = i < ready ? 'on' : i < ready + cooling ? 'reload' : 'off';
     return `<svg class="shot-pip ${cls}" viewBox="-4 -7 8 14" width="10" height="16" aria-hidden="true"><path d="${SHOT_ARROW}"/></svg>`;
   }).join('');
-  const inf = unlimited ? '<span class="shot-inf" aria-hidden="true">∞</span>' : '';
   const label = unlimited
     ? reloading
       ? 'Unlimited shots, reloading'
@@ -939,10 +939,10 @@ export function shotPipsHtml(
     : reloading
       ? `Shots ${ready} of ${max}, reloading`
       : `Shots ${ready} of ${max}`;
-  return `<span class="shot-pips" aria-label="${label}">${pips}${inf}</span>`;
+  return `<span class="shot-pips" aria-label="${label}">${pips}</span>`;
 }
 
-/** Ammo pips for a piece. Unlimited guns get one arrow and ∞. */
+/** Ammo pips for a piece. Unlimited guns get one arrow (reload state only). */
 export function pieceShotPipsHtml(piece: Piece): string {
   const s = statsOf(piece.type);
   if (s.shoot <= 0) return '';
@@ -1140,6 +1140,95 @@ export function sleepBadgeSvg(cx: number, cy: number, r = 7): string {
       </g>`;
 }
 
+/** Compact type mark under a promotion chevron (shop / select / editor). */
+function promotionTypeIconInner(
+  id: Exclude<PromotionTokenType, 'general'>,
+  color: string,
+): string {
+  if (id === 'attack1') {
+    // Fist
+    return `<g fill="${color}">
+      <path d="M-3.4 -1.1 C-3.4 -2.6 -2.3 -3.6 -0.9 -3.6 H0.4 C1.2 -3.6 1.7 -3.1 1.7 -2.4 V-0.6 H2.6 C3.4 -0.6 3.9 0 3.9 0.8 V3.2 C3.9 4.3 3.0 5.1 1.8 5.1 H-1.6 C-2.9 5.1 -3.8 4.2 -3.8 3.0 V0.2 C-3.8 -0.5 -3.4 -1.1 -3.4 -1.1 Z"/>
+      <path d="M-2.6 -4.4 H-0.9 C-0.3 -4.4 0.1 -4.0 0.1 -3.4 V-2.6 H-2.6 Z"/>
+      <path d="M-0.2 -4.6 H1.4 C2.0 -4.6 2.4 -4.2 2.4 -3.6 V-2.6 H-0.2 Z"/>
+    </g>`;
+  }
+  if (id === 'defense1') {
+    // Shield
+    return `<path fill="none" stroke="${color}" stroke-width="1.35" stroke-linejoin="round"
+      d="M0 -5.2 C2.8 -5.2 4.6 -3.7 4.6 -1.2 C4.6 1.8 2.3 4.2 0 5.4 C-2.3 4.2 -4.6 1.8 -4.6 -1.2 C-4.6 -3.7 -2.8 -5.2 0 -5.2 Z"/>
+      <path fill="none" stroke="${color}" stroke-width="1.15" stroke-linecap="round" d="M0 -2.4 V2.0 M-1.8 -0.2 H1.8"/>`;
+  }
+  if (id === 'ap1') {
+    return `<path fill="${color}" d="${AP_BOLT}" transform="scale(0.78)"/>`;
+  }
+  if (id === 'hp2') {
+    return `<path fill="${color}" d="${HP_HEART}" transform="scale(0.72)"/>`;
+  }
+  if (id === 'range1') {
+    // Recurve bow + nocked arrow
+    return `<g fill="${color}">
+      <path d="M-3.6 -5.2 C-6.4 -2.6 -6.4 2.6 -3.6 5.2 L-2.3 4.1 C-4.4 1.8 -4.4 -1.8 -2.3 -4.1 Z"/>
+      <rect x="-2.4" y="-4.4" width="1.1" height="8.8" rx="0.3"/>
+      <rect x="-5.2" y="-0.55" width="9.6" height="1.1" rx="0.3"/>
+      <path d="M4.0 -1.9 L6.8 0 L4.0 1.9 Z"/>
+    </g>`;
+  }
+  if (id === 'allTerrain') {
+    // Pine tree
+    return `<g fill="${color}">
+      <path d="M0 -5.4 L3.6 -1.2 H2.0 L4.2 1.6 H2.2 L4.4 4.2 H-4.4 L-2.2 1.6 H-4.2 L-2.0 -1.2 H-3.6 Z"/>
+      <rect x="-0.85" y="3.6" width="1.7" height="2.2" rx="0.25"/>
+    </g>`;
+  }
+  if (id === 'lunge') {
+    // Spear
+    return `<g fill="${color}">
+      <rect x="-5.6" y="-0.55" width="8.4" height="1.1" rx="0.35"/>
+      <path d="M2.4 -2.1 L7.0 0 L2.4 2.1 Z"/>
+      <circle cx="-4.2" cy="0" r="1.05"/>
+    </g>`;
+  }
+  if (id === 'scout') {
+    // Eye
+    return `<g fill="none" stroke="${color}" stroke-width="1.25" stroke-linecap="round">
+      <ellipse cx="0" cy="0" rx="5.0" ry="3.1"/>
+      <circle cx="0" cy="0" r="1.35" fill="${color}" stroke="none"/>
+    </g>`;
+  }
+  if (id === 'wealthy') {
+    // Coin
+    return `<g>
+      <ellipse cx="0" cy="0.55" rx="4.6" ry="4.0" fill="#8a6a12"/>
+      <ellipse cx="0" cy="0" rx="4.6" ry="4.0" fill="${color}" stroke="#c9a227" stroke-width="0.7"/>
+      <path d="M-0.75 -1.6 V1.6 M0.75 -1.6 V1.6" fill="none" stroke="#b8860b" stroke-width="0.65" stroke-linecap="round"/>
+    </g>`;
+  }
+  return '';
+}
+
+/**
+ * Single promotion stamp: chevron on top, type icon under it.
+ * Used by shop offers, action-bar select, editor swatches.
+ */
+export function promotionOfferGlyphSvg(
+  id: Exclude<PromotionTokenType, 'general'>,
+  size = 14,
+): string {
+  const color = PROMOTION_TOKEN_COLOR[id];
+  const w = size * 0.55;
+  const depth = size * 0.22;
+  const sw = Math.max(1.4, size * 0.085);
+  const chevronY = -size * 0.28;
+  const iconScale = (size * 0.38) / 10;
+  const iconY = size * 0.22;
+  return `<g class="promo-offer-glyph ${id}">
+    <path d="M${(-w).toFixed(2)} ${(chevronY - depth * 0.15).toFixed(2)} L0 ${(chevronY + depth).toFixed(2)} L${w.toFixed(2)} ${(chevronY - depth * 0.15).toFixed(2)}"
+      fill="none" stroke="${color}" stroke-width="${sw.toFixed(2)}" stroke-linecap="square" stroke-linejoin="miter"/>
+    <g transform="translate(0, ${iconY.toFixed(2)}) scale(${iconScale.toFixed(3)})">${promotionTypeIconInner(id, color)}</g>
+  </g>`;
+}
+
 /** Stacked army Vs — one color per promotion, dark plate for contrast. */
 export function promotionChevronsSvg(
   promos: readonly PromotionTokenType[] | number,
@@ -1149,8 +1238,16 @@ export function promotionChevronsSvg(
 ): string {
   const kinds: PromotionTokenType[] =
     typeof promos === 'number'
-      ? Array.from({ length: Math.max(0, Math.min(3, Math.floor(promos))) }, () => 'range1')
-      : promos.slice(0, 3);
+      ? Array.from(
+          {
+            length: Math.max(
+              0,
+              Math.min(MAX_UNIT_PROMOTIONS, Math.floor(promos)),
+            ),
+          },
+          () => 'range1',
+        )
+      : promos.slice(0, MAX_UNIT_PROMOTIONS);
   const n = kinds.length;
   if (n <= 0) return '';
   const w = r * 1.55;
@@ -1187,7 +1284,7 @@ export function unitRankBadgesSvg(
   cy: number,
   r = 7,
 ): string {
-  const kinds = promos.slice(0, 3);
+  const kinds = promos.slice(0, MAX_UNIT_PROMOTIONS);
   if (!general && kinds.length === 0) return '';
   if (general && kinds.length === 0) return generalBadgeSvg(cx, cy, r);
   const chevronR = r;
@@ -1215,7 +1312,13 @@ export function unitTokenGlyphSvg(id: UnitTokenType, size = 14): string {
   if (id === 'neutral') return neutralBadgeSvg(0, 0, r);
   if (id === 'sleep') return sleepBadgeSvg(0, 0, r);
   if (id === 'story') return storyBadgeSvg(0, 0, r);
-  if (isPromotionToken(id)) return promotionChevronsSvg([id], 0, 0, r * 1.15);
+  if (isPromotionToken(id)) {
+    // `general` already returned above — remaining promos are stackable.
+    return promotionOfferGlyphSvg(
+      id as Exclude<PromotionTokenType, 'general'>,
+      size,
+    );
+  }
   return '';
 }
 

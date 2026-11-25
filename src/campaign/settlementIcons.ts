@@ -50,3 +50,29 @@ export function capitalMarkerSvg(
     <text class="cm-label" x="${x}" y="${y - 10}">${esc(label)}</text>
   </g>`;
 }
+
+/**
+ * Siege ring around a town/capital: dashed encirclement + four camp ticks.
+ * Drawn under the settlement marker; does not capture pointer events.
+ */
+export function siegeMarkerSvg(x: number, y: number): string {
+  const r = 12.5;
+  const camps = [0, 90, 180, 270]
+    .map((deg) => {
+      const rad = (deg * Math.PI) / 180;
+      const cx = x + Math.cos(rad) * r;
+      const cy = y + Math.sin(rad) * r;
+      // Tent pointing outward from settlement
+      const ox = Math.cos(rad) * 2.4;
+      const oy = Math.sin(rad) * 2.4;
+      const px = -Math.sin(rad) * 2.1;
+      const py = Math.cos(rad) * 2.1;
+      return `<path class="cm-siege-camp" d="M${cx + ox} ${cy + oy}L${cx + px} ${cy + py}L${cx - px} ${cy - py}Z"/>`;
+    })
+    .join('');
+  return `<g class="cm-siege-mark" pointer-events="none" aria-label="Under siege">
+    <circle class="cm-siege-ring cm-siege-ring-outer" cx="${x}" cy="${y}" r="${r}"/>
+    <circle class="cm-siege-ring cm-siege-ring-inner" cx="${x}" cy="${y}" r="${r - 2.5}"/>
+    ${camps}
+  </g>`;
+}

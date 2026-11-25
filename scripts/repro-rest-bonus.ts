@@ -6,7 +6,6 @@ import {
   actionPointsLeft,
   type GameState,
 } from '../src/engine';
-import { resetExperimental, setExperimental } from '../src/experimental';
 import { neighborInDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 
@@ -38,29 +37,17 @@ function walk(s: GameState, id: string): GameState {
   return applyAction(s, { kind: 'move', pieceId: id, to: step.hex });
 }
 
-resetExperimental();
-
 {
-  const { s, id } = board();
-  getPiece(s, id)!.actionPoints = 0;
-  const next = idleBoth(s);
-  assert(actionPointsLeft(getPiece(next, id)!) === 1, 'stock: idle grant is AP / turn only');
-}
-
-{
-  setExperimental('rest-bonus-ap', true);
   const { s, id } = board();
   getPiece(s, id)!.actionPoints = 0;
   const next = idleBoth(s);
   assert(
     actionPointsLeft(getPiece(next, id)!) === 2,
-    'rest bonus: idle grant is AP / turn + 1',
+    'idle grant is AP / turn + 1 rest bonus',
   );
-  resetExperimental();
 }
 
 {
-  setExperimental('rest-bonus-ap', true);
   const { s, id } = board();
   getPiece(s, id)!.actionPoints = 1;
   let next = walk(s, id);
@@ -68,23 +55,19 @@ resetExperimental();
   next = idleBoth(next);
   assert(
     actionPointsLeft(getPiece(next, id)!) === 1,
-    'rest bonus: an action last turn is not +1',
+    'an action last turn is not +1',
   );
-  resetExperimental();
 }
 
 {
-  setExperimental('rest-bonus-ap', true);
   const { s, id } = board();
   getPiece(s, id)!.actionPoints = 0;
   getPiece(s, id)!.unitTokens = ['sleep'];
   const next = idleBoth(s);
-  assert(actionPointsLeft(getPiece(next, id)!) === 0, 'rest bonus: sleep still skips grant');
-  resetExperimental();
+  assert(actionPointsLeft(getPiece(next, id)!) === 0, 'sleep still skips grant');
 }
 
 {
-  setExperimental('rest-bonus-ap', true);
   const t = emptyTerrain(8, 10);
   t[2][3] = 'water';
   let s = createStateFromTerrain(t, 'rest-bonus-water', 'pointy', [
@@ -99,12 +82,10 @@ resetExperimental();
   s = idleBoth(s);
   const wet = getPiece(s, id);
   assert(wet, 'still alive with spare HP');
-  assert(actionPointsLeft(wet!) === 0, 'rest bonus: water still skips grant');
-  resetExperimental();
+  assert(actionPointsLeft(wet!) === 0, 'water still skips grant');
 }
 
 {
-  setExperimental('rest-bonus-ap', true);
   const from = { col: 3, row: 2 };
   const s = createStateFromTerrain(emptyTerrain(8, 10), 'rest-bonus-cap', 'pointy', [
     { type: 'soldier', col: from.col, row: from.row, side: 'red' },
@@ -122,7 +103,6 @@ resetExperimental();
   next = idleBoth(next);
   assert(actionPointsLeft(getPiece(next, mover.id)!) === 1, 'mover: AP / turn only');
   assert(actionPointsLeft(getPiece(next, idle.id)!) === 2, 'unactivated unit still rests');
-  resetExperimental();
 }
 
 console.log('rest bonus AP ok');

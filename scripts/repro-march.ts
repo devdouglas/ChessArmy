@@ -15,7 +15,6 @@ import {
   hasActed,
   type GameState,
 } from '../src/engine';
-import { isExperimentalOn, resetExperimental, setExperimental } from '../src/experimental';
 import { defaultFacing, neighborInDir, type HexDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 import { UNIT_STATS } from '../src/roster';
@@ -81,20 +80,7 @@ try {
   UNIT_STATS.soldier.move = 2;
   // Cap 1 → base move only (no extras). Multi-turn march without burning the pool.
   UNIT_STATS.soldier.actionPointSpendCap = 1;
-  resetExperimental();
-  assert(!isExperimentalOn('walk-orders'), 'march orders default off');
 
-  const off = board();
-  const offLine = forward(off, 4);
-  offLine.piece.walkTo = offLine.path[3];
-  const offAfter = passTurn(off);
-  const offPiece = getPiece(offAfter, offLine.piece.id)!;
-  assert(
-    offPiece.col === offLine.piece.col && offPiece.row === offLine.piece.row,
-    'feature off: standing order does not move',
-  );
-
-  setExperimental('walk-orders', true);
   const s = board();
   const line = forward(s, 4);
   const ordered = setWalkOrder(s, line.piece.id, line.path[3]!);
@@ -109,12 +95,12 @@ try {
   assert(at.col === line.path[1]!.col && at.row === line.path[1]!.row, 'first turn walks move 2');
   assert(at.walkTo, 'order remains until arrival');
   assert(cur.turn === 'blue', 'turn passed after the march');
-  cur = passTurn(cur);
-  assert(cur.turn === 'red', 'blue pass returns to red');
+  // Blue pass → red begins fully ordered → auto walk marches the rest and returns to blue.
   cur = passTurn(cur);
   at = getPiece(cur, mover.id)!;
-  assert(at.col === line.path[3]!.col && at.row === line.path[3]!.row, 'second red turn arrives');
+  assert(at.col === line.path[3]!.col && at.row === line.path[3]!.row, 'auto walk arrives next red turn');
   assert(!at.walkTo, 'order clears on arrival');
+  assert(cur.turn === 'blue', 'auto walk lands on blue after the arrival');
 
   const blocked = board();
   const around = forward(blocked, 4);
@@ -266,34 +252,7 @@ try {
   assert(!getPiece(rushState, rushee.id), 'the melee kills on the way in');
   assert(!rushed.walkTo, 'the kill does not leave a march order');
 
-  const squad = board();
-  squad.unitsPerTurn = 4;
-  const leader = squad.pieces.find((p) => p.side === 'red')!;
   const face = defaultFacing('red');
-  const wing = {
-    ...leader,
-    id: `${leader.id}-wing`,
-    col: leader.col + 1,
-    row: leader.row,
-    walkTo: undefined,
-  };
-  squad.pieces.push(wing);
-  const wingPath = [];
-  let wingAt = { col: wing.col, row: wing.row };
-  for (let i = 0; i < 4; i++) {
-    wingAt = neighborInDir(wingAt, face, squad.orientation);
-    wingPath.push(wingAt);
-  }
-  let held = setWalkOrder(squad, wing.id, wingPath[3]!);
-  held = otherOrder(held, leader.id);
-  const heldWing = getPiece(held, wing.id)!;
-  assert(held.turn === 'red', 'without auto walk the other unit still gets a turn');
-  assert(
-    heldWing.col === wing.col && heldWing.row === wing.row,
-    'walker waits for End turn when auto walk is off',
-  );
-
-  setExperimental('auto-walk', true);
   const auto = board();
   auto.unitsPerTurn = 4;
   const autoLead = auto.pieces.find((p) => p.side === 'red')!;
@@ -558,7 +517,6 @@ try {
   assert(actionPointsLeft(stood) === 0, 'the standing march spends the stamina');
   assert(!stood.spendMarch, 'a spent march does not stay armed');
 
-  setExperimental('auto-walk', false);
   const dt = createStateFromTerrain(
     emptyTerrain(10, 8),
     'double',
@@ -589,11 +547,14 @@ try {
     dtState.log.filter((l) => l.includes('spends AP')).length === 1,
     'the extra AP march spend is logged (base is silent)',
   );
-  dtState = passTurn(dtState);
-  assert(dtState.turn === 'red', 'without auto walk the next red turn is waiting');
+  // Fresh red activation for the next chunk (skip auto-walk so we can set the pool).
+  dtState.turn = 'red';
+  dtState.actedIds = [];
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
   dtAtPiece.actionPoints = 2;
   dtAtPiece.apSpentThisTurn = undefined;
+  dtAtPiece.movedThisTurn = undefined;
+  dtAtPiece.actedThisTurn = undefined;
   dtState = performMarch(dtState, dtPiece.id);
   dtAtPiece = getPiece(dtState, dtPiece.id)!;
   assert(
@@ -625,7 +586,6 @@ try {
 } finally {
   UNIT_STATS.soldier.move = savedMove;
   UNIT_STATS.soldier.actionPointSpendCap = savedSpendCap;
-  resetExperimental();
 }
 
 console.log('walk-to orders: route, speed, wall, melee, auto walk, AP march extras');

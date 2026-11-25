@@ -1936,7 +1936,8 @@
         "infantry": false,
         "king": false,
         "abilities": [
-            "javelin"
+            "javelin",
+            "charge"
         ],
         "move": 3,
         "sight": 4,

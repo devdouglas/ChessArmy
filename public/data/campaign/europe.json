@@ -21,7 +21,7 @@
         {
             "id": "spain",
             "name": "Spain",
-            "color": "#c62828"
+            "color": "#6829c7"
         },
         {
             "id": "caragheu",
@@ -262,7 +262,7 @@
                     "y": 424.4735412597656
                 }
             ],
-            "ownerId": "barbarians",
+            "ownerId": null,
             "settlement": {
                 "kind": "village",
                 "at": {
@@ -992,7 +992,11 @@
             ],
             "ownerId": null,
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 254.33873168945314,
+                    "y": 400.60864196777345
+                }
             }
         },
         {
@@ -1254,86 +1258,6 @@
             }
         },
         {
-            "id": "reg-mwj3sqip-gmhs0",
-            "name": "Russia A",
-            "ring": [
-                {
-                    "x": 751.4,
-                    "y": 483.3
-                },
-                {
-                    "x": 729.5,
-                    "y": 503.5
-                },
-                {
-                    "x": 705.3,
-                    "y": 518.1
-                },
-                {
-                    "x": 647.7106323242188,
-                    "y": 500.4842834472656
-                },
-                {
-                    "x": 625.1571044921875,
-                    "y": 471.35400390625
-                },
-                {
-                    "x": 563.2,
-                    "y": 461.3
-                },
-                {
-                    "x": 556,
-                    "y": 434.6
-                },
-                {
-                    "x": 581.8,
-                    "y": 416.8
-                },
-                {
-                    "x": 588.2,
-                    "y": 386.6
-                },
-                {
-                    "x": 570.5,
-                    "y": 361.6
-                },
-                {
-                    "x": 617.1493530273438,
-                    "y": 355.1914367675781
-                },
-                {
-                    "x": 655.2532348632812,
-                    "y": 344.5155029296875
-                },
-                {
-                    "x": 691.19287109375,
-                    "y": 350.52374267578125
-                },
-                {
-                    "x": 724.9908447265625,
-                    "y": 337.9419860839844
-                },
-                {
-                    "x": 730.0684204101562,
-                    "y": 386.4483947753906
-                },
-                {
-                    "x": 754.7951049804688,
-                    "y": 441.1943359375
-                }
-            ],
-            "ownerId": "barbarians",
-            "settlement": {
-                "kind": "capital",
-                "key": "moscow",
-                "at": {
-                    "x": 655.763597869873,
-                    "y": 422.0908554077149
-                },
-                "units": []
-            }
-        },
-        {
             "id": "reg-mwj3sx9v-vqeax",
             "name": "Russia B A",
             "ring": [
@@ -1400,7 +1324,11 @@
             ],
             "ownerId": null,
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 945.1814624551954,
+                    "y": 506.62356031248777
+                }
             }
         },
         {
@@ -1448,9 +1376,19 @@
                     "y": 457.4944152832031
                 }
             ],
-            "ownerId": null,
+            "ownerId": "barbarians",
             "settlement": {
-                "kind": "none"
+                "kind": "capital",
+                "key": "moscow",
+                "at": {
+                    "x": 798.2160058593751,
+                    "y": 438.4250085449219
+                },
+                "units": [
+                    "barbarian",
+                    "archer",
+                    "horsearcher"
+                ]
             }
         },
         {
@@ -2112,7 +2050,11 @@
             ],
             "ownerId": null,
             "settlement": {
-                "kind": "none"
+                "kind": "village",
+                "at": {
+                    "x": 161.99967041015626,
+                    "y": 850.3182596842448
+                }
             }
         },
         {
@@ -3013,6 +2955,134 @@
                     "hoplite"
                 ]
             }
+        },
+        {
+            "id": "reg-mws1auci-hgldq",
+            "name": "Russia A A",
+            "ring": [
+                {
+                    "x": 730.0684204101562,
+                    "y": 386.4483947753906
+                },
+                {
+                    "x": 754.7951049804688,
+                    "y": 441.1943359375
+                },
+                {
+                    "x": 751.4,
+                    "y": 483.3
+                },
+                {
+                    "x": 729.5,
+                    "y": 503.5
+                },
+                {
+                    "x": 705.3,
+                    "y": 518.1
+                },
+                {
+                    "x": 647.7106323242188,
+                    "y": 500.4842834472656
+                },
+                {
+                    "x": 625.1571044921875,
+                    "y": 471.35400390625
+                },
+                {
+                    "x": 654.1679077148438,
+                    "y": 482.353515625
+                },
+                {
+                    "x": 672.98779296875,
+                    "y": 467.06695556640625
+                },
+                {
+                    "x": 699.5472412109375,
+                    "y": 452.3127136230469
+                },
+                {
+                    "x": 699.5472412109375,
+                    "y": 428.68389892578125
+                }
+            ],
+            "ownerId": null,
+            "settlement": {
+                "kind": "none"
+            }
+        },
+        {
+            "id": "reg-mws1auci-4kqjb",
+            "name": "Russia A B",
+            "ring": [
+                {
+                    "x": 625.1571044921875,
+                    "y": 471.35400390625
+                },
+                {
+                    "x": 563.2,
+                    "y": 461.3
+                },
+                {
+                    "x": 556,
+                    "y": 434.6
+                },
+                {
+                    "x": 581.8,
+                    "y": 416.8
+                },
+                {
+                    "x": 588.2,
+                    "y": 386.6
+                },
+                {
+                    "x": 570.5,
+                    "y": 361.6
+                },
+                {
+                    "x": 617.1493530273438,
+                    "y": 355.1914367675781
+                },
+                {
+                    "x": 655.2532348632812,
+                    "y": 344.5155029296875
+                },
+                {
+                    "x": 691.19287109375,
+                    "y": 350.52374267578125
+                },
+                {
+                    "x": 724.9908447265625,
+                    "y": 337.9419860839844
+                },
+                {
+                    "x": 730.0684204101562,
+                    "y": 386.4483947753906
+                },
+                {
+                    "x": 699.5472412109375,
+                    "y": 428.68389892578125
+                },
+                {
+                    "x": 699.5472412109375,
+                    "y": 452.3127136230469
+                },
+                {
+                    "x": 672.98779296875,
+                    "y": 467.06695556640625
+                },
+                {
+                    "x": 654.1679077148438,
+                    "y": 482.353515625
+                }
+            ],
+            "ownerId": "barbarians",
+            "settlement": {
+                "kind": "village",
+                "at": {
+                    "x": 655.763597869873,
+                    "y": 422.0908554077149
+                }
+            }
         }
     ],
     "seaNodes": [
@@ -3303,7 +3373,7 @@
                 "x": 638.44580078125,
                 "y": 368.2239074707031
             },
-            "regionId": "reg-mwj3sqip-gmhs0"
+            "regionId": "reg-mws1auci-4kqjb"
         },
         {
             "id": "port-mwj5tlyu-gw92w",
@@ -3322,6 +3392,24 @@
                 "y": 700.4906005859375
             },
             "regionId": "reg-mwj45v0y-vwcrl"
+        },
+        {
+            "id": "port-mws1a1p5-85si4",
+            "kind": "port",
+            "at": {
+                "x": 989.759033203125,
+                "y": 521.0088500976562
+            },
+            "regionId": "reg-mwj3sx9v-vqeax"
+        },
+        {
+            "id": "port-mws1a2j6-ccll7",
+            "kind": "port",
+            "at": {
+                "x": 991.5210571289062,
+                "y": 638.843994140625
+            },
+            "regionId": "reg-mwj3xe7r-orkxn"
         }
     ],
     "seaLinks": [
@@ -3534,6 +3622,12 @@
             "kind": "blue",
             "a": "port-mwjokvq2-o3u60",
             "b": "port-mwj5ravg-bunbv"
+        },
+        {
+            "id": "link-mws1a2j6-ihvwp",
+            "kind": "blue",
+            "a": "port-mws1a1p5-85si4",
+            "b": "port-mws1a2j6-ccll7"
         }
     ],
     "neighbors": {
@@ -3558,9 +3652,9 @@
         "reg-romania": [
             "reg-mwj3jxma-jmfq1",
             "reg-mwj3s1av-3alqk",
-            "reg-mwj3sqip-gmhs0",
             "reg-mwj3sx9v-k98jv",
-            "reg-mwj3sx9v-vqeax"
+            "reg-mwj3sx9v-vqeax",
+            "reg-mws1auci-hgldq"
         ],
         "reg-russia": [],
         "reg-mwj3f8ma-ggtnx": [
@@ -3596,12 +3690,12 @@
             "reg-denmark",
             "reg-mwj3o2en-ey2ek",
             "reg-mwj3s1av-3alqk",
-            "reg-mwj3sqip-gmhs0",
+            "reg-mws1auci-4kqjb",
             "reg-switzerland"
         ],
         "reg-mwj3o2en-ey2ek": [
             "reg-mwj3o2en-t0x9v",
-            "reg-mwj3sqip-gmhs0"
+            "reg-mws1auci-4kqjb"
         ],
         "reg-mwj3q2k0-7s72k": [
             "reg-mwj3qinx-l8p0j",
@@ -3619,24 +3713,19 @@
             "reg-mwj3o2en-t0x9v",
             "reg-mwj3q2k0-7s72k",
             "reg-mwj3qinx-l8p0j",
-            "reg-mwj3sqip-gmhs0",
+            "reg-mws1auci-4kqjb",
+            "reg-mws1auci-hgldq",
             "reg-romania",
             "reg-switzerland"
-        ],
-        "reg-mwj3sqip-gmhs0": [
-            "reg-mwj3o2en-ey2ek",
-            "reg-mwj3o2en-t0x9v",
-            "reg-mwj3s1av-3alqk",
-            "reg-mwj3sx9v-k98jv",
-            "reg-romania"
         ],
         "reg-mwj3sx9v-vqeax": [
             "reg-mwj3sx9v-k98jv",
             "reg-romania"
         ],
         "reg-mwj3sx9v-k98jv": [
-            "reg-mwj3sqip-gmhs0",
             "reg-mwj3sx9v-vqeax",
+            "reg-mws1auci-4kqjb",
+            "reg-mws1auci-hgldq",
             "reg-romania"
         ],
         "reg-mwj3u347-vrfpj": [
@@ -3803,6 +3892,19 @@
         "reg-mwj5m3e2-s9fex": [
             "reg-mwj3kzk8-wbd6v",
             "reg-mwj5m3e2-qlqg0"
+        ],
+        "reg-mws1auci-hgldq": [
+            "reg-mwj3s1av-3alqk",
+            "reg-mwj3sx9v-k98jv",
+            "reg-mws1auci-4kqjb",
+            "reg-romania"
+        ],
+        "reg-mws1auci-4kqjb": [
+            "reg-mwj3o2en-ey2ek",
+            "reg-mwj3o2en-t0x9v",
+            "reg-mwj3s1av-3alqk",
+            "reg-mwj3sx9v-k98jv",
+            "reg-mws1auci-hgldq"
         ]
     }
 }

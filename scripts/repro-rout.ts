@@ -1,7 +1,9 @@
 import {
   applyAction,
+  applyWaterUpkeep,
   hpLeft,
   previewMove,
+  routKind,
   wouldRout,
   type GameState,
 } from '../src/engine';
@@ -19,6 +21,9 @@ const face = defaultFacing('red');
 const rear = ((face + 3) % 6) as HexDir;
 const back = neighborInDir(at, rear, O);
 const front = neighborInDir(at, face, O);
+const flankL = neighborInDir(at, ((face + 2) % 6) as HexDir, O);
+const flankR = neighborInDir(at, ((face + 4) % 6) as HexDir, O);
+const farShot: Hex = { col: 7, row: 5 };
 
 function board(
   extra: {
@@ -114,8 +119,10 @@ try {
     const v = victim(s)!;
     const a = attacker(s);
     assert(wouldRout(s, v, { col: a.col, row: a.row }), 'two hostiles opposite + red face → would rout');
+    assert(routKind(s, v, { col: a.col, row: a.row }) === 'pinched', 'opposite+red → pinched');
     const plan = previewMove(s, a, at);
     assert(plan.hits.length === 1 && plan.hits[0].routed, 'preview marks routed');
+    assert(plan.hits[0].routKind === 'pinched', 'preview routKind pinched');
     assert(plan.hits[0].fatal && plan.hits[0].remaining === 0, 'rout is fatal');
     const after = bump(s);
     assert(!after.pieces.some((p) => p.id === v.id), 'routed unit is gone');
@@ -255,11 +262,87 @@ try {
     // Lone adjacent enemy is not a pinch — a distant shot must not invent the other half.
     const s = board({ pin: null });
     const v = victim(s)!;
-    const far: Hex = { col: 7, row: 5 };
-    assert(!wouldRout(s, v, far), 'shot axis + one adjacent enemy is not a two-unit pinch');
+    assert(!wouldRout(s, v, farShot), 'shot axis + one adjacent enemy is not a two-unit pinch');
   }
 
-  console.log('rout: two-unit pinch + red face; any hit routs; terrain does not pin; generals hold');
+  // --- ≥2 adjacent + hit by a 3rd (no opposite / no red face required) ---
+  UNIT_STATS.soldier.armorRear = 0;
+  {
+    const t = emptyTerrain(8, 10);
+    const s = createStateFromTerrain(
+      t,
+      'rout-third',
+      O,
+      [
+        { type: 'soldier', col: at.col, row: at.row, side: 'red' },
+        { type: 'general', col: 1, row: 1, side: 'red' },
+        { type: 'soldier', col: flankL.col, row: flankL.row, side: 'blue' },
+        { type: 'soldier', col: flankR.col, row: flankR.row, side: 'blue' },
+        { type: 'soldier', col: farShot.col, row: farShot.row, side: 'blue' },
+        { type: 'general', col: 1, row: 9, side: 'blue' },
+      ],
+    );
+    s.turn = 'blue';
+    const v = s.pieces.find((p) => p.col === at.col && p.row === at.row)!;
+    v.facing = face;
+    assert(!wouldRout(s, v, { col: flankL.col, row: flankL.row }), 'two flanks: hit by one of them is not a 3rd');
+    assert(routKind(s, v, farShot) === 'panic', 'two flanks + distant shot → panic');
+    assert(routKind(s, v) === 'panic', 'two flanks + sourceless hit (trap/water) → panic');
+  }
+
+  {
+    // Three adjacent: melee from any of them is a 3rd relative to the other two.
+    const t = emptyTerrain(8, 10);
+    const s = createStateFromTerrain(
+      t,
+      'rout-crowd',
+      O,
+      [
+        { type: 'soldier', col: at.col, row: at.row, side: 'red' },
+        { type: 'general', col: 1, row: 1, side: 'red' },
+        { type: 'soldier', col: front.col, row: front.row, side: 'blue' },
+        { type: 'soldier', col: flankL.col, row: flankL.row, side: 'blue' },
+        { type: 'soldier', col: flankR.col, row: flankR.row, side: 'blue' },
+        { type: 'general', col: 1, row: 9, side: 'blue' },
+      ],
+    );
+    const v = s.pieces.find((p) => p.col === at.col && p.row === at.row)!;
+    v.facing = face;
+    assert(wouldRout(s, v, { col: front.col, row: front.row }), 'three adjacent → any of them is a 3rd');
+  }
+
+  {
+    // Water upkeep routs when crowded by two hostiles.
+    const t = emptyTerrain(8, 10);
+    t[at.row][at.col] = 'water';
+    const s = createStateFromTerrain(
+      t,
+      'rout-water',
+      O,
+      [
+        { type: 'soldier', col: at.col, row: at.row, side: 'red' },
+        { type: 'general', col: 1, row: 1, side: 'red' },
+        { type: 'soldier', col: flankL.col, row: flankL.row, side: 'blue' },
+        { type: 'soldier', col: flankR.col, row: flankR.row, side: 'blue' },
+        { type: 'general', col: 1, row: 9, side: 'blue' },
+      ],
+    );
+    s.turn = 'red';
+    const v = s.pieces.find((p) => p.col === at.col && p.row === at.row)!;
+    v.facing = face;
+    v.actionPoints = 0;
+    assert(wouldRout(s, v), 'two flanks + water → would rout');
+    applyWaterUpkeep(s, 'red');
+    assert(!s.pieces.some((p) => p.id === v.id), 'water routs crowded unit');
+    assert(
+      s.log.some((line) => line.includes('routs') || line.includes('rout')),
+      `water rout log, got ${s.log.at(-1)}`,
+    );
+  }
+
+  console.log(
+    'rout: opposite+red pinch; ≥2 adjacent + 3rd hit; trap/water; terrain does not pin; generals hold',
+  );
 } finally {
   UNIT_STATS.soldier.hexArmor = saved.hexArmor;
   UNIT_STATS.soldier.armorFront = saved.armorFront;

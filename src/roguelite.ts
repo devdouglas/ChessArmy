@@ -38,6 +38,8 @@ export const ROGUE_START_COUNT = 2;
 /** Gold at run start. Battles pay 1g per earned star. */
 export const ROGUE_START_GOLD = 0;
 export const ROGUE_SHOP_SIZE = 3;
+/** Map regenerates granted per Scout promotion-unit at battle start. */
+export const ROGUE_SCOUT_REGEN_PER = 2;
 /** Roguelite star copy (win / general lives / no losses). */
 export const ROGUE_STAR_LABELS = [
   'Win',
@@ -82,6 +84,8 @@ export type RogueShop = {
   purchased: UnitType[];
   /** Gold gained from stars this battle (1 per star). */
   starGold: number;
+  /** Gold from Wealthy promotions on living player units. */
+  wealthyGold: number;
   /** Promotion choices — first take free, extras cost ROGUE_PROMO_COST each. */
   promotions: PromotionTokenType[];
   /** True after the free promotion has been claimed this shop. */
@@ -176,12 +180,18 @@ export function rollRoguePromotions(
   return out;
 }
 
-/** Victory shop — `starGold` is 1 per earned star this battle. Offers match the next battle's value cap. */
+/**
+ * Victory shop — `starGold` is 1 per earned star; `wealthyGold` is +1 per
+ * Wealthy chevron on living player units. Offers match the next battle's value cap.
+ */
 export function openRogueShop(
   run: RogueRun,
   starGold: number,
+  wealthyGold = 0,
 ): { run: RogueRun; shop: RogueShop } {
-  const gain = Math.max(0, Math.floor(starGold));
+  const stars = Math.max(0, Math.floor(starGold));
+  const wealth = Math.max(0, Math.floor(wealthyGold));
+  const gain = stars + wealth;
   const nextBattle = run.battle + 1;
   return {
     run: { ...run, gold: run.gold + gain },
@@ -192,15 +202,17 @@ export function openRogueShop(
         rogueMaxUnitValue(nextBattle),
       ),
       purchased: [],
-      starGold: gain,
+      starGold: stars,
+      wealthyGold: wealth,
       promotions: rollRoguePromotions(),
       freePromoTaken: false,
     },
   };
 }
 
+/** Enemy random promos — skip Scout/Wealthy (player-only economy / ambush). */
 const ENEMY_PROMO_POOL = PROMOTION_TOKEN_TYPES.filter(
-  (t) => t !== 'general',
+  (t) => t !== 'general' && t !== 'scout' && t !== 'wealthy',
 ) as Exclude<PromotionTokenType, 'general'>[];
 
 function stackableCount(unit: RogueUnit): number {
@@ -256,6 +268,7 @@ export function buyRogueShopOffer(
       offers,
       purchased: [...shop.purchased, type],
       starGold: shop.starGold,
+      wealthyGold: shop.wealthyGold,
       promotions: shop.promotions,
       freePromoTaken: shop.freePromoTaken,
     },

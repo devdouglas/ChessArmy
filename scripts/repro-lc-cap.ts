@@ -10,8 +10,6 @@ import {
 import { neighborInDir, type Hex, type HexDir } from '../src/hex';
 import { createStateFromTerrain, emptyTerrain } from '../src/map';
 import { UNIT_STATS, DEFAULT_UNIT_STATS } from '../src/roster';
-import { setExperimental } from '../src/experimental';
-
 const type = 'lightcavalry';
 UNIT_STATS[type] = {
   ...DEFAULT_UNIT_STATS.lightcavalry,
@@ -97,7 +95,6 @@ function boot() {
 }
 
 {
-  setExperimental('walk-orders', true);
   const { s, u, from } = boot();
   u.spendMarch = true;
   // Past click reach (5) but still on the 15×15 board.
@@ -119,7 +116,6 @@ function boot() {
 {
   // 1 spendable AP → single march chunk of 3 (no AP extra). Without the fix this
   // still ignored the cap once a follow-up click was fabricated; distance is the gate.
-  setExperimental('walk-orders', true);
   const { s, u, from } = boot();
   u.apSpentThisTurn = 1;
   const dest = step(from, 0, 7);
@@ -134,7 +130,6 @@ function boot() {
     if (walked > 20) break;
   }
   assert(walked === 3, `single-chunk march walks 3, got ${walked}`);
-  setExperimental('walk-orders', false);
 }
 
 console.log('light cavalry move cap 5: click, drawn path, and march all stop at 5');

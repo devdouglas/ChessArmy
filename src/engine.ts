@@ -33,8 +33,6 @@ import {
 } from './roster';
 import type { AbilityId, BuildStructure } from './abilities';
 import { isBuildStructure } from './abilities';
-import { isExperimentalOn } from './experimental';
-
 export {
   ABILITY_BLURB,
   ABILITY_IDS,
@@ -277,7 +275,7 @@ export const PIKE_DAMAGE = 1;
 export const PALISADE_HP = 3;
 
 /** Stackable promotions per piece (V chevrons). General is separate and does not use a slot. */
-export const MAX_UNIT_PROMOTIONS = 3;
+export const MAX_UNIT_PROMOTIONS = 5;
 export const PROMOTION_TOKEN_TYPES = [
   'general',
   'range1',
@@ -287,6 +285,8 @@ export const PROMOTION_TOKEN_TYPES = [
   'hp2',
   'allTerrain',
   'lunge',
+  'scout',
+  'wealthy',
 ] as const;
 export type PromotionTokenType = (typeof PROMOTION_TOKEN_TYPES)[number];
 
@@ -320,6 +320,8 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   hp2: 'HP +2',
   allTerrain: 'All terrain',
   lunge: 'Lunge',
+  scout: 'Scout',
+  wealthy: 'Wealthy',
 };
 
 /** Editor / inspect blurbs when a promotion brush is selected. */
@@ -335,6 +337,10 @@ export const PROMOTION_TOKEN_BLURB: Record<PromotionTokenType, string> = {
     'Free climbs, swim without AP/HP upkeep, climb to mountain, Hide on forest. Stacks as a V chevron.',
   lunge:
     'Gain Lunge: thrust two hexes, melee both tiles. Zero-melee kits still thrust for 1 (+ Attack). Stacks as a V chevron.',
+  scout:
+    'At battle start, place this unit anywhere it can stand, hidden. Roguelite: +2 map regenerates per Scout unit. Stacks as a V chevron.',
+  wealthy:
+    'Earn +1 gold at the end of a victorious battle. Stacks as a V chevron.',
 };
 
 /** Chevron / swatch fill per promotion kind. */
@@ -347,6 +353,8 @@ export const PROMOTION_TOKEN_COLOR: Record<PromotionTokenType, string> = {
   hp2: '#e87890',
   allTerrain: '#d0b878',
   lunge: '#c080e0',
+  scout: '#70c8c0',
+  wealthy: '#e8c040',
 };
 
 /** Stackable promos only (General is unique and uses the star badge). */
@@ -484,6 +492,16 @@ export function actionPointGainOf(piece: Piece): number {
 /** All terrain promo — ignore climb / swim penalties, climb to mountain. */
 export function hasAllTerrain(piece: { unitTokens?: UnitTokenType[] }): boolean {
   return hasUnitToken(piece, 'allTerrain');
+}
+
+/** Scout promo — pre-battle ambush placement (+ map regenerates in roguelite). */
+export function hasScout(piece: { unitTokens?: UnitTokenType[] }): boolean {
+  return hasUnitToken(piece, 'scout');
+}
+
+/** Stacked Wealthy promotions — +1 gold each after a win. */
+export function wealthyBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
+  return countUnitToken(piece, 'wealthy');
 }
 
 export function climbLevelOf(piece: Piece): number {
@@ -1049,7 +1067,20 @@ export type Piece = {
   spendMarch?: boolean;
 };
 
-export type FxHit = { id: string; fatal: boolean; dealt: number; routed?: boolean };
+/** Why a unit routed — pinch (opposite + red) vs panic (≥2 adjacent + 3rd hit). */
+export type RoutKind = 'pinched' | 'panic';
+
+export type FxHit = {
+  id: string;
+  fatal: boolean;
+  dealt: number;
+  routed?: boolean;
+  routKind?: RoutKind;
+  /** Armor face/ring that applied to this hit (−2…+2). */
+  armor?: number;
+  /** Ranged hits always pop white; melee uses armor color when ≠ 0. */
+  ranged?: boolean;
+};
 export type FxActionPoints = { id: string; kind: 'gain' | 'spend' };
 export type FxBoard = { col: number; row: number; text: string; title?: string };
 
@@ -1202,13 +1233,11 @@ function redFaceDirs(piece: Piece): Set<HexDir> {
 
 /** Cube dirs a hex-armor piece cannot walk (faces at −2). */
 function blockedWalkDirs(piece: Piece): Set<HexDir> {
-  if (!isExperimentalOn('block-red-move')) return new Set();
   return redFaceDirs(piece);
 }
 
 /** Cube dirs a hex-armor piece cannot shoot (faces at −2). */
 function blockedShootDirs(piece: Piece): Set<HexDir> {
-  if (!isExperimentalOn('block-red-shoot')) return new Set();
   return redFaceDirs(piece);
 }
 
@@ -1323,16 +1352,13 @@ function applyHexDamagePush(state: GameState, attacker: Piece, prevCovered: Set<
     const dmg = applyDamage(state, victim, f.amount, 1, from, true, false);
     const dealt = before - dmg.remaining;
     if (dealt <= 0 && !dmg.routed) continue;
-    state.fxHits = [
-      ...(state.fxHits ?? []),
-      { id: victim.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
-    ];
+    noteStrike(state, victim, before, dmg, from, true);
     state.log.push(
       dmg.routed
-        ? `${unitLog(victim)} routs on facing pikes`
+        ? `Facing pikes rout ${unitLog(victim)}`
         : dmg.fatal
-          ? `${unitLog(victim)} dies on facing pikes`
-          : `${unitLog(victim)} is caught by facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
+          ? `Facing pikes kill ${unitLog(victim)}`
+          : `Facing pikes hit ${unitLog(victim)} — ${dealt} HP (${dmg.remaining} HP)`,
     );
   }
 }
@@ -1491,11 +1517,12 @@ function applyDamage(
   from?: Hex,
   ranged = false,
   markShot = ranged,
-): { fatal: boolean; remaining: number; routed: boolean } {
+): { fatal: boolean; remaining: number; routed: boolean; routKind?: RoutKind } {
   if (isNeutralSide(victim.side)) {
     return { fatal: false, remaining: hpLeft(victim), routed: false };
   }
-  const routed = wouldRout(state, victim, from);
+  const kind = routKind(state, victim, from);
+  const routed = !!kind;
   const before = hpLeft(victim);
   const remaining = routed
     ? 0
@@ -1515,7 +1542,7 @@ function applyDamage(
       const lost = state.casualties[victim.side] ?? 0;
       state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
     }
-    return { fatal: true, remaining: 0, routed };
+    return { fatal: true, remaining: 0, routed, routKind: kind ?? undefined };
   }
   return { fatal: false, remaining, routed: false };
 }
@@ -1531,13 +1558,60 @@ function addHpLost(state: GameState, side: Side, dealt: number): void {
 }
 
 /**
- * Generals hold. Otherwise: hostiles on two opposite adjacent hexes, and
- * one of those faces is −2 (red). Any hit while pinched routs. Friends /
- * terrain never pin. Attack direction does not invent a pincher.
+ * Generals hold. Two paths:
+ * 1) Opposite adjacent hostiles + a −2 (red) face on that axis — any hit routs
+ *    (`pinched`).
+ * 2) ≥2 adjacent hostiles, then hit by a 3rd source (other unit / trap / water /
+ *    pikes / anything whose origin is not one of those two) — `panic`.
+ * Friends / terrain never pin. Attack direction alone does not invent a pincher.
  */
-export function wouldRout(state: GameState, victim: Piece, _from?: Hex): boolean {
-  if (hasUnitToken(victim, 'general')) return false;
-  return isPinched(state, victim);
+export function routKind(
+  state: GameState,
+  victim: Piece,
+  from?: Hex,
+): RoutKind | null {
+  if (hasUnitToken(victim, 'general')) return null;
+  if (isPinched(state, victim)) return 'pinched';
+  if (hitByThirdWhileCrowded(state, victim, from)) return 'panic';
+  return null;
+}
+
+export function wouldRout(state: GameState, victim: Piece, from?: Hex): boolean {
+  return routKind(state, victim, from) != null;
+}
+
+/** Hostile pieces on the six adjacent hexes. */
+export function adjacentHostiles(state: GameState, victim: Piece): Piece[] {
+  const at: Hex = { col: victim.col, row: victim.row };
+  const out: Piece[] = [];
+  for (const h of neighbors(at, state.orientation)) {
+    const p = pieceAt(state, h);
+    if (!p || p.id === victim.id) continue;
+    if (!isHostile(state, p.side, victim.side)) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * ≥2 adjacent hostiles and the damage is not coming from one of those two
+ * alone (ranged outsider, a third adjacent melee, trap, water, ownerless pikes).
+ */
+function hitByThirdWhileCrowded(
+  state: GameState,
+  victim: Piece,
+  from?: Hex,
+): boolean {
+  const adj = adjacentHostiles(state, victim);
+  if (adj.length < 2) return false;
+  if (!from) return true;
+  const source = pieceAt(state, from);
+  if (!source || source.id === victim.id) return true;
+  if (!isHostile(state, source.side, victim.side)) return true;
+  const among = adj.some((p) => p.id === source.id);
+  if (!among) return true;
+  // Source is one of the adjacent hostiles — only a "3rd" if ≥3 crowd.
+  return adj.length >= 3;
 }
 
 /** Two hostiles on opposite neighbors, with a −2 face on that axis. */
@@ -1611,16 +1685,13 @@ function strikeFacingPikes(state: GameState, piece: Piece, hex: Hex): boolean {
   const dmg = applyDamage(state, piece, hit.amount, 1, hit.from, true, false);
   const dealt = before - dmg.remaining;
   if (dealt <= 0 && !dmg.routed) return false;
-  state.fxHits = [
-    ...(state.fxHits ?? []),
-    { id: piece.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
-  ];
+  noteStrike(state, piece, before, dmg, hit.from, true);
   state.log.push(
     dmg.routed
-      ? `${unitLog(piece)} routs on facing pikes`
+      ? `Facing pikes rout ${unitLog(piece)}`
       : dmg.fatal
-        ? `${unitLog(piece)} dies on facing pikes`
-        : `${unitLog(piece)} steps into facing pikes — ${dealt} HP (${dmg.remaining} HP)`,
+        ? `Facing pikes kill ${unitLog(piece)}`
+        : `Facing pikes hit ${unitLog(piece)} — ${dealt} HP (${dmg.remaining} HP)`,
   );
   return dmg.fatal;
 }
@@ -1673,16 +1744,13 @@ function applyEnterHazards(state: GameState, piece: Piece, hex: Hex): boolean {
     const dmg = applyDamage(state, piece, trap, 1);
     const dealt = before - dmg.remaining;
     if (dealt > 0 || dmg.routed) {
-      state.fxHits = [
-        ...(state.fxHits ?? []),
-        { id: piece.id, fatal: dmg.fatal, dealt: Math.max(dealt, dmg.routed ? 1 : 0), routed: dmg.routed },
-      ];
+      noteStrike(state, piece, before, dmg);
       state.log.push(
         dmg.routed
-          ? `${unitLog(piece)} routs on pikes`
+          ? `Pikes rout ${unitLog(piece)}`
           : dmg.fatal
-            ? `${unitLog(piece)} dies on pikes`
-            : `${unitLog(piece)} steps on pikes — ${dealt} HP (${dmg.remaining} HP)`,
+            ? `Pikes kill ${unitLog(piece)}`
+            : `Pikes hit ${unitLog(piece)} — ${dealt} HP (${dmg.remaining} HP)`,
       );
     }
     if (dmg.fatal) return true;
@@ -1759,9 +1827,11 @@ function sideLog(side: Side, label: string): string {
   return `<span class="log-side ${side}">${escLog(label)}</span>`;
 }
 
+/** Victim clause for combat logs: who died / routed / how much HP left. */
 function hpBit(victim: Piece, fatal: boolean, remaining: number, routed = false): string {
-  if (routed) return `${unitLog(victim)} routed`;
-  return fatal ? `${unitLog(victim)} killed` : `${unitLog(victim)} (${remaining} HP)`;
+  if (routed) return `${unitLog(victim)} — routed`;
+  if (fatal) return `${unitLog(victim)} — killed`;
+  return `${unitLog(victim)} (${remaining} HP)`;
 }
 
 /** net = attack − shield; negative shield adds melee only. Melee floors at 1. */
@@ -1788,6 +1858,7 @@ export type MoveHit = {
   remaining: number;
   from: Hex;
   routed?: boolean;
+  routKind?: RoutKind;
 };
 
 export type PalisadeHit = {
@@ -1910,7 +1981,8 @@ export function previewMove(
     if (amount <= 0) return false;
     const nextHp =
       hpOf(victim, hpMap) - netDamage(victim, amount, 1, atkFrom, state.orientation);
-    const routed = wouldRout(state, victim, atkFrom);
+    const kind = routKind(state, victim, atkFrom);
+    const routed = !!kind;
     const dead = routed || nextHp <= 0;
     hpMap.set(victim.id, dead ? 0 : nextHp);
     hits.push({
@@ -1920,6 +1992,7 @@ export function previewMove(
       remaining: dead ? 0 : Math.max(0, nextHp),
       from: atkFrom,
       routed,
+      routKind: kind ?? undefined,
     });
     return dead;
   };
@@ -2743,8 +2816,11 @@ export function lungeSpots(state: GameState, piece: Piece): Hex[] {
   if (lungeDamageOf(piece) <= 0) return [];
   const from: Hex = { col: piece.col, row: piece.row };
   const out: Hex[] = [];
+  // Same facing gate as melee walk/shoot — red (−2) faces cannot thrust.
+  const blocked = blockedWalkDirs(piece);
   for (let d = 0; d < 6; d++) {
     const dir = d as HexDir;
+    if (blocked.has(dir)) continue;
     const near = neighborInDir(from, dir, state.orientation);
     const far = neighborInDir(near, dir, state.orientation);
     if (!inBounds(state, near) || !inBounds(state, far)) continue;
@@ -2768,11 +2844,55 @@ export function canLunge(state: GameState, pieceId: string): boolean {
   return lungeSpots(state, piece).length > 0;
 }
 
+/** True when a Scout can ambush-deploy onto this hex (standable, empty). */
+export function canScoutDeployAt(state: GameState, piece: Piece, hex: Hex): boolean {
+  if (!inBounds(state, hex)) return false;
+  if (isWall(state, hex) || isPalisade(state, hex)) return false;
+  if (inWater(state, hex) && !canPassWater(piece)) return false;
+  if (terrainHeight(terrainAt(state, hex)) > climbLevelOf(piece)) return false;
+  const occ = pieceAt(state, hex);
+  if (occ && occ.id !== piece.id) return false;
+  return true;
+}
+
+/** Every standable empty hex for Scout pre-battle placement. */
+export function scoutDeploySpots(state: GameState, piece: Piece): Hex[] {
+  const out: Hex[] = [];
+  for (let row = 0; row < state.rows; row++) {
+    for (let col = 0; col < state.cols; col++) {
+      const h = { col, row };
+      if (canScoutDeployAt(state, piece, h)) out.push(h);
+    }
+  }
+  return out;
+}
+
+/** Move a Scout onto `hex` and stamp Hidden. Returns null if illegal. */
+export function placeScoutAt(
+  state: GameState,
+  pieceId: string,
+  hex: Hex,
+): GameState | null {
+  const piece = getPiece(state, pieceId);
+  if (!piece || !hasScout(piece)) return null;
+  if (!canScoutDeployAt(state, piece, hex)) return null;
+  const next = cloneState(state);
+  const p = getPiece(next, pieceId);
+  if (!p) return null;
+  p.col = hex.col;
+  p.row = hex.row;
+  p.revealed = undefined;
+  p.unitTokens = sanitizeUnitTokens([...(p.unitTokens ?? []), 'hidden']);
+  return next;
+}
+
 function noteStrike(
   state: GameState,
   victim: Piece,
   before: number,
-  dmg: { fatal: boolean; remaining: number; routed: boolean },
+  dmg: { fatal: boolean; remaining: number; routed: boolean; routKind?: RoutKind },
+  from?: Hex,
+  ranged = false,
 ): void {
   const dealt = before - dmg.remaining;
   if (dealt <= 0 && !dmg.routed) return;
@@ -2783,6 +2903,9 @@ function noteStrike(
       fatal: dmg.fatal,
       dealt: Math.max(dealt, dmg.routed ? 1 : 0),
       routed: dmg.routed,
+      routKind: dmg.routKind,
+      armor: armorOf(victim, from, state.orientation),
+      ranged,
     },
   ];
 }
@@ -3004,10 +3127,9 @@ function noteIdleLastTurn(state: GameState, side: Side): void {
 /**
  * Start of a side's turn: reset spend caps and grant `actionPointGain` into the
  * pool (up to max). Sleeping / water / max≤0 skip the pool grant.
- * Experimental rest-bonus-ap: +1 if the unit took no action last own turn.
+ * Idle last own turn: +1 (still capped at AP max).
  */
 function grantActionPoints(state: GameState, side: Side): void {
-  const restBonus = isExperimentalOn('rest-bonus-ap');
   for (const p of state.pieces) {
     if (p.side !== side) continue;
     p.apSpentThisTurn = undefined;
@@ -3015,7 +3137,7 @@ function grantActionPoints(state: GameState, side: Side): void {
     if (inWater(state, { col: p.col, row: p.row }) && !hasAllTerrain(p)) continue;
     const max = actionPointsMax(p);
     if (max <= 0) continue;
-    const gain = actionPointGainOf(p) + (restBonus && p.idleLastTurn ? 1 : 0);
+    const gain = actionPointGainOf(p) + (p.idleLastTurn ? 1 : 0);
     if (gain <= 0) continue;
     const before = actionPointsLeft(p);
     const after = Math.min(max, before + gain);
@@ -3083,23 +3205,17 @@ export function applyWaterUpkeep(state: GameState, side: Side): void {
   }
   for (const p of drowned) {
     const before = hpLeft(p);
-    const remaining = Math.max(0, before - WATER_DROWN_HP);
-    const dealt = before - remaining;
-    p.hp = remaining;
-    if (dealt > 0) {
-      if (isSide(p.side)) addHpLost(state, p.side, dealt);
-      state.fxHits = [...(state.fxHits ?? []), { id: p.id, fatal: remaining <= 0, dealt }];
+    const dmg = applyDamage(state, p, WATER_DROWN_HP, WATER_DROWN_HP, undefined, true, false);
+    const dealt = before - dmg.remaining;
+    if (dealt > 0 || dmg.routed) {
+      noteStrike(state, p, before, dmg, undefined, true);
     }
-    if (remaining <= 0) {
-      tellStory(state, p, 'kill');
-      state.pieces = state.pieces.filter((x) => x.id !== p.id);
-      if (isSide(p.side)) {
-        const lost = state.casualties[p.side] ?? 0;
-        state.casualties = { ...state.casualties, [p.side]: lost + 1 };
-      }
-      state.log.push(`${unitLog(p)} drowns`);
+    if (dmg.routed) {
+      state.log.push(`Water routs ${unitLog(p)}`);
+    } else if (dmg.fatal) {
+      state.log.push(`Water kills ${unitLog(p)} (drowned)`);
     } else {
-      state.log.push(`${unitLog(p)} drowns — ${WATER_DROWN_HP} HP (${remaining} HP)`);
+      state.log.push(`Water hits ${unitLog(p)} — ${dealt} HP (${dmg.remaining} HP)`);
     }
   }
 }
@@ -3227,9 +3343,7 @@ function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex
     tellStory(state, occ, 'touch');
     const res = applyDamage(state, occ, melee, 1, from);
     state.log.push(
-      `${unitLog(piece)} ${
-        res.routed ? 'routs' : res.fatal ? 'captures' : 'strikes'
-      } ${hpBit(occ, res.fatal, res.remaining, res.routed)}` +
+      `${unitLog(piece)} strikes ${hpBit(occ, res.fatal, res.remaining, res.routed)}` +
         (res.fatal ? '' : ` — stops ${from.col},${from.row}`) +
         ` ${dmgLine(state, occ, melee, 1, from)}`,
     );
@@ -3309,9 +3423,8 @@ function marchRouteInner(state: GameState, piece: Piece, goal: Hex): Hex[] | nul
   return path.length ? path : null;
 }
 
-/** Full route to `goal` when walk-to orders are on. Empty when unreachable. */
+/** Full route to `goal`. Empty when unreachable. */
 export function marchRoute(state: GameState, piece: Piece, goal: Hex): Hex[] | null {
-  if (!isExperimentalOn('walk-orders')) return null;
   return marchRouteInner(state, piece, goal);
 }
 
@@ -3535,7 +3648,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
  * Other standing marches still resolve if that ends the side-turn.
  */
 export function performMarch(state: GameState, pieceId: string): GameState {
-  if (!isExperimentalOn('walk-orders') || state.winner) return state;
+  if (state.winner) return state;
   const next = cloneState(state);
   const piece = getPiece(next, pieceId);
   if (!piece || !marchEligible(next, piece)) return next;
@@ -3555,7 +3668,7 @@ export function performMarch(state: GameState, pieceId: string): GameState {
 /** One turn of standing marches for units that were not given another order. */
 function applyStandingMarches(state: GameState): void {
   const anims: MarchAnim[] = [];
-  if (!isExperimentalOn('walk-orders') || state.winner) {
+  if (state.winner) {
     queuedMarches.push(...anims);
     return;
   }
@@ -3580,7 +3693,7 @@ function applyStandingMarches(state: GameState): void {
 }
 
 function hasMarchDestination(piece: Piece): boolean {
-  return isExperimentalOn('walk-orders') && !!piece.walkTo;
+  return !!piece.walkTo;
 }
 
 /** Someone on this side still has to be ordered. Sleepers and marchers do not. */
@@ -3630,7 +3743,7 @@ function sideCanAutoMarch(state: GameState): boolean {
  * Stops if a full lap moves nobody, so a blocked march does not spin.
  */
 function maybeAutoEnd(state: GameState): void {
-  if (autoEnding || !isExperimentalOn('auto-walk') || state.winner) return;
+  if (autoEnding || state.winner) return;
   if (sideNeedsManualPlay(state)) return;
   autoEnding = true;
   try {
@@ -4687,13 +4800,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
         const other = getPiece(next, step.other.id);
         const beforeV = hpLeft(victim);
         const dmgV = applyDamage(next, victim, amount, 1, step.to);
-        noteStrike(next, victim, beforeV, dmgV);
+        noteStrike(next, victim, beforeV, dmgV, step.to);
         bits.push(hpBit(victim, dmgV.fatal, dmgV.remaining, dmgV.routed));
         dmgLines.push(dmgLine(next, victim, amount, 1, step.to));
         if (other) {
           const beforeO = hpLeft(other);
           const dmgO = applyDamage(next, other, amount, 1, step.from);
-          noteStrike(next, other, beforeO, dmgO);
+          noteStrike(next, other, beforeO, dmgO, step.from);
           bits.push(hpBit(other, dmgO.fatal, dmgO.remaining, dmgO.routed));
           dmgLines.push(dmgLine(next, other, amount, 1, step.from));
         }
@@ -4702,7 +4815,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if (step.outcome === 'slam' && step.to) {
         const before = hpLeft(victim);
         const dmg = applyDamage(next, victim, amount, 1, step.to);
-        noteStrike(next, victim, before, dmg);
+        noteStrike(next, victim, before, dmg, step.to);
         bits.push(
           `${hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed)} slams`,
         );
@@ -4713,7 +4826,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         const wood = chipWoodAt(next, step.to, 1);
         const before = hpLeft(victim);
         const dmg = applyDamage(next, victim, 1, 0, step.to, true);
-        noteStrike(next, victim, before, dmg);
+        noteStrike(next, victim, before, dmg, step.to, true);
         const woodBit = wood
           ? wood.remaining > 0
             ? `${wood.type} (${wood.remaining} left)`
@@ -4758,7 +4871,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if (!victim) continue;
       const before = hpLeft(victim);
       const dmg = applyDamage(next, victim, amount, floor, fromHex);
-      noteStrike(next, victim, before, dmg);
+      noteStrike(next, victim, before, dmg, fromHex);
       bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
       dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
     }
@@ -4799,7 +4912,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if (!victim) continue;
       const before = hpLeft(victim);
       const dmg = applyDamage(next, victim, amount, floor, fromHex);
-      noteStrike(next, victim, before, dmg);
+      noteStrike(next, victim, before, dmg, fromHex);
       bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
       dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
       if (eq(h, far) && dmg.fatal) killedFar = true;
@@ -4922,13 +5035,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
               ? 'strikes'
               : brokePal
                 ? 'breaks'
-                : plan.hits.some((h) => h.routed)
-                  ? 'routs'
-                  : plan.hits.some((h) => h.fatal)
-                    ? 'captures'
-                    : charging
-                      ? 'charges'
-                      : 'hits'
+                : charging
+                  ? 'charges'
+                  : 'hits'
         } ${hitBits.join(', ')}` +
           (bounced
             ? ` — stops ${plan.stop.col},${plan.stop.row}`
@@ -5138,7 +5247,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const dmg = applyDamage(next, t, shot, 0, fromHex, true);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
-        (dmg.routed ? ' — routed' : dmg.fatal ? ' — killed' : ` — ${dmg.remaining} HP`) +
+        (dmg.routed ? ' — routs' : dmg.fatal ? ' — kills' : ` — ${dmg.remaining} HP`) +
         (stats.shootCooldown > 0 ? ' — reloading' : '') +
         ammoLog(piece, stats) +
         dmgLine(next, t, shot, 0, fromHex, true),

@@ -57,11 +57,13 @@ function shootAt(s: GameState, pieceId: string, h: Hex) {
     'range1',
     'range1',
     'range1',
+    'range1',
+    'range1',
     'sleep',
   ]);
   assert(
-    stacked.filter((t) => t === 'range1').length === 3,
-    'cap stackable promotions at 3',
+    stacked.filter((t) => t === 'range1').length === 5,
+    'cap stackable promotions at 5',
   );
   assert(stacked.includes('sleep'), 'status tokens kept');
 
@@ -70,13 +72,17 @@ function shootAt(s: GameState, pieceId: string, h: Hex) {
     'general',
     'range1',
     'range1',
+    'range1',
+    'range1',
+    'range1',
+    'range1',
     'general',
     'sleep',
   ]);
   assert(withGeneral.filter((t) => t === 'general').length === 1, 'General promo stays unique');
   assert(
-    withGeneral.filter((t) => t === 'range1').length === 2,
-    'General shares the promo cap with stackables',
+    withGeneral.filter((t) => t === 'range1').length === 5,
+    'General does not consume a stackable promo slot',
   );
   assert(withGeneral.includes('sleep'), 'status tokens kept with General');
 }
@@ -116,9 +122,17 @@ try {
 }
 
 {
-  const mixed = sanitizeUnitTokens(['range1', 'defense1', 'range1', 'defense1']);
-  assert(mixed.length === 3, 'mixed promos still cap at 3');
-  assert(mixed.filter((t) => t === 'defense1').length === 1, 'keeps first three slots');
+  const mixed = sanitizeUnitTokens([
+    'range1',
+    'defense1',
+    'range1',
+    'defense1',
+    'attack1',
+    'ap1',
+  ]);
+  assert(mixed.length === 5, 'mixed promos still cap at 5');
+  assert(mixed.filter((t) => t === 'ap1').length === 0, 'drops past the fifth slot');
+  assert(mixed.filter((t) => t === 'attack1').length === 1, 'keeps first five slots');
 }
 
 {
