@@ -1288,7 +1288,6 @@ export function unitRankBadgesSvg(
   if (!general && kinds.length === 0) return '';
   if (general && kinds.length === 0) return generalBadgeSvg(cx, cy, r);
   const chevronR = r;
-  const w = chevronR * 1.55;
   const step = chevronR * 0.42;
   const depth = chevronR * 0.55;
   const sw = Math.max(1.35, chevronR * 0.22);

@@ -1609,7 +1609,7 @@ function applyDefeatExchange(
 export function resolveInvasionAuto(
   state: MatchState,
   map: CampaignMap,
-  sea: Record<string, SeaAdjacency[]>,
+  _sea: Record<string, SeaAdjacency[]>,
   invasionId: string,
 ): MatchState | null {
   const inv = state.pendingInvasions.find((i) => i.id === invasionId);

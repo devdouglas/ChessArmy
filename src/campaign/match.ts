@@ -140,7 +140,7 @@ export function isPlayerFaction(state: MatchState, factionId: string): boolean {
 }
 
 /** True wild barbarians only (not unpicked homeland neutrals). */
-export function isBarbarianFaction(state: MatchState, factionId: string | null): boolean {
+export function isBarbarianFaction(_state: MatchState, factionId: string | null): boolean {
   if (!factionId) return false;
   return factionId === BARBARIAN_ID;
 }

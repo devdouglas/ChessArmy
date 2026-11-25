@@ -877,19 +877,6 @@ export async function mountCampaignPlay(
     }
   }
 
-  function canShowPlaceDock(): boolean {
-    return !!(
-      match &&
-      match.phase.kind === 'play' &&
-      match.phase.phase === 'move' &&
-      !taxFxBusy &&
-      !moveFxBusy &&
-      !battleFxBusy &&
-      !aiBusy &&
-      !activeSeat(match)?.isAi
-    );
-  }
-
   const RECRUIT_PROMPT = 'Choose owned land or empty adjacent land · 1¢';
 
   /** Recruit mode defaults on once per move phase (human, affordable). */

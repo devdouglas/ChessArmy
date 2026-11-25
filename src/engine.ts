@@ -1956,7 +1956,6 @@ export function previewMove(
   opts?: { charging?: boolean },
 ): MovePlan {
   const from: Hex = { col: piece.col, row: piece.row };
-  const stats = statsOf(piece.type);
   const melee = meleeDamageOf(piece);
   const charging = !!opts?.charging;
   const abilityCharge = chargeDamageOf(piece);
