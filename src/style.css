@@ -5602,39 +5602,7 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
   width: 100%;
 }
 
-.play-dock-flyouts {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.35rem;
-  padding-bottom: 0.4rem;
-  pointer-events: none;
-  overflow: visible;
-}
-
-.build-pick {
-  pointer-events: auto;
-  width: 100%;
-  max-width: 100%;
-  padding: 0;
-}
-
-.build-pick-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.35rem;
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  background: color-mix(in srgb, var(--panel) 94%, #000);
-  border: 1px solid #3a453c;
-  border-bottom: none;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
-}
+/* Build items replace the ability row in-place (same .unit-dock grid). */
 
 .board-wrap:has(.play-dock) {
   padding-bottom: calc(9.2rem + var(--safe-b));
@@ -5753,15 +5721,17 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
   }
 }
 
-/* End turn: board bottom-right, just above the unit selection bar
-   (or above the build picker when that flyout is open). */
+/* End turn: board bottom-right, just above the unit selection bar. */
 .play-end-cluster {
-  position: static;
+  position: absolute;
+  right: 0.55rem;
+  bottom: 100%;
+  z-index: 6;
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 0.4rem;
-  margin: 0 0.55rem 0 0;
+  margin-bottom: 0.4rem;
   pointer-events: none;
 }
 

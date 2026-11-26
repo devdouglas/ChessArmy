@@ -5195,21 +5195,12 @@ function renderUnitDock(): string {
         },
       )
     : '';
-  return `<div class="unit-dock-wrap">
-    <div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
-      ${specialBtns}${reloadBtn}
-    </div>
-  </div>`;
-}
-
-function renderBuildPick(): string {
-  const piece = selectedId ? getPiece(state, selectedId) : null;
-  if (!piece || !buildPickOpen || specialMode !== 'build' || !hasAbility(piece, 'build')) {
-    return '';
-  }
-  const n = BUILD_STRUCTURES.length;
-  return `<div class="build-pick" id="build-pick" role="menu" aria-label="Build structure">
-    <div class="build-pick-row" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">
+  const showBuildPick =
+    !!piece && buildPickOpen && specialMode === 'build' && hasAbility(piece, 'build');
+  if (showBuildPick) {
+    const n = BUILD_STRUCTURES.length;
+    return `<div class="unit-dock-wrap">
+    <div class="unit-dock build-pick" id="build-pick" role="menu" aria-label="Build structure" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">
       ${BUILD_STRUCTURES.map((s) => {
         const icon =
           s === 'pikes' ? 'trap' : s === 'palisade' ? 'palisade' : s === 'bridge' ? 'bridge' : 'remove';
@@ -5220,6 +5211,12 @@ function renderBuildPick(): string {
           className: 'build-kind',
         });
       }).join('')}
+    </div>
+  </div>`;
+  }
+  return `<div class="unit-dock-wrap">
+    <div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
+      ${specialBtns}${reloadBtn}
     </div>
   </div>`;
 }
@@ -9467,10 +9464,7 @@ function render() {
       </div>
       <div class="play-dock">
         ${renderOtherTurnBanner()}
-        <div class="play-dock-flyouts">
-          ${renderEndTurn()}
-          ${renderBuildPick()}
-        </div>
+        ${renderEndTurn()}
         ${renderActionBar()}
         ${renderUnitDock()}
       </div>
@@ -9529,8 +9523,9 @@ window.addEventListener('pointerdown', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || !buildPickOpen) return;
+  if (e.key !== 'Escape') return;
   if (boardPopup || briefingOpen) return;
+  if (!buildPickOpen && specialMode !== 'build') return;
   e.preventDefault();
   buildPickOpen = false;
   if (specialMode === 'build') {
