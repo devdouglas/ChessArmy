@@ -22,8 +22,18 @@ export const LEVEL_TABLE: Record<Terrain, number> = {
   rock: 3, // mountains / rock
 };
 
-/** Thin plinth (px, not a full slab) under a palisade token. */
+/** Thin plinth (px, not a full slab) under a palisade token — the tile itself stays put. */
 export const PALISADE_BASE = 5;
+
+/** Small lift of the bridge deck above its water (or other) tile. The tile stays put. */
+export const BRIDGE_LIFT = 5;
+
+/** Extra lift of a palisade / bridge object above its tile top. 0 for anything else. */
+export function structureLift(type: string): number {
+  if (type === 'palisade') return PALISADE_BASE;
+  if (type === 'bridge') return BRIDGE_LIFT;
+  return 0;
+}
 
 /** A placed token / unit sits this many slabs above its tile top. */
 export const TOKEN_LIFT_STEPS = 0.25;

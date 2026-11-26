@@ -205,8 +205,8 @@ import {
 import {
   FLAT_GLYPH_TOKENS,
   HEIGHT_STEP,
-  PALISADE_BASE,
   TOKEN_LIFT,
+  structureLift,
   cornerAt,
   hexesWithin,
   neighbourAcross,
@@ -1566,10 +1566,16 @@ function viewOrientation(): HexOrientation {
 /** Raised-tile state for the board last drawn (see heights.ts). Lift is px, up = positive. */
 let liftMap = new Map<string, number>();
 let tileKind = new Map<string, string>();
+/** Palisade plinth / bridge-deck lift (px). Does not raise the tile itself. */
+let coverLiftMap = new Map<string, number>();
 let boardTopExtra = 0;
 
 function liftOf(h: Hex): number {
   return liftMap.get(key(h)) ?? 0;
+}
+
+function coverLiftOf(h: Hex): number {
+  return coverLiftMap.get(key(h)) ?? 0;
 }
 
 /** Centre of a tile's top face (already raised/sunk by its height). */
@@ -1578,13 +1584,37 @@ function pixelOf(h: Hex): { x: number; y: number } {
   return { x: x + PAD, y: y + PAD - liftOf(h) };
 }
 
-/** Where a unit stands: the tile top plus its small token lift. */
-function unitPixelOf(h: Hex): { x: number; y: number } {
+/** Walkable / built surface: tile top plus a palisade plinth or bridge deck, if any. */
+function surfacePixelOf(h: Hex): { x: number; y: number } {
   const p = pixelOf(h);
+  return { x: p.x, y: p.y - coverLiftOf(h) };
+}
+
+/** Where a unit stands: the surface plus its small token lift. */
+function unitPixelOf(h: Hex): { x: number; y: number } {
+  const p = surfacePixelOf(h);
   return { x: p.x, y: p.y - TOKEN_LIFT };
 }
 
-/** Work out each drawn tile's height from terrain, palisade plinths and bridges. */
+/** Short wooden sides under a palisade or bridge deck. The tile underneath stays at terrain height. */
+function structurePlinthSvg(
+  lift: number,
+  kind: 'palisade' | 'bridge',
+  ori: HexOrientation,
+): string {
+  if (lift < 0.5) return '';
+  const f = (n: number) => n.toFixed(2);
+  let out = '';
+  const at: Hex = { col: 0, row: 0 };
+  for (const e of southEdges(at, ori)) {
+    const [x1, y1] = cornerAt(0, 0, HEX_SIZE, e.a, ori);
+    const [x2, y2] = cornerAt(0, 0, HEX_SIZE, e.a + 1, ori);
+    out += `<polygon class="wall-face ${kind} ${e.face} plinth" points="${f(x1)},${f(y1)} ${f(x2)},${f(y2)} ${f(x2)},${f(y2 + lift)} ${f(x1)},${f(y1 + lift)}" />`;
+  }
+  return out;
+}
+
+/** Work out each drawn tile's height from terrain only. Palisades and bridges do not raise the tile. */
 function buildLiftMap(
   terrainGrid: Terrain[][],
   tokens: { type: string; col: number; row: number }[],
@@ -1593,13 +1623,12 @@ function buildLiftMap(
 ): void {
   const lifts = new Map<string, number>();
   const kinds = new Map<string, string>();
+  const covers = new Map<string, number>();
   const rows = terrainGrid.length;
   const cols = terrainGrid[0]?.length ?? 0;
-  const palisades = new Set<string>();
-  const bridges = new Set<string>();
   for (const t of tokens) {
-    if (t.type === 'palisade') palisades.add(`${t.col},${t.row}`);
-    else if (t.type === 'bridge') bridges.add(`${t.col},${t.row}`);
+    const extra = structureLift(t.type);
+    if (extra) covers.set(key({ col: t.col, row: t.row }), extra);
   }
   let top = 0;
   for (let row = 0; row < rows; row++) {
@@ -1616,21 +1645,16 @@ function buildLiftMap(
       }
       const k = key(hex);
       const terrain = terrainGrid[row][col];
-      let lift = terrainLift(terrain);
-      let kind: string = terrain;
-      if (bridges.has(k)) {
-        lift = 0;
-      } else if (palisades.has(k)) {
-        lift += PALISADE_BASE;
-        kind = 'palisade';
-      }
+      const lift = terrainLift(terrain);
       lifts.set(k, lift);
-      kinds.set(k, kind);
-      if (lift > top) top = lift;
+      kinds.set(k, terrain);
+      const peak = lift + (covers.get(k) ?? 0);
+      if (peak > top) top = peak;
     }
   }
   liftMap = lifts;
   tileKind = kinds;
+  coverLiftMap = covers;
   boardTopExtra = top > 0 ? Math.ceil(top + TOKEN_LIFT) : 0;
 }
 
@@ -4577,7 +4601,7 @@ function renderBoard(): string {
   }
   const placeStaminaMark = (k: string, svg: (x: number, y: number, r: number) => string) => {
     const hex = parseKey(k);
-    const { x, y } = pixelOf(hex);
+    const { x, y } = surfacePixelOf(hex);
     const occ = seenOcc(hex);
     const r = HEX_SIZE * (occ ? 0.24 : 0.28);
     const dy = occ ? -HEX_SIZE * 0.46 : -HEX_SIZE * 0.06;
@@ -4607,7 +4631,7 @@ function renderBoard(): string {
     if (plusOnly.has(k) && !moveMap.has(k)) continue;
     if (extraEmptyKeys.has(k)) continue;
     const hex = parseKey(k);
-    const { x, y } = pixelOf(hex);
+    const { x, y } = surfacePixelOf(hex);
     const occ = seenOcc(hex);
     const busy = restBusy(hex);
     const r = HEX_SIZE * (occ ? 0.22 : 0.26);
@@ -4621,7 +4645,7 @@ function renderBoard(): string {
   }
   for (const k of plusLabel) {
     const hex = parseKey(k);
-    const { x, y } = pixelOf(hex);
+    const { x, y } = surfacePixelOf(hex);
     apMarks += `<text class="hl-plus-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${plusFont.toFixed(1)}">+1</text>`;
   }
 
@@ -4643,8 +4667,9 @@ function renderBoard(): string {
       continue;
     }
     const tp = pixelOf({ col: t.col, row: t.row });
+    const cover = structureLift(t.type);
     const x = tp.x;
-    const y = tp.y - (FLAT_GLYPH_TOKENS.has(t.type) ? 0 : TOKEN_LIFT);
+    const y = tp.y - (FLAT_GLYPH_TOKENS.has(t.type) ? cover : TOKEN_LIFT);
     const owner = flagOwnerForDraw(t);
     const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
     const mark =
@@ -4662,7 +4687,13 @@ function renderBoard(): string {
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
     const read = t.type === 'board' && t.read ? ' read' : '';
     const armed = !editing && t.type === 'tutorial';
-    const body = armed ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
+    const plinth =
+      (t.type === 'palisade' || t.type === 'bridge') && cover > 0
+        ? structurePlinthSvg(cover, t.type, ori)
+        : '';
+    const body = armed
+      ? `<g class="tutorial-hand">${mark}${ban}</g>`
+      : `${plinth}${mark}${ban}`;
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
     const tk = key({ col: t.col, row: t.row });
     if (t.type === 'forest') putTile(forestByTile, tk, g);

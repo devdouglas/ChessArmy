@@ -6522,6 +6522,7 @@ svg.board .hex.rock {
 .wall-face.rock { --wf: var(--rock); }
 .wall-face.water { --wf: var(--water-lo); }
 .wall-face.palisade { --wf: var(--palisade-lo); }
+.wall-face.bridge { --wf: var(--bridge-lo); }
 /* Light from the top left: SW lightest, SE darkest. */
 .wall-face.sw { fill: var(--wf); fill: color-mix(in srgb, var(--wf) 90%, #000); }
 .wall-face.s { fill: var(--wf); fill: color-mix(in srgb, var(--wf) 76%, #000); }
