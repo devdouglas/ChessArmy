@@ -714,6 +714,7 @@ export type ActionGlyphId =
   | 'shields'
   | 'bash'
   | 'berserk'
+  | 'inspire'
   | 'reload';
 
 /** Same drawing as the bottom action buttons. */
@@ -838,6 +839,15 @@ function actionGlyphDrawn(kind: ActionGlyphId): { viewBox: string; inner: string
     return {
       viewBox: '-8 -8 16 16',
       inner: `<path fill="currentColor" d="M0 -6.6 L1.15 -1.7 L6.4 -2.4 L2.15 0.7 L4.5 5.6 L0 2.5 L-4.5 5.6 L-2.15 0.7 L-6.4 -2.4 L-1.15 -1.7 Z"/>`,
+    };
+  }
+  if (kind === 'inspire') {
+    // Raised war banner with a small sunburst — rally the line.
+    return {
+      viewBox: '-8 -8 16 16',
+      inner: `<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M-4.6 6.6 V-6.4"/>
+        <path fill="currentColor" d="M-4.0 -6.2 H4.8 L2.8 -3.4 L4.8 -0.6 H-4.0 Z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" d="M1.6 2.6 V5.8 M-0.4 4.2 H3.6 M0.2 2.8 L3.0 5.6 M3.0 2.8 L0.2 5.6"/>`,
     };
   }
   if (kind === 'reload') {
@@ -1049,7 +1059,9 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
                 ? '#2a2010'
                 : id === 'berserk'
                   ? '#2a1014'
-                  : '#1c2018';
+                  : id === 'inspire'
+                    ? '#2a2410'
+                    : '#1c2018';
   const stroke =
     id === 'hide'
       ? '#6a9a88'
@@ -1065,7 +1077,9 @@ export function abilityBadgeSvg(id: AbilityId, cx: number, cy: number, r = 7): s
                 ? '#e0a050'
                 : id === 'berserk'
                   ? '#e05050'
-                  : '#8aaa70';
+                  : id === 'inspire'
+                    ? '#ffc857'
+                    : '#8aaa70';
   return `
       <g class="ability-badge ${id}" transform="translate(${cx}, ${cy})">
         <circle cx="0" cy="0" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>
@@ -1187,6 +1201,13 @@ function promotionTypeIconInner(
       <rect x="-5.6" y="-0.55" width="8.4" height="1.1" rx="0.35"/>
       <path d="M2.4 -2.1 L7.0 0 L2.4 2.1 Z"/>
       <circle cx="-4.2" cy="0" r="1.05"/>
+    </g>`;
+  }
+  if (id === 'inspire') {
+    // Banner on a pole
+    return `<g fill="${color}">
+      <rect x="-4.4" y="-5.4" width="1.1" height="10.8" rx="0.35"/>
+      <path d="M-3.3 -5.2 H4.6 L2.6 -2.6 L4.6 0 H-3.3 Z"/>
     </g>`;
   }
   if (id === 'scout') {

@@ -33,6 +33,7 @@ import {
 } from './roster';
 import type { AbilityId, BuildStructure } from './abilities';
 import { isBuildStructure } from './abilities';
+import { generalInspiresEnabled } from './experimental';
 export {
   ABILITY_BLURB,
   ABILITY_IDS,
@@ -285,6 +286,7 @@ export const PROMOTION_TOKEN_TYPES = [
   'hp2',
   'allTerrain',
   'lunge',
+  'inspire',
   'scout',
   'wealthy',
 ] as const;
@@ -320,6 +322,7 @@ export const UNIT_TOKEN_LABEL: Record<UnitTokenType, string> = {
   hp2: 'HP +2',
   allTerrain: 'All terrain',
   lunge: 'Lunge',
+  inspire: 'Inspire',
   scout: 'Scout',
   wealthy: 'Wealthy',
 };
@@ -337,6 +340,8 @@ export const PROMOTION_TOKEN_BLURB: Record<PromotionTokenType, string> = {
     'Free climbs, swim without AP/HP upkeep, climb to mountain, Hide on forest. Stacks as a V chevron.',
   lunge:
     'Gain Lunge: thrust two hexes, melee both tiles. Zero-melee kits still thrust for 1 (+ Attack). Stacks as a V chevron.',
+  inspire:
+    'Gain Inspire: spend an action to inspire the friendly units chained to this one for 1 turn (+1 attack, +1 armor, no stacking). Stacks as a V chevron.',
   scout:
     'At battle start, place this unit anywhere it can stand, hidden. Roguelite: +2 map regenerates per Scout unit. Stacks as a V chevron.',
   wealthy:
@@ -353,6 +358,7 @@ export const PROMOTION_TOKEN_COLOR: Record<PromotionTokenType, string> = {
   hp2: '#e87890',
   allTerrain: '#d0b878',
   lunge: '#c080e0',
+  inspire: '#ffc857',
   scout: '#70c8c0',
   wealthy: '#e8c040',
 };
@@ -464,14 +470,17 @@ export function shootRangeOf(piece: Piece): number {
   return base + countUnitToken(piece, 'range1');
 }
 
-/** Stacked Defense +1 promotions — added to every armor face / ring. */
-export function armorBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
-  return countUnitToken(piece, 'defense1');
+/** Inspiration bonus (+1 attack, +1 armor). Never stacks. See `refreshInspiration`. */
+export const INSPIRE_BONUS = 1;
+
+/** Stacked Defense +1 promotions + inspiration — added to every armor face / ring. */
+export function armorBonusOf(piece: { unitTokens?: UnitTokenType[]; inspired?: boolean }): number {
+  return countUnitToken(piece, 'defense1') + (piece.inspired ? INSPIRE_BONUS : 0);
 }
 
-/** Stacked Attack +1 promotions — added to every outgoing damage value. */
-export function attackBonusOf(piece: { unitTokens?: UnitTokenType[] }): number {
-  return countUnitToken(piece, 'attack1');
+/** Stacked Attack +1 promotions + inspiration — added to every outgoing damage value. */
+export function attackBonusOf(piece: { unitTokens?: UnitTokenType[]; inspired?: boolean }): number {
+  return countUnitToken(piece, 'attack1') + (piece.inspired ? INSPIRE_BONUS : 0);
 }
 
 /** Stacked AP +1 promotions — +1 max pool, +1 granted each turn, +1 spend cap. */
@@ -513,7 +522,10 @@ export function canPassWater(piece: Piece): boolean {
   return statsOf(piece.type).passWater || hasAllTerrain(piece);
 }
 
-function withAttackBonus(base: number, piece: { unitTokens?: UnitTokenType[] }): number {
+function withAttackBonus(
+  base: number,
+  piece: { unitTokens?: UnitTokenType[]; inspired?: boolean },
+): number {
   const n = Math.max(0, base);
   if (n <= 0) return 0;
   return n + attackBonusOf(piece);
@@ -1049,6 +1061,13 @@ export type Piece = {
   shieldsUp?: boolean;
   /** First ranged hit while shields were up this enemy period — now visible and not targetable. */
   shieldsStruck?: boolean;
+  /** Inspire activated — a source until this side's next turn starts. */
+  inspireUp?: boolean;
+  /**
+   * Derived, never set by hand: chained (same-side adjacency) to an inspiration source
+   * other than itself. Rewritten from the board by `refreshInspiration` after every change.
+   */
+  inspired?: boolean;
   /** Hostile newly entered this piece's Sight this activation. Hold-position AI advances. */
   losHit?: boolean;
   /** Hostile piece ids this unit has already seen while holding. Missing → not scanned yet. */
@@ -1156,6 +1175,7 @@ export type Action =
   | { kind: 'bash'; pieceId: string }
   | { kind: 'berserk'; pieceId: string }
   | { kind: 'shields'; pieceId: string }
+  | { kind: 'inspire'; pieceId: string }
   | { kind: 'reload'; pieceId: string }
   | { kind: 'skip' }; // scout skip remaining action
 
@@ -1542,6 +1562,8 @@ function applyDamage(
       const lost = state.casualties[victim.side] ?? 0;
       state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
     }
+    // A dead link breaks the chain at once.
+    refreshInspiration(state);
     return { fatal: true, remaining: 0, routed, routKind: kind ?? undefined };
   }
   return { fatal: false, remaining, routed: false };
@@ -2509,6 +2531,8 @@ export function abilitiesOf(piece: Piece): AbilityId[] {
   if (hasAllTerrain(piece) && !base.includes('hide')) base.push('hide');
   // Lunge promotion grants the ability (including to zero-melee kits).
   if (hasUnitToken(piece, 'lunge') && !base.includes('lunge')) base.push('lunge');
+  // Inspire promotion grants the ability.
+  if (hasUnitToken(piece, 'inspire') && !base.includes('inspire')) base.push('inspire');
   return base;
 }
 
@@ -2704,6 +2728,65 @@ export function canShields(state: GameState, pieceId: string): boolean {
   return !!specialReady(state, pieceId, 'shields');
 }
 
+/** Inspire: 1 action, source until this side's next turn. Not while already inspiring. */
+export function canInspire(state: GameState, pieceId: string): boolean {
+  const piece = specialReady(state, pieceId, 'inspire');
+  return !!piece && !piece.inspireUp;
+}
+
+/** Inspire ability active, or a General while the experimental passive is on. */
+export function isInspirationSource(piece: Piece): boolean {
+  if (!isSide(piece.side)) return false;
+  if (piece.inspireUp) return true;
+  return generalInspiresEnabled() && hasUnitToken(piece, 'general');
+}
+
+/**
+ * Pieces chained to an inspiration source OTHER than themselves.
+ * Chains run through adjacent pieces of the exact same side (allies do not count).
+ * A lone source is not boosted; two sources in one chain inspire each other.
+ * No stacking — membership only.
+ */
+export function inspiredIdsOf(state: GameState): Set<string> {
+  const out = new Set<string>();
+  const at = new Map<string, Piece>();
+  for (const p of state.pieces) if (isSide(p.side)) at.set(key(p), p);
+  const seen = new Set<string>();
+  for (const start of at.values()) {
+    if (seen.has(start.id)) continue;
+    const chain: Piece[] = [];
+    const queue: Piece[] = [start];
+    seen.add(start.id);
+    while (queue.length) {
+      const p = queue.shift()!;
+      chain.push(p);
+      for (const h of hexNeighbors(state, p)) {
+        const q = at.get(key(h));
+        if (!q || seen.has(q.id) || q.side !== start.side) continue;
+        seen.add(q.id);
+        queue.push(q);
+      }
+    }
+    if (chain.length < 2) continue;
+    const sources = chain.filter(isInspirationSource);
+    if (!sources.length) continue;
+    for (const p of chain) {
+      if (sources.length === 1 && sources[0] === p) continue;
+      out.add(p.id);
+    }
+  }
+  return out;
+}
+
+/** Recompute `inspired` on every piece from the current board. Idempotent. */
+export function refreshInspiration(state: GameState): void {
+  const ids = inspiredIdsOf(state);
+  for (const p of state.pieces) {
+    if (ids.has(p.id)) p.inspired = true;
+    else if (p.inspired !== undefined) p.inspired = undefined;
+  }
+}
+
 /** Spend 1 AP to cut remaining shootCooldown by 1. Available while reloading. */
 export function canReload(state: GameState, pieceId: string): boolean {
   const piece = getPiece(state, pieceId);
@@ -2881,6 +2964,7 @@ export function placeScoutAt(
   p.col = hex.col;
   p.row = hex.row;
   p.revealed = undefined;
+  refreshInspiration(next);
   p.unitTokens = sanitizeUnitTokens([...(p.unitTokens ?? []), 'hidden']);
   return next;
 }
@@ -3238,9 +3322,12 @@ export function beginSideTurn(state: GameState, newRound = false, kickoff = fals
     if (p.side === state.turn) {
       p.shieldsUp = undefined;
       p.shieldsStruck = undefined;
+      // Inspire lasts 1 turn: it drops when its side starts again.
+      p.inspireUp = undefined;
     }
   }
   maybeSucceedGeneral(state, state.turn);
+  refreshInspiration(state);
   if (state.winner) return;
   // Kickoff: pieces already spawn full (or exhausted at 0). Do not grant here.
   if (!kickoff) grantActionPoints(state, state.turn);
@@ -3601,6 +3688,7 @@ function applyOneMarch(state: GameState, piece: Piece): MarchAnim | null {
   if (!eq(landed, here)) {
     piece.col = landed.col;
     piece.row = landed.row;
+    refreshInspiration(state);
   }
   settleHide(state, piece, here);
   piece.facing = facing;
@@ -3912,6 +4000,7 @@ function afterAction(
     | 'bash'
     | 'berserk'
     | 'reload'
+    | 'inspire'
     | 'lunge',
   enteredWater = false,
   downCount = 0,
@@ -4662,7 +4751,10 @@ export function resolveNoMoves(state: GameState): GameState {
 export function applyAction(state: GameState, action: Action): GameState {
   const applied = applyActionInner(state, action);
   if (applied === state) return state;
-  return resolveNoMoves(applied);
+  refreshInspiration(applied);
+  const out = resolveNoMoves(applied);
+  if (out !== applied) refreshInspiration(out);
+  return out;
 }
 
 function applyActionInner(state: GameState, action: Action): GameState {
@@ -4673,6 +4765,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
   next.fxActionPoints = [];
   next.fxBoard = undefined;
   if (next.winner) return next;
+  // Combat below reads `inspired` — make sure it matches this board.
+  refreshInspiration(next);
 
   if (action.kind === 'skip') {
     if (next.scoutPieceId) {
@@ -4773,6 +4867,18 @@ function applyActionInner(state: GameState, action: Action): GameState {
     return next;
   }
 
+  if (action.kind === 'inspire') {
+    if (!canInspire(next, piece.id)) return state;
+    piece.inspireUp = true;
+    refreshInspiration(next);
+    const lit = next.pieces.filter((p) => p.side === piece.side && p.inspired).length;
+    next.log.push(
+      `${unitLog(piece)} inspires` + (lit ? ` (${lit} inspired)` : ' — no one beside it'),
+    );
+    afterAction(next, piece, 'inspire');
+    return next;
+  }
+
   if (action.kind === 'reload') {
     if (!canReload(next, piece.id)) return state;
     // Keep firedThisTurn so the end-of-turn tick still skips once after a fire.
@@ -4847,6 +4953,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       victim.col = step.to.col;
       victim.row = step.to.row;
       applyWalkTokens(next, victim, step.from, [step.to], step.to);
+      refreshInspiration(next);
     }
     next.log.push(
       `${unitLog(piece)} bashes` +
@@ -4922,6 +5029,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (!killedFar && nearClear && farClear) {
       piece.col = far.col;
       piece.row = far.row;
+      refreshInspiration(next);
       applyWalkTokens(next, piece, fromHex, [near, far], far);
       settleHide(next, piece, fromHex);
       stepped = true;
@@ -4991,6 +5099,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push(unitLog(claimed));
         claimed.side = piece.side;
         dropUnitToken(claimed, 'neutral');
+        refreshInspiration(next);
         const flag = tokenOnHex(next.tokens, { col: claimed.col, row: claimed.row }, 'flag');
         if (flag) flag.owner = piece.side;
       }
@@ -5062,6 +5171,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     if (walkerLive && !taken && !palStanding) {
       piece.col = plan.stop.col;
       piece.row = plan.stop.row;
+      refreshInspiration(next);
       // Flags / boards on hexes we occupy (hazards already resolved above).
       for (const h of walkedHexes(fromHex, walkPath, plan.stop)) {
         for (const tok of tokensAt(next.tokens, h)) {
@@ -5296,6 +5406,7 @@ export function allLegalActions(state: GameState): Action[] {
       }
     }
     if (canShields(state, p.id)) actions.push({ kind: 'shields', pieceId: p.id });
+    if (canInspire(state, p.id)) actions.push({ kind: 'inspire', pieceId: p.id });
     if (canReload(state, p.id)) actions.push({ kind: 'reload', pieceId: p.id });
     if (statsOf(p.type).hexArmor) {
       const cur = facingOf(p);

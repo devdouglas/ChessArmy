@@ -80,7 +80,7 @@ export const AI_RULES = [
     category: 'melee',
     label: 'Use abilities',
     blurb:
-      'Bash and berserk when they damage. Javelin kits prefer throw over melee even if Shoot first is off. Unchecked: those specials are ignored.',
+      'Bash and berserk when they damage. Inspire when it lights up own units. Javelin kits prefer throw over melee even if Shoot first is off. Unchecked: those specials are ignored.',
   },
   {
     id: 'strongest-first',

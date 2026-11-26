@@ -27,6 +27,7 @@ import {
   hasUnitToken,
   hpLeft,
   isHostile,
+  refreshInspiration,
   meleeDamageOf,
   pieceSees,
   pieceVisibleTo,
@@ -786,6 +787,27 @@ function scoreAction(state: GameState, action: Action, me: Side, on: RuleOn): nu
     return base + (threatened ? 700 : -350);
   }
 
+  if (action.kind === 'inspire') {
+    // Worth it when it lights up own units, more so when they touch a foe.
+    const after = applyAction(state, action);
+    let gained = 0;
+    let engaged = 0;
+    for (const q of after.pieces) {
+      if (q.side !== me || !q.inspired) continue;
+      const before = getPiece(state, q.id);
+      if (before?.inspired) continue;
+      gained += 1;
+      const near = state.pieces.some(
+        (foe) =>
+          isHostile(state, foe.side, me) &&
+          dist(state, { col: q.col, row: q.row }, { col: foe.col, row: foe.row }) <= 2,
+      );
+      if (near) engaged += 1;
+    }
+    if (!gained) return -400;
+    return 120 + gained * 110 + engaged * 200;
+  }
+
   if (action.kind === 'reload') {
     // Prefer clearing a shot over idling / aimless walks while locked out.
     const left = piece.shootCooldown ?? 0;
@@ -1062,6 +1084,8 @@ function hiddenCamperOk(state: GameState, a: Action, me: Side): boolean {
 
 export function pickAiAction(state: GameState): Action | null {
   flushLastHiddenArmies(state);
+  // Combat previews read `inspired` — sync it with this board first.
+  refreshInspiration(state);
   const me = state.turn;
   const on = rulesFor(state);
   if (on('hold-position')) scanHoldLos(state, me);
@@ -1069,7 +1093,7 @@ export function pickAiAction(state: GameState): Action | null {
   const actions = raw.filter((a) => {
     if (!hiddenCamperOk(state, a, me)) return false;
     if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
-    if (!on('use-abilities') && isAbilityAction(a)) return false;
+    if (!on('use-abilities') && (isAbilityAction(a) || a.kind === 'inspire')) return false;
     if (
       on('never-capture-flags') &&
       moveCapturesFlag(state, a, me) &&

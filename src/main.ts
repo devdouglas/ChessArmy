@@ -15,6 +15,8 @@ import {
   canBerserk,
   canLunge,
   canShields,
+  canInspire,
+  refreshInspiration,
   canReload,
   berserkFoes,
   isConcealed,
@@ -3706,6 +3708,7 @@ async function playAnimatedAction(action: Action): Promise<void> {
     action.kind === 'build' ||
     action.kind === 'bash' ||
     action.kind === 'shields' ||
+    action.kind === 'inspire' ||
     action.kind === 'reload'
   ) {
     state = applyAction(state, action);
@@ -4070,7 +4073,9 @@ async function placeBuild(hex: Hex) {
   await maybeAi();
 }
 
-async function useInstantSpecial(kind: 'bash' | 'berserk' | 'shields' | 'reload') {
+async function useInstantSpecial(
+  kind: 'bash' | 'berserk' | 'shields' | 'inspire' | 'reload',
+) {
   if (!selectedId || animating || !canControl()) return;
   const ok =
     kind === 'bash'
@@ -4079,7 +4084,9 @@ async function useInstantSpecial(kind: 'bash' | 'berserk' | 'shields' | 'reload'
         ? canBerserk(state, selectedId)
         : kind === 'shields'
           ? canShields(state, selectedId)
-          : canReload(state, selectedId);
+          : kind === 'inspire'
+            ? canInspire(state, selectedId)
+            : canReload(state, selectedId);
   if (!ok) return;
   const actingId = selectedId;
   specialMode = null;
@@ -4709,7 +4716,8 @@ function renderBoard(): string {
         id === 'javelin' ||
         id === 'shields' ||
         id === 'bash' ||
-        id === 'berserk'
+        id === 'berserk' ||
+        id === 'inspire'
       ) {
         return false;
       }
@@ -4774,9 +4782,19 @@ function renderBoard(): string {
       ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
       : `<circle class="piece-sel" cx="0" cy="0" r="${pr + 3.2}" fill="none" stroke="var(--sel)" stroke-width="2" />`;
     putTile(piecesByTile, key({ col: p.col, row: p.row }), `
-      <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
+      <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}${!editing && p.inspired ? ' inspired' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
         <ellipse class="piece-contact" cx="0" cy="${(TOKEN_LIFT + pr * 0.86).toFixed(2)}" rx="${(pr * 0.82).toFixed(2)}" ry="${(pr * 0.3).toFixed(2)}" />
+        ${
+          !editing && p.inspired
+            ? `<circle class="piece-inspire-glow" cx="0" cy="0" r="${(pr + 4.4).toFixed(1)}" />`
+            : ''
+        }
         ${sel ? selRing : ''}
+        ${
+          !editing && p.inspireUp
+            ? `<circle class="piece-inspire-src" cx="0" cy="0" r="${(pr + 6.4).toFixed(1)}" fill="none" stroke="#ffc857" stroke-width="1.4" stroke-dasharray="1.4 2.2" />`
+            : ''
+        }
         ${
           p.shieldsUp
             ? `<circle class="piece-shields" cx="0" cy="0" r="${(pr + 5.2).toFixed(1)}" fill="none" stroke="#8fd4ff" stroke-width="1.7" stroke-dasharray="2.6 1.8" />`
@@ -4993,6 +5011,9 @@ function renderActionBar(): string {
       : !choosing && isDepleted(piece)
         ? `<span class="action-flag">empty</span>`
         : '';
+  const inspiredFlag = piece.inspired
+    ? `<span class="action-flag inspired" title="Inspired: +1 attack, +1 armor (no stacking). Lost when no longer chained to a source.">inspired</span>`
+    : '';
 
   const promos = [
     ...(hasUnitToken(piece, 'general') ? (['general'] as const) : []),
@@ -5007,16 +5028,18 @@ function renderActionBar(): string {
         .join('')}</span>`
     : '';
 
-  const meta = [extra, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
+  const meta = [extra, inspiredFlag, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
     .filter(Boolean)
     .join('');
 
   const melee = meleeDamageOf(piece);
   const range = s.shoot > 0 ? shootDamageOf(piece) || s.shootDamage : 0;
-  const meleeStat = `<span class="action-bar-dmg" title="Melee damage">Melee ${melee}</span>`;
+  const insp = piece.inspired ? ' (incl. +1 inspired)' : '';
+  const inspCls = piece.inspired ? ' inspired' : '';
+  const meleeStat = `<span class="action-bar-dmg${inspCls}" title="Melee damage${insp}">Melee ${melee}</span>`;
   const rangeStat =
     s.shoot > 0
-      ? `<span class="action-bar-dmg" title="Ranged damage">Range ${range}</span>`
+      ? `<span class="action-bar-dmg${inspCls}" title="Ranged damage${insp}">Range ${range}</span>`
       : '';
 
   return `
@@ -5052,6 +5075,7 @@ function specialDockEnabled(piece: Piece, id: AbilityId): boolean {
   if (id === 'berserk') return canBerserk(state, piece.id);
   if (id === 'lunge') return canLunge(state, piece.id);
   if (id === 'shields') return canShields(state, piece.id);
+  if (id === 'inspire') return canInspire(state, piece.id);
   if (id === 'charge') return legalHighlights(state, piece.id).some((h) => h.kind === 'charge');
   if (id === 'javelin') return !isReloading(piece) && !isDepleted(piece);
   return true;
@@ -8184,7 +8208,7 @@ function renderUnitEditor(): string {
           <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Light cavalry, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Builder, Dude, Wolf, Catapult, Ballista. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
-          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Lunge / Build / Shields up / Bash / Berserk replace the Special dock slot (a unit can have several). Build picks Trap, Palisade, Bridge, or Remove, then an adjacent hex. Shields up, Bash, and Berserk fire when you press the button. Lunge is also a promotion (grants the ability to zero-melee kits; thrust only along non-red melee faces). Scout places the unit hidden at battle start (+2 map regenerates each in roguelite). Wealthy pays +1g after a win. Command is the General promotion, not an ability</dd>
+          <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Lunge / Build / Shields up / Bash / Berserk / Inspire replace the Special dock slot (a unit can have several). Build picks Trap, Palisade, Bridge, or Remove, then an adjacent hex. Shields up, Bash, Berserk, and Inspire fire when you press the button. Inspire (1 action, 1 turn) gives +1 attack / +1 armor to every same-side unit chained to the inspirer (not the inspirer itself unless a second source is in the chain); no stacking, lost when the chain breaks. Experimental: Generals inspire passively (localStorage chessarmy-exp-general-inspires = 0 turns it off). Lunge is also a promotion (grants the ability to zero-melee kits; thrust only along non-red melee faces). Inspire is also a promotion (grants the ability). Scout places the unit hidden at battle start (+2 map regenerates each in roguelite). Wealthy pays +1g after a win. Command is the General promotion, not an ability</dd>
           <dd><strong>Copy</strong> duplicates a unit (same kit / icon / rules). Rename, recategorize, or switch kit. Delete only copies.</dd>
           <dt>Move</dt>
           <dd><strong>Range</strong> hexes in a straight line per action. Standing on a hill, plateau, or mountain does not add steps</dd>
@@ -9179,7 +9203,13 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const id = btn.id.slice('special-'.length);
       if (id === 'action') return;
-      if (id === 'bash' || id === 'berserk' || id === 'shields' || id === 'reload') {
+      if (
+        id === 'bash' ||
+        id === 'berserk' ||
+        id === 'shields' ||
+        id === 'inspire' ||
+        id === 'reload'
+      ) {
         void useInstantSpecial(id);
         return;
       }
@@ -9240,6 +9270,8 @@ function bindEvents() {
 }
 
 function render() {
+  // Inspiration is derived from the board — keep the glow honest for any loaded state.
+  if (state) refreshInspiration(state);
   if (screen !== 'editor') {
     editorAudioPick = null;
     if (editorAudioPlaying) haltLevelAudio();

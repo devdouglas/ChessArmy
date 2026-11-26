@@ -65,6 +65,7 @@ const ACTION_GLYPHS: {
   { id: 'shields', tag: 'shields up', label: 'Shields up', aliases: ['shields'] },
   { id: 'bash', tag: 'bash', label: 'Bash', aliases: [] },
   { id: 'berserk', tag: 'berserk', label: 'Berserk', aliases: [] },
+  { id: 'inspire', tag: 'inspire', label: 'Inspire', aliases: ['inspired', 'inspiration'] },
   { id: 'reload', tag: 'reload', label: 'Reload', aliases: ['reloading'] },
   { id: 'end', tag: 'end turn', label: 'End turn', aliases: ['end'] },
 ];

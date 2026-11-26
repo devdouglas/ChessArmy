@@ -9,6 +9,7 @@ export const ABILITY_IDS = [
   'shields',
   'bash',
   'berserk',
+  'inspire',
 ] as const;
 
 export type AbilityId = (typeof ABILITY_IDS)[number];
@@ -44,6 +45,7 @@ export const ABILITY_LABEL: Record<AbilityId, string> = {
   shields: 'Shields up',
   bash: 'Bash',
   berserk: 'Berserk',
+  inspire: 'Inspire',
 };
 
 export const ABILITY_BLURB: Record<AbilityId, string> = {
@@ -62,6 +64,8 @@ export const ABILITY_BLURB: Record<AbilityId, string> = {
     'Push every enemy on a green face (armor 0) one hex straight back. Hitting a unit damages both (this unit’s melee, minimum 1, armor applies). A wall or ground they cannot step onto damages the pushed unit. A palisade, tree, or forest deals 1 to both — positive armor soaks that 1, negative armor does not add.',
   berserk:
     'Melee every enemy on a non-red face. Same damage as this unit’s melee, armor applies, and negative armor adds. A red face is skipped.',
+  inspire:
+    'Spend 1 action: until this side’s next turn, every friendly unit chained to this one (touching it, or touching a unit that is) is inspired: +1 attack and +1 armor, with a glow. Allies do not count. Never stacks. A unit loses it the moment it is no longer chained. The inspirer is not boosted itself unless another source shares its chain.',
 };
 
 export function isAbilityId(raw: unknown): raw is AbilityId {

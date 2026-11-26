@@ -3947,6 +3947,11 @@ svg.board .hex {
   box-shadow: 0 0 8px rgba(192, 128, 224, 0.25);
 }
 
+.rogue-offer.rogue-promo.inspire .rogue-promo-glyph {
+  border-color: #c99a2e;
+  box-shadow: 0 0 8px rgba(255, 200, 87, 0.3);
+}
+
 .rogue-offer.rogue-promo.scout .rogue-promo-glyph {
   border-color: #40a098;
   box-shadow: 0 0 8px rgba(112, 200, 192, 0.25);
@@ -4637,8 +4642,42 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 }
 
 .piece-sel,
-.piece-shields {
+.piece-shields,
+.piece-inspire-glow,
+.piece-inspire-src {
   pointer-events: none;
+}
+
+/* Inspired: soft gold halo behind the token (rides the lifted unit group on raised tiles). */
+.piece-inspire-glow {
+  fill: rgba(255, 200, 87, 0.28);
+  stroke: rgba(255, 214, 120, 0.85);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px rgba(255, 200, 87, 0.9));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: piece-inspire-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes piece-inspire-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .piece-inspire-glow {
+    animation: none;
+  }
+}
+
+.action-flag.inspired,
+.action-bar-dmg.inspired {
+  color: #ffc857;
 }
 
 .reload-badge,
