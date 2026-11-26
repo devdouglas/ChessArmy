@@ -578,6 +578,23 @@ export function tokenGlyphSvg(
 /** Radius of the wooden palisade / bridge base relative to the hex — clearly inset so the tile stays visible. */
 export const STRUCTURE_BASE_SCALE = 0.68;
 
+/** Target south shift of the palisade object, as a fraction of the hex's vertical height. */
+export const PALISADE_SOUTH_SHIFT = 0.18;
+
+/**
+ * How far (px, down the screen) to sit the palisade from the hex centre so it
+ * occupies the lower part of the tile. Clamped so the base and its south wall
+ * stay inside the hex.
+ */
+export function palisadeSouthOffset(hexSize: number, o: HexOrientation): number {
+  const hexH = o === 'flat' ? hexSize * Math.sqrt(3) : hexSize * 2;
+  const desired = hexH * PALISADE_SOUTH_SHIFT;
+  const r = hexSize * STRUCTURE_BASE_SCALE;
+  const tileSouth = o === 'flat' ? (hexSize * Math.sqrt(3)) / 2 : hexSize;
+  const margin = Math.max(1.5, hexSize * 0.04);
+  return Math.max(0, Math.min(desired, tileSouth - r - margin));
+}
+
 function fnum(n: number): string {
   return n.toFixed(2);
 }
