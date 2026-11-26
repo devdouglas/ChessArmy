@@ -360,7 +360,6 @@ import {
   reloadBadgeSvg,
   tokenGlyphSvg,
   palisadeObjectSvg,
-  palisadeSouthOffset,
   bridgeObjectSvg,
   noTouchMarkSvg,
   facingPikeSvg,
@@ -1571,8 +1570,6 @@ let liftMap = new Map<string, number>();
 let tileKind = new Map<string, string>();
 /** Palisade plinth / bridge-deck lift (px). Does not raise the tile itself. */
 let coverLiftMap = new Map<string, number>();
-/** Hexes with a palisade (used to sit the object, and units on it, lower on the tile). */
-let palisadeHexes = new Set<string>();
 let boardTopExtra = 0;
 
 function liftOf(h: Hex): number {
@@ -1581,11 +1578,6 @@ function liftOf(h: Hex): number {
 
 function coverLiftOf(h: Hex): number {
   return coverLiftMap.get(key(h)) ?? 0;
-}
-
-function palisadeShiftOf(h: Hex): number {
-  if (!palisadeHexes.has(key(h))) return 0;
-  return palisadeSouthOffset(HEX_SIZE, viewOrientation());
 }
 
 /** Centre of a tile's top face (already raised/sunk by its height). */
@@ -1600,10 +1592,10 @@ function surfacePixelOf(h: Hex): { x: number; y: number } {
   return { x: p.x, y: p.y - coverLiftOf(h) };
 }
 
-/** Where a unit stands: the surface plus its small token lift (and south on a palisade). */
+/** Where a unit stands: the surface plus its small token lift. */
 function unitPixelOf(h: Hex): { x: number; y: number } {
   const p = surfacePixelOf(h);
-  return { x: p.x, y: p.y - TOKEN_LIFT + palisadeShiftOf(h) };
+  return { x: p.x, y: p.y - TOKEN_LIFT };
 }
 
 /** Work out each drawn tile's height from terrain only. Palisades and bridges do not raise the tile. */
@@ -1616,14 +1608,11 @@ function buildLiftMap(
   const lifts = new Map<string, number>();
   const kinds = new Map<string, string>();
   const covers = new Map<string, number>();
-  const pals = new Set<string>();
   const rows = terrainGrid.length;
   const cols = terrainGrid[0]?.length ?? 0;
   for (const t of tokens) {
     const extra = structureLift(t.type);
-    const k = key({ col: t.col, row: t.row });
-    if (extra) covers.set(k, extra);
-    if (t.type === 'palisade') pals.add(k);
+    if (extra) covers.set(key({ col: t.col, row: t.row }), extra);
   }
   let top = 0;
   for (let row = 0; row < rows; row++) {
@@ -1650,7 +1639,6 @@ function buildLiftMap(
   liftMap = lifts;
   tileKind = kinds;
   coverLiftMap = covers;
-  palisadeHexes = pals;
   boardTopExtra = top > 0 ? Math.ceil(top + TOKEN_LIFT) : 0;
 }
 
@@ -4665,10 +4653,7 @@ function renderBoard(): string {
     const tp = pixelOf({ col: t.col, row: t.row });
     const cover = structureLift(t.type);
     const x = tp.x;
-    const y =
-      tp.y -
-      (FLAT_GLYPH_TOKENS.has(t.type) ? cover : TOKEN_LIFT) +
-      (t.type === 'palisade' ? palisadeSouthOffset(HEX_SIZE, ori) : 0);
+    const y = tp.y - (FLAT_GLYPH_TOKENS.has(t.type) ? cover : TOKEN_LIFT);
     const owner = flagOwnerForDraw(t);
     const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
     const mark =
