@@ -201,6 +201,19 @@ import {
   type HexOrientation,
 } from './hex';
 import {
+  FLAT_GLYPH_TOKENS,
+  HEIGHT_STEP,
+  PALISADE_BASE,
+  TOKEN_LIFT,
+  cornerAt,
+  hexesWithin,
+  neighbourAcross,
+  northEdges,
+  pointInPolygon,
+  southEdges,
+  terrainLift,
+} from './heights';
+import {
   ARMY_EDGES,
   ARMY_EDGE_LABEL,
   COLS,
@@ -1548,9 +1561,159 @@ function viewOrientation(): HexOrientation {
   return screen === 'editor' ? editorOrientation : state.orientation;
 }
 
+/** Raised-tile state for the board last drawn (see heights.ts). Lift is px, up = positive. */
+let liftMap = new Map<string, number>();
+let tileKind = new Map<string, string>();
+let boardTopExtra = 0;
+
+function liftOf(h: Hex): number {
+  return liftMap.get(key(h)) ?? 0;
+}
+
+/** Centre of a tile's top face (already raised/sunk by its height). */
 function pixelOf(h: Hex): { x: number; y: number } {
   const { x, y } = hexToPixel(h, HEX_SIZE, viewOrientation());
-  return { x: x + PAD, y: y + PAD };
+  return { x: x + PAD, y: y + PAD - liftOf(h) };
+}
+
+/** Where a unit stands: the tile top plus its small token lift. */
+function unitPixelOf(h: Hex): { x: number; y: number } {
+  const p = pixelOf(h);
+  return { x: p.x, y: p.y - TOKEN_LIFT };
+}
+
+/** Work out each drawn tile's height from terrain, palisade plinths and bridges. */
+function buildLiftMap(
+  terrainGrid: Terrain[][],
+  tokens: { type: string; col: number; row: number }[],
+  editing: boolean,
+  ori: HexOrientation,
+): void {
+  const lifts = new Map<string, number>();
+  const kinds = new Map<string, string>();
+  const rows = terrainGrid.length;
+  const cols = terrainGrid[0]?.length ?? 0;
+  const palisades = new Set<string>();
+  const bridges = new Set<string>();
+  for (const t of tokens) {
+    if (t.type === 'palisade') palisades.add(`${t.col},${t.row}`);
+    else if (t.type === 'bridge') bridges.add(`${t.col},${t.row}`);
+  }
+  let top = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const hex = { col, row };
+      if (editing) {
+        if (!inEditorHex(col, row)) continue;
+      } else if (
+        state.hexRadius > 0 &&
+        state.hexCenter &&
+        distance(hex, state.hexCenter, ori) > state.hexRadius
+      ) {
+        continue;
+      }
+      const k = key(hex);
+      const terrain = terrainGrid[row][col];
+      let lift = terrainLift(terrain);
+      let kind: string = terrain;
+      if (bridges.has(k)) {
+        lift = 0;
+      } else if (palisades.has(k)) {
+        lift += PALISADE_BASE;
+        kind = 'palisade';
+      }
+      lifts.set(k, lift);
+      kinds.set(k, kind);
+      if (lift > top) top = lift;
+    }
+  }
+  liftMap = lifts;
+  tileKind = kinds;
+  boardTopExtra = top > 0 ? Math.ceil(top + TOKEN_LIFT) : 0;
+}
+
+/** South walls (with a seam between each stacked slab) for a tile higher than its neighbours. */
+function tileWallsSvg(hex: Hex, cx: number, cy: number, ori: HexOrientation): string {
+  const lift = liftOf(hex);
+  const kind = tileKind.get(key(hex)) ?? 'land';
+  let out = '';
+  for (const e of southEdges(hex, ori)) {
+    const nbLift = liftMap.get(key(e.nb)) ?? 0;
+    const drop = lift - nbLift;
+    if (drop < 0.5) continue;
+    const [x1, y1] = cornerAt(cx, cy, HEX_SIZE, e.a, ori);
+    const [x2, y2] = cornerAt(cx, cy, HEX_SIZE, e.a + 1, ori);
+    const f = (n: number) => n.toFixed(2);
+    out += `<polygon class="wall-face ${kind} ${e.face}" points="${f(x1)},${f(y1)} ${f(x2)},${f(y2)} ${f(x2)},${f(y2 + drop)} ${f(x1)},${f(y1 + drop)}" />`;
+    for (let lv = Math.floor(nbLift / HEIGHT_STEP) + 1; lv * HEIGHT_STEP < lift - 0.01; lv++) {
+      if (lv * HEIGHT_STEP <= nbLift + 0.01) continue;
+      const off = lift - lv * HEIGHT_STEP;
+      out += `<line class="wall-seam" x1="${f(x1)}" y1="${f(y1 + off)}" x2="${f(x2)}" y2="${f(y2 + off)}" />`;
+      out += `<line class="wall-seam-hi" x1="${f(x1)}" y1="${f(y1 + off + 1)}" x2="${f(x2)}" y2="${f(y2 + off + 1)}" />`;
+    }
+    out += `<line class="wall-lip" x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" />`;
+    if (tileKind.get(key(e.nb)) === 'water') {
+      out += `<line class="wall-waterline" x1="${f(x1)}" y1="${f(y1 + drop)}" x2="${f(x2)}" y2="${f(y2 + drop)}" />`;
+    }
+  }
+  return out;
+}
+
+/** Sheen, soft shadow cast onto this (lower) tile, sunken-water lip and rim light. */
+function tileTopFxSvg(hex: Hex, cx: number, cy: number, terrain: Terrain, ori: HexOrientation): string {
+  const k = key(hex);
+  const lift = liftOf(hex);
+  const f = (n: number) => n.toFixed(2);
+  const top = hexCorners(cx, cy, HEX_SIZE, ori);
+  let out = '';
+  if (terrain === 'high' || terrain === 'plateau' || terrain === 'rock') {
+    out += `<polygon class="tile-sheen ${terrain}" points="${top}" />`;
+  }
+  let clipped = '';
+  if (terrain === 'water') {
+    clipped += `<polygon class="water-lip" points="${hexCorners(cx, cy, HEX_SIZE * 0.91, ori)}" />`;
+  }
+  for (let i = 0; i < 6; i++) {
+    const nb = neighbourAcross(hex, i, ori);
+    const nbLift = liftMap.get(key(nb));
+    if (nbLift === undefined) continue;
+    const rise = nbLift - lift;
+    if (rise < 0.5) continue;
+    const [x1, y1] = cornerAt(cx, cy, HEX_SIZE, i, ori);
+    const [x2, y2] = cornerAt(cx, cy, HEX_SIZE, i + 1, ori);
+    // A higher tile to the south overlaps us, so its shadow sits where its top meets ours.
+    const south = Math.sin(((o2a(ori) + 60 * i + 30) * Math.PI) / 180) > 0.2;
+    const sh = south ? -rise : 0;
+    const w = 7 + rise * 0.35;
+    const op = Math.min(0.5, 0.18 + rise * 0.018);
+    const line = (width: number, o: number) =>
+      `<line x1="${f(x1)}" y1="${f(y1 + sh)}" x2="${f(x2)}" y2="${f(y2 + sh)}" stroke="#0b0906" stroke-width="${f(width)}" stroke-linecap="butt" opacity="${f(o)}" />`;
+    clipped += line(w, op * 0.4) + line(w * 0.62, op * 0.4) + line(w * 0.3, op * 0.5);
+  }
+  if (clipped) {
+    const id = `tc-${hex.col}-${hex.row}`;
+    out += `<clipPath id="${id}"><polygon points="${top}" /></clipPath><g clip-path="url(#${id})" pointer-events="none">${clipped}</g>`;
+  }
+  const kind = tileKind.get(k);
+  if (kind === 'water' || kind === 'high' || kind === 'plateau' || kind === 'rock') {
+    const pts: string[] = [];
+    for (const e of northEdges(ori)) {
+      const [ax, ay] = cornerAt(cx, cy, HEX_SIZE, e.a, ori);
+      const [bx, by] = cornerAt(cx, cy, HEX_SIZE, e.a + 1, ori);
+      if (!pts.length) pts.push(`${f(ax)},${f(ay)}`);
+      pts.push(`${f(bx)},${f(by)}`);
+    }
+    out += `<polyline class="tile-rim ${kind}" points="${pts.join(' ')}" />`;
+  }
+  return out;
+}
+
+function o2a(ori: HexOrientation): number {
+  return ori === 'flat' ? 0 : -30;
+}
+
+function putTile(map: Map<string, string>, k: string, svg: string): void {
+  map.set(k, (map.get(k) ?? '') + svg);
 }
 
 function shootMarkSvg(x: number, y: number, target: boolean): string {
@@ -1613,9 +1776,12 @@ async function animateMoveAlong(
   beforeStep?: (hex: Hex) => Promise<void>,
 ): Promise<void> {
   const from = { col: piece.col, row: piece.row };
-  const destPx = pixelOf(dest);
-  const stopPx = pixelOf(stop);
+  const destPx = unitPixelOf(dest);
+  const stopPx = unitPixelOf(stop);
   const facingEl = g.querySelector('.piece-facing');
+  // Lift the walking unit out of its tile group so raised tiles it passes
+  // never hide it mid-step; the next render puts it back in its tile.
+  g.ownerSVGElement?.appendChild(g);
   g.classList.add('moving');
 
   const bumpToward = async (fromPx: { x: number; y: number }, toPx: { x: number; y: number }) => {
@@ -1648,7 +1814,7 @@ async function animateMoveAlong(
   for (const h of walked) {
     if (beforeStep) await beforeStep(h);
     const step = dirBetween(prev, h, ori);
-    const px = pixelOf(h);
+    const px = unitPixelOf(h);
     g.style.transition = `transform ${stepMs}ms linear`;
     if (step !== null) {
       const nextDeg = facingRotation({ ...piece, col: prev.col, row: prev.row, facing: step });
@@ -2558,7 +2724,9 @@ function paintEditorHex(col: number, row: number, first = true) {
   // High rims / units / tokens need a board refresh; otherwise update the hex class in place (keeps drag)
   if (
     isElevatedTerrain(prev) ||
-    isElevatedTerrain(editorBrush)
+    isElevatedTerrain(editorBrush) ||
+    prev === 'water' ||
+    editorBrush === 'water'
   ) {
     refreshEditorBoard();
   } else {
@@ -3653,8 +3821,8 @@ function shotPoint(
 }
 
 async function animateShot(piece: Piece, at: Hex): Promise<void> {
-  const from = pixelOf({ col: piece.col, row: piece.row });
-  const to = pixelOf(at);
+  const from = unitPixelOf({ col: piece.col, row: piece.row });
+  const to = unitPixelOf(at);
   const stats = UNIT_STATS[piece.type];
   const arch = stats.shootArc === 'arch';
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
@@ -3735,7 +3903,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     ranged?: boolean;
   }[] = [];
   for (const h of blast) {
-    const { x, y } = pixelOf(h);
+    const { x, y } = unitPixelOf(h);
     layer.appendChild(
       svgEl('circle', {
         class: hasSplash(stats) ? 'impact-splash' : 'impact-hit',
@@ -4087,8 +4255,10 @@ function renderBoard(): string {
   const ori = viewOrientation();
   const extent = hexGridExtent(cols, rows, HEX_SIZE, ori);
   const w = PAD * 2 + extent.w;
-  const h = PAD * 2 + extent.h;
   const editing = screen === 'editor';
+  buildLiftMap(terrainGrid, editing ? editorTokens : state.tokens, editing, ori);
+  const topExtra = boardTopExtra;
+  const h = PAD * 2 + extent.h + topExtra;
   const viewers = viewingSides(state);
   const seenOcc = (hex: Hex): boolean => {
     const p = pieceAt(state, hex);
@@ -4226,8 +4396,20 @@ function renderBoard(): string {
     }
   }
 
-  let hexes = '';
-  let hlOverlays = '';
+  type TileDraw = {
+    k: string;
+    x: number;
+    baseY: number;
+    walls: string;
+    top: string;
+    fx: string;
+    tint: string;
+  };
+  const tiles: TileDraw[] = [];
+  const tokensByTile = new Map<string, string>();
+  const piecesByTile = new Map<string, string>();
+  const houseByTile = new Map<string, string>();
+  const forestByTile = new Map<string, string>();
   let shootMarks = '';
   let rotateMarks = '';
   for (let row = 0; row < rows; row++) {
@@ -4245,49 +4427,51 @@ function renderBoard(): string {
       const { x, y } = pixelOf(hex);
       const terrain = terrainGrid[row][col];
       const k = key(hex);
+      let topSvg = '';
+      let tintSvg = '';
       let cls = `hex ${terrain}`;
       if (terrain === 'land' && (col + row) % 2) cls += ' alt';
       if (editing) cls += ' editable';
 
       const pts = hexCorners(x, y, HEX_SIZE, ori);
-      hexes += `<polygon class="${cls}" data-col="${col}" data-row="${row}" points="${pts}" />`;
+      topSvg += `<polygon class="${cls}" data-col="${col}" data-row="${row}" points="${pts}" />`;
       if (terrain === 'high') {
-        hexes += `<polygon class="hex-high-rim" points="${hexCorners(x, y, HEX_SIZE * 0.72, ori)}" />`;
-        hexes += `<polygon class="hex-high-top" points="${hexCorners(x, y, HEX_SIZE * 0.42, ori)}" />`;
+        topSvg += `<polygon class="hex-high-rim" points="${hexCorners(x, y, HEX_SIZE * 0.72, ori)}" />`;
+        topSvg += `<polygon class="hex-high-top" points="${hexCorners(x, y, HEX_SIZE * 0.42, ori)}" />`;
       } else if (terrain === 'plateau') {
-        hexes += `<polygon class="hex-plateau-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
-        hexes += `<polygon class="hex-plateau-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
-        hexes += `<polygon class="hex-plateau-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
+        topSvg += `<polygon class="hex-plateau-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
+        topSvg += `<polygon class="hex-plateau-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
+        topSvg += `<polygon class="hex-plateau-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
       } else if (terrain === 'rock') {
-        hexes += `<polygon class="hex-rock-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
-        hexes += `<polygon class="hex-rock-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
-        hexes += `<polygon class="hex-rock-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
+        topSvg += `<polygon class="hex-rock-rim" points="${hexCorners(x, y, HEX_SIZE * 0.82, ori)}" />`;
+        topSvg += `<polygon class="hex-rock-mid" points="${hexCorners(x, y, HEX_SIZE * 0.58, ori)}" />`;
+        topSvg += `<polygon class="hex-rock-top" points="${hexCorners(x, y, HEX_SIZE * 0.32, ori)}" />`;
       }
       const meleeHex = !editing && !!actor && meleeRangeHex(actor, hex);
       const mv = moveMap.get(k);
       const enemyMelee = meleeHex && (mv === 'move' || mv === 'ap' || mv === 'charge');
       const plusTile = plusMove.has(k) || (plusOnly.has(k) && !moveMap.has(k));
-      if (enemyMelee && !plusTile) hlOverlays += `<polygon class="hl-tint melee" points="${pts}" />`;
-      else if (plusTile) hlOverlays += `<polygon class="hl-tint plus" points="${pts}" />`;
-      else if (mv === 'move') hlOverlays += `<polygon class="hl-tint move" points="${pts}" />`;
-      else if (mv === 'ap') hlOverlays += `<polygon class="hl-tint ap" points="${pts}" />`;
-      else if (mv === 'charge') hlOverlays += `<polygon class="hl-tint charge" points="${pts}" />`;
-      else if (buildSet.has(k)) hlOverlays += `<polygon class="hl-tint build" points="${pts}" />`;
-      else if (restSet.has(k)) hlOverlays += `<polygon class="hl-tint ap-empty" points="${pts}" />`;
+      if (enemyMelee && !plusTile) tintSvg += `<polygon class="hl-tint melee" points="${pts}" />`;
+      else if (plusTile) tintSvg += `<polygon class="hl-tint plus" points="${pts}" />`;
+      else if (mv === 'move') tintSvg += `<polygon class="hl-tint move" points="${pts}" />`;
+      else if (mv === 'ap') tintSvg += `<polygon class="hl-tint ap" points="${pts}" />`;
+      else if (mv === 'charge') tintSvg += `<polygon class="hl-tint charge" points="${pts}" />`;
+      else if (buildSet.has(k)) tintSvg += `<polygon class="hl-tint build" points="${pts}" />`;
+      else if (restSet.has(k)) tintSvg += `<polygon class="hl-tint ap-empty" points="${pts}" />`;
 
       if (!enemyMelee && pathSet.has(k)) {
         const end = hoverHex && eq(hoverHex, hex);
         const via = !!(pathVia && eq(pathVia, hex) && !end);
-        hlOverlays += `<polygon class="hl-tint path${
+        tintSvg += `<polygon class="hl-tint path${
           pathKind === 'ap' ? ' ap' : pathKind === 'charge' ? ' charge' : ''
         }${end ? ' path-end' : ''}${via ? ' path-via' : ''}" points="${pts}" />`;
         if (via) {
-          hlOverlays += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
+          tintSvg += `<polygon class="path-via-mark" points="${hexCorners(x, y, HEX_SIZE * 0.52, ori)}" />`;
         }
       }
       if (!enemyMelee && marchSet.has(k)) {
         const end = !!(marchEnd && eq(marchEnd, hex));
-        hlOverlays += `<polygon class="hl-tint path march${end ? ' path-end' : ''}" points="${pts}" />`;
+        tintSvg += `<polygon class="hl-tint path march${end ? ' path-end' : ''}" points="${pts}" />`;
       } else if (
         !meleeHex &&
         !editing &&
@@ -4295,19 +4479,19 @@ function renderBoard(): string {
           (p) => p.side === state.turn && p.walkTo && eq(p.walkTo, hex),
         )
       ) {
-        hlOverlays += `<polygon class="hl-tint march-dest" points="${pts}" />`;
+        tintSvg += `<polygon class="hl-tint march-dest" points="${pts}" />`;
       }
 
       if (pendingHex && eq(pendingHex, hex)) {
-        hlOverlays += `<polygon class="hl-tint pending" points="${pts}" />`;
+        tintSvg += `<polygon class="hl-tint pending" points="${pts}" />`;
       }
 
       if (hoverHex && eq(hoverHex, hex) && rotateChoiceHex()) {
-        hlOverlays += `<polygon class="hl-tint red-zone" points="${pts}" />`;
+        tintSvg += `<polygon class="hl-tint red-zone" points="${pts}" />`;
         rotateMarks += hexRotateMarkSvg(x, y, col, row);
       }
 
-      if (splashSet.has(k)) hlOverlays += `<polygon class="hl-tint splash" points="${pts}" />`;
+      if (splashSet.has(k)) tintSvg += `<polygon class="hl-tint splash" points="${pts}" />`;
 
       if (shootTarget.has(k) || shootRange.has(k)) {
         const under =
@@ -4317,6 +4501,15 @@ function renderBoard(): string {
           isForest(state, hex);
         shootMarks += shootMarkSvg(x, y, shootTarget.has(k) && under);
       }
+      tiles.push({
+        k,
+        x,
+        baseY: y + liftOf(hex),
+        walls: tileWallsSvg(hex, x, y, ori),
+        top: topSvg,
+        fx: tileTopFxSvg(hex, x, y, terrain, ori),
+        tint: tintSvg,
+      });
     }
   }
 
@@ -4392,9 +4585,6 @@ function renderBoard(): string {
     apMarks += `<text class="hl-plus-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${plusFont.toFixed(1)}">+1</text>`;
   }
 
-  let tokensSvg = '';
-  let forestSvg = '';
-  let houseSvg = '';
   let tutorialSvg = '';
   const drawTokens = editing ? editorTokens : state.tokens;
   const occupiedHouse = (col: number, row: number) =>
@@ -4412,7 +4602,9 @@ function renderBoard(): string {
     ) {
       continue;
     }
-    const { x, y } = pixelOf({ col: t.col, row: t.row });
+    const tp = pixelOf({ col: t.col, row: t.row });
+    const x = tp.x;
+    const y = tp.y - (FLAT_GLYPH_TOKENS.has(t.type) ? 0 : TOKEN_LIFT);
     const owner = flagOwnerForDraw(t);
     const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
     const mark =
@@ -4432,13 +4624,13 @@ function renderBoard(): string {
     const armed = !editing && t.type === 'tutorial';
     const body = armed ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
-    if (t.type === 'forest') forestSvg += g;
-    else if (t.type === 'house') houseSvg += g;
+    const tk = key({ col: t.col, row: t.row });
+    if (t.type === 'forest') putTile(forestByTile, tk, g);
+    else if (t.type === 'house') putTile(houseByTile, tk, g);
     else if (!editing && t.type === 'tutorial') tutorialSvg += g;
-    else tokensSvg += g;
+    else putTile(tokensByTile, tk, g);
   }
 
-  let piecesSvg = '';
   let promoSvg = '';
   const drawPieces: Piece[] = editing
     ? editorPieces.map((p) => ({
@@ -4480,7 +4672,7 @@ function renderBoard(): string {
     hexDmgSvg += `<g class="hex-dmg-pikes ${m.side} amt-${m.amount}" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${rot.toFixed(1)})">${facingPikeSvg(size, m.amount)}</g>`;
   }
   for (const p of drawPieces) {
-    const { x, y } = pixelOf({ col: p.col, row: p.row });
+    const { x, y } = unitPixelOf({ col: p.col, row: p.row });
     const sel = !editing && p.id === selectedId ? ' selected' : '';
     const hexed = UNIT_STATS[p.type].hexArmor;
     const pr = HEX_SIZE * (hexed ? 0.697 : 0.581);
@@ -4581,8 +4773,9 @@ function renderBoard(): string {
     const selRing = hexed
       ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
       : `<circle class="piece-sel" cx="0" cy="0" r="${pr + 3.2}" fill="none" stroke="var(--sel)" stroke-width="2" />`;
-    piecesSvg += `
+    putTile(piecesByTile, key({ col: p.col, row: p.row }), `
       <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
+        <ellipse class="piece-contact" cx="0" cy="${(TOKEN_LIFT + pr * 0.86).toFixed(2)}" rx="${(pr * 0.82).toFixed(2)}" ry="${(pr * 0.3).toFixed(2)}" />
         ${sel ? selRing : ''}
         ${
           p.shieldsUp
@@ -4608,7 +4801,7 @@ function renderBoard(): string {
         ${abilityIcons}
         ${hideIcons}
         ${sleepMark}
-      </g>`;
+      </g>`);
   }
 
   const defs = `
@@ -4667,14 +4860,26 @@ function renderBoard(): string {
       </pattern>
     </defs>`;
 
-  return `<svg class="board" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+  // Back-to-front by base (un-raised) position. Each tile brings its own
+  // tokens, highlights and units, so a raised tile in front hides what is behind it.
+  tiles.sort((a, b) => a.baseY - b.baseY || a.x - b.x);
+  let tilesSvg = '';
+  for (const t of tiles) {
+    const take = (m: Map<string, string>) => {
+      const v = m.get(t.k) ?? '';
+      m.delete(t.k);
+      return v;
+    };
+    tilesSvg += `<g class="tile">${t.walls}${t.top}${t.fx}${take(tokensByTile)}<g class="hl-tint-layer">${t.tint}</g>${take(piecesByTile)}${take(houseByTile)}${take(forestByTile)}</g>`;
+  }
+  // Anything standing on a cell that was not drawn as a tile still shows.
+  for (const m of [tokensByTile, piecesByTile, houseByTile, forestByTile]) {
+    for (const v of m.values()) tilesSvg += v;
+  }
+
+  return `<svg class="board" viewBox="0 ${-topExtra} ${w} ${h}" width="${w}" height="${h}">
     ${defs}
-    <g class="hex-layer">${hexes}</g>
-    <g class="token-layer">${tokensSvg}</g>
-    <g class="hl-tint-layer">${hlOverlays}</g>
-    <g class="piece-layer">${piecesSvg}</g>
-    <g class="house-layer">${houseSvg}</g>
-    <g class="forest-layer">${forestSvg}</g>
+    <g class="hex-layer">${tilesSvg}</g>
     <g class="promo-layer">${promoSvg}</g>
     <g class="hex-dmg-layer">${hexDmgSvg}</g>
     <g class="shoot-mark-layer">${shootMarks}</g>
@@ -6024,16 +6229,44 @@ function hexFromPointer(
   if (!ctm) return null;
   const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
   const grid = currentGrid();
-  const hex = pixelToHex(pt.x - PAD, pt.y - PAD, HEX_SIZE, grid.orientation);
-  if (
-    hex.col < 0 ||
-    hex.row < 0 ||
-    hex.col >= grid.cols ||
-    hex.row >= grid.rows
-  ) {
-    return null;
+  const px = pt.x - PAD;
+  const py = pt.y - PAD;
+  const ori = grid.orientation;
+  const inGrid = (h: Hex) =>
+    h.col >= 0 && h.row >= 0 && h.col < grid.cols && h.row < grid.rows;
+  const ground = pixelToHex(px, py, HEX_SIZE, ori);
+  if (boardTopExtra > 0 || liftMap.size) {
+    // Raised tiles: test the visible shapes (top + south walls), front-most first.
+    const cands = hexesWithin(ground, 2, ori)
+      .filter((h) => inGrid(h) && liftMap.has(key(h)))
+      .map((h) => ({ h, base: hexToPixel(h, HEX_SIZE, ori) }))
+      .sort((a, b) => b.base.y - a.base.y || b.base.x - a.base.x);
+    for (const { h, base } of cands) {
+      const lift = liftOf(h);
+      const cx = base.x;
+      const cy = base.y - lift;
+      const top: [number, number][] = [];
+      for (let i = 0; i < 6; i++) top.push(cornerAt(cx, cy, HEX_SIZE, i, ori));
+      if (pointInPolygon(px, py, top)) return h;
+      for (const e of southEdges(h, ori)) {
+        const drop = lift - (liftMap.get(key(e.nb)) ?? 0);
+        if (drop < 0.5) continue;
+        const a = top[e.a];
+        const b = top[(e.a + 1) % 6];
+        if (
+          pointInPolygon(px, py, [
+            a,
+            b,
+            [b[0], b[1] + drop],
+            [a[0], a[1] + drop],
+          ])
+        ) {
+          return h;
+        }
+      }
+    }
   }
-  return hex;
+  return inGrid(ground) ? ground : null;
 }
 
 function bindBoardOnly() {
