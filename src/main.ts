@@ -565,6 +565,8 @@ let popupAudioOn = loadPopupAudio();
 let specialMode: AbilityId | null = null;
 /** What Build places / clears while specialMode is build. */
 let buildStructure: BuildStructure = 'pikes';
+/** Build-structure picker flyout, opened from the Build dock button. */
+let buildPickOpen = false;
 
 function loadPopupAudio(): boolean {
   try {
@@ -3630,6 +3632,7 @@ function selectPiece(id: string | null) {
   commitPath = [];
   rotatePreviewDir = null;
   if (changed) {
+    buildPickOpen = false;
     specialMode = defaultSpecialMode(id ? getPiece(state, id) : null);
   }
   refreshHighlights();
@@ -4965,16 +4968,27 @@ function dockButton(
     title?: string;
     className?: string;
     icon: ActionGlyphId;
+    ariaHasPopup?: string;
+    ariaExpanded?: boolean;
+    ariaControls?: string;
   },
 ): string {
   const on = !!opts.pressed;
   const cls = ['dock-btn', opts.className ?? '', on ? 'is-on' : ''].filter(Boolean).join(' ');
   const title = opts.title ? ` title="${escapeHtml(opts.title)}"` : '';
   const pressed = opts.pressed !== undefined ? ` aria-pressed="${on ? 'true' : 'false'}"` : '';
+  const hasPopup = opts.ariaHasPopup
+    ? ` aria-haspopup="${escapeHtml(opts.ariaHasPopup)}"`
+    : '';
+  const expanded =
+    opts.ariaExpanded !== undefined ? ` aria-expanded="${opts.ariaExpanded ? 'true' : 'false'}"` : '';
+  const controls = opts.ariaControls
+    ? ` aria-controls="${escapeHtml(opts.ariaControls)}"`
+    : '';
   const cue = tutorialDock?.includes(opts.icon)
     ? `<span class="dock-tutorial" aria-hidden="true"><svg class="tutorial-hand" viewBox="-8 -10 16 21" width="44" height="58">${tutorialHandSvg(18)}</svg></span>`
     : '';
-  return `<span class="dock-slot">${cue}<button type="button" id="${id}" class="${cls}"${pressed}${title}${
+  return `<span class="dock-slot">${cue}<button type="button" id="${id}" class="${cls}"${pressed}${hasPopup}${expanded}${controls}${title}${
     enabled ? '' : ' disabled'
   }>${dockIcon(opts.icon)}<span class="dock-label">${label}</span></button></span>`;
 }
@@ -4982,7 +4996,18 @@ function dockButton(
 
 
 function setSpecialMode(mode: AbilityId | null): void {
-  specialMode = specialMode === mode ? null : mode;
+  if (mode === 'build') {
+    if (specialMode === 'build' && buildPickOpen) {
+      specialMode = null;
+      buildPickOpen = false;
+    } else {
+      specialMode = 'build';
+      buildPickOpen = true;
+    }
+  } else {
+    buildPickOpen = false;
+    specialMode = specialMode === mode ? null : mode;
+  }
   pendingHex = null;
   hoverHex = null;
   hoverPath = [];
@@ -5146,6 +5171,13 @@ function renderUnitDock(): string {
             icon: id,
             pressed: specialMode === id,
             title: ABILITY_BLURB[id],
+            ...(id === 'build'
+              ? {
+                  ariaHasPopup: 'menu',
+                  ariaExpanded: buildPickOpen,
+                  ariaControls: 'build-pick',
+                }
+              : {}),
           });
         })
         .join('')
@@ -5163,26 +5195,32 @@ function renderUnitDock(): string {
         },
       )
     : '';
-  const buildPick =
-    piece && specialMode === 'build' && hasAbility(piece, 'build')
-      ? `<div class="build-pick" role="group" aria-label="Build structure">
-          ${BUILD_STRUCTURES.map((s) => {
-            const icon =
-              s === 'pikes' ? 'trap' : s === 'palisade' ? 'palisade' : s === 'bridge' ? 'bridge' : 'remove';
-            return dockButton(`build-kind-${s}`, BUILD_STRUCTURE_LABEL[s], true, {
-              icon,
-              pressed: buildStructure === s,
-              title: BUILD_STRUCTURE_BLURB[s],
-              className: 'build-kind',
-            });
-          }).join('')}
-        </div>`
-      : '';
   return `<div class="unit-dock-wrap">
     <div class="unit-dock" role="toolbar" aria-label="Unit actions" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">
       ${specialBtns}${reloadBtn}
     </div>
-    ${buildPick}
+  </div>`;
+}
+
+function renderBuildPick(): string {
+  const piece = selectedId ? getPiece(state, selectedId) : null;
+  if (!piece || !buildPickOpen || specialMode !== 'build' || !hasAbility(piece, 'build')) {
+    return '';
+  }
+  const n = BUILD_STRUCTURES.length;
+  return `<div class="build-pick" id="build-pick" role="menu" aria-label="Build structure">
+    <div class="build-pick-row" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">
+      ${BUILD_STRUCTURES.map((s) => {
+        const icon =
+          s === 'pikes' ? 'trap' : s === 'palisade' ? 'palisade' : s === 'bridge' ? 'bridge' : 'remove';
+        return dockButton(`build-kind-${s}`, BUILD_STRUCTURE_LABEL[s], true, {
+          icon,
+          pressed: buildStructure === s,
+          title: BUILD_STRUCTURE_BLURB[s],
+          className: 'build-kind',
+        });
+      }).join('')}
+    </div>
   </div>`;
 }
 
@@ -9265,7 +9303,8 @@ function bindEvents() {
       const kind = btn.id.slice('build-kind-'.length);
       if (!isBuildStructure(kind)) return;
       buildStructure = kind;
-      if (specialMode !== 'build') specialMode = 'build';
+      specialMode = 'build';
+      buildPickOpen = false;
       refreshHighlights();
       render();
     });
@@ -9428,7 +9467,10 @@ function render() {
       </div>
       <div class="play-dock">
         ${renderOtherTurnBanner()}
-        ${renderEndTurn()}
+        <div class="play-dock-flyouts">
+          ${renderEndTurn()}
+          ${renderBuildPick()}
+        </div>
         ${renderActionBar()}
         ${renderUnitDock()}
       </div>
@@ -9471,4 +9513,33 @@ void initServerSync();
 window.addEventListener('resize', scheduleLayoutRefresh);
 window.addEventListener('orientationchange', () => {
   window.setTimeout(refreshLayout, 220);
+});
+
+function isBuildPickEventTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!(target.closest('.build-pick') || target.closest('#special-build'));
+}
+
+window.addEventListener('pointerdown', (e) => {
+  if (!buildPickOpen) return;
+  if (isBuildPickEventTarget(e.target)) return;
+  buildPickOpen = false;
+  window.setTimeout(() => {
+    if (!buildPickOpen) render();
+  }, 0);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !buildPickOpen) return;
+  if (boardPopup || briefingOpen) return;
+  e.preventDefault();
+  buildPickOpen = false;
+  if (specialMode === 'build') {
+    specialMode = null;
+    pendingHex = null;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+  }
+  render();
 });
