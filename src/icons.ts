@@ -18,6 +18,7 @@ import {
   type UnitType,
 } from './engine';
 import { hexCorners, type HexOrientation } from './hex';
+import { cornerAt, southEdges } from './heights';
 
 /** Compact silhouettes centered at 0,0 — viewBox roughly -10..10. */
 const ICONS: Record<UnitRole, string> = {
@@ -573,6 +574,126 @@ export function tokenGlyphSvg(
 }
 
 /** Index finger pointing down. Catalog glyph and the post-message map hand. */
+
+/** Radius of the wooden palisade / bridge base relative to the hex — clearly inset so the tile stays visible. */
+export const STRUCTURE_BASE_SCALE = 0.68;
+
+function fnum(n: number): string {
+  return n.toFixed(2);
+}
+
+/** Drop shadow + south walls + wooden top, smaller than the hex, origin at the top face. */
+function structureBaseSvg(
+  r: number,
+  lift: number,
+  kind: 'palisade' | 'bridge',
+  o: HexOrientation,
+): string {
+  const fill = kind === 'palisade' ? 'var(--palisade)' : 'var(--bridge)';
+  const hi = kind === 'palisade' ? 'var(--palisade-hi)' : 'var(--bridge-hi)';
+  const stroke = kind === 'palisade' ? 'var(--palisade-stroke)' : 'var(--bridge-ink)';
+  const sw = Math.max(1, r * 0.06);
+  const shadow = `<g class="structure-shadow">
+      <polygon points="${hexCorners(0, lift + 1.6, r * 1.08, o)}" fill="#0b0906" opacity="0.28"/>
+      <polygon points="${hexCorners(0.6, lift + 2.4, r * 0.92, o)}" fill="#0b0906" opacity="0.2"/>
+    </g>`;
+  let walls = '';
+  const at = { col: 0, row: 0 };
+  for (const e of southEdges(at, o)) {
+    const [x1, y1] = cornerAt(0, 0, r, e.a, o);
+    const [x2, y2] = cornerAt(0, 0, r, e.a + 1, o);
+    walls += `<polygon class="wall-face ${kind} ${e.face} plinth" points="${fnum(x1)},${fnum(y1)} ${fnum(x2)},${fnum(y2)} ${fnum(x2)},${fnum(y2 + lift)} ${fnum(x1)},${fnum(y1 + lift)}" />`;
+  }
+  const top = `<polygon class="structure-top ${kind}" points="${hexCorners(0, 0, r, o)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw.toFixed(2)}" stroke-linejoin="miter"/>
+    <polygon class="structure-top-hi ${kind}" points="${hexCorners(0, 0, r * 0.78, o)}" fill="${hi}" opacity="0.38"/>`;
+  return `${shadow}${walls}${top}`;
+}
+
+function palisadePostSvg(x: number, h: number, w: number): string {
+  const tip = Math.max(1.5, h * 0.12);
+  // y=0 is the platform top; the post rises (negative y).
+  return `<g class="palisade-post" transform="translate(${fnum(x)}, 0)">
+    <path fill="var(--palisade-lo)" d="M${fnum(w * 0.2)} 0 L${fnum(w * 0.5)} ${fnum(-h + tip)} L${fnum(w * 1.05)} ${fnum(-h + tip * 0.65)} L${fnum(w)} 0 Z"/>
+    <path fill="var(--palisade-hi)" d="M${fnum(-w)} 0 L${fnum(-w * 0.72)} ${fnum(-h + tip)} L0 ${fnum(-h)} L${fnum(w * 0.5)} ${fnum(-h + tip)} L${fnum(w * 0.2)} 0 Z"/>
+  </g>`;
+}
+
+function palisadeStubSvg(x: number, h: number, w: number): string {
+  return `<g class="palisade-stub" transform="translate(${fnum(x)}, 0)">
+    <path fill="var(--palisade-lo)" d="M${fnum(-w)} 0 L${fnum(-w * 0.6)} ${fnum(-h)} L${fnum(w * 0.6)} ${fnum(-h)} L${fnum(w)} 0 Z"/>
+  </g>`;
+}
+
+/**
+ * Palisade as a 3D object on a flat tile: inset wooden base (~lift px tall) with
+ * its own south wall and a drop shadow on the tile, stakes rising from the base.
+ */
+export function palisadeObjectSvg(
+  hexSize: number,
+  lift: number,
+  o: HexOrientation,
+  hp?: number,
+): string {
+  const r = hexSize * STRUCTURE_BASE_SCALE;
+  const base = structureBaseSvg(r, lift, 'palisade', o);
+  const left = hp ?? PALISADE_HP;
+  const chips = Math.max(0, PALISADE_HP - left);
+  // Six posts across the platform; damaged ones become short stubs.
+  const slots = [-0.62, -0.37, -0.12, 0.12, 0.37, 0.62];
+  const missing = chips >= 2 ? [2, 3] : chips >= 1 ? [2] : [];
+  const h = r * 0.88;
+  const w = Math.max(1.15, r * 0.08);
+  let posts = '';
+  let stubs = '';
+  slots.forEach((t, i) => {
+    const x = t * r;
+    const hh = h * (0.9 + (i % 3) * 0.055);
+    if (missing.includes(i)) stubs += palisadeStubSvg(x, Math.max(2.2, r * 0.16), w * 0.9);
+    else posts += palisadePostSvg(x, hh, w);
+  });
+  if (chips >= 2) {
+    // Fallen plank on the base.
+    stubs += `<path fill="var(--palisade-hi)" stroke="var(--palisade-ink)" stroke-width="0.45" d="M${fnum(-r * 0.18)} ${fnum(r * 0.08)} L${fnum(r * 0.42)} ${fnum(r * 0.28)} L${fnum(r * 0.38)} ${fnum(r * 0.38)} L${fnum(-r * 0.22)} ${fnum(r * 0.16)} Z"/>`;
+  }
+  const railH = Math.max(1.25, r * 0.07);
+  const railY = -h * 0.4;
+  const rail = `<rect x="${fnum(-r * 0.66)}" y="${fnum(railY)}" width="${fnum(r * 1.32)}" height="${fnum(railH)}" rx="0.4" fill="var(--palisade-lo)" stroke="var(--palisade-ink)" stroke-width="0.5"/>`;
+  return `<g class="token-palisade object${chips ? ' damaged' : ''}">${base}<g class="palisade-posts">${posts}${stubs}${rail}</g></g>`;
+}
+
+/**
+ * Bridge deck as a 3D object: inset plank deck with a short south wall and a
+ * shadow on the water. The water tile itself stays sunken.
+ */
+export function bridgeObjectSvg(
+  hexSize: number,
+  lift: number,
+  _o: HexOrientation,
+): string {
+  const r = hexSize * STRUCTURE_BASE_SCALE;
+  // A slightly shorter, wider deck than the palisade hex, still inset from the tile.
+  const w = r * 1.05;
+  const d = r * 0.42;
+  const shadow = `<g class="structure-shadow">
+      <ellipse cx="0" cy="${fnum(lift + 1.8)}" rx="${fnum(w * 1.06)}" ry="${fnum(d * 0.95)}" fill="#0a1824" opacity="0.4"/>
+      <ellipse cx="0.4" cy="${fnum(lift + 2.6)}" rx="${fnum(w * 0.88)}" ry="${fnum(d * 0.7)}" fill="#0a1824" opacity="0.22"/>
+    </g>`;
+  const wall = `<polygon class="wall-face bridge s plinth" points="${fnum(-w)},${fnum(d)} ${fnum(w)},${fnum(d)} ${fnum(w)},${fnum(d + lift)} ${fnum(-w)},${fnum(d + lift)}" />`;
+  const deck = `<rect x="${fnum(-w)}" y="${fnum(-d)}" width="${fnum(2 * w)}" height="${fnum(2 * d)}" rx="1.15" fill="var(--bridge)" stroke="var(--bridge-ink)" stroke-width="0.7"/>
+    <rect x="${fnum(-w)}" y="${fnum(-d)}" width="${fnum(2 * w)}" height="${fnum(Math.max(1.4, d * 0.42))}" fill="var(--bridge-hi)" opacity="0.5"/>`;
+  const planks: string[] = [];
+  for (let i = -2; i <= 2; i++) {
+    const x = (i / 2.5) * w;
+    planks.push(
+      `<path d="M${fnum(x)} ${fnum(-d)} V${fnum(d)}" fill="none" stroke="var(--bridge-lo)" stroke-width="0.55"/>`,
+    );
+  }
+  const railW = Math.max(1.1, r * 0.08);
+  const rails = `<rect x="${fnum(-w - railW * 0.15)}" y="${fnum(-d - 1.1)}" width="${fnum(railW)}" height="${fnum(2 * d + 2.2)}" rx="0.3" fill="var(--bridge-hi)" stroke="var(--bridge-ink)" stroke-width="0.4"/>
+    <rect x="${fnum(w - railW * 0.85)}" y="${fnum(-d - 1.1)}" width="${fnum(railW)}" height="${fnum(2 * d + 2.2)}" rx="0.3" fill="var(--bridge-hi)" stroke="var(--bridge-ink)" stroke-width="0.4"/>`;
+  return `<g class="token-bridge object">${shadow}${wall}${deck}${planks.join('')}${rails}</g>`;
+}
+
 export function tutorialHandSvg(size = 16): string {
   const s = size / 18;
   return `<g class="token-tutorial" transform="scale(${s.toFixed(3)})">

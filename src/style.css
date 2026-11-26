@@ -2680,6 +2680,10 @@ button.primary:focus-visible {
   pointer-events: none;
 }
 
+.structure-shadow {
+  pointer-events: none;
+}
+
 .token-flag .flag-cloth {
   fill: #e8dcc4;
   stroke: #3a3228;

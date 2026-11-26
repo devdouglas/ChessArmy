@@ -359,6 +359,8 @@ import {
   pieceIconSvg,
   reloadBadgeSvg,
   tokenGlyphSvg,
+  palisadeObjectSvg,
+  bridgeObjectSvg,
   noTouchMarkSvg,
   facingPikeSvg,
   apEmptyMarkSvg,
@@ -1594,24 +1596,6 @@ function surfacePixelOf(h: Hex): { x: number; y: number } {
 function unitPixelOf(h: Hex): { x: number; y: number } {
   const p = surfacePixelOf(h);
   return { x: p.x, y: p.y - TOKEN_LIFT };
-}
-
-/** Short wooden sides under a palisade or bridge deck. The tile underneath stays at terrain height. */
-function structurePlinthSvg(
-  lift: number,
-  kind: 'palisade' | 'bridge',
-  ori: HexOrientation,
-): string {
-  if (lift < 0.5) return '';
-  const f = (n: number) => n.toFixed(2);
-  let out = '';
-  const at: Hex = { col: 0, row: 0 };
-  for (const e of southEdges(at, ori)) {
-    const [x1, y1] = cornerAt(0, 0, HEX_SIZE, e.a, ori);
-    const [x2, y2] = cornerAt(0, 0, HEX_SIZE, e.a + 1, ori);
-    out += `<polygon class="wall-face ${kind} ${e.face} plinth" points="${f(x1)},${f(y1)} ${f(x2)},${f(y2)} ${f(x2)},${f(y2 + lift)} ${f(x1)},${f(y1 + lift)}" />`;
-  }
-  return out;
 }
 
 /** Work out each drawn tile's height from terrain only. Palisades and bridges do not raise the tile. */
@@ -4673,27 +4657,24 @@ function renderBoard(): string {
     const owner = flagOwnerForDraw(t);
     const garrison = t.type === 'house' && occupiedHouse(t.col, t.row);
     const mark =
-      t.type === 'wall' ||
-      t.type === 'house' ||
-      t.type === 'palisade' ||
-      t.type === 'tree' ||
-      t.type === 'forest'
-        ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp, garrison)
-        : t.type === 'flag'
-          ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
-          : t.type === 'notouch'
-            ? ''
-            : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
+      t.type === 'palisade'
+        ? palisadeObjectSvg(HEX_SIZE, cover, ori, t.hp)
+        : t.type === 'bridge'
+          ? bridgeObjectSvg(HEX_SIZE, cover, ori)
+          : t.type === 'wall' ||
+              t.type === 'house' ||
+              t.type === 'tree' ||
+              t.type === 'forest'
+            ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp, garrison)
+            : t.type === 'flag'
+              ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
+              : t.type === 'notouch'
+                ? ''
+                : tokenGlyphSvg(t.type, HEX_SIZE * 0.78);
     const ban = editing && banned ? noTouchMarkSvg(HEX_SIZE * 0.38) : '';
     const read = t.type === 'board' && t.read ? ' read' : '';
     const armed = !editing && t.type === 'tutorial';
-    const plinth =
-      (t.type === 'palisade' || t.type === 'bridge') && cover > 0
-        ? structurePlinthSvg(cover, t.type, ori)
-        : '';
-    const body = armed
-      ? `<g class="tutorial-hand">${mark}${ban}</g>`
-      : `${plinth}${mark}${ban}`;
+    const body = armed ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
     const tk = key({ col: t.col, row: t.row });
     if (t.type === 'forest') putTile(forestByTile, tk, g);
