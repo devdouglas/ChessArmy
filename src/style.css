@@ -9,6 +9,8 @@
   --land-hi: #86a85c;
   --land-lo: #3a542e;
   --land-blade: #b4d078;
+  /* Dark green outline for plains: a shade of the grass, not black. */
+  --land-stroke: color-mix(in srgb, var(--land-lo) 72%, black);
   --water: #2a4a5c;
   --water-hi: #3d6a82;
   --water-lo: #1e3a4a;
@@ -3075,6 +3077,7 @@ button.primary:focus-visible {
 
 .level-thumb .hex.land {
   fill: var(--land);
+  stroke: var(--land-stroke);
 }
 
 .level-thumb .hex.land.alt {
@@ -4313,6 +4316,7 @@ svg.board .hex {
 
 .hex.land {
   fill: url(#land-tex);
+  stroke: var(--land-stroke);
 }
 .hex.land.alt {
   fill: url(#land-tex-alt);
