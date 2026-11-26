@@ -915,7 +915,7 @@ function commitScoutPlace(hex: Hex): void {
   render();
 }
 
-/** Roguelite: reshuffle the map, keep remaining regenerates. */
+/** Roguelite: find a new location, keep remaining attempts. */
 function regenScoutMap(): void {
   if (!scoutPrep || scoutPrep.regenLeft <= 0 || !rogueRun) return;
   const left = scoutPrep.regenLeft - 1;
@@ -4105,13 +4105,35 @@ async function placeBuild(hex: Hex) {
   if (!buildSpotMatches(state, hex, buildStructure)) return;
   const actingId = selectedId;
   const structure = buildStructure;
-  specialMode = null;
   await playAnimatedAction({
     kind: 'build',
     pieceId: actingId,
     to: hex,
     structure,
   });
+  // Keep the build row open so the unit can place again while it still has AP.
+  if (canBuild(state, actingId)) {
+    specialMode = 'build';
+    buildPickOpen = true;
+    selectedId = actingId;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+    render();
+    return;
+  }
+  specialMode = null;
+  buildPickOpen = false;
+  if (state.scoutPieceId === actingId && (state.scoutActionsLeft ?? 0) > 0) {
+    selectedId = actingId;
+    hoverHex = null;
+    hoverPath = [];
+    commitPath = [];
+    refreshHighlights();
+    render();
+    return;
+  }
   retainSelection(actingId);
   render();
   await maybeAi();
@@ -5767,9 +5789,9 @@ function renderScoutPrep(): string {
     .join('');
   const regenBtn =
     rogueRun && scoutPrep.regenLeft > 0
-      ? `<button type="button" id="scout-regen" class="scout-prep-btn scout-regen" title="Reshuffle the map">Regenerate map (${scoutPrep.regenLeft})</button>`
+      ? `<button type="button" id="scout-regen" class="scout-prep-btn scout-regen" title="Find new location">Find new location (${scoutPrep.regenLeft})</button>`
       : rogueRun
-        ? `<span class="scout-prep-muted">No regenerates left</span>`
+        ? `<span class="scout-prep-muted">No new locations left</span>`
         : '';
   const hint = scoutPrep.placingId
     ? 'Highlighted hexes are legal drops — click one to hide there'

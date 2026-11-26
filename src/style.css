@@ -32,7 +32,7 @@
   --plateau-lo: #4a4640;
   --plateau-shadow: #1c1a16;
   --hex-stroke: #1a1f1c;
-  --water-stroke: #1a3344;
+  --water-stroke: color-mix(in srgb, var(--water) 88%, var(--water-hi));
   --high-stroke: #4a3820;
   --plateau-stroke: #2e2c28;
   --rock-stroke: #1c1a18;
@@ -153,7 +153,7 @@ html[data-period='ancient'] {
   --plateau-lo: #524838;
   --plateau-shadow: #241c14;
   --hex-stroke: #1c1610;
-  --water-stroke: #243840;
+  --water-stroke: color-mix(in srgb, var(--water) 88%, var(--water-hi));
   --high-stroke: #5a4020;
   --plateau-stroke: #3a3228;
   --rock-stroke: #221c16;
@@ -249,7 +249,7 @@ html[data-period='futuristic'] {
   --plateau-lo: #1c1438;
   --plateau-shadow: #06040e;
   --hex-stroke: #06080c;
-  --water-stroke: #041820;
+  --water-stroke: color-mix(in srgb, var(--water) 88%, var(--water-hi));
   --high-stroke: #183848;
   --plateau-stroke: #201838;
   --rock-stroke: #120e1c;
@@ -4324,7 +4324,7 @@ svg.board .hex {
 .hex.water {
   fill: url(#water-tex);
   stroke: var(--water-stroke);
-  stroke-width: 1.8;
+  stroke-width: 1.15;
 }
 .hex.high {
   fill: url(#high-tex);
@@ -5742,8 +5742,6 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 }
 
 .play-end-cluster .dock-btn {
-  display: flex;
-  align-items: center;
   min-height: 2.55rem;
   flex-direction: row;
   gap: 0.35rem;
