@@ -1896,6 +1896,39 @@ function edgeCubeDir(edge: number, o: HexOrientation): HexDir {
   return best;
 }
 
+/** Soft gold bloom that follows the token silhouette (no ring). */
+function pieceInspireBloomSvg(piece: Piece, pr: number, live: Piece): string {
+  if (!live.inspired && !live.inspireUp) return '';
+  const role = live.inspireUp && live.inspired ? 'both' : live.inspireUp ? 'source' : 'inspired';
+  const hexed = UNIT_STATS[piece.type].hexArmor;
+  const shape = hexed
+    ? `<polygon points="${hexCorners(0, 0, pr, viewOrientation())}" />`
+    : `<circle cx="0" cy="0" r="${pr.toFixed(2)}" />`;
+  return `<g class="piece-inspire-bloom ${role}" aria-hidden="true">${shape}</g>`;
+}
+
+/** Status / promo chip used in the action bar and the selected-unit panel. */
+function inspiredLabelHtml(kind: 'action-bar-promo' | 'ability-promo'): string {
+  const title =
+    'Inspired: +1 attack, +1 armor (no stacking). Lost when no longer chained to a source.';
+  return `<span class="${kind} inspired" title="${escapeHtml(title)}" aria-label="inspired">${actionGlyphSvg('inspire', { className: 'inspire-chip-glyph', em: '14' })}<span>inspired</span></span>`;
+}
+
+/** Promotion tokens + current Inspired status, on the right of the unit detail header. */
+function unitDetailPromosHtml(piece: Piece): string {
+  const promos = [
+    ...(hasUnitToken(piece, 'general') ? (['general'] as const) : []),
+    ...chevronPromotionTokensOf(piece),
+  ];
+  const chips = promos.map((id) => {
+    const label = UNIT_TOKEN_LABEL[id];
+    return `<span class="ability-promo" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><svg viewBox="-12 -12 24 24" width="18" height="18" aria-hidden="true">${unitTokenGlyphSvg(id, 16)}</svg><span>${escapeHtml(label)}</span></span>`;
+  });
+  if (piece.inspired) chips.push(inspiredLabelHtml('ability-promo'));
+  if (!chips.length) return '';
+  return `<div class="ability-promos">${chips.join('')}</div>`;
+}
+
 function pieceBodySvg(piece: Piece, pr: number): string {
   const s = UNIT_STATS[piece.type];
   const bonus = armorBonusOf(piece);
@@ -4782,19 +4815,10 @@ function renderBoard(): string {
       ? `<polygon class="piece-sel" points="${hexCorners(0, 0, pr + 3.2, viewOrientation())}" fill="none" stroke="var(--sel)" stroke-width="2" />`
       : `<circle class="piece-sel" cx="0" cy="0" r="${pr + 3.2}" fill="none" stroke="var(--sel)" stroke-width="2" />`;
     putTile(piecesByTile, key({ col: p.col, row: p.row }), `
-      <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}${!editing && p.inspired ? ' inspired' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
+      <g class="piece-unit${isReloading(p) ? ' reloading' : ''}${isDepleted(p) ? ' depleted' : ''}${!editing && p.inspired ? ' inspired' : ''}${!editing && p.inspireUp ? ' inspiring' : ''}" data-id="${p.id}" transform="translate(${x}, ${y})">
         <ellipse class="piece-contact" cx="0" cy="${(TOKEN_LIFT + pr * 0.86).toFixed(2)}" rx="${(pr * 0.82).toFixed(2)}" ry="${(pr * 0.3).toFixed(2)}" />
-        ${
-          !editing && p.inspired
-            ? `<circle class="piece-inspire-glow" cx="0" cy="0" r="${(pr + 4.4).toFixed(1)}" />`
-            : ''
-        }
+        ${!editing ? pieceInspireBloomSvg(shown, pr, p) : ''}
         ${sel ? selRing : ''}
-        ${
-          !editing && p.inspireUp
-            ? `<circle class="piece-inspire-src" cx="0" cy="0" r="${(pr + 6.4).toFixed(1)}" fill="none" stroke="#ffc857" stroke-width="1.4" stroke-dasharray="1.4 2.2" />`
-            : ''
-        }
         ${
           p.shieldsUp
             ? `<circle class="piece-shields" cx="0" cy="0" r="${(pr + 5.2).toFixed(1)}" fill="none" stroke="#8fd4ff" stroke-width="1.7" stroke-dasharray="2.6 1.8" />`
@@ -4867,6 +4891,15 @@ function renderBoard(): string {
         <path d="M1 15 Q6 12 10 14 T19 13" fill="none" stroke="var(--high-lo)" stroke-width="0.8" opacity="0.4"/>
         <path d="M2 6 Q8 3 14 5" fill="none" stroke="var(--high-hi)" stroke-width="0.7" opacity="0.35"/>
       </pattern>
+      <filter id="inspire-glow" x="-120%" y="-120%" width="340%" height="340%" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="tight"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="5.4" result="wide"/>
+        <feMerge>
+          <feMergeNode in="wide"/>
+          <feMergeNode in="tight"/>
+          <feMergeNode in="tight"/>
+        </feMerge>
+      </filter>
       <pattern id="plateau-tex" patternUnits="userSpaceOnUse" width="20" height="20">
         <rect width="20" height="20" fill="var(--plateau)"/>
         <rect width="20" height="20" fill="var(--plateau-hi)" opacity="0.38"/>
@@ -5011,24 +5044,22 @@ function renderActionBar(): string {
       : !choosing && isDepleted(piece)
         ? `<span class="action-flag">empty</span>`
         : '';
-  const inspiredFlag = piece.inspired
-    ? `<span class="action-flag inspired" title="Inspired: +1 attack, +1 armor (no stacking). Lost when no longer chained to a source.">inspired</span>`
-    : '';
-
   const promos = [
     ...(hasUnitToken(piece, 'general') ? (['general'] as const) : []),
     ...chevronPromotionTokensOf(piece),
   ];
-  const promoIcons = promos.length
-    ? `<span class="action-bar-promos">${promos
-        .map((id) => {
-          const label = UNIT_TOKEN_LABEL[id];
-          return `<span class="action-bar-promo" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><svg viewBox="-12 -12 24 24" width="26" height="26" aria-hidden="true">${unitTokenGlyphSvg(id, 18)}</svg></span>`;
-        })
-        .join('')}</span>`
-    : '';
+  const inspiredChip = piece.inspired ? inspiredLabelHtml('action-bar-promo') : '';
+  const promoIcons =
+    promos.length || inspiredChip
+      ? `<span class="action-bar-promos">${promos
+          .map((id) => {
+            const label = UNIT_TOKEN_LABEL[id];
+            return `<span class="action-bar-promo" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><svg viewBox="-12 -12 24 24" width="26" height="26" aria-hidden="true">${unitTokenGlyphSvg(id, 18)}</svg></span>`;
+          })
+          .join('')}${inspiredChip}</span>`
+      : '';
 
-  const meta = [extra, inspiredFlag, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
+  const meta = [extra, hint ? `<span class="action-bar-hint">${hint}</span>` : '']
     .filter(Boolean)
     .join('');
 
@@ -5256,6 +5287,7 @@ function renderSidebar(): string {
           <div>
             <h3>${s.name}</h3>
           </div>
+          ${unitDetailPromosHtml(piece)}
         </header>
         <dl class="stat-grid">${vitals.join('')}</dl>
       </section>`;

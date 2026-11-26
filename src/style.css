@@ -4643,26 +4643,34 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 
 .piece-sel,
 .piece-shields,
-.piece-inspire-glow,
-.piece-inspire-src {
+.piece-inspire-bloom {
   pointer-events: none;
 }
 
-/* Inspired: soft gold halo behind the token (rides the lifted unit group on raised tiles). */
-.piece-inspire-glow {
-  fill: rgba(255, 200, 87, 0.28);
-  stroke: rgba(255, 214, 120, 0.85);
-  stroke-width: 1.2;
-  filter: drop-shadow(0 0 3px rgba(255, 200, 87, 0.9));
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: piece-inspire-pulse 2.4s ease-in-out infinite;
+/* Inspired: soft gold bloom of the token silhouette (rides the lifted unit on raised tiles). */
+.piece-inspire-bloom {
+  fill: #ffc857;
+  opacity: 0.95;
+  filter: url(#inspire-glow);
+  animation: piece-inspire-pulse 2.6s ease-in-out infinite;
+}
+
+/* A source that is not itself inspired: quieter, slightly tighter feel. */
+.piece-inspire-bloom.source {
+  fill: #e8b44a;
+  opacity: 0.7;
+}
+
+/* Source that is also inspired (another source in the chain): a touch brighter. */
+.piece-inspire-bloom.both {
+  fill: #ffd56a;
+  opacity: 1;
 }
 
 @keyframes piece-inspire-pulse {
   0%,
   100% {
-    opacity: 0.75;
+    opacity: 0.78;
   }
   50% {
     opacity: 1;
@@ -4670,14 +4678,77 @@ svg.board:has(.hl-tint.path) .hl-tint.plus {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .piece-inspire-glow {
+  .piece-inspire-bloom {
     animation: none;
   }
 }
 
-.action-flag.inspired,
 .action-bar-dmg.inspired {
   color: #ffc857;
+}
+
+.action-bar-promo.inspired,
+.ability-promo.inspired,
+.ability-promo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.08rem 0.4rem 0.08rem 0.18rem;
+  border: 1px solid rgba(201, 154, 46, 0.55);
+  border-radius: 999px;
+  background: rgba(42, 36, 16, 0.7);
+  color: #ffc857;
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ability-promo {
+  color: #e6d3a4;
+  border-color: rgba(200, 180, 130, 0.35);
+  background: rgba(24, 22, 16, 0.55);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.ability-promo.inspired,
+.action-bar-promo.inspired {
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  color: #ffc857;
+  border-color: rgba(201, 154, 46, 0.55);
+  background: rgba(42, 36, 16, 0.7);
+}
+
+.action-bar-promo.inspired {
+  width: auto;
+  height: auto;
+  padding: 0.12rem 0.42rem 0.12rem 0.2rem;
+  cursor: help;
+}
+
+.action-bar-promo.inspired svg,
+.ability-promo svg,
+.inspire-chip-glyph {
+  display: block;
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  overflow: visible;
+  color: currentColor;
+}
+
+.ability-promos {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 62%;
 }
 
 .reload-badge,
