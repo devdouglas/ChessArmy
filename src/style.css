@@ -9,8 +9,8 @@
   --land-hi: #86a85c;
   --land-lo: #3a542e;
   --land-blade: #b4d078;
-  /* Dark green outline for plains: a shade of the grass, not black. */
-  --land-stroke: color-mix(in srgb, var(--land-lo) 72%, black);
+  /* Plains hex outline: mid grass green, blends into the tile. */
+  --land-stroke: #617c46;
   --water: #2a4a5c;
   --water-hi: #3d6a82;
   --water-lo: #1e3a4a;
