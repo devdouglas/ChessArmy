@@ -21,8 +21,9 @@ import {
   sanitizeUnlock,
   type RogueConfig,
   type RogueProgress,
+  getGameRegions,
   type RoguePromoCfg,
-  type RogueRegion,
+  type GameRegion,
   type RogueUnitCfg,
   type RogueUnlock,
   unitAvailableInRun,
@@ -63,7 +64,7 @@ function previewProgress(preview: RogueAdminPreview): RogueProgress {
   };
 }
 
-function unlockSelect(name: string, unlock: RogueUnlock, regions: RogueRegion[]): string {
+function unlockSelect(name: string, unlock: RogueUnlock, regions: GameRegion[]): string {
   const t = unlock.type;
   const param =
     t === 'battleAtLeast'
@@ -132,7 +133,7 @@ export function renderRogueConfigPage(
           <td><input type="number" min="0" max="9999" data-field="price" value="${c.price ?? ''}" placeholder="${s?.value ?? 0}" title="Gold. Blank = unit value (${s?.value ?? 0})" /></td>
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
-          <td>${unlockSelect(`u:${t}`, c.unlock, draft.regions)}</td>
+          <td>${unlockSelect(`u:${t}`, c.unlock, getGameRegions())}</td>
           <td>${chk('inShop', c.inShop)}</td>
           <td>${chk('inStartPool', c.inStartPool)}</td>
           <td>${chk('inEnemyPool', c.inEnemyPool)}</td>
@@ -147,23 +148,25 @@ export function renderRogueConfigPage(
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
       <td>${chk('listed', c.listed)}</td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
-      <td>${unlockSelect(`p:${id}`, c.unlock, draft.regions)}</td>
+      <td>${unlockSelect(`p:${id}`, c.unlock, getGameRegions())}</td>
       <td>${chk('inShop', c.inShop)}</td>
       <td>${chk('enemyAllowed', c.enemyAllowed)}</td>
     </tr>`;
   }).join('');
 
-  const regionRows = draft.regions
-    .map(
-      (r, i) => `<tr data-region-index="${i}">
-        <td><input type="text" data-field="id" value="${esc(r.id)}" maxlength="40" /></td>
-        <td><input type="text" data-field="name" value="${esc(r.name)}" maxlength="40" /></td>
-        <td><input type="number" min="1" max="999" data-field="fromBattle" value="${r.fromBattle}" /></td>
-        <td><input type="number" min="1" max="999" data-field="toBattle" value="${r.toBattle}" /></td>
-        <td><button type="button" class="ghost danger" data-del-region="${i}">Remove</button></td>
-      </tr>`,
-    )
-    .join('');
+  const gameRegions = getGameRegions();
+  const regionRows = gameRegions.length
+    ? gameRegions
+        .map(
+          (r) => `<tr data-game-region="${esc(r.id)}">
+            <td>${esc(r.name)}</td>
+            <td class="lvl-meta">${esc(r.id)}</td>
+            <td>${esc(r.settlementKind)}</td>
+            <td>${esc(r.ownerId ?? '—')}</td>
+          </tr>`,
+        )
+        .join('')
+    : `<tr><td colspan="4" class="lvl-meta">Loading campaign regions…</td></tr>`;
 
   const ovUnits = PERIODS.map((era) => {
     const items = eraUnits(era)
@@ -198,7 +201,7 @@ export function renderRogueConfigPage(
     </button>`;
   }).join('');
 
-  const regionChecks = draft.regions
+  const regionChecks = gameRegions
     .map((r) => {
       const on = progress.regionsCleared.includes(r.id);
       return `<label class="chk"><input type="checkbox" data-preview-region="${esc(r.id)}"${on ? ' checked' : ''}${preview.mode !== 'custom' ? ' disabled' : ''} /> ${esc(r.name)}</label>`;
@@ -239,14 +242,13 @@ export function renderRogueConfigPage(
       </section>
 
       <section class="rogue-admin-section" id="rogue-sec-regions">
-        <h3>Regions <span class="lvl-meta">Named slices of a run, used by “region cleared” unlocks. Seeded as Early (1–6) and Late (7–10) around the enemy-promo breakpoint.</span></h3>
+        <h3>Regions <span class="lvl-meta">Campaign map regions from the Europe map, used by “region cleared” unlocks. Edit names and borders in the Total War editor.</span></h3>
         <div class="ai-check-wrap rogue-table-wrap">
           <table class="ai-check rogue-table">
-            <thead><tr><th>Id</th><th>Name</th><th>From battle</th><th>To battle</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Id</th><th>Settlement</th><th>Owner</th></tr></thead>
             <tbody>${regionRows}</tbody>
           </table>
         </div>
-        <p><button type="button" class="ghost" id="rogue-add-region">Add region</button></p>
       </section>
 
       <section class="rogue-admin-section" id="rogue-sec-overview">
@@ -365,21 +367,6 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     endlessAfterGoal: flag('endlessAfterGoal'),
   };
 
-  const regions: RogueRegion[] = [];
-  root.querySelectorAll<HTMLTableRowElement>('tr[data-region-index]').forEach((tr) => {
-    const id = tr.querySelector<HTMLInputElement>('[data-field="id"]')?.value.trim() ?? '';
-    const name = tr.querySelector<HTMLInputElement>('[data-field="name"]')?.value.trim() ?? id;
-    const fromBattle = Number(tr.querySelector<HTMLInputElement>('[data-field="fromBattle"]')?.value);
-    const toBattle = Number(tr.querySelector<HTMLInputElement>('[data-field="toBattle"]')?.value);
-    if (!id) return;
-    regions.push({
-      id,
-      name: name || id,
-      fromBattle: Number.isFinite(fromBattle) ? fromBattle : 1,
-      toBattle: Number.isFinite(toBattle) ? toBattle : 1,
-    });
-  });
-
   const units: Record<string, Partial<RogueUnitCfg>> = {};
   root.querySelectorAll<HTMLTableRowElement>('tr[data-unit]').forEach((tr) => {
     const id = tr.dataset.unit;
@@ -411,7 +398,7 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     };
   });
 
-  return { version: 1, globals, regions, units, promotions };
+  return { version: 1, globals, units, promotions };
 }
 
 export function readRogueAdminPreview(root: ParentNode, prev: RogueAdminPreview): RogueAdminPreview {

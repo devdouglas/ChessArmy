@@ -14,20 +14,6 @@
     "startGeneralKit": "scout",
     "endlessAfterGoal": true
   },
-  "regions": [
-    {
-      "id": "early",
-      "name": "Early",
-      "fromBattle": 1,
-      "toBattle": 6
-    },
-    {
-      "id": "late",
-      "name": "Late",
-      "fromBattle": 7,
-      "toBattle": 10
-    }
-  ],
   "units": {
     "soldier": {
       "listed": true,

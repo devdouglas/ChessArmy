@@ -337,6 +337,7 @@ import {
 } from './roguelite';
 import {
   getRogueConfig,
+  loadGameRegions,
   loadRogueConfig,
   recordRogueBattleWin,
   recordRogueRunCompleted,
@@ -2501,6 +2502,9 @@ function enterRogueConfig() {
   aiThinking = false;
   animating = false;
   render();
+  void loadGameRegions().then((regs) => {
+    if (screen === 'roguelite' && regs.length) render();
+  });
 }
 
 function syncRogueAdminForm(): HTMLElement | null {
@@ -2558,32 +2562,6 @@ function bindRogueConfigEvents(): void {
     void resetRogueAdminDraft().then((cfg) => {
       rogueAdminDraft = cloneRogueConfig(cfg);
       rogueAdminDirty = false;
-      render();
-    });
-  });
-  root.querySelector('#rogue-add-region')?.addEventListener('click', () => {
-    syncRogueAdminForm();
-    if (!rogueAdminDraft) return;
-    const n = rogueAdminDraft.regions.length + 1;
-    const last = rogueAdminDraft.regions[rogueAdminDraft.regions.length - 1];
-    const from = last ? last.toBattle + 1 : 1;
-    rogueAdminDraft.regions.push({
-      id: `region-${n}`,
-      name: `Region ${n}`,
-      fromBattle: from,
-      toBattle: from + 3,
-    });
-    rogueAdminDirty = true;
-    render();
-  });
-  root.querySelectorAll<HTMLButtonElement>('[data-del-region]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      syncRogueAdminForm();
-      if (!rogueAdminDraft) return;
-      const i = Number(btn.dataset.delRegion);
-      if (!Number.isFinite(i)) return;
-      rogueAdminDraft.regions.splice(i, 1);
-      rogueAdminDirty = true;
       render();
     });
   });
@@ -9696,6 +9674,7 @@ onServerStatus((s) => {
 
 async function initServerSync(): Promise<void> {
   await loadRogueConfig();
+  await loadGameRegions();
   if (screen === 'roguelite' && rogueAdminDraft && !rogueAdminDirty) {
     rogueAdminDraft = cloneRogueConfig(getRogueConfig());
   }

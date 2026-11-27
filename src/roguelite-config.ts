@@ -33,11 +33,12 @@ export type RogueGlobals = {
   endlessAfterGoal: boolean;
 };
 
-export type RogueRegion = {
+/** A campaign-map region (from the Europe map), used by region-cleared unlocks. */
+export type GameRegion = {
   id: string;
   name: string;
-  fromBattle: number;
-  toBattle: number;
+  ownerId: string | null;
+  settlementKind: string;
 };
 
 export type RogueUnitCfg = {
@@ -63,7 +64,6 @@ export type RoguePromoCfg = {
 export type RogueConfig = {
   version: number;
   globals: RogueGlobals;
-  regions: RogueRegion[];
   units: Record<string, Partial<RogueUnitCfg>>;
   promotions: Record<string, Partial<RoguePromoCfg>>;
 };
@@ -92,11 +92,6 @@ export const DEFAULT_ROGUE_GLOBALS: RogueGlobals = {
   startGeneralKit: 'scout',
   endlessAfterGoal: true,
 };
-
-export const DEFAULT_ROGUE_REGIONS: RogueRegion[] = [
-  { id: 'early', name: 'Early', fromBattle: 1, toBattle: 6 },
-  { id: 'late', name: 'Late', fromBattle: 7, toBattle: 10 },
-];
 
 function int(n: unknown, fallback: number, min = 0, max = 999): number {
   const v = typeof n === 'number' ? n : Number(n);
@@ -201,25 +196,8 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
     startGeneralKit: kit,
     endlessAfterGoal: bool(g.endlessAfterGoal, DEFAULT_ROGUE_GLOBALS.endlessAfterGoal),
   };
-  const regions: RogueRegion[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(src.regions) && src.regions.length) {
-    for (const r of src.regions) {
-      if (!r || typeof r !== 'object') continue;
-      const id = String((r as RogueRegion).id ?? '')
-        .trim()
-        .replace(/[^a-zA-Z0-9._-]/g, '')
-        .slice(0, 40);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      const fromBattle = int((r as RogueRegion).fromBattle, 1, 1, 999);
-      const toBattle = Math.max(fromBattle, int((r as RogueRegion).toBattle, fromBattle, 1, 999));
-      const name = String((r as RogueRegion).name ?? id).trim().slice(0, 40) || id;
-      regions.push({ id, name, fromBattle, toBattle });
-    }
-  }
-  if (!regions.length) regions.push(...DEFAULT_ROGUE_REGIONS.map((r) => ({ ...r })));
-
+  // Ignore leftover `regions` on old localStorage / JSON saves (Early/Late
+  // battle ranges). Real regions come from the campaign map.
   const units: Record<string, Partial<RogueUnitCfg>> = {};
   if (src.units && typeof src.units === 'object') {
     for (const [id, val] of Object.entries(src.units)) {
@@ -232,19 +210,97 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
       if (id && val && typeof val === 'object') promotions[id] = { ...(val as Partial<RoguePromoCfg>) };
     }
   }
-  return { version: ROGUE_CONFIG_VERSION, globals, regions, units, promotions };
+  return { version: ROGUE_CONFIG_VERSION, globals, units, promotions };
 }
 
 export const DEFAULT_ROGUE_CONFIG: RogueConfig = sanitizeRogueConfig({
   version: ROGUE_CONFIG_VERSION,
   globals: { ...DEFAULT_ROGUE_GLOBALS },
-  regions: DEFAULT_ROGUE_REGIONS.map((r) => ({ ...r })),
   units: {},
   promotions: {},
 });
 
 let current: RogueConfig = structuredCloneDefault();
 let loadedFromFile = false;
+let gameRegions: GameRegion[] = [];
+
+function summarizeGameRegions(
+  regions: { id: string; name: string; ownerId: string | null; settlement?: { kind?: string } }[],
+): GameRegion[] {
+  const seen = new Set<string>();
+  const out: GameRegion[] = [];
+  for (const r of regions) {
+    const id = String(r.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      name: String(r.name ?? id).trim() || id,
+      ownerId: r.ownerId ?? null,
+      settlementKind: r.settlement?.kind ?? 'none',
+    });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return out;
+}
+
+export function getGameRegions(): GameRegion[] {
+  return gameRegions;
+}
+
+/** Campaign map first (same source as Total War), then shipped europe.json. */
+function regionsFromUnknown(raw: unknown): GameRegion[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const list = (raw as { regions?: unknown }).regions;
+  if (!Array.isArray(list)) return [];
+  const rows: Parameters<typeof summarizeGameRegions>[0] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as {
+      id?: unknown;
+      name?: unknown;
+      ownerId?: unknown;
+      settlement?: { kind?: unknown };
+    };
+    if (typeof r.id !== 'string' || !r.id) continue;
+    const kind = r.settlement && typeof r.settlement === 'object' ? String(r.settlement.kind ?? 'none') : 'none';
+    rows.push({
+      id: r.id,
+      name: typeof r.name === 'string' ? r.name : r.id,
+      ownerId: typeof r.ownerId === 'string' ? r.ownerId : null,
+      settlement: { kind },
+    });
+  }
+  return summarizeGameRegions(rows);
+}
+
+export async function loadGameRegions(): Promise<GameRegion[]> {
+  const apply = (list: GameRegion[]) => {
+    if (list.length) gameRegions = list;
+  };
+  // Browser only: same campaign map the Total War editor uses (local / server).
+  if (typeof document !== 'undefined') {
+    try {
+      const store = await import('./campaign/store');
+      const local = store.readLocalCampaign();
+      if (local?.regions.length) apply(summarizeGameRegions(local.regions));
+      const map = await store.loadCampaignMap();
+      if (map.regions.length) apply(summarizeGameRegions(map.regions));
+    } catch {
+      /* fall through to shipped file */
+    }
+    if (!gameRegions.length) {
+      try {
+        const url = new URL('data/campaign/europe.json', document.baseURI).href;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) apply(regionsFromUnknown(await res.json()));
+      } catch {
+        /* offline / missing file */
+      }
+    }
+  }
+  return gameRegions;
+}
 
 function structuredCloneDefault(): RogueConfig {
   return sanitizeRogueConfig(DEFAULT_ROGUE_CONFIG);
@@ -268,9 +324,18 @@ export function emptyRogueProgress(): RogueProgress {
 
 export function sanitizeRogueProgress(raw: unknown): RogueProgress {
   const src = raw && typeof raw === 'object' ? (raw as Partial<RogueProgress>) : {};
-  const ids = new Set(current.regions.map((r) => r.id));
+  const known = new Set(gameRegions.map((r) => r.id));
   const regionsCleared = Array.isArray(src.regionsCleared)
-    ? [...new Set(src.regionsCleared.filter((id) => typeof id === 'string' && ids.has(id)))]
+    ? [
+        ...new Set(
+          src.regionsCleared.filter((id): id is string => {
+            if (typeof id !== 'string' || !id) return false;
+            // Drop invented Early/Late ids; keep campaign ids (or unknown until loaded).
+            if (id === 'early' || id === 'late') return false;
+            return known.size ? known.has(id) : true;
+          }),
+        ),
+      ]
     : [];
   return {
     runsCompleted: int(src.runsCompleted, 0, 0, 9999),
@@ -311,14 +376,10 @@ export function setRogueProgress(p: RogueProgress): void {
 export function recordRogueBattleWin(battle: number): RogueProgress {
   const prev = readProgress();
   const b = int(battle, 0, 0, 9999);
-  const regionsCleared = new Set(prev.regionsCleared);
-  for (const r of current.regions) {
-    if (b >= r.toBattle) regionsCleared.add(r.id);
-  }
   const next: RogueProgress = {
     runsCompleted: prev.runsCompleted,
     bestBattle: Math.max(prev.bestBattle, b),
-    regionsCleared: [...regionsCleared],
+    regionsCleared: prev.regionsCleared,
   };
   writeProgress(next);
   return next;
@@ -382,11 +443,6 @@ export function configuredUnitCost(type: UnitType): number {
   return Math.max(0, Math.floor(statsOf(type).value));
 }
 
-export function regionForBattle(battle: number): RogueRegion | null {
-  const b = Math.max(1, Math.floor(battle));
-  return current.regions.find((r) => b >= r.fromBattle && b <= r.toBattle) ?? null;
-}
-
 export function applyRogueConfig(raw: unknown): RogueConfig {
   current = sanitizeRogueConfig(raw);
   return current;
@@ -433,7 +489,6 @@ export function exportRogueConfigJson(cfg: RogueConfig = current): string {
   const out: RogueConfig = {
     version: ROGUE_CONFIG_VERSION,
     globals: { ...cfg.globals },
-    regions: cfg.regions.map((r) => ({ ...r })),
     units,
     promotions,
   };
