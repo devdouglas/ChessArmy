@@ -267,6 +267,9 @@ try {
 
   // --- ≥2 adjacent + hit by a 3rd (no opposite / no red face required) ---
   UNIT_STATS.soldier.armorRear = 0;
+  // Panic needs ≥1 adjacent enemy against a red (−2) face — flanks are red here.
+  UNIT_STATS.soldier.armorFlankLeft = -2;
+  UNIT_STATS.soldier.armorFlankRight = -2;
   {
     const t = emptyTerrain(8, 10);
     const s = createStateFromTerrain(
@@ -288,6 +291,16 @@ try {
     assert(!wouldRout(s, v, { col: flankL.col, row: flankL.row }), 'two flanks: hit by one of them is not a 3rd');
     assert(routKind(s, v, farShot) === 'panic', 'two flanks + distant shot → panic');
     assert(routKind(s, v) === 'panic', 'two flanks + sourceless hit (trap/water) → panic');
+
+    // Same crowd, but no red face under any attacker → no panic.
+    UNIT_STATS.soldier.armorFlankLeft = 0;
+    UNIT_STATS.soldier.armorFlankRight = 0;
+    assert(!wouldRout(s, v, farShot), 'two flanks on non-red faces + 3rd hit → no panic');
+    assert(!wouldRout(s, v), 'two flanks on non-red faces + sourceless hit → no panic');
+    // One of the two on red is enough.
+    UNIT_STATS.soldier.armorFlankLeft = -2;
+    assert(routKind(s, v, farShot) === 'panic', 'one flanker on red is enough for panic');
+    UNIT_STATS.soldier.armorFlankRight = -2;
   }
 
   {

@@ -1086,7 +1086,7 @@ export type Piece = {
   spendMarch?: boolean;
 };
 
-/** Why a unit routed — pinch (opposite + red) vs panic (≥2 adjacent + 3rd hit). */
+/** Why a unit routed — pinch (opposite + red) vs panic (≥2 adjacent, one on red, + 3rd hit). */
 export type RoutKind = 'pinched' | 'panic';
 
 export type FxHit = {
@@ -1583,7 +1583,7 @@ function addHpLost(state: GameState, side: Side, dealt: number): void {
  * Generals hold. Two paths:
  * 1) Opposite adjacent hostiles + a −2 (red) face on that axis — any hit routs
  *    (`pinched`).
- * 2) ≥2 adjacent hostiles, then hit by a 3rd source (other unit / trap / water /
+ * 2) ≥2 adjacent hostiles (at least one against a −2 red face), then hit by a 3rd source (other unit / trap / water /
  *    pikes / anything whose origin is not one of those two) — `panic`.
  * Friends / terrain never pin. Attack direction alone does not invent a pincher.
  */
@@ -1615,8 +1615,21 @@ export function adjacentHostiles(state: GameState, victim: Piece): Piece[] {
   return out;
 }
 
+/** True when at least one adjacent hostile stands against a −2 (red) face. */
+function hostileOnRedSide(state: GameState, victim: Piece): boolean {
+  const at: Hex = { col: victim.col, row: victim.row };
+  for (let d = 0; d < 6; d++) {
+    const dir = d as HexDir;
+    const p = pieceAt(state, neighborInDir(at, dir, state.orientation));
+    if (!p || p.id === victim.id) continue;
+    if (!isHostile(state, p.side, victim.side)) continue;
+    if (armorOnDir(victim, dir) <= -2) return true;
+  }
+  return false;
+}
+
 /**
- * ≥2 adjacent hostiles and the damage is not coming from one of those two
+ * ≥2 adjacent hostiles (one of them on a red face) and the damage is not coming from one of those two
  * alone (ranged outsider, a third adjacent melee, trap, water, ownerless pikes).
  */
 function hitByThirdWhileCrowded(
@@ -1626,6 +1639,7 @@ function hitByThirdWhileCrowded(
 ): boolean {
   const adj = adjacentHostiles(state, victim);
   if (adj.length < 2) return false;
+  if (!hostileOnRedSide(state, victim)) return false;
   if (!from) return true;
   const source = pieceAt(state, from);
   if (!source || source.id === victim.id) return true;
