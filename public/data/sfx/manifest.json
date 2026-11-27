@@ -12,12 +12,17 @@
   "default_rout": "default_rout.mp3",
   "defeat": "defeat.mp3",
   "end_turn": "end_turn.mp3",
+  "impact_hit": "impact_hit.mp3",
+  "invalid_move": "invalid_move.mp3",
+  "move_elephant": "move_elephant.mp3",
+  "move_horse": "move_horse.mp3",
   "palisade_break": "palisade_break.mp3",
   "promotion_gain": "promotion_gain.mp3",
   "reload": "reload.mp3",
   "take_damage": "take_damage.mp3",
   "ui_click": "ui_click.mp3",
   "ui_hover": "ui_hover.mp3",
+  "unit_select": "unit_select.mp3",
   "wall_demolish": "wall_demolish.mp3"
  },
  "units": {
@@ -175,9 +180,9 @@
   },
   "horsearcher": {
    "move": {
-    "file": "default_move.mp3",
-    "source": "default",
-    "action": "default_move"
+    "file": "move_horse.mp3",
+    "source": "unit",
+    "action": "move_horse"
    },
    "melee": {
     "file": "default_melee.mp3",
@@ -202,9 +207,9 @@
   },
   "lightcavalry": {
    "move": {
-    "file": "default_move.mp3",
-    "source": "default",
-    "action": "default_move"
+    "file": "move_horse.mp3",
+    "source": "unit",
+    "action": "move_horse"
    },
    "melee": {
     "file": "default_melee.mp3",
@@ -300,9 +305,9 @@
   },
   "elephant": {
    "move": {
-    "file": "default_move.mp3",
-    "source": "default",
-    "action": "default_move"
+    "file": "move_elephant.mp3",
+    "source": "unit",
+    "action": "move_elephant"
    },
    "melee": {
     "file": "default_melee.mp3",
@@ -721,9 +726,9 @@
   },
   "u-mvf8ty84rdk3": {
    "move": {
-    "file": "default_move.mp3",
-    "source": "default",
-    "action": "default_move"
+    "file": "move_horse.mp3",
+    "source": "unit",
+    "action": "move_horse"
    },
    "melee": {
     "file": "default_melee.mp3",
@@ -967,6 +972,11 @@
     "source": "default",
     "action": "default_melee"
    },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
    "death": {
     "file": "death_human.mp3",
     "source": "unit",
@@ -1081,7 +1091,7 @@
    "elephant",
    "barbarian",
    "u-mwjio288uty1",
-   "Halangites"
+   "u-mwowcdhlpw7r"
   ],
   "berserk": [
    "barbarian"
@@ -1154,7 +1164,7 @@
   "shields_up": [
    "cohort",
    "u-mwjio288uty1",
-   "Halangites"
+   "u-mwowcdhlpw7r"
   ],
   "build_trap": [
    "builder",
