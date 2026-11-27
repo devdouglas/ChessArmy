@@ -5,7 +5,6 @@ import {
   MAX_UNIT_PROMOTIONS,
   PALISADE_HP,
   PROMOTION_TOKEN_COLOR,
-  roleOf,
   statsOf,
   type AbilityId,
   type Piece,
@@ -15,387 +14,11 @@ import {
   type TokenType,
   type UnitRole,
   type UnitTokenType,
-  type UnitType,
 } from './engine';
 import { hexCorners, type HexOrientation } from './hex';
 import { cornerAt, southEdges } from './heights';
 
-/** Compact silhouettes centered at 0,0 — viewBox roughly -10..10. */
-const ICONS: Record<UnitRole, string> = {
-  // Helmet + torso
-  soldier: `
-    <circle cx="0" cy="-4.2" r="2.6"/>
-    <path d="M-4.2 -2.2 Q0 -5.5 4.2 -2.2 L3.2 0.5 H-3.2 Z"/>
-    <path d="M-3.4 1.2 H3.4 L2.6 6.5 H-2.6 Z"/>
-    <rect x="-0.7" y="1.5" width="1.4" height="4.5" rx="0.4"/>
-  `,
-  // Horse head (chess knight) + speed lines
-  scout: `
-    <g fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round">
-      <path d="M-9.2 -5.4 L-5.6 -5.4"/>
-      <path d="M-9.6 -2.6 L-5.8 -2.6"/>
-      <path d="M-9.0 0.2 L-5.6 0.2"/>
-      <path d="M-8.6 2.8 L-5.4 2.8"/>
-    </g>
-    <path d="M-5.4 7.2
-      L-5.8 2.2
-      C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
-      C-0.8 -7.4 0.4 -8.4 1.6 -8.8
-      L2.4 -6.6
-      C4.4 -6.2 6.6 -4.8 7.8 -3.2
-      C8.8 -2.0 8.6 -0.4 7.2 0.1
-      C6.2 0.4 5.4 -0.5 4.8 -1.1
-      C3.2 0.6 1.6 2.8 0.6 5.0
-      L0.1 7.2
-      Z"/>
-  `,
-  // Bazooka rocket — nose cone + body + fins
-  bazooka: `
-    <path d="M5.5 0 L-1.5 -2.6 L-1.5 2.6 Z"/>
-    <rect x="-7" y="-2.2" width="6" height="4.4" rx="0.6"/>
-    <path d="M-7 -2.2 L-9.5 -4.2 L-7 -0.4 Z"/>
-    <path d="M-7 2.2 L-9.5 4.2 L-7 0.4 Z"/>
-    <path d="M-7 -1.2 L-9.2 0 L-7 1.2 Z"/>
-  `,
-  // Bow + nocked arrow
-  archer: `
-    <path d="M-4.8 -8.0
-      C-8.4 -4.4 -8.4 4.4 -4.8 8.0
-      L-3.0 6.4
-      C-5.8 3.2 -5.8 -3.2 -3.0 -6.4
-      Z"/>
-    <path d="M-3.2 -6.6 L-3.2 6.6 L-1.8 6.6 L-1.8 -6.6 Z"/>
-    <rect x="-7.0" y="-0.7" width="13.4" height="1.4" rx="0.35"/>
-    <path d="M5.6 -2.6 L9.2 0 L5.6 2.6 Z"/>
-    <path d="M-7.0 -2.3 L-4.4 0 L-7.0 2.3 Z"/>
-  `,
-  // Two leaf-headed javelins
-  javelin: `
-    <g transform="translate(-1.35,0.85) rotate(-50)">
-      <rect x="-7.1" y="-0.48" width="11.0" height="0.96" rx="0.35"/>
-      <path d="M3.7 -1.55 L8.55 0 L3.7 1.55 Z"/>
-      <path d="M-7.1 -0.85 L-8.55 0 L-7.1 0.85 Z"/>
-    </g>
-    <g transform="translate(1.2,-0.55) rotate(-24)">
-      <rect x="-7.45" y="-0.62" width="11.9" height="1.24" rx="0.4"/>
-      <path d="M4.2 -2.05 L9.55 0 L4.2 2.05 L5.2 0 Z"/>
-      <path d="M-7.45 -1.05 L-9.15 0 L-7.45 1.05 Z"/>
-    </g>
-  `,
-  // Knight horse + recurve bow
-  horsearcher: `
-    <g transform="translate(-2.55,0.35) scale(0.72)">
-      <path d="M-5.4 7.2
-        L-5.8 2.2
-        C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
-        C-0.8 -7.4 0.4 -8.4 1.6 -8.8
-        L2.4 -6.6
-        C4.4 -6.2 6.6 -4.8 7.8 -3.2
-        C8.8 -2.0 8.6 -0.4 7.2 0.1
-        C6.2 0.4 5.4 -0.5 4.8 -1.1
-        C3.2 0.6 1.6 2.8 0.6 5.0
-        L0.1 7.2
-        Z"/>
-    </g>
-    <g transform="translate(4.35,0.15)">
-      <path d="M-0.55 -7.15
-        C3.45 -3.85 3.45 3.85 -0.55 7.15
-        L0.7 5.75
-        C3.35 2.85 3.35 -2.85 0.7 -5.75
-        Z"/>
-      <path d="M0.55 -5.95 L0.55 5.95 L1.55 5.95 L1.55 -5.95 Z"/>
-      <rect x="-3.7" y="-0.52" width="10.35" height="1.04" rx="0.3"/>
-      <path d="M6.05 -1.75 L8.55 0 L6.05 1.75 Z"/>
-    </g>
-  `,
-  // Horse + leaf-headed javelin
-  lightcavalry: `
-    <g transform="translate(-2.7,0.4) scale(0.7)">
-      <path d="M-5.4 7.2
-        L-5.8 2.2
-        C-5.6 -1.2 -4.2 -4.2 -1.8 -6.2
-        C-0.8 -7.4 0.4 -8.4 1.6 -8.8
-        L2.4 -6.6
-        C4.4 -6.2 6.6 -4.8 7.8 -3.2
-        C8.8 -2.0 8.6 -0.4 7.2 0.1
-        C6.2 0.4 5.4 -0.5 4.8 -1.1
-        C3.2 0.6 1.6 2.8 0.6 5.0
-        L0.1 7.2
-        Z"/>
-    </g>
-    <g transform="translate(3.9,-0.2) rotate(-38)">
-      <rect x="-6.4" y="-0.55" width="10.2" height="1.1" rx="0.35"/>
-      <path d="M3.55 -1.7 L8.1 0 L3.55 1.7 Z"/>
-      <path d="M-6.4 -0.9 L-7.9 0 L-6.4 0.9 Z"/>
-    </g>
-  `,
-  // Wheel, cab, horse, bow
-  chariotarcher: `
-    <path fill-rule="evenodd" d="M-3.45 5.05 m-3.55 0 a3.55 3.55 0 1 0 7.1 0 a3.55 3.55 0 1 0 -7.1 0
-      M-3.45 5.05 m-2.25 0 a2.25 2.25 0 1 0 4.5 0 a2.25 2.25 0 1 0 -4.5 0"/>
-    <circle cx="-3.45" cy="5.05" r="0.7"/>
-    <rect x="-3.85" y="1.7" width="0.8" height="6.7" rx="0.25"/>
-    <rect x="-6.8" y="4.65" width="6.7" height="0.8" rx="0.25"/>
-    <path d="M-6.35 -0.2 H0.75 V3.75 H-6.35 Z"/>
-    <path d="M-6.35 -0.2 V-1.85 H0.75 V-0.2"/>
-    <circle cx="-2.45" cy="-3.5" r="1.65"/>
-    <rect x="-0.25" y="1.75" width="5.2" height="0.8" rx="0.25"/>
-    <ellipse cx="5.75" cy="2.5" rx="3.7" ry="1.95"/>
-    <path d="M8.2 1.15 C10.05 -0.9 8.1 -3.55 5.55 -2.4 L6.25 0.3 Z"/>
-    <rect x="3.5" y="4.05" width="1.15" height="3.95" rx="0.4"/>
-    <rect x="6.85" y="4.05" width="1.15" height="3.75" rx="0.4"/>
-    <path d="M0.2 -6.65 C3.45 -3.8 3.45 0.55 0.2 3.4 L1.15 2.2 C3.25 0.05 3.25 -3.3 1.15 -5.45 Z"/>
-    <rect x="-2.55" y="-1.7" width="6.15" height="0.9" rx="0.25"/>
-    <path d="M3.25 -2.55 L5.55 -1.25 L3.25 0.05 Z"/>
-  `,
-  // Soldier behind the scutum; gladius in front, along the shield's right edge
-  cohort: `
-    <g transform="translate(0.35,-1.15) scale(0.8)">
-      <circle cx="0" cy="-4.2" r="2.6"/>
-      <path d="M-4.2 -2.2 Q0 -5.5 4.2 -2.2 L3.2 0.5 H-3.2 Z"/>
-      <path d="M-3.4 1.2 H3.4 L2.6 6.5 H-2.6 Z"/>
-      <rect x="-0.7" y="1.5" width="1.4" height="4.5" rx="0.4"/>
-    </g>
-    <g transform="translate(6.5,1)">
-      <path fill-rule="evenodd" d="M-9.15 -5.55
-        Q-10.05 0.15 -9.15 5.85
-        L-5.45 6.45
-        Q-6.35 0.15 -5.45 -6.05
-        Z
-        M-7.3 0.15 m-1.05 0 a1.05 1.05 0 1 0 2.1 0 a1.05 1.05 0 1 0 -2.1 0"/>
-      <circle cx="-7.3" cy="0.15" r="0.42"/>
-    </g>
-    <g transform="translate(7.35,1.15)">
-      <path d="M-3.95 1.85 L-4.28 -2.15 L-3.55 -6.35 L-2.82 -2.15 L-3.15 1.85 Z"/>
-      <rect x="-4.55" y="1.75" width="2.0" height="0.72" rx="0.16"/>
-      <rect x="-3.82" y="2.42" width="0.54" height="2.05" rx="0.16"/>
-      <circle cx="-3.55" cy="4.95" r="0.72"/>
-    </g>
-  `,
-  // Helmet behind aspis, crest above the rim
-  hoplite: `
-    <ellipse cx="-0.2" cy="-5.15" rx="2.85" ry="2.2"/>
-    <path d="M-0.85 -6.8 Q0.35 -10.3 1.7 -6.8 L1.15 -5.2 H-0.3 Z"/>
-    <path fill-rule="evenodd" d="M-0.4 2.05 m-6.35 0 a6.35 6.35 0 1 0 12.7 0 a6.35 6.35 0 1 0 -12.7 0
-      M-0.4 2.05 m-4.2 0 a4.2 4.2 0 1 0 8.4 0 a4.2 4.2 0 1 0 -8.4 0"/>
-    <circle cx="-0.4" cy="2.05" r="1.5"/>
-    <rect x="5.15" y="-7.6" width="1.4" height="15.6" rx="0.4"/>
-    <path d="M4.8 -7.4 L5.85 -9.6 L6.9 -7.4 Z"/>
-  `,
-  // War elephant — ear, trunk, tusk
-  elephant: `
-    <ellipse cx="-1.4" cy="2.2" rx="5.8" ry="4.2"/>
-    <rect x="-5.4" y="4.4" width="2.3" height="4.0" rx="0.65"/>
-    <rect x="0.0" y="4.4" width="2.3" height="4.0" rx="0.65"/>
-    <path d="M1.4 -0.2
-      C-1.2 -6.6 -7.2 -4.6 -5.6 1.2
-      C-3.4 2.0 0.2 1.6 1.4 -0.2 Z"/>
-    <circle cx="4.6" cy="-1.0" r="3.15"/>
-    <path d="M7.0 0.3
-      C9.4 2.6 8.8 7.0 5.8 8.6
-      C7.2 5.4 7.4 2.8 6.4 0.8 Z"/>
-    <path d="M6.0 0.2 L9.2 3.2 L6.6 1.2 Z"/>
-    <path d="M-3.2 -2.0 H1.4 V-4.4 H-0.4 L-1.0 -6.0 L-1.6 -4.4 H-3.2 Z"/>
-  `,
-  // Horned helm + greataxe
-  barbarian: `
-    <path d="M-2.6 -4.4 L-7.2 -8.6 L-4.2 -3.6 Z"/>
-    <path d="M2.6 -4.4 L7.2 -8.6 L4.2 -3.6 Z"/>
-    <ellipse cx="0" cy="-3.2" rx="3.5" ry="2.7"/>
-    <path d="M-2.2 -2.0 Q0 3.6 2.2 -2.0 L1.3 0.6 H-1.3 Z"/>
-    <rect x="-0.5" y="1.0" width="1.0" height="7.0" rx="0.35"/>
-    <path d="M0.4 1.5 L7.6 -1.4 L8.2 1.8 L6.2 5.2 L0.4 4.2 Z"/>
-    <path d="M-2.7 6.4 H2.7 L2.1 8.8 H-2.1 Z"/>
-  `,
-  // Onager — A-frame + cocked arm + stone
-  catapult: `
-    <rect x="-7.4" y="4.6" width="13.6" height="2.4" rx="0.4"/>
-    <circle cx="-4.8" cy="7.1" r="1.55"/>
-    <circle cx="4.0" cy="7.1" r="1.55"/>
-    <path d="M-5.2 4.8 L0.2 -3.4 L1.6 -3.4 L5.6 4.8 H3.6 L0.9 -0.8 L-3.2 4.8 Z"/>
-    <path d="M-7.0 0.6 L4.4 -7.6 L5.6 -6.2 L-5.8 2.0 Z"/>
-    <path d="M3.6 -8.8 L7.4 -7.6 L6.6 -4.8 L3.0 -6.0 Z"/>
-    <circle cx="5.8" cy="-7.0" r="1.55"/>
-  `,
-  // Torsion ballista — frame, bow arms, bolt
-  ballista: `
-    <rect x="-6.8" y="4.4" width="13.6" height="2.2" rx="0.4"/>
-    <circle cx="-4.4" cy="6.9" r="1.45"/>
-    <circle cx="4.4" cy="6.9" r="1.45"/>
-    <rect x="-1.15" y="-1.6" width="2.3" height="6.4" rx="0.35"/>
-    <path d="M-1.15 -0.4 L-7.4 -3.6 L-6.9 -5.1 L-1.15 -2.0 Z"/>
-    <path d="M1.15 -0.4 L7.4 -3.6 L6.9 -5.1 L1.15 -2.0 Z"/>
-    <rect x="-0.55" y="-7.2" width="1.1" height="6.2" rx="0.35"/>
-    <path d="M-1.35 -7.0 L0 -9.5 L1.35 -7.0 Z"/>
-  `,
-  // Rifle + large crosshair scope
-  sniper: `
-    <circle cx="-4.5" cy="-3.2" r="1.6"/>
-    <path d="M-6 -1.2 H-3.2 L-2.6 5.5 H-5.5 Z"/>
-    <rect x="-3.5" y="-0.4" width="8" height="1.2" rx="0.4" transform="rotate(-10 1 0)"/>
-    <g fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round">
-      <circle cx="3.2" cy="-2.8" r="4.2"/>
-      <circle cx="3.2" cy="-2.8" r="2.2"/>
-      <path d="M3.2 -7.6 V1.8 M-1.6 -2.8 H8"/>
-    </g>
-  `,
-  // Hull + turret + barrel
-  tank: `
-    <rect x="-6.5" y="1.2" width="13" height="3.8" rx="1.2"/>
-    <rect x="-5.2" y="-1.2" width="10.4" height="3.2" rx="1"/>
-    <rect x="-2.2" y="-4.2" width="4.4" height="3.5" rx="0.8"/>
-    <rect x="1.8" y="-3.4" width="6.5" height="1.4" rx="0.5"/>
-    <circle cx="-3.5" cy="3.1" r="1.3"/>
-    <circle cx="0" cy="3.1" r="1.3"/>
-    <circle cx="3.5" cy="3.1" r="1.3"/>
-  `,
-  // Peaked officer — star lives on the general token above the piece
-  general: `
-    <path d="M-4.6 -5.2 L0 -7.4 L4.6 -5.2 L3.8 -3.6 H-3.8 Z"/>
-    <circle cx="0" cy="-2.2" r="2.4"/>
-    <path d="M-4.4 -0.2 Q0 -2.4 4.4 -0.2 L3.4 2.2 H-3.4 Z"/>
-    <path d="M-3.6 2.4 H3.6 L2.6 7 H-2.6 Z"/>
-  `,
-  // Keep — shaft, merlons, slit
-  tower: `
-    <path d="M-7 7.5 H7 L5.5 3 H-5.5 Z"/>
-    <path d="M-4.8 3 H4.8 V-2.1 H-4.8 Z"/>
-    <path d="M-6.3 -2.1 H6.3 V-3.9
-      H4.7 V-7.3 H2.7 V-3.9
-      H1.0 V-7.3 H-1.0 V-3.9
-      H-2.7 V-7.3 H-4.7 V-3.9
-      H-6.3 Z"/>
-    <rect x="-1.15" y="-0.15" width="2.3" height="2.5" rx="0.35"/>
-  `,
-  // Scarecrow — pole, crossbar, sack head, ragged hat
-  dummy: `
-    <rect x="-0.7" y="-1.6" width="1.4" height="10.4" rx="0.4"/>
-    <rect x="-7.4" y="-1.4" width="14.8" height="1.55" rx="0.5"/>
-    <path d="M-7.4 -1.4 L-9.2 -3.6 L-8.4 -0.2 L-7.0 0.2 Z"/>
-    <path d="M7.4 -1.4 L9.2 -3.6 L8.4 -0.2 L7.0 0.2 Z"/>
-    <path d="M-7.2 0.1 L-8.8 2.6 L-6.6 0.9 Z"/>
-    <path d="M7.2 0.1 L8.8 2.6 L6.6 0.9 Z"/>
-    <ellipse cx="0" cy="-4.9" rx="3.55" ry="3.2"/>
-    <ellipse cx="0" cy="-7.15" rx="4.6" ry="0.95"/>
-    <path d="M-2.35 -7.15 Q0 -9.9 2.35 -7.15 Z"/>
-    <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
-      d="M-1.55 -5.55 L-0.35 -4.35 M-0.35 -5.55 L-1.55 -4.35
-         M0.35 -5.55 L1.55 -4.35 M1.55 -5.55 L0.35 -4.35"/>
-    <path d="M-2.4 8.8 H2.4 L0.9 10 H-0.9 Z"/>
-  `,
-  // Hooded levy + pitchfork
-  peasant: `
-    <rect x="3.15" y="-5.6" width="1.1" height="13.4" rx="0.35"/>
-    <path d="M1.35 -7.5 H6.05 V-6.05 H5.2 V-7.25 H4.3 V-5.55 H3.1 V-7.25 H2.2 V-6.05 H1.35 Z"/>
-    <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
-    <circle cx="0" cy="-3.15" r="1.95"/>
-    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
-  `,
-  // Worker + claw hammer
-  builder: `
-    <path d="M-3.15 -2.05 Q0 -7.9 3.15 -2.05 L2.15 0.55 H-2.15 Z"/>
-    <circle cx="0" cy="-3.15" r="1.95"/>
-    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
-    <g transform="translate(4.6,-0.4) rotate(-28)">
-      <rect x="-0.55" y="-1.2" width="1.1" height="9.6" rx="0.35"/>
-      <path d="M-2.8 -3.4 H3.05 V-0.55 H0.85 V0.85 H-0.85 V-0.55 H-2.8 Z"/>
-    </g>
-  `,
-  // Peasant + brim hat. Fork sits right of the brim, tines above it.
-  dude: `
-    <circle cx="0" cy="-2.55" r="1.95"/>
-    <path d="M-3.55 0.95 H3.55 L2.65 7.5 H-2.65 Z"/>
-    <ellipse cx="0" cy="-4.85" rx="3.05" ry="0.88"/>
-    <path d="M-2.05 -4.95 Q0 -8.45 2.05 -4.95 Z"/>
-    <rect x="5.25" y="-6.85" width="1.1" height="14.6" rx="0.35"/>
-    <path d="M3.45 -8.85 H8.15 V-7.4 H7.3 V-8.6 H6.4 V-6.9 H5.2 V-8.6 H4.3 V-7.4 H3.45 Z"/>
-  `,
-  // Wolf — standing side profile, snout right: ears, muzzle, brush tail, legs.
-  wolf: `
-    <path d="M-5.2 0.4
-      L-6.8 -3.6 L-9.6 -4.8 L-11.0 -2.2
-      L-10.4 1.4 L-8.6 3.8 L-6.4 2.6
-      L-5.0 1.2 Z"/>
-    <ellipse cx="-0.4" cy="1.35" rx="5.9" ry="2.55"/>
-    <path fill-rule="evenodd" d="M3.4 -0.1
-      C4.2 -1.8 4.6 -3.4 3.9 -4.9
-      L2.5 -6.6 L4.0 -9.2 L5.15 -5.6
-      L6.5 -8.2 L7.35 -5.0
-      L10.8 -3.5 L11.35 -1.55 L8.3 -1.15
-      L9.15 0.25 L7.0 -0.15
-      L6.15 1.45 L4.15 0.75
-      C3.7 0.45 3.5 0.15 3.4 -0.1 Z
-      M5.7 -2.55 m-0.72 0 a0.72 0.72 0 1 0 1.44 0 a0.72 0.72 0 1 0 -1.44 0"/>
-    <path d="M6.85 -1.7 L9.85 -2.55 L10.45 -0.55 L7.45 -0.4 Z"/>
-    <path d="M-4.4 3.2 L-5.15 8.55 L-3.7 8.55 L-3.05 3.5 Z"/>
-    <path d="M-1.7 3.5 L-2.3 8.55 L-0.85 8.55 L-0.4 3.7 Z"/>
-    <path d="M1.0 3.3 L0.4 8.55 L1.85 8.55 L2.25 3.5 Z"/>
-    <path d="M3.5 3.15 L3.05 8.55 L4.5 8.55 L4.7 3.35 Z"/>
-    <path d="M-5.15 8.55 H-3.55 L-3.95 9.55 H-5.65 Z"/>
-    <path d="M-2.3 8.55 H-0.7 L-1.1 9.55 H-2.8 Z"/>
-    <path d="M0.4 8.55 H2.0 L1.6 9.55 H-0.1 Z"/>
-    <path d="M3.05 8.55 H4.65 L4.25 9.55 H2.55 Z"/>
-  `,
-  // Delta interceptor
-  fighter: `
-    <path d="M0 -8.4 L7.2 6.6 L0 3.4 L-7.2 6.6 Z"/>
-    <ellipse cx="0" cy="-2.15" rx="1.25" ry="2.05"/>
-    <rect x="-3.35" y="5.05" width="2.35" height="2.85" rx="0.4"/>
-    <rect x="1.0" y="5.05" width="2.35" height="2.85" rx="0.4"/>
-  `,
-  // Chin-gun hull + stub wings
-  gunship: `
-    <ellipse cx="0" cy="0.15" rx="2.35" ry="7.05"/>
-    <path d="M-2.15 -0.55 L-8.7 1.35 L-8.25 3.35 L-2.15 1.7 Z"/>
-    <path d="M2.15 -0.55 L8.7 1.35 L8.25 3.35 L2.15 1.7 Z"/>
-    <ellipse cx="0" cy="-4.55" rx="1.45" ry="1.75"/>
-    <path d="M-1.55 5.45 H1.55 L0.85 7.35 H-0.85 Z"/>
-    <rect x="-0.5" y="6.85" width="1.0" height="2.55" rx="0.28"/>
-  `,
-  // Fat flying wing + twin tails
-  bomber: `
-    <path d="M0 -6.55 L9.35 4.55 L3.45 3.05 L3.45 7.05 L0 5.35 L-3.45 7.05 L-3.45 3.05 L-9.35 4.55 Z"/>
-    <ellipse cx="0" cy="-0.55" rx="2.15" ry="3.25"/>
-    <rect x="-1.7" y="4.55" width="3.4" height="2.9" rx="0.4"/>
-  `,
-  // Slim warship hull
-  frigate: `
-    <path d="M0 -8.7 L2.55 -4.05 L2.7 6.15 L1.25 8.45 L-1.25 8.45 L-2.7 6.15 L-2.55 -4.05 Z"/>
-    <rect x="-1.55" y="-1.7" width="3.1" height="4.55" rx="0.4"/>
-    <rect x="-0.7" y="-5.05" width="1.4" height="2.5" rx="0.3"/>
-    <rect x="-2.15" y="6.45" width="1.5" height="2.25" rx="0.3"/>
-    <rect x="0.65" y="6.45" width="1.5" height="2.25" rx="0.3"/>
-  `,
-  // Capital hull + wing guns
-  cruiser: `
-    <path d="M0 -8.35 L3.75 -3.55 L4.15 5.45 L2.05 8.25 L-2.05 8.25 L-4.15 5.45 L-3.75 -3.55 Z"/>
-    <rect x="-2.45" y="-1.25" width="4.9" height="5.25" rx="0.5"/>
-    <rect x="-1.15" y="-4.55" width="2.3" height="2.85" rx="0.35"/>
-    <rect x="-7.35" y="0.25" width="3.5" height="1.45" rx="0.35"/>
-    <rect x="3.85" y="0.25" width="3.5" height="1.45" rx="0.35"/>
-    <rect x="-1.9" y="6.15" width="1.5" height="2.4" rx="0.3"/>
-    <rect x="0.4" y="6.15" width="1.5" height="2.4" rx="0.3"/>
-  `,
-  // Ram prow + triple turrets
-  dreadnought: `
-    <path d="M0 -8.15 L4.75 -3.85 L5.35 5.05 L2.65 8.45 L-2.65 8.45 L-5.35 5.05 L-4.75 -3.85 Z"/>
-    <path d="M-1.7 -6.15 L0 -9.55 L1.7 -6.15 Z"/>
-    <circle cx="0" cy="-2.35" r="1.65"/>
-    <rect x="-0.38" y="-5.55" width="0.76" height="3.15" rx="0.2"/>
-    <circle cx="-2.05" cy="1.55" r="1.4"/>
-    <rect x="-4.85" y="1.2" width="2.75" height="0.7" rx="0.2"/>
-    <circle cx="2.05" cy="1.55" r="1.4"/>
-    <rect x="2.1" y="1.2" width="2.75" height="0.7" rx="0.2"/>
-    <rect x="-1.35" y="3.35" width="2.7" height="3.15" rx="0.4"/>
-    <rect x="-3.5" y="6.55" width="2.05" height="2.35" rx="0.35"/>
-    <rect x="1.45" y="6.55" width="2.05" height="2.35" rx="0.35"/>
-  `,
-};
-
-export function pieceIconSvg(type: UnitType, size = 16): string {
-  const s = size / 20;
-  return `<g class="piece-icon" transform="scale(${s})">${ICONS[roleOf(type)]}</g>`;
-}
+export { pieceIconSvg } from './new_icons';
 
 function treeMarkSvg(chips: number): string {
   const canopy =
@@ -535,6 +158,26 @@ export function tokenGlyphSvg(
       .join('');
     return `<g class="token-forest${chips ? ' damaged' : ''}">
       <g transform="scale(${gs.toFixed(3)})">${marks}</g>
+    </g>`;
+  }
+  if (type === 'grass') {
+    const gs = size / 10;
+    const tuft = (t: string) => `<g transform="${t}">
+      <path d="M-2.2 0 Q-3.4 -1.5 -4.8 -2.6 Q-2.6 -2.2 -1.2 0 Z" fill="var(--grass-lo)"/>
+      <path d="M2.2 0 Q3.4 -1.5 4.8 -2.6 Q2.6 -2.2 1.2 0 Z" fill="var(--grass-lo)"/>
+      <path d="M-1.4 0 Q-2.2 -2.4 -3.6 -4.6 Q-1.4 -3.4 -0.4 0 Z" fill="var(--grass)"/>
+      <path d="M1.4 0 Q2.2 -2.4 3.6 -4.6 Q1.4 -3.4 0.4 0 Z" fill="var(--grass)"/>
+      <path d="M-0.7 0 Q-0.5 -3.6 0 -6 Q0.5 -3.6 0.7 0 Z" fill="var(--grass-hi)"/>
+    </g>`;
+    return `<g class="token-grass">
+      <g transform="scale(${gs.toFixed(3)})">
+        <ellipse cx="0" cy="3.4" rx="6.6" ry="2.6" fill="var(--grass-lo)" opacity="0.28"/>
+        ${tuft('translate(-1.2,-0.4) scale(0.7)')}
+        ${tuft('translate(3.6,-1.2) scale(0.62)')}
+        ${tuft('translate(-4.2,2.2) scale(0.9)')}
+        ${tuft('translate(4.4,3) scale(0.85)')}
+        ${tuft('translate(0.2,5) scale(1.1)')}
+      </g>
     </g>`;
   }
   if (type === 'bridge') {
