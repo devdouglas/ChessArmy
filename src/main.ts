@@ -6990,6 +6990,7 @@ function renderToolbar(): string {
         <button type="button" id="editor-nav-ai" class="${screen === 'ai' ? 'active' : ''}">AI</button>
         <button type="button" id="editor-nav-roguelite" class="${screen === 'roguelite' ? 'active' : ''}">Roguelite</button>
         <button type="button" id="editor-nav-unlocks" class="${screen === 'unlocks' ? 'active' : ''}">Unlocks</button>
+        <button type="button" id="editor-nav-sound" title="Open the There Will Be Legions sound studio (http://127.0.0.1:5198) in a new tab">Sound</button>
       </nav>`
     : '';
   return `<div class="toolbar">
@@ -7366,6 +7367,10 @@ function bindToolbarEvents() {
     if (screen === 'unlocks') return;
     if (!confirmLeaveEditor()) return;
     enterRogueUnlocks();
+  });
+  // Sound studio: separate local tool (~/htdocs/ChessArmy-tools/legions-studio, port 5198).
+  app.querySelector('#editor-nav-sound')?.addEventListener('click', () => {
+    window.open('http://127.0.0.1:5198/', '_blank', 'noopener');
   });
   app.querySelector('#edit-this-level')?.addEventListener('click', () => {
     if (!activeLevelId) return;
