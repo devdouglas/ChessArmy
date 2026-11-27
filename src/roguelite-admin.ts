@@ -133,8 +133,12 @@ function esc(s: string): string {
 }
 
 /** Used units (plus the current selection so a stale pick stays visible), grouped like the Units editor. */
-function usedUnitTypeOptions(selected: string | null | undefined, draft: RogueConfig): string {
-  const opts = [`<option value=""${selected ? '' : ' selected'}>Choose a unit…</option>`];
+function usedUnitTypeOptions(
+  selected: string | null | undefined,
+  draft: RogueConfig,
+  emptyLabel = 'Choose a unit…',
+): string {
+  const opts = [`<option value=""${selected ? '' : ' selected'}>${esc(emptyLabel)}</option>`];
   const byCat: Record<string, UnitType[]> = {};
   for (const typ of UNIT_TYPES) {
     const used = unitRogueCfgMerged(typ, draft).used;
@@ -203,7 +207,7 @@ function conditionParams(cond: RogueUnlockCondition, opts: UnlockEditorOpts): st
   if (cond.type === 'killUnits') {
     return phrase(
       `Kill ${unlockNumberInput('count', cond.count, 'How many to kill', 9999)}
-      <select data-unlock-param="unitType" aria-label="Unit type">${usedUnitTypeOptions(cond.unitType, opts.draft)}</select>`,
+      <select data-unlock-param="unitType" aria-label="Unit type">${usedUnitTypeOptions(cond.unitType, opts.draft, 'Any unit')}</select>`,
     );
   }
   if (cond.type === 'winWithUnits') {

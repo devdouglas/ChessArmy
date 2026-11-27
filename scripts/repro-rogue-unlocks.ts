@@ -121,6 +121,32 @@ assert(
   `kill 5 Elephant progress, got ${kill5d.map((d) => `${d.label} / ${d.text}`).join(' | ')}`,
 );
 
+const kill5any = sanitizeUnlock({ type: 'killUnits', count: 5, unitType: '' });
+assert(
+  kill5any[0]!.type === 'killUnits' &&
+    (kill5any[0] as { unitType: string | null }).unitType === null &&
+    (kill5any[0] as { count: number }).count === 5,
+  'empty killUnits type stays any-unit',
+);
+assert(
+  unlockConditionLabel(kill5any[0]!) === 'Kill 5 units',
+  `any-unit label, got ${unlockConditionLabel(kill5any[0]!)}`,
+);
+const kill5anyd = describeUnlock(
+  kill5any,
+  sanitizeRogueProgress({ kills: { elephant: 2, soldier: 1 } }),
+  1,
+);
+assert(
+  kill5anyd[0]?.label === 'Kill 5 units' && kill5anyd[0]?.text === '3/5 units',
+  `any-unit progress uses total kills, got ${kill5anyd.map((d) => `${d.label} / ${d.text}`).join(' | ')}`,
+);
+assert(!conditionSatisfied(kill5any[0]!, sanitizeRogueProgress({ kills: { elephant: 2, soldier: 1 } })), '3/5 not yet');
+assert(
+  conditionSatisfied(kill5any[0]!, sanitizeRogueProgress({ kills: { elephant: 2, soldier: 3 } })),
+  'total kills 5 meets any-unit',
+);
+
 const win3 = sanitizeUnlock({ type: 'winWithUnits', count: 3, unitType: 'elephant' });
 assert((win3[0] as { count: number }).count === 3, 'winWithUnits keeps 3');
 assert(

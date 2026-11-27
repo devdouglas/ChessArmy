@@ -95,6 +95,21 @@ assert(/<select data-unlock-param="unitType"/.test(row), 'unit picker');
 assert(row.includes('Choose a unit'), 'unit placeholder');
 assert(/<option value="elephant"/.test(row), 'used units listed');
 
+const killAnyCfg: RogueConfig = {
+  ...base,
+  units: {
+    ...base.units,
+    [unitId]: {
+      ...(base.units[unitId] ?? {}),
+      unlock: sanitizeUnlock({ type: 'killUnits', count: 5, unitType: null }),
+    },
+  },
+};
+row = unitRow(renderRogueConfigPage(killAnyCfg, true), unitId);
+assert(row.includes('>Any unit</option>') || row.includes('>Any unit<'), 'killUnits has Any unit');
+assert(/<option value="" selected>Any unit</.test(row), 'Any unit is the default');
+assert(!row.includes('Choose a unit'), 'killUnits does not use the choose placeholder');
+
 const saved: RogueConfig = {
   ...afterType,
   units: {
