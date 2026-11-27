@@ -368,7 +368,15 @@ export function regionRogueCfg(id: string, cfg: RogueConfig = current): RogueReg
   return mergeRegion(id, cfg.regions[id]);
 }
 
-/** Built-in presets, then user presets, then any leftover ids still in the config. */
+function compareRogueRegionPresets(a: RogueRegionInfo, b: RogueRegionInfo, cfg: RogueConfig): number {
+  if (a.difficulty !== b.difficulty) return a.difficulty - b.difficulty;
+  const fa = regionRogueCfg(a.id, cfg).fromBattle;
+  const fb = regionRogueCfg(b.id, cfg).fromBattle;
+  if (fa !== fb) return fa - fb;
+  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+}
+
+/** Terrain presets ordered by difficulty, then from-battle, then name. */
 export function listRogueRegionPresets(cfg: RogueConfig = current): RogueRegionInfo[] {
   const seen = new Set<string>();
   const out: RogueRegionInfo[] = [];
@@ -393,6 +401,7 @@ export function listRogueRegionPresets(cfg: RogueConfig = current): RogueRegionI
       builtin: !!p?.builtin,
     });
   }
+  out.sort((a, b) => compareRogueRegionPresets(a, b, cfg));
   return out;
 }
 
@@ -829,9 +838,12 @@ export function exportRogueConfigJson(cfg: RogueConfig = current): string {
   for (const id of PROMOTION_TOKEN_TYPES) {
     promotions[id] = promoCfgSnapshot(id, cfg);
   }
-  const regions: Record<string, Partial<RogueRegionCfg>> = { ...cfg.regions };
+  const regions: Record<string, Partial<RogueRegionCfg>> = {};
   for (const r of listRogueRegionPresets(cfg)) {
     regions[r.id] = regionCfgSnapshot(r.id, cfg);
+  }
+  for (const [id, val] of Object.entries(cfg.regions)) {
+    if (!(id in regions)) regions[id] = val;
   }
   const out: RogueConfig = {
     version: ROGUE_CONFIG_VERSION,

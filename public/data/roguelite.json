@@ -733,13 +733,13 @@
       "toBattle": null,
       "weight": 1
     },
-    "builtin-village": {
+    "builtin-long-grass": {
       "enabled": true,
       "fromBattle": 1,
       "toBattle": null,
       "weight": 1
     },
-    "builtin-long-grass": {
+    "builtin-village": {
       "enabled": true,
       "fromBattle": 1,
       "toBattle": null,
@@ -751,25 +751,25 @@
       "toBattle": null,
       "weight": 1
     },
-    "builtin-marshland": {
-      "enabled": true,
-      "fromBattle": 4,
-      "toBattle": null,
-      "weight": 1
-    },
     "builtin-highlands": {
       "enabled": true,
       "fromBattle": 4,
       "toBattle": null,
       "weight": 1
     },
-    "builtin-fortified-ridge": {
+    "builtin-marshland": {
+      "enabled": true,
+      "fromBattle": 4,
+      "toBattle": null,
+      "weight": 1
+    },
+    "builtin-badlands": {
       "enabled": true,
       "fromBattle": 8,
       "toBattle": null,
       "weight": 1
     },
-    "builtin-badlands": {
+    "builtin-fortified-ridge": {
       "enabled": true,
       "fromBattle": 8,
       "toBattle": null,
