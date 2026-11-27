@@ -49,6 +49,9 @@
   --tree: #3a6a38;
   --tree-hi: #5a8a48;
   --tree-lo: #244828;
+  --grass: #5f9a3a;
+  --grass-hi: #8cbc50;
+  --grass-lo: #345c22;
   --house-plaster: #e2c07a;
   --house-plaster-hi: #f3dba0;
   --house-plaster-lo: #c49a52;
@@ -170,6 +173,9 @@ html[data-period='ancient'] {
   --tree: #4a7038;
   --tree-hi: #6a8a48;
   --tree-lo: #2e4a24;
+  --grass: #629e3c;
+  --grass-hi: #92c254;
+  --grass-lo: #3a6424;
   --house-plaster: #ecc888;
   --house-plaster-hi: #f8e0a8;
   --house-plaster-lo: #c8a058;
@@ -264,8 +270,11 @@ html[data-period='futuristic'] {
   --bridge-lo: #3a2410;
   --bridge-ink: #140c08;
   --tree: #1a5848;
-  --tree-hi: #28a878;
+  --tree-hi: #1c8a62;
   --tree-lo: #0c3028;
+  --grass: #28a878;
+  --grass-hi: #3fc08a;
+  --grass-lo: #08493a;
   --house-plaster: #c8b070;
   --house-plaster-hi: #dcc888;
   --house-plaster-lo: #9a8450;
@@ -2653,6 +2662,10 @@ button.primary:focus-visible {
 .editor-brushes .brush.forest.active {
   border-color: #5a8a48;
   color: #8aba70;
+}
+.editor-brushes .brush.grass.active {
+  border-color: #9cc45a;
+  color: #c4e080;
 }
 .editor-brushes .brush.high.active {
   border-color: #c4a86a;

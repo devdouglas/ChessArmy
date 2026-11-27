@@ -49,7 +49,7 @@ export const ABILITY_LABEL: Record<AbilityId, string> = {
 };
 
 export const ABILITY_BLURB: Record<AbilityId, string> = {
-  hide: 'Hide in forest. Enemies cannot see this unit until it moves, attacks, or is hit. Stepping onto forest again hides it.',
+  hide: 'Hide in forest or long grass. Enemies cannot see this unit until it attacks, is hit, or moves over an open hex — walking cover to cover keeps it hidden and unseen. Stepping onto cover again hides it. Long grass hides but does not stop arrows.',
   javelin:
     'Switch to a javelin throw. Shows throw range; clicking a target shoots — no melee/shoot picker. Walk-to orders still work.',
   charge:

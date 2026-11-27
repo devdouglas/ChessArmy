@@ -140,7 +140,7 @@ export const AI_RULES = [
     id: 'hold-position',
     category: 'defending',
     label: 'Hold position',
-    blurb: 'When Attack is off: stay put. Turn only toward an enemy this piece can see (its Sight). A ranged hit, or an enemy newly entering that sight, makes them move and try to attack. Hidden units, and anyone in forest or a house, do not trigger that contact — and a unit in cover is not pulled out by Sight.',
+    blurb: 'When Attack is off: stay put. Turn only toward an enemy this piece can see (its Sight). A ranged hit, or an enemy newly entering that sight, makes them move and try to attack. Hidden units, and anyone in forest, long grass or a house, do not trigger that contact — and a unit in cover is not pulled out by Sight.',
   },
   {
     id: 'no-flee',

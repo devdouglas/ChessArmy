@@ -210,6 +210,7 @@ export const TOKEN_TYPES = [
   'palisade',
   'tree',
   'forest',
+  'grass',
   'bridge',
   'flag',
   'board',
@@ -239,6 +240,7 @@ export const TOKEN_LABEL: Record<TokenType, string> = {
   palisade: 'Palisade',
   tree: 'Tree',
   forest: 'Forest',
+  grass: 'Long grass',
   bridge: 'Bridge',
   flag: 'Flag',
   board: 'Board',
@@ -708,6 +710,11 @@ export function isForestToken(type: TokenType | undefined): boolean {
   return type === 'forest';
 }
 
+/** Long grass: Hide cover like forest, but it is not wood — no shot soak, no LOS block. */
+export function isGrassToken(type: TokenType | undefined): boolean {
+  return type === 'grass';
+}
+
 export function isBridgeToken(type: TokenType | undefined): boolean {
   return type === 'bridge';
 }
@@ -746,6 +753,13 @@ export function isForest(
   return !!hexToken(state.tokens, h, (t) => isForestToken(t.type));
 }
 
+export function isGrass(
+  state: { tokens: TileToken[] },
+  h: Hex,
+): boolean {
+  return !!hexToken(state.tokens, h, (t) => isGrassToken(t.type));
+}
+
 export function isBridge(
   state: { tokens: TileToken[] },
   h: Hex,
@@ -754,7 +768,7 @@ export function isBridge(
 }
 
 export function isHideToken(type: TokenType | undefined): boolean {
-  return isForestToken(type);
+  return isForestToken(type) || isGrassToken(type);
 }
 
 export function isHideCover(
@@ -764,15 +778,15 @@ export function isHideCover(
   return !!hexToken(state.tokens, h, (t) => isHideToken(t.type));
 }
 
-/** Tiles that hide a unit for Hold LOS: forest, or a house they're garrisoned in. */
+/** Tiles that hide a unit for Hold LOS: forest, long grass, or a house they're garrisoned in. */
 export function isHideTile(
   state: { tokens: TileToken[] },
   h: Hex,
 ): boolean {
-  return isForest(state, h) || isHouse(state, h);
+  return isForest(state, h) || isGrass(state, h) || isHouse(state, h);
 }
 
-/** Hidden, or taking cover in forest / house — Hold LOS contact does not fire. */
+/** Hidden, or taking cover in forest / long grass / house — Hold LOS contact does not fire. */
 export function hidesHoldLos(state: GameState, piece: Piece): boolean {
   if (isConcealed(state, piece)) return true;
   return isHideTile(state, { col: piece.col, row: piece.row });
@@ -849,6 +863,27 @@ function settleHide(state: GameState, piece: Piece, from: Hex): void {
 
 function reveal(piece: Piece): void {
   revealPiece(piece);
+}
+
+/**
+ * A plain walk that starts on hide cover and only ever touches hide cover (every hex
+ * crossed + the stop) keeps a concealed unit hidden — and unseen by the opponent.
+ * One open hex on the way, a hit, a conversion or a charge breaks it as usual.
+ */
+export function quietMoveOk(
+  state: GameState,
+  piece: Piece,
+  to: Hex,
+  along?: Hex[],
+): boolean {
+  if (!isConcealed(state, piece)) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  if (!isHideCover(state, from)) return false;
+  const plan = previewMove(state, piece, to, along);
+  if (plan.hits.length || plan.palisadeHits.length || plan.converts.length) return false;
+  if (plan.walkerDead) return false;
+  const walked = walkedHexes(from, resolveMovePath(state, piece, to, along, false), plan.stop);
+  return walked.length > 0 && walked.every((h) => isHideCover(state, h));
 }
 
 function noteExposedSides(state: GameState): void {
@@ -5124,7 +5159,9 @@ function applyActionInner(state: GameState, action: Action): GameState {
       }
     }
 
-    reveal(piece);
+    // Cover-to-cover walks stay hidden; decide before reveal() clears the state.
+    const quiet = !charging && quietMoveOk(next, piece, action.to, action.path);
+    if (!quiet) reveal(piece);
     const plan = previewMove(next, piece, action.to, action.path, { charging });
     const walkPath = resolveMovePath(next, piece, action.to, action.path, charging);
     const prevCovered = hexDamageCoveredKeys(next, piece);
@@ -5198,6 +5235,8 @@ function applyActionInner(state: GameState, action: Action): GameState {
           apTag +
           dmgLines.join(''),
       );
+    } else if (walkerLive && quiet) {
+      // Hidden step — nothing for the opponent to read in the log.
     } else if (walkerLive && bounced) {
       next.log.push(
         `${unitLog(piece)} stops short of ${action.to.col},${action.to.row}${apTag}`,

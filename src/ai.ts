@@ -45,6 +45,7 @@ import {
   shootRangeOf,
   isSleeping,
   isConcealedFrom,
+  quietMoveOk,
   terrainAt,
   terrainHeight,
   pikesVisibleTo,
@@ -1074,12 +1075,22 @@ function pickBest(actions: Action[], state: GameState, me: Side, on: RuleOn): Ac
   return best;
 }
 
-/** Concealed AI: only shoot / melee / hex-damage. Walks wait until provoked (revealed). */
-function hiddenCamperOk(state: GameState, a: Action, me: Side): boolean {
+/**
+ * Concealed AI: shoot / melee / hex-damage, or a walk that keeps them hidden
+ * (cover to cover, never over an open hex) and gets them closer. Anything that
+ * would show them waits until they are provoked (revealed).
+ */
+function hiddenCamperOk(state: GameState, a: Action, me: Side, on: RuleOn): boolean {
   if (a.kind === 'skip') return true;
   const piece = getPiece(state, a.pieceId);
   if (!piece || !isConcealed(state, piece)) return true;
-  return isAttackAction(state, a, me);
+  if (isAttackAction(state, a, me)) return true;
+  if (a.kind !== 'move' || !quietMoveOk(state, piece, a.to, a.path)) return false;
+  const from: Hex = { col: piece.col, row: piece.row };
+  const goal = huntHex(state, from, me, on) ?? nearestHostile(state, from, me);
+  if (!goal) return false;
+  const stop = previewMove(state, piece, a.to, a.path).stop;
+  return dist(state, stop, goal) < dist(state, from, goal);
 }
 
 export function pickAiAction(state: GameState): Action | null {
@@ -1091,7 +1102,7 @@ export function pickAiAction(state: GameState): Action | null {
   if (on('hold-position')) scanHoldLos(state, me);
   const raw = allLegalActions(state);
   const actions = raw.filter((a) => {
-    if (!hiddenCamperOk(state, a, me)) return false;
+    if (!hiddenCamperOk(state, a, me, on)) return false;
     if (on('general-restraint') && !generalAttackOk(state, a, me)) return false;
     if (!on('use-abilities') && (isAbilityAction(a) || a.kind === 'inspire')) return false;
     if (

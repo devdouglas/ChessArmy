@@ -2,6 +2,7 @@ import {
   TOKEN_LABEL,
   TOKEN_TYPES,
   isForestToken,
+  isGrassToken,
   isPalisadeToken,
   isWallToken,
   UNIT_CATEGORIES,
@@ -104,7 +105,7 @@ function wrapUnit(type: UnitType, catalog = false): string {
 function wrapToken(type: TokenType, catalog = false): string {
   const label = escapeHtml(TOKEN_LABEL[type]);
   const em = catalog ? '1.85em' : '1.2em';
-  if (isWallToken(type) || isPalisadeToken(type) || isForestToken(type)) {
+  if (isWallToken(type) || isPalisadeToken(type) || isForestToken(type) || isGrassToken(type)) {
     return `<svg class="copy-icon token" viewBox="-11 -11 22 22" width="${em}" height="${em}" role="img" aria-label="${label}">${tokenGlyphSvg(type, 9, 'pointy')}</svg>`;
   }
   if (type === 'notouch') {

@@ -56,6 +56,7 @@ import {
   isWall,
   pieceVisible,
   pikesVisible,
+  quietMoveOk,
   revealPiece,
   viewingSides,
   previewMove,
@@ -2857,7 +2858,7 @@ function topTokenIndex(col: number, row: number): number {
     const t = editorTokens[i];
     if (t.col !== col || t.row !== row) continue;
     last = i;
-    if (t.type === 'forest') forest = i;
+    if (t.type === 'forest' || t.type === 'grass') forest = i;
     else if (t.type === 'house') house = i;
   }
   if (forest >= 0) return forest;
@@ -3883,7 +3884,10 @@ async function playAnimatedAction(action: Action): Promise<void> {
     action.kind === 'berserk'
   ) {
     const actor = getPiece(state, action.pieceId);
-    if (actor) await showBreakCover(actor);
+    // Cover-to-cover walks stay hidden: don't stamp cover broken, don't draw the step.
+    const quiet =
+      !!actor && action.kind === 'move' && quietMoveOk(state, actor, action.to, action.path);
+    if (actor && !quiet) await showBreakCover(actor);
   }
 
   if (action.kind === 'lunge') {
@@ -4664,6 +4668,10 @@ function renderBoard(): string {
   const piecesByTile = new Map<string, string>();
   const houseByTile = new Map<string, string>();
   const forestByTile = new Map<string, string>();
+  /** Long grass behind a unit that is not hiding in it. */
+  const grassUnderByTile = new Map<string, string>();
+  /** Grass tokens wait here until we know which unit (if any) stands in them. */
+  const grassMarks: { tk: string; g: string; col: number; row: number }[] = [];
   let shootMarks = '';
   let rotateMarks = '';
   for (let row = 0; row < rows; row++) {
@@ -4870,7 +4878,8 @@ function renderBoard(): string {
           : t.type === 'wall' ||
               t.type === 'house' ||
               t.type === 'tree' ||
-              t.type === 'forest'
+              t.type === 'forest' ||
+              t.type === 'grass'
             ? tokenGlyphSvg(t.type, HEX_SIZE * 0.8, ori, null, t.hp, garrison)
             : t.type === 'flag'
               ? tokenGlyphSvg('flag', HEX_SIZE * 0.86, ori, owner)
@@ -4883,7 +4892,8 @@ function renderBoard(): string {
     const body = armed ? `<g class="tutorial-hand">${mark}${ban}</g>` : `${mark}${ban}`;
     const g = `<g class="tile-token ${t.type}${garrison ? ' occupied' : ''}${read}${editing && banned ? ' notouch' : ''}" transform="translate(${x}, ${y})">${body}</g>`;
     const tk = key({ col: t.col, row: t.row });
-    if (t.type === 'forest') putTile(forestByTile, tk, g);
+    if (t.type === 'grass') grassMarks.push({ tk, g, col: t.col, row: t.row });
+    else if (t.type === 'forest') putTile(forestByTile, tk, g);
     else if (t.type === 'house') putTile(houseByTile, tk, g);
     else if (!editing && t.type === 'tutorial') tutorialSvg += g;
     else putTile(tokensByTile, tk, g);
@@ -5131,6 +5141,12 @@ function renderBoard(): string {
 
   // Back-to-front by base (un-raised) position. Each tile brings its own
   // tokens, highlights and units, so a raised tile in front hides what is behind it.
+  // Long grass: a unit hiding in it is covered by the blades; any other unit stands on top.
+  for (const gm of grassMarks) {
+    const occ = drawPieces.find((p) => p.col === gm.col && p.row === gm.row);
+    const covered = !!occ && isConcealed(editing ? dmgBoard : state, occ);
+    putTile(covered ? forestByTile : grassUnderByTile, gm.tk, gm.g);
+  }
   tiles.sort((a, b) => a.baseY - b.baseY || a.x - b.x);
   let tilesSvg = '';
   for (const t of tiles) {
@@ -5139,10 +5155,10 @@ function renderBoard(): string {
       m.delete(t.k);
       return v;
     };
-    tilesSvg += `<g class="tile">${t.walls}${t.top}${t.fx}${take(tokensByTile)}<g class="hl-tint-layer">${t.tint}</g>${take(piecesByTile)}${take(houseByTile)}${take(forestByTile)}</g>`;
+    tilesSvg += `<g class="tile">${t.walls}${t.top}${t.fx}${take(tokensByTile)}${take(grassUnderByTile)}<g class="hl-tint-layer">${t.tint}</g>${take(piecesByTile)}${take(houseByTile)}${take(forestByTile)}</g>`;
   }
   // Anything standing on a cell that was not drawn as a tile still shows.
-  for (const m of [tokensByTile, piecesByTile, houseByTile, forestByTile]) {
+  for (const m of [tokensByTile, grassUnderByTile, piecesByTile, houseByTile, forestByTile]) {
     for (const v of m.values()) tilesSvg += v;
   }
 
@@ -7232,7 +7248,8 @@ function tokenSwatchSvg(type: TokenType): string {
       type === 'house' ||
       type === 'palisade' ||
       type === 'tree' ||
-      type === 'forest'
+      type === 'forest' ||
+      type === 'grass'
         ? tokenGlyphSvg(type, size * 0.8, o)
         : type === 'flag'
           ? tokenGlyphSvg('flag', 13, o)
@@ -7480,13 +7497,14 @@ function renderLevelThumb(lvl: {
       t.type === 'house' ||
       t.type === 'palisade' ||
       t.type === 'tree' ||
-      t.type === 'forest'
+      t.type === 'forest' ||
+      t.type === 'grass'
         ? tokenGlyphSvg(t.type, size * 0.8, ori, null, t.hp, garrison)
         : t.type === 'flag'
           ? tokenGlyphSvg('flag', size * 1.15, ori, t.owner)
           : tokenGlyphSvg(t.type, size * 1.2)
     }${tokenIsNoTouch(t) ? noTouchMarkSvg(size * 0.55) : ''}</g>`;
-    if (t.type === 'forest') forest += g;
+    if (t.type === 'forest' || t.type === 'grass') forest += g;
     else if (t.type === 'house') houses += g;
     else hexes += g;
   }
@@ -8518,8 +8536,8 @@ function renderUnitEditor(): string {
           <dd><strong>Value/weight</strong> scoring / AI. General token +1</dd>
           <dd><strong>AP / turn</strong> action points granted at turn start</dd>
           <dd><strong>Max AP spent / turn</strong> spend window (yellow on the AP bar). Stock default was formerly gain+1</dd>
-          <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units and forest do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
-          <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / house. The Hide dock toggle shows only hideable dests. Breaks after the unit moves, attacks, or is hit. Stepping onto forest again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
+          <dd><strong>Sight</strong> AI Hold only — not fog of war. How far this piece notices enemies for turning / contact. Walls and higher ground block; units, forest and long grass do not. Hill / plateau / mountain add like shoot. Always at least 1 more than move or shoot, whichever is longer</dd>
+          <dd><strong>Hide</strong> (ability) invisible to enemies while on forest / long grass / house. The Hide dock toggle shows only hideable dests. Breaks after the unit attacks or is hit, or moves over an open hex. A move that only crosses cover (forest / long grass) stays hidden, and the opponent does not see the step. Stepping onto cover again hides them. Owner still sees them. The hidden and exhausted icons follow the live status and leave when it ends</dd>
           <dd><strong>Category</strong> Modern / Ancient / Futuristic — filter above. Stock Ancient: Archer, Javelin, Horse archer, Light cavalry, Chariot archer, Cohort, Hoplite, Elephant, Barbarian, Peasant, Builder, Dude, Wolf, Catapult, Ballista. Stock Modern: Soldier, Scout, Bazooka, Sniper, Tank, General, Tower, Dummy. Stock Futuristic: Fighter, Gunship, Bomber, Frigate, Cruiser, Dreadnought</dd>
           <dd><strong>Kit</strong> icon + pathing through pieces / infantry. Does not reset numbers. Water and climb are per-unit, not kit. Tower, Javelin, Horse archer, Dude, Wolf and the spaceship kits are glyph only</dd>
           <dd><strong>Abilities</strong> granted independently of kit. Hide / Javelin / Charge / Lunge / Build / Shields up / Bash / Berserk / Inspire replace the Special dock slot (a unit can have several). Build picks Trap, Palisade, Bridge, or Remove, then an adjacent hex. Shields up, Bash, Berserk, and Inspire fire when you press the button. Inspire (1 action, 1 turn) gives +1 attack / +1 armor to every same-side unit chained to the inspirer (not the inspirer itself unless a second source is in the chain); no stacking, lost when the chain breaks. Experimental: Generals inspire passively (localStorage chessarmy-exp-general-inspires = 0 turns it off). Lunge is also a promotion (grants the ability to zero-melee kits; thrust only along non-red melee faces). Inspire is also a promotion (grants the ability). Scout places the unit hidden at battle start (+2 map regenerates each in roguelite). Wealthy pays +1g after a win. Command is the General promotion, not an ability</dd>
