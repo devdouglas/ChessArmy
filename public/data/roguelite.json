@@ -16,9 +16,11 @@
   "units": {
     "soldier": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -28,9 +30,11 @@
     },
     "scout": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -40,9 +44,11 @@
     },
     "bazooka": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -52,9 +58,11 @@
     },
     "sniper": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -64,9 +72,11 @@
     },
     "archer": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 2,
@@ -76,9 +86,11 @@
     },
     "javelin": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 2,
@@ -88,9 +100,11 @@
     },
     "horsearcher": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -100,9 +114,11 @@
     },
     "lightcavalry": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -112,9 +128,11 @@
     },
     "chariotarcher": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -124,9 +142,11 @@
     },
     "cohort": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -136,9 +156,11 @@
     },
     "hoplite": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -148,9 +170,11 @@
     },
     "elephant": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 5,
@@ -160,9 +184,11 @@
     },
     "barbarian": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -172,9 +198,11 @@
     },
     "catapult": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 2,
@@ -184,9 +212,11 @@
     },
     "ballista": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 2,
@@ -196,9 +226,11 @@
     },
     "tank": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 9,
@@ -208,9 +240,11 @@
     },
     "general": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 100,
@@ -220,9 +254,11 @@
     },
     "tower": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -232,9 +268,11 @@
     },
     "dummy": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 0,
@@ -244,9 +282,11 @@
     },
     "peasant": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -256,9 +296,11 @@
     },
     "builder": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -268,9 +310,11 @@
     },
     "dude": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 0,
@@ -280,9 +324,11 @@
     },
     "wolf": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -292,9 +338,11 @@
     },
     "fighter": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -304,9 +352,11 @@
     },
     "gunship": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -316,9 +366,11 @@
     },
     "bomber": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 5,
@@ -328,9 +380,11 @@
     },
     "frigate": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -340,9 +394,11 @@
     },
     "cruiser": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 7,
@@ -352,9 +408,11 @@
     },
     "dreadnought": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 10,
@@ -364,9 +422,11 @@
     },
     "u-mvf8ty84rdk3": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -376,9 +436,11 @@
     },
     "u-mvf8vjffgpkd": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -388,9 +450,11 @@
     },
     "u-mvgpbg68f593": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 0,
@@ -400,9 +464,11 @@
     },
     "u-mvkn6vl7l0zw": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -412,9 +478,11 @@
     },
     "u-mvlx87f1kk67": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -424,9 +492,11 @@
     },
     "u-mvr2vokzh3n3": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -436,9 +506,11 @@
     },
     "u-mvun2x81vsl5": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 0,
@@ -448,9 +520,11 @@
     },
     "u-mvuvhfewwv97": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 0,
@@ -460,9 +534,11 @@
     },
     "u-mw3t85tpmhz2": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 1,
@@ -472,9 +548,11 @@
     },
     "u-mw4vuw6xnwnt": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -484,9 +562,11 @@
     },
     "u-mwjio288uty1": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -496,9 +576,11 @@
     },
     "u-mwjiue32r9rf": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 3,
@@ -508,9 +590,11 @@
     },
     "u-mwowcdhlpw7r": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "toBattle": null,
       "price": 4,
@@ -522,99 +606,121 @@
   "promotions": {
     "general": {
       "used": false,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": false,
       "enemyAllowed": false
     },
     "range1": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "defense1": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "attack1": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "ap1": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "hp2": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "allTerrain": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "lunge": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "inspire": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": true
     },
     "scout": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": false
     },
     "wealthy": {
       "used": true,
-      "unlock": {
-        "type": "always"
-      },
+      "unlock": [
+        {
+          "type": "always"
+        }
+      ],
       "fromBattle": 1,
       "inShop": true,
       "enemyAllowed": false

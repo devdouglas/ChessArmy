@@ -1187,6 +1187,8 @@ export type GameState = {
   turnNumber: number;
   /** Pieces removed per side this match. */
   casualties: Record<Side, number>;
+  /** Pieces removed per side this match, counted by unit type. Missing on old states. */
+  casualtyTypes?: Partial<Record<Side, Record<string, number>>>;
   /** HP chipped per side this match (kills included). Missing on old states → 0. */
   hpLost: Record<Side, number>;
   /** Player-team flag takes this match (not kickoff seeds). */
@@ -1596,6 +1598,11 @@ function applyDamage(
     if (isSide(victim.side)) {
       const lost = state.casualties[victim.side] ?? 0;
       state.casualties = { ...state.casualties, [victim.side]: lost + 1 };
+      const prev = state.casualtyTypes?.[victim.side] ?? {};
+      state.casualtyTypes = {
+        ...state.casualtyTypes,
+        [victim.side]: { ...prev, [victim.type]: (prev[victim.type] ?? 0) + 1 },
+      };
     }
     // A dead link breaks the chain at once.
     refreshInspiration(state);
@@ -2556,6 +2563,11 @@ function cloneState(state: GameState): GameState {
     controls: { ...state.controls },
     aiStyles: { ...defaultAiStyles(), ...state.aiStyles },
     casualties: { ...emptySideCounts(), ...state.casualties },
+    casualtyTypes: state.casualtyTypes
+      ? (Object.fromEntries(
+          Object.entries(state.casualtyTypes).map(([s, m]) => [s, { ...m }]),
+        ) as GameState['casualtyTypes'])
+      : undefined,
     hpLost: { ...emptySideCounts(), ...state.hpLost },
     flagCaptures: state.flagCaptures ?? 0,
     hadKing: { ...emptyHadKing(), ...state.hadKing },
@@ -3220,6 +3232,20 @@ export function playerKills(state: GameState): number {
   return participatingSides(state)
     .filter((s) => us.every((p) => isHostile(state, s, p)))
     .reduce((n, s) => n + (state.casualties[s] ?? 0), 0);
+}
+
+/** Enemy unit types the player team has removed this match. */
+export function playerKillsByType(state: GameState): Record<string, number> {
+  const us = playerSides(state);
+  const out: Record<string, number> = {};
+  if (!us.length) return out;
+  for (const s of participatingSides(state)) {
+    if (!us.every((p) => isHostile(state, s, p))) continue;
+    for (const [typ, n] of Object.entries(state.casualtyTypes?.[s] ?? {})) {
+      if (n) out[typ] = (out[typ] ?? 0) + n;
+    }
+  }
+  return out;
 }
 
 export function livingHostiles(state: GameState): number {

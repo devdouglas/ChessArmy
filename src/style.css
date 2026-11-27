@@ -6935,6 +6935,27 @@ svg.board .hex.rock {
   font: inherit;
   max-width: 7rem;
 }
+.rogue-conds {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 13rem;
+}
+.rogue-unlock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+.rogue-unlock select {
+  max-width: 12rem;
+}
+.rogue-unlock-add,
+.rogue-unlock-del {
+  padding: 0.1rem 0.4rem;
+  line-height: 1.2;
+}
 .rogue-globals input[type='text'] {
   max-width: 9rem;
 }
@@ -7002,6 +7023,17 @@ svg.board .hex.rock {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.rogue-ov-item.locked span {
+  -webkit-line-clamp: 6;
+}
+.rogue-ov-why {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75em;
+  line-height: 1.25;
+  font-weight: 400;
+  color: var(--muted, #8a8f86);
 }
 .rogue-ov-item.locked {
   filter: grayscale(1);

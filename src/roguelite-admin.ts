@@ -22,9 +22,13 @@ import {
   type RogueConfig,
   type RoguePromoCfg,
   type RogueRegionCfg,
-  type RogueRegionInfo,
   type RogueUnitCfg,
   type RogueUnlock,
+  type RogueUnlockCondition,
+  type RogueUnlockType,
+  ROGUE_UNLOCK_TYPE_LABEL,
+  ROGUE_UNLOCK_TYPES,
+  describeUnlock,
   listRogueRegionPresets,
   regionRogueCfg,
   unitRogueCfg,
@@ -96,31 +100,69 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function unlockSelect(name: string, unlock: RogueUnlock, regions: RogueRegionInfo[]): string {
-  const t = unlock.type;
-  const param =
-    t === 'battleAtLeast'
-      ? `<input type="number" min="1" max="999" data-unlock-param="${esc(name)}" value="${unlock.battle}" title="Battle" />`
-      : t === 'runsCompleted'
-        ? `<input type="number" min="0" max="999" data-unlock-param="${esc(name)}" value="${unlock.count}" title="Runs completed" />`
-        : t === 'regionCleared'
-          ? `<select data-unlock-param="${esc(name)}">${regions
-              .map(
-                (r) =>
-                  `<option value="${esc(r.id)}"${unlock.regionId === r.id ? ' selected' : ''}>${esc(r.name)}</option>`,
-              )
-              .join('')}</select>`
-          : '';
-  return `<span class="rogue-unlock">
-    <select data-unlock-type="${esc(name)}">
-      <option value="always"${t === 'always' ? ' selected' : ''}>Always</option>
-      <option value="never"${t === 'never' ? ' selected' : ''}>Never</option>
-      <option value="battleAtLeast"${t === 'battleAtLeast' ? ' selected' : ''}>From battle…</option>
-      <option value="runsCompleted"${t === 'runsCompleted' ? ' selected' : ''}>After N runs…</option>
-      <option value="regionCleared"${t === 'regionCleared' ? ' selected' : ''}>Region cleared…</option>
-    </select>
-    ${param}
-  </span>`;
+function unitTypeOptions(selected: string | null | undefined, allowAny: boolean): string {
+  const opts = allowAny
+    ? [`<option value=""${selected ? '' : ' selected'}>Any unit</option>`]
+    : ['<option value="">Choose a unit…</option>'];
+  const byCat: Record<string, UnitType[]> = {};
+  for (const typ of UNIT_TYPES) {
+    const cat = UNIT_STATS[typ]?.category ?? 'other';
+    (byCat[cat] ??= []).push(typ);
+  }
+  for (const cat of UNIT_CATEGORIES) {
+    const list = byCat[cat] ?? [];
+    if (!list.length) continue;
+    opts.push(`<optgroup label="${esc(UNIT_CATEGORY_LABEL[cat])}">`);
+    for (const typ of list) {
+      const name = UNIT_STATS[typ]?.name ?? typ;
+      opts.push(
+        `<option value="${esc(typ)}"${selected === typ ? ' selected' : ''}>${esc(name)}</option>`,
+      );
+    }
+    opts.push('</optgroup>');
+  }
+  return opts.join('');
+}
+
+function conditionParams(cond: RogueUnlockCondition): string {
+  if (cond.type === 'playGames' || cond.type === 'haveCoins') {
+    const title = cond.type === 'playGames' ? 'Games / runs started' : 'Coins in purse';
+    return `<input type="number" min="0" max="9999" data-unlock-param="count" value="${cond.count}" title="${title}" />`;
+  }
+  if (cond.type === 'reachBattle' || cond.type === 'reachBattleNoLoss') {
+    return `<input type="number" min="1" max="999" data-unlock-param="battle" value="${cond.battle}" title="Battle" />`;
+  }
+  if (cond.type === 'killUnits') {
+    return `<input type="number" min="1" max="9999" data-unlock-param="count" value="${cond.count}" title="Kills" />
+      <select data-unlock-param="unitType">${unitTypeOptions(cond.unitType, true)}</select>`;
+  }
+  if (cond.type === 'winWithUnits') {
+    return `<input type="number" min="1" max="99" data-unlock-param="count" value="${cond.count}" title="How many" />
+      <select data-unlock-param="unitType">${unitTypeOptions(cond.unitType, false)}</select>`;
+  }
+  return '';
+}
+
+function unlockEditor(name: string, unlock: RogueUnlock): string {
+  const conds = sanitizeUnlock(unlock);
+  const rows = conds
+    .map((cond, i) => {
+      const typ = cond.type;
+      const opts = ROGUE_UNLOCK_TYPES.map(
+        (t) =>
+          `<option value="${t}"${typ === t ? ' selected' : ''}>${esc(ROGUE_UNLOCK_TYPE_LABEL[t])}</option>`,
+      ).join('');
+      return `<div class="rogue-unlock" data-unlock-index="${i}">
+      <select data-unlock-type>${opts}</select>
+      ${conditionParams(cond)}
+      <button type="button" class="ghost rogue-unlock-del" data-unlock-del title="Remove condition">×</button>
+    </div>`;
+    })
+    .join('');
+  return `<div class="rogue-conds" data-unlock-scope="${esc(name)}">
+    ${rows}
+    <button type="button" class="ghost rogue-unlock-add" data-unlock-add="${esc(name)}">Add condition</button>
+  </div>`;
 }
 
 function chk(name: string, on: boolean, title = ''): string {
@@ -158,7 +200,7 @@ export function renderRogueConfigPage(
           <td><input type="number" min="0" max="9999" data-field="price" value="${c.price ?? ''}" placeholder="${s?.value ?? 0}" title="Gold. Blank = unit value (${s?.value ?? 0})" /></td>
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
-          <td>${unlockSelect(`u:${t}`, c.unlock, listRogueRegionPresets(draft))}</td>
+          <td>${unlockEditor(`u:${t}`, c.unlock)}</td>
           <td>${chk('inShop', c.inShop)}</td>
           <td>${chk('inStartPool', c.inStartPool)}</td>
           <td>${chk('inEnemyPool', c.inEnemyPool)}</td>
@@ -194,7 +236,7 @@ export function renderRogueConfigPage(
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
       <td>${chk('used', c.used)}</td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
-      <td>${unlockSelect(`p:${id}`, c.unlock, listRogueRegionPresets(draft))}</td>
+      <td>${unlockEditor(`p:${id}`, c.unlock)}</td>
       <td>${chk('inShop', c.inShop)}</td>
       <td>${chk('enemyAllowed', c.enemyAllowed)}</td>
     </tr>`;
@@ -291,12 +333,18 @@ export function renderRogueUnlocksPage(): string {
               if (!c.used) return '';
               const unlocked = unlockSatisfied(c.unlock, progress, battle);
               const cls = ['rogue-ov-item', unlocked ? '' : 'locked'].filter(Boolean).join(' ');
+              const conds = describeUnlock(c.unlock, progress, battle);
               const why = unlocked
                 ? `Unlocked · from battle ${c.fromBattle}${c.toBattle ? `–${c.toBattle}` : ''} · ${c.price ?? UNIT_STATS[t]?.value ?? 0}g`
-                : 'Not yet unlocked';
+                : conds.length
+                  ? conds.map((d) => d.text).join(' · ')
+                  : 'Not yet unlocked';
+              const detail = !unlocked && conds.length
+                ? `<span class="rogue-ov-why">${conds.map((d) => esc(d.text)).join('<br>')}</span>`
+                : '';
               return `<div class="${cls}" title="${esc(`${UNIT_STATS[t]?.name ?? t}: ${why}`)}">
           ${unitIcon(t)}
-          <span>${esc(UNIT_STATS[t]?.name ?? t)}</span>
+          <span>${esc(UNIT_STATS[t]?.name ?? t)}${detail}</span>
         </div>`;
             })
             .join('');
@@ -311,10 +359,14 @@ export function renderRogueUnlocksPage(): string {
     if (!c.used) return '';
     const unlocked = unlockSatisfied(c.unlock, progress, battle);
     const cls = ['rogue-ov-item', unlocked ? '' : 'locked'].filter(Boolean).join(' ');
-    const why = unlocked ? 'Unlocked' : 'Not yet unlocked';
+    const conds = describeUnlock(c.unlock, progress, battle);
+    const why = unlocked ? 'Unlocked' : conds.length ? conds.map((d) => d.text).join(' · ') : 'Not yet unlocked';
+    const detail = !unlocked && conds.length
+      ? `<span class="rogue-ov-why">${conds.map((d) => esc(d.text)).join('<br>')}</span>`
+      : '';
     return `<div class="${cls}" title="${esc(`${UNIT_TOKEN_LABEL[id]}: ${why}`)}">
       ${promoIcon(id)}
-      <span>${esc(UNIT_TOKEN_LABEL[id])}</span>
+      <span>${esc(UNIT_TOKEN_LABEL[id])}${detail}</span>
     </div>`;
   }).join('');
 
@@ -324,7 +376,7 @@ export function renderRogueUnlocksPage(): string {
         <h2>Unlocks</h2>
         <span class="lvl-meta">${progress.runsCompleted} run${progress.runsCompleted === 1 ? '' : 's'} completed · best battle ${progress.bestBattle}</span>
       </div>
-      <p class="ai-editor-lead">Current unlockable state for this browser. Only units and promotions marked Used appear here; greyed items are not yet unlocked. Promotions are shown for every era.</p>
+      <p class="ai-editor-lead">Current unlockable state for this browser. Only units and promotions marked Used appear here; greyed items show the remaining condition and progress. Promotions are shown for every era.</p>
       ${rogueEraFilterHtml(era)}
       ${unitBlocks}
       <div class="rogue-ov-group"><h3 class="unit-class-label">Promotions</h3><div class="rogue-ov-grid">${ovPromos}</div></div>
@@ -352,17 +404,28 @@ function regionRogueCfgMerged(id: string, draft: RogueConfig): RogueRegionCfg {
   return regionRogueCfg(id, draft);
 }
 
-function readUnlock(scope: Element, name: string): RogueUnlock {
-  const typeEl = scope.querySelector<HTMLSelectElement>(`[data-unlock-type="${CSS.escape(name)}"]`);
-  const paramEl = scope.querySelector<HTMLInputElement | HTMLSelectElement>(
-    `[data-unlock-param="${CSS.escape(name)}"]`,
-  );
-  const type = typeEl?.value ?? 'always';
-  if (type === 'battleAtLeast') return sanitizeUnlock({ type, battle: Number(paramEl?.value) });
-  if (type === 'runsCompleted') return sanitizeUnlock({ type, count: Number(paramEl?.value) });
-  if (type === 'regionCleared') return sanitizeUnlock({ type, regionId: paramEl?.value });
+function readOneCondition(row: Element): RogueUnlockCondition {
+  const type = (row.querySelector<HTMLSelectElement>('[data-unlock-type]')?.value ?? 'always') as RogueUnlockType;
+  const num = (key: string, fallback: number) => {
+    const el = row.querySelector<HTMLInputElement>(`[data-unlock-param="${key}"]`);
+    const n = Number(el?.value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const typ = row.querySelector<HTMLSelectElement>('[data-unlock-param="unitType"]')?.value ?? '';
+  if (type === 'playGames') return { type, count: num('count', 1) };
+  if (type === 'reachBattle' || type === 'reachBattleNoLoss') return { type, battle: num('battle', 1) };
+  if (type === 'killUnits') return { type, count: num('count', 1), unitType: typ || null };
+  if (type === 'haveCoins') return { type, count: num('count', 1) };
+  if (type === 'winWithUnits') return { type, count: num('count', 1), unitType: typ };
   if (type === 'never') return { type: 'never' };
   return { type: 'always' };
+}
+
+function readUnlock(scope: Element, name: string): RogueUnlock {
+  const root = scope.querySelector(`[data-unlock-scope="${CSS.escape(name)}"]`);
+  if (!root) return sanitizeUnlock({ type: 'always' });
+  const rows = [...root.querySelectorAll<HTMLElement>('[data-unlock-index]')];
+  return sanitizeUnlock(rows.map(readOneCondition));
 }
 
 function numOrNull(raw: string): number | null {

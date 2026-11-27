@@ -33,6 +33,8 @@ import {
   getRogueConfig,
   getRogueProgress,
   promoAvailableInRun,
+  recordRogueGold,
+  recordRogueRunStarted,
   unitAvailableInRun,
 } from './roguelite-config';
 
@@ -204,6 +206,13 @@ export function rollRoguePromotions(
  * Victory shop — `starGold` is 1 per earned star; `wealthyGold` is +1 per
  * Wealthy chevron on living player units. Offers follow each unit's from/to range.
  */
+
+function withRogueGold(run: RogueRun, gold: number): RogueRun {
+  const next = { ...run, gold };
+  recordRogueGold(gold);
+  return next;
+}
+
 export function openRogueShop(
   run: RogueRun,
   starGold: number,
@@ -215,7 +224,7 @@ export function openRogueShop(
   const gain = stars * g.starGoldPerStar + wealth * g.wealthyGoldPer;
   const nextBattle = run.battle + 1;
   return {
-    run: { ...run, gold: run.gold + gain },
+    run: withRogueGold(run, run.gold + gain),
     shop: {
       offers: rollRogueShopOffers(
         run.period,
@@ -288,7 +297,7 @@ export function buyRogueShopOffer(
   const offers = shop.offers.slice();
   offers.splice(index, 1);
   return {
-    run: { ...run, gold: run.gold - cost },
+    run: withRogueGold(run, run.gold - cost),
     shop: {
       offers,
       purchased: [...shop.purchased, type],
@@ -322,7 +331,7 @@ export function takeRoguePromotionOffer(
   const promotions = shop.promotions.slice();
   promotions.splice(index, 1);
   return {
-    run: cost ? { ...run, gold: run.gold - cost } : run,
+    run: cost ? withRogueGold(run, run.gold - cost) : run,
     shop: {
       ...shop,
       promotions,
@@ -477,7 +486,7 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
       ),
     });
   }
-  return {
+  const run: RogueRun = {
     battle,
     period: sanitizePeriod(period),
     playerArmy,
@@ -489,6 +498,8 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
     aiStyle,
     gold: getRogueConfig().globals.startGold,
   };
+  recordRogueRunStarted(run.gold);
+  return run;
 }
 
 /** Tokens that should ride with a unit into the next battle. */

@@ -18,12 +18,43 @@ export const ROGUE_CONFIG_VERSION = 1;
 export const ROGUE_CONFIG_STORAGE_KEY = 'chessarmy-roguelite-config-v1';
 export const ROGUE_PROGRESS_STORAGE_KEY = 'chessarmy-roguelite-progress-v1';
 
-export type RogueUnlock =
+export const ROGUE_UNLOCK_TYPES = [
+  'always',
+  'never',
+  'playGames',
+  'reachBattle',
+  'killUnits',
+  'haveCoins',
+  'reachBattleNoLoss',
+  'winWithUnits',
+] as const;
+
+export type RogueUnlockType = (typeof ROGUE_UNLOCK_TYPES)[number];
+
+/** A single unlock condition. All conditions on a unit/promo must be met. */
+export type RogueUnlockCondition =
   | { type: 'always' }
   | { type: 'never' }
-  | { type: 'battleAtLeast'; battle: number }
-  | { type: 'runsCompleted'; count: number }
-  | { type: 'regionCleared'; regionId: string };
+  | { type: 'playGames'; count: number }
+  | { type: 'reachBattle'; battle: number }
+  | { type: 'killUnits'; count: number; unitType: string | null }
+  | { type: 'haveCoins'; count: number }
+  | { type: 'reachBattleNoLoss'; battle: number }
+  | { type: 'winWithUnits'; count: number; unitType: string };
+
+/** All conditions must be met. Empty means always. */
+export type RogueUnlock = RogueUnlockCondition[];
+
+export const ROGUE_UNLOCK_TYPE_LABEL: Record<RogueUnlockType, string> = {
+  always: 'Always',
+  never: 'Never',
+  playGames: 'Play X games',
+  reachBattle: 'Reach battle X',
+  killUnits: 'Kill X units',
+  haveCoins: 'Have X coins',
+  reachBattleNoLoss: 'Reach battle X with no losses',
+  winWithUnits: 'Win with X of a unit',
+};
 
 export type RogueGlobals = {
   startGold: number;
@@ -41,7 +72,6 @@ export type RogueGlobals = {
 
 /**
  * A map-generation preset as used in roguelite (the Regions admin list).
- * `regionCleared` unlocks refer to these preset ids.
  */
 export type RogueRegionCfg = {
   enabled: boolean;
@@ -89,11 +119,19 @@ export type RogueProgress = {
   runsCompleted: number;
   bestBattle: number;
   regionsCleared: string[];
+  /** Roguelite runs started. Migrated up to at least `runsCompleted`. */
+  gamesPlayed: number;
+  /** Enemy units killed, keyed by unit type. */
+  kills: Record<string, number>;
+  /** Highest purse seen in a run (after rewards or purchases). */
+  maxCoins: number;
+  /** Highest battle started or won in a run with no player unit lost. */
+  bestNoLossBattle: number;
+  /** Best living count of each unit type in a winning player army. */
+  winsWith: Record<string, number>;
 };
 
 export type RoguePoolPurpose = 'shop' | 'start' | 'enemy';
-
-const ALWAYS: RogueUnlock = { type: 'always' };
 
 export const DEFAULT_ROGUE_GLOBALS: RogueGlobals = {
   startGold: 0,
@@ -127,28 +165,59 @@ function usedFlag(raw: { used?: unknown; listed?: unknown } | undefined, fallbac
   return fallback;
 }
 
-export function sanitizeUnlock(raw: unknown): RogueUnlock {
-  if (!raw || typeof raw !== 'object') return { ...ALWAYS };
-  const t = (raw as { type?: unknown }).type;
+function sanitizeUnlockCondition(raw: unknown): RogueUnlockCondition | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const src = raw as {
+    type?: unknown;
+    battle?: unknown;
+    count?: unknown;
+    unitType?: unknown;
+    regionId?: unknown;
+  };
+  let t = src.type;
+  // Migrate old single-condition kinds.
+  if (t === 'battleAtLeast') t = 'reachBattle';
+  if (t === 'runsCompleted') t = 'playGames';
+  if (t === 'regionCleared') return { type: 'always' };
   if (t === 'never') return { type: 'never' };
-  if (t === 'battleAtLeast') {
-    return { type: 'battleAtLeast', battle: int((raw as { battle?: unknown }).battle, 1, 1, 999) };
+  if (t === 'playGames') return { type: 'playGames', count: int(src.count, 1, 0, 999) };
+  if (t === 'reachBattle') return { type: 'reachBattle', battle: int(src.battle, 1, 1, 999) };
+  if (t === 'killUnits') {
+    const typ = String(src.unitType ?? '').trim();
+    return { type: 'killUnits', count: int(src.count, 1, 1, 9999), unitType: typ || null };
   }
-  if (t === 'runsCompleted') {
-    return { type: 'runsCompleted', count: int((raw as { count?: unknown }).count, 1, 0, 999) };
+  if (t === 'haveCoins') return { type: 'haveCoins', count: int(src.count, 1, 0, 9999) };
+  if (t === 'reachBattleNoLoss') {
+    return { type: 'reachBattleNoLoss', battle: int(src.battle, 1, 1, 999) };
   }
-  if (t === 'regionCleared') {
-    const regionId = String((raw as { regionId?: unknown }).regionId ?? '').trim();
-    return regionId ? { type: 'regionCleared', regionId } : { ...ALWAYS };
+  if (t === 'winWithUnits') {
+    const typ = String(src.unitType ?? '').trim();
+    if (!typ) return null;
+    return { type: 'winWithUnits', count: int(src.count, 1, 1, 99), unitType: typ };
   }
-  return { ...ALWAYS };
+  if (t === 'always') return { type: 'always' };
+  return null;
+}
+
+export function sanitizeUnlock(raw: unknown): RogueUnlock {
+  const list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [];
+  const out: RogueUnlockCondition[] = [];
+  for (const item of list) {
+    const c = sanitizeUnlockCondition(item);
+    if (c) out.push(c);
+  }
+  // never already fails; drop redundant always when mixed with real conditions.
+  const meaningful = out.filter((c) => c.type !== 'always');
+  if (meaningful.some((c) => c.type === 'never')) return [{ type: 'never' }];
+  if (!meaningful.length) return [{ type: 'always' }];
+  return meaningful;
 }
 
 export function defaultUnitCfg(type: UnitType): RogueUnitCfg {
   const rec = !!UNIT_STATS[type]?.recruitable;
   return {
     used: rec,
-    unlock: { ...ALWAYS },
+    unlock: [{ type: 'always' }],
     fromBattle: 1,
     toBattle: null,
     price: null,
@@ -162,7 +231,7 @@ export function defaultPromoCfg(id: PromotionTokenType): RoguePromoCfg {
   const isGeneral = id === 'general';
   return {
     used: !isGeneral,
-    unlock: { ...ALWAYS },
+    unlock: [{ type: 'always' }],
     fromBattle: 1,
     inShop: !isGeneral,
     enemyAllowed: id !== 'general' && id !== 'scout' && id !== 'wealthy',
@@ -355,8 +424,28 @@ export function promoRogueCfg(id: PromotionTokenType): RoguePromoCfg {
   return mergePromo(id, current.promotions[id]);
 }
 
+function intMap(raw: unknown, max = 99999): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!k) continue;
+    const n = int(v, 0, 0, max);
+    if (n > 0) out[k] = n;
+  }
+  return out;
+}
+
 export function emptyRogueProgress(): RogueProgress {
-  return { runsCompleted: 0, bestBattle: 0, regionsCleared: [] };
+  return {
+    runsCompleted: 0,
+    bestBattle: 0,
+    regionsCleared: [],
+    gamesPlayed: 0,
+    kills: {},
+    maxCoins: 0,
+    bestNoLossBattle: 0,
+    winsWith: {},
+  };
 }
 
 export function sanitizeRogueProgress(raw: unknown): RogueProgress {
@@ -374,10 +463,16 @@ export function sanitizeRogueProgress(raw: unknown): RogueProgress {
         ),
       ]
     : [];
+  const runsCompleted = int(src.runsCompleted, 0, 0, 9999);
   return {
-    runsCompleted: int(src.runsCompleted, 0, 0, 9999),
+    runsCompleted,
     bestBattle: int(src.bestBattle, 0, 0, 9999),
     regionsCleared,
+    gamesPlayed: Math.max(int(src.gamesPlayed, 0, 0, 9999), runsCompleted),
+    kills: intMap(src.kills),
+    maxCoins: int(src.maxCoins, 0, 0, 99999),
+    bestNoLossBattle: int(src.bestNoLossBattle, 0, 0, 9999),
+    winsWith: intMap(src.winsWith, 99),
   };
 }
 
@@ -409,18 +504,109 @@ export function setRogueProgress(p: RogueProgress): void {
   writeProgress(p);
 }
 
-/** Update stored meta-progress after a battle win (`battle` is the battle just won). */
-export function recordRogueBattleWin(battle: number, regionId?: string): RogueProgress {
-  const prev = readProgress();
+export type RogueProgressPatch = {
+  regionId?: string;
+  kills?: Record<string, number>;
+  gold?: number;
+  lostUnit?: boolean;
+  /** Living player unit counts at a battle win, by type. */
+  army?: Record<string, number>;
+  /** Battle just started, with no player unit lost in this run so far. */
+  noLossBattle?: number;
+};
+
+function addCounts(into: Record<string, number>, add?: Record<string, number>): Record<string, number> {
+  if (!add) return into;
+  const out = { ...into };
+  for (const [k, v] of Object.entries(add)) {
+    const n = Math.max(0, Math.floor(v));
+    if (!k || n <= 0) continue;
+    out[k] = (out[k] ?? 0) + n;
+  }
+  return out;
+}
+
+function maxCounts(into: Record<string, number>, seen?: Record<string, number>): Record<string, number> {
+  if (!seen) return into;
+  const out = { ...into };
+  for (const [k, v] of Object.entries(seen)) {
+    const n = Math.max(0, Math.floor(v));
+    if (!k || n <= 0) continue;
+    out[k] = Math.max(out[k] ?? 0, n);
+  }
+  return out;
+}
+
+function applyProgressPatch(prev: RogueProgress, battle: number, patch: RogueProgressPatch = {}): RogueProgress {
   const b = int(battle, 0, 0, 9999);
-  const id = regionId?.trim() ?? '';
+  const id = patch.regionId?.trim() ?? '';
   const regionsCleared =
     id && !prev.regionsCleared.includes(id) ? [...prev.regionsCleared, id] : prev.regionsCleared;
-  const next: RogueProgress = {
-    runsCompleted: prev.runsCompleted,
+  const noLoss = !patch.lostUnit
+    ? Math.max(prev.bestNoLossBattle, b, patch.noLossBattle ?? 0)
+    : Math.max(prev.bestNoLossBattle, patch.noLossBattle ?? 0);
+  return {
+    ...prev,
     bestBattle: Math.max(prev.bestBattle, b),
     regionsCleared,
+    kills: addCounts(prev.kills, patch.kills),
+    maxCoins: Math.max(prev.maxCoins, int(patch.gold, 0, 0, 99999)),
+    bestNoLossBattle: noLoss,
+    winsWith: maxCounts(prev.winsWith, patch.army),
   };
+}
+
+/** Update stored meta-progress after a battle win (`battle` is the battle just won). */
+export function recordRogueBattleWin(
+  battle: number,
+  regionId?: string,
+  patch: RogueProgressPatch = {},
+): RogueProgress {
+  const prev = readProgress();
+  const next = applyProgressPatch(prev, battle, { ...patch, regionId: regionId ?? patch.regionId });
+  writeProgress(next);
+  return next;
+}
+
+/** Record kills / gold / a lost unit when a roguelite match ends in defeat. */
+export function recordRogueMatchProgress(battle: number, patch: RogueProgressPatch): RogueProgress {
+  const prev = readProgress();
+  const next = applyProgressPatch(prev, 0, { ...patch, lostUnit: patch.lostUnit ?? true });
+  // Defeat should not raise bestBattle; applyProgressPatch with battle 0 keeps it.
+  void battle;
+  writeProgress(next);
+  return next;
+}
+
+/** Count a run start as a game played, and note starting gold / battle 1 if still clean. */
+export function recordRogueRunStarted(gold = 0): RogueProgress {
+  const prev = readProgress();
+  const next: RogueProgress = {
+    ...prev,
+    gamesPlayed: prev.gamesPlayed + 1,
+    maxCoins: Math.max(prev.maxCoins, int(gold, 0, 0, 99999)),
+    bestNoLossBattle: Math.max(prev.bestNoLossBattle, 1),
+  };
+  writeProgress(next);
+  return next;
+}
+
+/** Track the highest purse held. */
+export function recordRogueGold(gold: number): RogueProgress {
+  const prev = readProgress();
+  const maxCoins = Math.max(prev.maxCoins, int(gold, 0, 0, 99999));
+  if (maxCoins === prev.maxCoins) return prev;
+  const next = { ...prev, maxCoins };
+  writeProgress(next);
+  return next;
+}
+
+/** A new battle has started in a still-clean run. */
+export function recordRogueNoLossBattle(battle: number): RogueProgress {
+  const prev = readProgress();
+  const bestNoLossBattle = Math.max(prev.bestNoLossBattle, int(battle, 0, 0, 9999));
+  if (bestNoLossBattle === prev.bestNoLossBattle) return prev;
+  const next = { ...prev, bestNoLossBattle };
   writeProgress(next);
   return next;
 }
@@ -433,21 +619,138 @@ export function recordRogueRunCompleted(): RogueProgress {
   return next;
 }
 
-export function unlockSatisfied(unlock: RogueUnlock, progress: RogueProgress, battle = 1): boolean {
-  switch (unlock.type) {
+export function killsCounted(progress: RogueProgress, unitType?: string | null): number {
+  if (unitType) return progress.kills[unitType] ?? 0;
+  return Object.values(progress.kills).reduce((n, v) => n + v, 0);
+}
+
+export function conditionSatisfied(
+  cond: RogueUnlockCondition,
+  progress: RogueProgress,
+  battle = 1,
+): boolean {
+  switch (cond.type) {
     case 'always':
       return true;
     case 'never':
       return false;
-    case 'battleAtLeast':
-      return battle >= unlock.battle || progress.bestBattle >= unlock.battle;
-    case 'runsCompleted':
-      return progress.runsCompleted >= unlock.count;
-    case 'regionCleared':
-      return progress.regionsCleared.includes(unlock.regionId);
+    case 'playGames':
+      return progress.gamesPlayed >= cond.count;
+    case 'reachBattle':
+      return battle >= cond.battle || progress.bestBattle >= cond.battle;
+    case 'killUnits':
+      return killsCounted(progress, cond.unitType) >= cond.count;
+    case 'haveCoins':
+      return progress.maxCoins >= cond.count;
+    case 'reachBattleNoLoss':
+      return progress.bestNoLossBattle >= cond.battle;
+    case 'winWithUnits':
+      return (progress.winsWith[cond.unitType] ?? 0) >= cond.count;
     default:
-      return true;
+      return false;
   }
+}
+
+export function unlockSatisfied(unlock: RogueUnlock, progress: RogueProgress, battle = 1): boolean {
+  return sanitizeUnlock(unlock).every((c) => conditionSatisfied(c, progress, battle));
+}
+
+export type UnlockConditionStatus = {
+  type: RogueUnlockType;
+  text: string;
+  current: number;
+  target: number;
+  done: boolean;
+};
+
+function unitLabel(id: string | null | undefined): string {
+  if (!id) return 'units';
+  return UNIT_STATS[id as UnitType]?.name ?? id;
+}
+
+export function describeUnlockCondition(
+  cond: RogueUnlockCondition,
+  progress: RogueProgress,
+  battle = 1,
+): UnlockConditionStatus {
+  const done = conditionSatisfied(cond, progress, battle);
+  switch (cond.type) {
+    case 'always':
+      return { type: 'always', text: 'Always unlocked', current: 1, target: 1, done: true };
+    case 'never':
+      return { type: 'never', text: 'Never', current: 0, target: 1, done: false };
+    case 'playGames':
+      return {
+        type: 'playGames',
+        text: `${Math.min(progress.gamesPlayed, cond.count)}/${cond.count} games`,
+        current: progress.gamesPlayed,
+        target: cond.count,
+        done,
+      };
+    case 'reachBattle': {
+      const cur = Math.max(battle, progress.bestBattle);
+      return {
+        type: 'reachBattle',
+        text: cur >= cond.battle ? `Reached battle ${cond.battle}` : `Reach battle ${cond.battle} (best ${cur})`,
+        current: cur,
+        target: cond.battle,
+        done,
+      };
+    }
+    case 'killUnits': {
+      const cur = killsCounted(progress, cond.unitType);
+      const who = cond.unitType ? unitLabel(cond.unitType) : 'units';
+      return {
+        type: 'killUnits',
+        text: `Kill ${cond.count} ${who} (${cur}/${cond.count})`,
+        current: cur,
+        target: cond.count,
+        done,
+      };
+    }
+    case 'haveCoins':
+      return {
+        type: 'haveCoins',
+        text: `Have ${cond.count} coins (max ${progress.maxCoins})`,
+        current: progress.maxCoins,
+        target: cond.count,
+        done,
+      };
+    case 'reachBattleNoLoss':
+      return {
+        type: 'reachBattleNoLoss',
+        text:
+          progress.bestNoLossBattle >= cond.battle
+            ? `Reached battle ${cond.battle} with no losses`
+            : `Reach battle ${cond.battle} with no losses (best ${progress.bestNoLossBattle})`,
+        current: progress.bestNoLossBattle,
+        target: cond.battle,
+        done,
+      };
+    case 'winWithUnits': {
+      const cur = progress.winsWith[cond.unitType] ?? 0;
+      const who = unitLabel(cond.unitType);
+      return {
+        type: 'winWithUnits',
+        text: `Win with ${cond.count} ${who} (best ${cur})`,
+        current: cur,
+        target: cond.count,
+        done,
+      };
+    }
+    default:
+      return { type: 'always', text: '', current: 0, target: 0, done: false };
+  }
+}
+
+export function describeUnlock(
+  unlock: RogueUnlock,
+  progress: RogueProgress,
+  battle = 1,
+): UnlockConditionStatus[] {
+  return sanitizeUnlock(unlock)
+    .filter((c) => c.type !== 'always')
+    .map((c) => describeUnlockCondition(c, progress, battle));
 }
 
 export function unitAvailableInRun(type: UnitType, battle: number, purpose: RoguePoolPurpose, progress: RogueProgress): boolean {

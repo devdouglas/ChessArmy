@@ -142,6 +142,7 @@ import {
   playerFlagCaptures,
   playerHpLost,
   playerKills,
+  playerKillsByType,
   playerSides,
   livingHostiles,
   signsOnMap,
@@ -376,7 +377,10 @@ import {
   listRogueRegionPresets,
   loadRogueConfig,
   recordRogueBattleWin,
+  recordRogueMatchProgress,
+  recordRogueNoLossBattle,
   recordRogueRunCompleted,
+  sanitizeUnlock,
   regionAvailableInBattle,
   regionRogueCfg,
   type RogueConfig,
@@ -1002,6 +1006,10 @@ function rogueTerrainPool(): TerrainPreset[] {
 /** Name / id of the terrain the current roguelite map was built with. */
 let rogueMapTerrainName = '';
 let rogueMapTerrainId = '';
+/** This roguelite run has lost at least one player unit. */
+let rogueRunLostUnit = false;
+/** Defeat stats already written for the current ended match. */
+let rogueLossRecorded = false;
 
 function rogueTerrainPreset(): TerrainPreset | null {
   const p = pickRogueTerrain();
@@ -1063,6 +1071,8 @@ function regenScoutMap(): void {
 
 function startRogueRun() {
   if (eraPlayLocked()) return;
+  rogueRunLostUnit = false;
+  rogueLossRecorded = false;
   if (!rogueUnitPool(selectedPeriod, 'start', 1).length) return;
   rogueRunCompletionRecorded = false;
   rogueRun = createRogueRun(selectedPeriod, 'aggressive');
@@ -1087,6 +1097,41 @@ function ensureRogueEndSuccession() {
   }
 }
 
+function armyCounts(pieces: { side: string; type: string }[], side = 'red'): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of pieces) {
+    if (p.side !== side) continue;
+    out[p.type] = (out[p.type] ?? 0) + 1;
+  }
+  return out;
+}
+
+function noteRogueRunLosses(): void {
+  if (!rogueRun) return;
+  if (playerCasualties(state) > 0) rogueRunLostUnit = true;
+}
+
+/** Persist kills / purse / no-loss / composition from the match that just ended. */
+function flushRogueMatchProgress(won: boolean): void {
+  if (!rogueRun) return;
+  noteRogueRunLosses();
+  const patch = {
+    kills: playerKillsByType(state),
+    gold: rogueRun.gold,
+    lostUnit: rogueRunLostUnit,
+    army: won ? armyCounts(state.pieces, 'red') : undefined,
+  };
+  if (won) {
+    recordRogueBattleWin(
+      rogueRun.battle,
+      rogueMapTerrainId || undefined,
+      { ...patch, noLossBattle: rogueRunLostUnit ? undefined : rogueRun.battle },
+    );
+  } else {
+    recordRogueMatchProgress(rogueRun.battle, patch);
+  }
+}
+
 /** Open the victory shop once (1g per earned star + Wealthy, rolls 3 offers). Also after battle 10 if continuing. */
 function ensureRogueShop() {
   if (!rogueRun || !state.winner || !playerTeamWon(state)) return;
@@ -1100,11 +1145,17 @@ function ensureRogueShop() {
   const opened = openRogueShop(rogueRun, starGold, wealthyGold);
   rogueRun = opened.run;
   rogueShop = opened.shop;
-  recordRogueBattleWin(rogueRun.battle, rogueMapTerrainId || undefined);
+  flushRogueMatchProgress(true);
   if (rogueRun.battle >= rogueGoal() && !rogueRunCompletionRecorded) {
     recordRogueRunCompleted();
     rogueRunCompletionRecorded = true;
   }
+}
+
+function ensureRogueLossProgress(): void {
+  if (!rogueRun || !state.winner || playerTeamWon(state) || rogueLossRecorded) return;
+  rogueLossRecorded = true;
+  flushRogueMatchProgress(false);
 }
 
 function buyRogueOffer(index: number) {
@@ -1350,6 +1401,8 @@ function startMatch(reshuffleRandom = true) {
   }
   scoutPrep = null;
   maybeStartScoutPrep();
+  rogueLossRecorded = false;
+  if (rogueRun && !rogueRunLostUnit) recordRogueNoLossBattle(rogueRun.battle);
   applyLayout(computeLayout(), false);
   render();
   void playPendingFx();
@@ -2679,6 +2732,7 @@ function bindRogueConfigEvents(): void {
   const rerenderOn = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
     if (target.closest('[data-unlock-type]')) return true;
+    if (target.closest('[data-unlock-param="unitType"]')) return false;
     return false;
   };
 
@@ -2691,6 +2745,40 @@ function bindRogueConfigEvents(): void {
     syncRogueAdminForm();
     markRogueAdminDirty();
     if (rerenderOn(e.target)) render();
+  });
+
+  const addCondition = (name: string) => {
+    if (!rogueAdminDraft || !name) return;
+    const extra = { type: 'playGames' as const, count: 1 };
+    if (name.startsWith('u:')) {
+      const id = name.slice(2);
+      const cur = rogueAdminDraft.units[id] ?? {};
+      const unlock = sanitizeUnlock(cur.unlock).filter((c) => c.type !== 'always');
+      rogueAdminDraft.units[id] = { ...cur, unlock: sanitizeUnlock([...unlock, extra]) };
+    } else if (name.startsWith('p:')) {
+      const id = name.slice(2);
+      const cur = rogueAdminDraft.promotions[id] ?? {};
+      const unlock = sanitizeUnlock(cur.unlock).filter((c) => c.type !== 'always');
+      rogueAdminDraft.promotions[id] = { ...cur, unlock: sanitizeUnlock([...unlock, extra]) };
+    }
+    markRogueAdminDirty();
+    render();
+  };
+
+  root.querySelectorAll<HTMLButtonElement>('[data-unlock-add]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      syncRogueAdminForm();
+      addCondition(btn.dataset.unlockAdd ?? '');
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>('[data-unlock-del]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('[data-unlock-index]');
+      if (row) row.remove();
+      syncRogueAdminForm();
+      markRogueAdminDirty();
+      render();
+    });
   });
 
   root.querySelector('#rogue-cfg-save')?.addEventListener('click', () => {
@@ -10098,13 +10186,9 @@ function render() {
   }
   syncPopupNarration();
   maybeRecordLevelWin();
-  if (
-    screen === 'play' &&
-    rogueRun &&
-    state.winner &&
-    playerTeamWon(state)
-  ) {
-    ensureRogueShop();
+  if (screen === 'play' && rogueRun && state.winner) {
+    if (playerTeamWon(state)) ensureRogueShop();
+    else ensureRogueLossProgress();
   }
   applyPeriodTheme(activePeriod());
   applyHotseatTint();
