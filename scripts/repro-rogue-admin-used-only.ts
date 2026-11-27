@@ -1,5 +1,5 @@
 /**
- * Roguelite admin "Used only" filter hides unused units/promos and disabled regions.
+ * Roguelite admin "Enabled only" filter hides unused units/promos and disabled regions.
  */
 import { readFileSync } from 'node:fs';
 import {
@@ -72,7 +72,7 @@ const draft: RogueConfig = {
 setRogueAdminUsedOnly(false);
 assert(!getRogueAdminUsedOnly(), 'filter starts off');
 let html = renderRogueConfigPage(draft, false);
-assert(html.includes('data-rogue-used-only'), 'Used only checkbox');
+assert(html.includes('data-rogue-used-only') && html.includes('Enabled only'), 'Enabled only checkbox');
 assert(!html.includes('data-rogue-used-only checked'), 'unchecked when off');
 assert(html.includes(`data-unit="${usedId}"`) && html.includes(`data-unit="${unusedId}"`), 'both units when off');
 assert(html.includes('data-promo="general"') && html.includes('data-promo="scout"'), 'both promos when off');

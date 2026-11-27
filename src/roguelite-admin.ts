@@ -120,7 +120,7 @@ function rogueAdminFiltersHtml(selected: UnitCategory): string {
   const usedOnly = getRogueAdminUsedOnly();
   return `<div class="rogue-admin-filters">
     ${rogueEraFilterHtml(selected)}
-    <label class="chk rogue-used-only"><input type="checkbox" data-rogue-used-only${usedOnly ? ' checked' : ''} /> Used only</label>
+    <label class="chk rogue-used-only"><input type="checkbox" data-rogue-used-only${usedOnly ? ' checked' : ''} /> Enabled only</label>
   </div>`;
 }
 
@@ -278,7 +278,7 @@ export function renderRogueConfigPage(
     const c = unitRogueCfgMerged(t, draft);
     const name = s?.name ?? t;
     return `<tr data-unit="${esc(t)}">
-          <td>${chk('used', c.used, 'Used in roguelite')}</td>
+          <td>${chk('used', c.used, 'Enabled in roguelite')}</td>
           <td class="rogue-ico">${unitIcon(t)}</td>
           <td><strong>${esc(name)}</strong><div class="lvl-meta">${esc(t)}</div></td>
           <td class="rogue-num">${s?.value ?? '—'}</td>
@@ -302,7 +302,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table rogue-units">
             <thead>
               <tr>
-                <th>Used</th><th></th><th>Unit</th><th>Value</th><th>Price</th>
+                <th>Enabled</th><th></th><th>Unit</th><th>Value</th><th>Price</th>
                 <th>From</th><th>To</th><th>Unlock</th><th>Shop</th><th>Start</th><th>Enemy</th>
               </tr>
             </thead>
@@ -317,7 +317,7 @@ export function renderRogueConfigPage(
   const promoRows = PROMOTION_TOKEN_TYPES.filter((id) => !usedOnly || promoRogueCfgMerged(id, draft).used).map((id) => {
     const c = promoRogueCfgMerged(id, draft);
     return `<tr data-promo="${id}">
-      <td>${chk('used', c.used)}</td>
+      <td>${chk('used', c.used, 'Enabled in roguelite')}</td>
       <td class="rogue-ico">${promoIcon(id)}</td>
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
@@ -391,7 +391,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table">
             <thead>
               <tr>
-                <th>Used</th><th></th><th>Promotion</th><th>From battle</th>
+                <th>Enabled</th><th></th><th>Promotion</th><th>From battle</th>
                 <th>Unlock</th><th>Shop</th><th>Enemy</th>
               </tr>
             </thead>
@@ -468,7 +468,7 @@ export function renderRogueUnlocksPage(): string {
         <h2>Unlocks</h2>
         <span class="lvl-meta">${progress.runsCompleted} run${progress.runsCompleted === 1 ? '' : 's'} completed · best battle ${progress.bestBattle}</span>
       </div>
-      <p class="ai-editor-lead">Current unlockable state for this browser. Only units and promotions marked Used appear here; greyed items show the remaining condition and progress. Promotions are shown for every era.</p>
+      <p class="ai-editor-lead">Current unlockable state for this browser. Only units and promotions marked Enabled appear here; greyed items show the remaining condition and progress. Promotions are shown for every era.</p>
       ${rogueEraFilterHtml(era)}
       ${unitBlocks}
       <div class="rogue-ov-group"><h3 class="unit-class-label">Promotions</h3><div class="rogue-ov-grid">${ovPromos}</div></div>
