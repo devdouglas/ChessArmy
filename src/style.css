@@ -6935,6 +6935,20 @@ svg.board .hex.rock {
   font: inherit;
   max-width: 7rem;
 }
+.rogue-admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1.1rem;
+  margin: 0 0 0.85rem;
+}
+.rogue-admin-filters .rogue-era-filter {
+  margin: 0;
+}
+.rogue-used-only {
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
 .rogue-conds {
   display: flex;
   flex-direction: column;

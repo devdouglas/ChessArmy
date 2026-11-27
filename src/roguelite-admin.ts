@@ -72,6 +72,27 @@ export function setRogueAdminEra(era: UnitCategory): void {
   }
 }
 
+export const ROGUE_ADMIN_USED_ONLY_KEY = 'chessarmy-roguelite-admin-used-only-v1';
+
+export function getRogueAdminUsedOnly(): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(ROGUE_ADMIN_USED_ONLY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setRogueAdminUsedOnly(on: boolean): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ROGUE_ADMIN_USED_ONLY_KEY, on ? '1' : '0');
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
 /** Same grouping as the Units editor: class headers, then value, then name. */
 export function unitsGroupedLikeEditor(era: UnitCategory): { cls: string; label: string; types: UnitType[] }[] {
   const shown = UNIT_TYPES.filter((t) => UNIT_STATS[t]?.category === era);
@@ -93,6 +114,14 @@ export function rogueEraFilterHtml(selected: UnitCategory): string {
       `<button type="button" data-rogue-era="${c}" class="${selected === c ? 'active' : ''}">${UNIT_CATEGORY_LABEL[c]}${eraIsWip(c) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
   ).join('');
   return `<div class="unit-filter rogue-era-filter" role="radiogroup" aria-label="Era">${buttons}</div>`;
+}
+
+function rogueAdminFiltersHtml(selected: UnitCategory): string {
+  const usedOnly = getRogueAdminUsedOnly();
+  return `<div class="rogue-admin-filters">
+    ${rogueEraFilterHtml(selected)}
+    <label class="chk rogue-used-only"><input type="checkbox" data-rogue-used-only${usedOnly ? ' checked' : ''} /> Used only</label>
+  </div>`;
 }
 
 function esc(s: string): string {
@@ -236,7 +265,13 @@ export function renderRogueConfigPage(
   const g = draft.globals;
   const unlockOpts = { battleMax: unlockBattleParamMax(g), draft };
   const era = getRogueAdminEra();
-  const groups = unitsGroupedLikeEditor(era);
+  const usedOnly = getRogueAdminUsedOnly();
+  const groups = unitsGroupedLikeEditor(era)
+    .map((group) => ({
+      ...group,
+      types: usedOnly ? group.types.filter((typ) => unitRogueCfgMerged(typ, draft).used) : group.types,
+    }))
+    .filter((group) => group.types.length);
 
   const unitRow = (t: UnitType) => {
     const s = UNIT_STATS[t];
@@ -279,7 +314,7 @@ export function renderRogueConfigPage(
         .join('')
     : `<p class="editor-empty">No ${esc(UNIT_CATEGORY_LABEL[era])} units.</p>`;
 
-  const promoRows = PROMOTION_TOKEN_TYPES.map((id) => {
+  const promoRows = PROMOTION_TOKEN_TYPES.filter((id) => !usedOnly || promoRogueCfgMerged(id, draft).used).map((id) => {
     const c = promoRogueCfgMerged(id, draft);
     return `<tr data-promo="${id}">
       <td class="rogue-ico">${promoIcon(id)}</td>
@@ -293,6 +328,7 @@ export function renderRogueConfigPage(
   }).join('');
 
   const regionRows = listRogueRegionPresets(draft)
+    .filter((r) => !usedOnly || regionRogueCfgMerged(r.id, draft).enabled)
     .map((r) => {
       const c = regionRogueCfgMerged(r.id, draft);
       const kind = r.builtin ? 'Built-in' : 'Custom';
@@ -318,7 +354,7 @@ export function renderRogueConfigPage(
         </div>
       </div>
       <p class="ai-editor-lead">Prices, unlocks, in-run availability, starting gold, and the goal battle. Changes are saved immediately in this browser (localStorage). Shipped defaults come from <code>public/data/roguelite.json</code>. Seeded values match the previous hard-coded rules, so play does not change until you edit this. Current unlocks are on the Unlocks tab.</p>
-      ${rogueEraFilterHtml(era)}
+      ${rogueAdminFiltersHtml(era)}
 
       <section class="rogue-admin-section" id="rogue-sec-globals">
         <h3>Run settings</h3>

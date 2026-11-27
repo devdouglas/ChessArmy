@@ -391,6 +391,7 @@ import {
 } from './roguelite-config';
 import {
   getRogueAdminEra,
+  getRogueAdminUsedOnly,
   persistRogueAdminDraft,
   readRogueAdminForm,
   renderRogueConfigPage,
@@ -398,6 +399,7 @@ import {
   renderRogueUnlocksPage,
   resetRogueAdminDraft,
   setRogueAdminEra,
+  setRogueAdminUsedOnly,
 } from './roguelite-admin';
 import {
   AI_RULE_CATEGORIES,
@@ -2744,7 +2746,17 @@ function bindRogueConfigEvents(): void {
   const rerenderOn = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
     if (target.closest('[data-unlock-type]')) return true;
-    if (target.closest('[data-unlock-param="unitType"]')) return false;
+    const usedOnlyBox = target.closest('[data-rogue-used-only]');
+    if (usedOnlyBox instanceof HTMLInputElement) {
+      setRogueAdminUsedOnly(usedOnlyBox.checked);
+      return true;
+    }
+    if (
+      getRogueAdminUsedOnly() &&
+      target.closest('[data-flag="used"], [data-flag="enabled"]')
+    ) {
+      return true;
+    }
     return false;
   };
 
