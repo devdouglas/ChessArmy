@@ -206,4 +206,28 @@ assert(unlocksPage.includes('3/5 games'), 'keeps 3/5 text');
 assert(unlocksPage.includes('style="width: 60%"'), 'partial bar width');
 assert(unlocksPage.includes('10/10 coins') && unlocksPage.includes('style="width: 100%"'), 'met condition is a full bar');
 
+
+const killsWithCfg: RogueConfig = {
+  ...base,
+  units: {
+    ...base.units,
+    [unitId]: {
+      ...(base.units[unitId] ?? {}),
+      unlock: sanitizeUnlock({ type: 'killsWith', count: 10, unitType: 'archer' }),
+    },
+  },
+};
+row = unitRow(renderRogueConfigPage(killsWithCfg, true), unitId);
+assert(row.includes('value="killsWith" selected'), 'killsWith selected');
+assert(/data-unlock-param="count" value="10"/.test(row), 'killsWith count');
+assert(/<option value="archer" selected>/.test(row), 'killsWith unit selected');
+assert(row.includes('kills with'), 'killsWith phrase');
+assert(!row.includes('>Any unit</option>') || row.includes('Choose a unit'), 'killsWith requires a type');
+
+setRogueProgress(sanitizeRogueProgress({ killsBy: { archer: 4 } }));
+applyRogueConfig(killsWithCfg);
+const killsWithPage = renderRogueUnlocksPage();
+assert(killsWithPage.includes('Get 10 kills with Archer'), 'unlocks label');
+assert(killsWithPage.includes('4/10 kills') && killsWithPage.includes('style="width: 40%"'), 'killsWith progress bar');
+
 console.log('repro-rogue-unlock-editor: ok');

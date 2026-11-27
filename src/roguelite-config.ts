@@ -34,6 +34,7 @@ export const ROGUE_UNLOCK_TYPES = [
   'haveCoins',
   'reachBattleNoLoss',
   'winWithUnits',
+  'killsWith',
   'breakObstacles',
 ] as const;
 
@@ -50,6 +51,7 @@ export type RogueUnlockCondition =
   | { type: 'haveCoins'; count: number }
   | { type: 'reachBattleNoLoss'; battle: number }
   | { type: 'winWithUnits'; count: number; unitType: string }
+  | { type: 'killsWith'; count: number; unitType: string }
   | { type: 'breakObstacles'; count: number; obstacleType: BreakableObstacleType | null };
 
 /** All conditions must be met. Empty means always. */
@@ -64,6 +66,7 @@ export const ROGUE_UNLOCK_TYPE_LABEL: Record<RogueUnlockType, string> = {
   haveCoins: 'Have coins',
   reachBattleNoLoss: 'Reach battle with no losses',
   winWithUnits: 'Win with units',
+  killsWith: 'Kills with units',
   breakObstacles: 'Break obstacles',
 };
 
@@ -142,6 +145,8 @@ export type RogueProgress = {
   winsWith: Record<string, number>;
   /** Obstacles fully broken or felled, keyed by token type. */
   broken: Record<string, number>;
+  /** Enemy kills scored by the player's unit type. */
+  killsBy: Record<string, number>;
 };
 
 export type RoguePoolPurpose = 'shop' | 'start' | 'enemy';
@@ -206,6 +211,10 @@ function sanitizeUnlockCondition(raw: unknown): RogueUnlockCondition | null {
   if (t === 'winWithUnits') {
     const typ = String(src.unitType ?? '').trim();
     return { type: 'winWithUnits', count: int(src.count, 1, 1, 99), unitType: typ };
+  }
+  if (t === 'killsWith') {
+    const typ = String(src.unitType ?? '').trim();
+    return { type: 'killsWith', count: int(src.count, 1, 1, 9999), unitType: typ };
   }
   if (t === 'breakObstacles') {
     const typ = String((src as { obstacleType?: unknown }).obstacleType ?? '').trim();
@@ -475,6 +484,7 @@ export function emptyRogueProgress(): RogueProgress {
     bestNoLossBattle: 0,
     winsWith: {},
     broken: {},
+    killsBy: {},
   };
 }
 
@@ -504,6 +514,7 @@ export function sanitizeRogueProgress(raw: unknown): RogueProgress {
     bestNoLossBattle: int(src.bestNoLossBattle, 0, 0, 9999),
     winsWith: intMap(src.winsWith, 99),
     broken: intMap(src.broken),
+    killsBy: intMap(src.killsBy),
   };
 }
 
@@ -538,6 +549,8 @@ export function setRogueProgress(p: RogueProgress): void {
 export type RogueProgressPatch = {
   regionId?: string;
   kills?: Record<string, number>;
+  /** Kills scored by player unit type. */
+  killsBy?: Record<string, number>;
   gold?: number;
   lostUnit?: boolean;
   /** Living player unit counts at a battle win, by type. */
@@ -583,6 +596,7 @@ function applyProgressPatch(prev: RogueProgress, battle: number, patch: RoguePro
     bestBattle: Math.max(prev.bestBattle, b),
     regionsCleared,
     kills: addCounts(prev.kills, patch.kills),
+    killsBy: addCounts(prev.killsBy, patch.killsBy),
     maxCoins: Math.max(prev.maxCoins, int(patch.gold, 0, 0, 99999)),
     bestNoLossBattle: noLoss,
     winsWith: maxCounts(prev.winsWith, patch.army),
@@ -685,6 +699,8 @@ export function conditionSatisfied(
       return progress.bestNoLossBattle >= cond.battle;
     case 'winWithUnits':
       return (progress.winsWith[cond.unitType] ?? 0) >= cond.count;
+    case 'killsWith':
+      return !!cond.unitType && (progress.killsBy[cond.unitType] ?? 0) >= cond.count;
     case 'breakObstacles':
       return obstaclesBroken(progress, cond.obstacleType) >= cond.count;
     default:
@@ -735,6 +751,8 @@ export function unlockConditionLabel(cond: RogueUnlockCondition): string {
       return `Reach battle ${cond.battle} with no losses`;
     case 'winWithUnits':
       return `Win a battle with ${cond.count} ${unitLabel(cond.unitType)}`;
+    case 'killsWith':
+      return `Get ${cond.count} ${cond.count === 1 ? 'kill' : 'kills'} with ${unitLabel(cond.unitType)}`;
     case 'breakObstacles': {
       const who = cond.obstacleType
         ? TOKEN_LABEL[cond.obstacleType]
@@ -831,6 +849,17 @@ export function describeUnlockCondition(
         type: 'winWithUnits',
         label,
         text: progressText(cur, cond.count, who),
+        current: cur,
+        target: cond.count,
+        done,
+      };
+    }
+    case 'killsWith': {
+      const cur = cond.unitType ? (progress.killsBy[cond.unitType] ?? 0) : 0;
+      return {
+        type: 'killsWith',
+        label,
+        text: progressText(cur, cond.count, 'kills'),
         current: cur,
         target: cond.count,
         done,

@@ -217,6 +217,12 @@ function conditionParams(cond: RogueUnlockCondition, opts: UnlockEditorOpts): st
       <select data-unlock-param="unitType" aria-label="Unit type">${usedUnitTypeOptions(cond.unitType, opts.draft)}</select>`,
     );
   }
+  if (cond.type === 'killsWith') {
+    return phrase(
+      `Get ${unlockNumberInput('count', cond.count, 'How many kills', 9999)} kills with
+      <select data-unlock-param="unitType" aria-label="Unit type">${usedUnitTypeOptions(cond.unitType, opts.draft)}</select>`,
+    );
+  }
   if (cond.type === 'breakObstacles') {
     return phrase(
       `Break ${unlockNumberInput('count', cond.count, 'How many to break', 9999)}
@@ -443,6 +449,7 @@ const COUNTER_UNLOCK_TYPES = new Set([
   'haveCoins',
   'reachBattleNoLoss',
   'winWithUnits',
+  'killsWith',
   'breakObstacles',
 ]);
 
@@ -586,6 +593,7 @@ function readOneCondition(row: Element): RogueUnlockCondition {
   if (type === 'killUnits') return { type, count: num('count', 1), unitType: typ || null };
   if (type === 'haveCoins') return { type, count: num('count', 1, 1, 9999) };
   if (type === 'winWithUnits') return { type, count: num('count', 1, 1, 99), unitType: typ };
+  if (type === 'killsWith') return { type, count: num('count', 1), unitType: typ };
   if (type === 'breakObstacles') {
     const obstacle = row.querySelector<HTMLSelectElement>('[data-unlock-param="obstacleType"]')?.value ?? '';
     return { type, count: num('count', 1), obstacleType: isBreakableObstacleType(obstacle) ? obstacle : null };

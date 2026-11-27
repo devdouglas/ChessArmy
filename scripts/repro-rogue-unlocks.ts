@@ -202,4 +202,32 @@ assert(
   `breakObstacles copy, got ${breakText.map((d) => `${d.label} / ${d.text}`).join(' | ')}`,
 );
 
+
+const with10 = sanitizeUnlock({ type: 'killsWith', count: 10, unitType: 'archer' });
+assert(
+  with10[0]!.type === 'killsWith' &&
+    (with10[0] as { count: number; unitType: string }).count === 10 &&
+    (with10[0] as { unitType: string }).unitType === 'archer',
+  'killsWith keeps count and type',
+);
+assert(
+  unlockConditionLabel(with10[0]!) === 'Get 10 kills with Archer',
+  `killsWith label, got ${unlockConditionLabel(with10[0]!)}`,
+);
+const mid = sanitizeRogueProgress({ killsBy: { archer: 4, soldier: 8 } });
+const with10d = describeUnlock(with10, mid, 1);
+assert(
+  with10d[0]?.label === 'Get 10 kills with Archer' && with10d[0]?.text === '4/10 kills',
+  `killsWith progress, got ${with10d.map((d) => `${d.label} / ${d.text}`).join(' | ')}`,
+);
+assert(!conditionSatisfied(with10[0]!, mid), '4/10 not yet');
+assert(
+  conditionSatisfied(with10[0]!, sanitizeRogueProgress({ killsBy: { archer: 10 } })),
+  '10 archer kills meets killsWith',
+);
+assert(
+  !conditionSatisfied(with10[0]!, sanitizeRogueProgress({ kills: { archer: 10 }, killsBy: { soldier: 10 } })),
+  'killsWith does not use victim kills',
+);
+
 console.log('repro-rogue-unlocks: ok');

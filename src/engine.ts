@@ -1221,6 +1221,8 @@ export type GameState = {
   casualties: Record<Side, number>;
   /** Pieces removed per side this match, counted by unit type. Missing on old states. */
   casualtyTypes?: Partial<Record<Side, Record<string, number>>>;
+  /** Kills scored by each side, keyed by the killer's unit type. */
+  killByTypes?: Partial<Record<Side, Record<string, number>>>;
   /** Obstacles fully destroyed / felled this match, counted by token type per side. */
   brokenObstacles?: Partial<Record<Side, Record<string, number>>>;
   /** HP chipped per side this match (kills included). Missing on old states → 0. */
@@ -1440,7 +1442,7 @@ function applyHexDamagePush(state: GameState, attacker: Piece, prevCovered: Set<
     if (!victim || victim.id === attacker.id) continue;
     if (!isHostile(state, attacker.side, victim.side)) continue;
     const before = hpLeft(victim);
-    const dmg = applyDamage(state, victim, f.amount, 1, from, true, false);
+    const dmg = applyDamage(state, victim, f.amount, 1, from, true, false, attacker);
     const dealt = before - dmg.remaining;
     if (dealt <= 0 && !dmg.routed) continue;
     noteStrike(state, victim, before, dmg, from, true);
@@ -1608,6 +1610,7 @@ function applyDamage(
   from?: Hex,
   ranged = false,
   markShot = ranged,
+  by?: Piece,
 ): { fatal: boolean; remaining: number; routed: boolean; routKind?: RoutKind } {
   if (isNeutralSide(victim.side)) {
     return { fatal: false, remaining: hpLeft(victim), routed: false };
@@ -1636,6 +1639,13 @@ function applyDamage(
       state.casualtyTypes = {
         ...state.casualtyTypes,
         [victim.side]: { ...prev, [victim.type]: (prev[victim.type] ?? 0) + 1 },
+      };
+    }
+    if (by && isSide(by.side) && isHostile(state, by.side, victim.side)) {
+      const prevBy = state.killByTypes?.[by.side] ?? {};
+      state.killByTypes = {
+        ...state.killByTypes,
+        [by.side]: { ...prevBy, [by.type]: (prevBy[by.type] ?? 0) + 1 },
       };
     }
     // A dead link breaks the chain at once.
@@ -2602,6 +2612,11 @@ function cloneState(state: GameState): GameState {
           Object.entries(state.casualtyTypes).map(([s, m]) => [s, { ...m }]),
         ) as GameState['casualtyTypes'])
       : undefined,
+    killByTypes: state.killByTypes
+      ? (Object.fromEntries(
+          Object.entries(state.killByTypes).map(([s, m]) => [s, { ...m }]),
+        ) as GameState['killByTypes'])
+      : undefined,
     brokenObstacles: state.brokenObstacles
       ? (Object.fromEntries(
           Object.entries(state.brokenObstacles).map(([s, m]) => [s, { ...m }]),
@@ -3287,6 +3302,17 @@ export function playerKillsByType(state: GameState): Record<string, number> {
   return out;
 }
 
+/** Enemy kills scored by each player unit type this match. */
+export function playerKillsWithByType(state: GameState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of playerSides(state)) {
+    for (const [typ, n] of Object.entries(state.killByTypes?.[s] ?? {})) {
+      if (n) out[typ] = (out[typ] ?? 0) + n;
+    }
+  }
+  return out;
+}
+
 /** Obstacle types the player team fully broke or felled this match. */
 export function playerBrokenObstacles(state: GameState): Record<string, number> {
   const us = playerSides(state);
@@ -3586,7 +3612,7 @@ function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex
     !isConcealedFrom(state, occ, piece.side)
   ) {
     tellStory(state, occ, 'touch');
-    const res = applyDamage(state, occ, melee, 1, from);
+    const res = applyDamage(state, occ, melee, 1, from, false, false, piece);
     state.log.push(
       `${unitLog(piece)} strikes ${hpBit(occ, res.fatal, res.remaining, res.routed)}` +
         (res.fatal ? '' : ` — stops ${from.col},${from.row}`) +
@@ -5067,13 +5093,13 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if (step.outcome === 'unit' && step.other && step.to) {
         const other = getPiece(next, step.other.id);
         const beforeV = hpLeft(victim);
-        const dmgV = applyDamage(next, victim, amount, 1, step.to);
+        const dmgV = applyDamage(next, victim, amount, 1, step.to, false, false, piece);
         noteStrike(next, victim, beforeV, dmgV, step.to);
         bits.push(hpBit(victim, dmgV.fatal, dmgV.remaining, dmgV.routed));
         dmgLines.push(dmgLine(next, victim, amount, 1, step.to));
         if (other) {
           const beforeO = hpLeft(other);
-          const dmgO = applyDamage(next, other, amount, 1, step.from);
+          const dmgO = applyDamage(next, other, amount, 1, step.from, false, false, piece);
           noteStrike(next, other, beforeO, dmgO, step.from);
           bits.push(hpBit(other, dmgO.fatal, dmgO.remaining, dmgO.routed));
           dmgLines.push(dmgLine(next, other, amount, 1, step.from));
@@ -5082,7 +5108,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       }
       if (step.outcome === 'slam' && step.to) {
         const before = hpLeft(victim);
-        const dmg = applyDamage(next, victim, amount, 1, step.to);
+        const dmg = applyDamage(next, victim, amount, 1, step.to, false, false, piece);
         noteStrike(next, victim, before, dmg, step.to);
         bits.push(
           `${hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed)} slams`,
@@ -5093,7 +5119,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       if ((step.outcome === 'token' || step.outcome === 'forest') && step.to) {
         const wood = chipWoodAt(next, step.to, 1, piece.side);
         const before = hpLeft(victim);
-        const dmg = applyDamage(next, victim, 1, 0, step.to, true);
+        const dmg = applyDamage(next, victim, 1, 0, step.to, true, true, piece);
         noteStrike(next, victim, before, dmg, step.to, true);
         const woodBit = wood
           ? wood.remaining > 0
@@ -5139,7 +5165,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       const victim = getPiece(next, foe.id);
       if (!victim) continue;
       const before = hpLeft(victim);
-      const dmg = applyDamage(next, victim, amount, floor, fromHex);
+      const dmg = applyDamage(next, victim, amount, floor, fromHex, false, false, piece);
       noteStrike(next, victim, before, dmg, fromHex);
       bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
       dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
@@ -5180,7 +5206,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       const victim = getPiece(next, foe.id);
       if (!victim) continue;
       const before = hpLeft(victim);
-      const dmg = applyDamage(next, victim, amount, floor, fromHex);
+      const dmg = applyDamage(next, victim, amount, floor, fromHex, false, false, piece);
       noteStrike(next, victim, before, dmg, fromHex);
       bits.push(hpBit(victim, dmg.fatal, dmg.remaining, dmg.routed));
       dmgLines.push(dmgLine(next, victim, amount, floor, fromHex));
@@ -5273,7 +5299,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         const victim = getPiece(next, mh.id);
         if (!victim) continue;
         tellStory(next, victim, 'touch');
-        applyDamage(next, victim, mh.amount, 1, mh.from);
+        applyDamage(next, victim, mh.amount, 1, mh.from, false, false, piece);
         hitBits.push(hpBit(victim, mh.fatal, mh.remaining, mh.routed));
         dmgLines.push(dmgLine(next, victim, mh.amount, 1, mh.from));
       }
@@ -5423,7 +5449,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push('shields');
       } else if (t && splash > 0) {
         const origin = eq(h, action.at) ? fromHex : action.at;
-        const dmg = applyDamage(next, t, splash, 0, origin, true);
+        const dmg = applyDamage(next, t, splash, 0, origin, true, true, piece);
         hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
         dmgLines.push(dmgLine(next, t, splash, 0, origin, true));
       }
@@ -5471,7 +5497,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         hitBits.push(`${unitLog(t)} shields`);
         continue;
       }
-      const dmg = applyDamage(next, t, shot, 0, fromHex, true);
+      const dmg = applyDamage(next, t, shot, 0, fromHex, true, true, piece);
       hitBits.push(hpBit(t, dmg.fatal, dmg.remaining, dmg.routed));
       dmgLines.push(dmgLine(next, t, shot, 0, fromHex, true));
     }
@@ -5522,7 +5548,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       afterAction(next, piece, 'shoot');
       return next;
     }
-    const dmg = applyDamage(next, t, shot, 0, fromHex, true);
+    const dmg = applyDamage(next, t, shot, 0, fromHex, true, true, piece);
     next.log.push(
       `${unitLog(piece)} shoots ${unitLog(t)} at ${action.at.col},${action.at.row}` +
         (dmg.routed ? ' — routs' : dmg.fatal ? ' — kills' : ` — ${dmg.remaining} HP`) +
