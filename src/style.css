@@ -7075,6 +7075,12 @@ svg.board .hex.rock {
   opacity: 0.32;
   filter: grayscale(1);
 }
+.rogue-table tr.rogue-row-off td:not(:first-child) {
+  opacity: 0.45;
+}
+.rogue-table tr.rogue-row-off input[disabled] {
+  cursor: not-allowed;
+}
 .rogue-table tr.rogue-jump {
   outline: 2px solid var(--accent, #c9a227);
   outline-offset: -2px;

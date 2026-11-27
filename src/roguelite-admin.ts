@@ -243,8 +243,35 @@ function unlockEditor(name: string, unlock: RogueUnlock, opts: UnlockEditorOpts)
   </div>`;
 }
 
-function chk(name: string, on: boolean, title = ''): string {
-  return `<input type="checkbox" data-flag="${esc(name)}"${on ? ' checked' : ''}${title ? ` title="${esc(title)}"` : ''} />`;
+function chk(name: string, on: boolean, title = '', locked = false): string {
+  const shown = on && !locked;
+  return `<input type="checkbox" data-flag="${esc(name)}"${shown ? ' checked' : ''} data-kept="${on ? '1' : '0'}"${locked ? ' disabled' : ''}${title ? ` title="${esc(title)}"` : ''} />`;
+}
+
+const ROGUE_POOL_FLAGS = ['inShop', 'inStartPool', 'inEnemyPool', 'enemyAllowed'] as const;
+
+/** Read a flag, using the stored value when the box is locked (disabled + visually off). */
+export function readKeptFlag(el: HTMLInputElement | null | undefined, fallback = false): boolean {
+  if (!el) return fallback;
+  if (el.disabled) return el.dataset.kept === '1';
+  return el.checked;
+}
+
+/** Show Shop/Start/Enemy (or promo Shop/Enemy) as off+locked when Enabled is unchecked, without dropping stored values. */
+export function applyRogueRowEnabled(row: HTMLElement, enabled: boolean): void {
+  row.classList.toggle('rogue-row-off', !enabled);
+  for (const name of ROGUE_POOL_FLAGS) {
+    const el = row.querySelector<HTMLInputElement>(`[data-flag="${name}"]`);
+    if (!el) continue;
+    if (!enabled) {
+      el.dataset.kept = el.checked ? '1' : '0';
+      el.checked = false;
+      el.disabled = true;
+    } else {
+      el.disabled = false;
+      el.checked = el.dataset.kept === '1';
+    }
+  }
 }
 
 function unitIcon(type: UnitType): string {
@@ -277,7 +304,7 @@ export function renderRogueConfigPage(
     const s = UNIT_STATS[t];
     const c = unitRogueCfgMerged(t, draft);
     const name = s?.name ?? t;
-    return `<tr data-unit="${esc(t)}">
+    return `<tr data-unit="${esc(t)}"${c.used ? '' : ' class="rogue-row-off"'}>
           <td>${chk('used', c.used, 'Enabled in roguelite')}</td>
           <td class="rogue-ico">${unitIcon(t)}</td>
           <td><strong>${esc(name)}</strong><div class="lvl-meta">${esc(t)}</div></td>
@@ -286,9 +313,9 @@ export function renderRogueConfigPage(
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
           <td>${unlockEditor(`u:${t}`, c.unlock, unlockOpts)}</td>
-          <td>${chk('inShop', c.inShop)}</td>
-          <td>${chk('inStartPool', c.inStartPool)}</td>
-          <td>${chk('inEnemyPool', c.inEnemyPool)}</td>
+          <td>${chk('inShop', c.inShop, '', !c.used)}</td>
+          <td>${chk('inStartPool', c.inStartPool, '', !c.used)}</td>
+          <td>${chk('inEnemyPool', c.inEnemyPool, '', !c.used)}</td>
         </tr>`;
   };
 
@@ -316,14 +343,14 @@ export function renderRogueConfigPage(
 
   const promoRows = PROMOTION_TOKEN_TYPES.filter((id) => !usedOnly || promoRogueCfgMerged(id, draft).used).map((id) => {
     const c = promoRogueCfgMerged(id, draft);
-    return `<tr data-promo="${id}">
+    return `<tr data-promo="${id}"${c.used ? '' : ' class="rogue-row-off"'}>
       <td>${chk('used', c.used, 'Enabled in roguelite')}</td>
       <td class="rogue-ico">${promoIcon(id)}</td>
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
       <td>${unlockEditor(`p:${id}`, c.unlock, unlockOpts)}</td>
-      <td>${chk('inShop', c.inShop)}</td>
-      <td>${chk('enemyAllowed', c.enemyAllowed)}</td>
+      <td>${chk('inShop', c.inShop, '', !c.used)}</td>
+      <td>${chk('enemyAllowed', c.enemyAllowed, '', !c.used)}</td>
     </tr>`;
   }).join('');
 
@@ -572,7 +599,8 @@ export function readRogueAdminForm(root: ParentNode, prev?: RogueConfig): RogueC
   root.querySelectorAll<HTMLTableRowElement>('tr[data-unit]').forEach((tr) => {
     const id = tr.dataset.unit;
     if (!id) return;
-    const flagOf = (n: string) => !!tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`)?.checked;
+    const flagOf = (n: string) =>
+      readKeptFlag(tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`));
     units[id] = {
       used: flagOf('used'),
       price: numOrNull(tr.querySelector<HTMLInputElement>('[data-field="price"]')?.value ?? ''),
@@ -589,7 +617,8 @@ export function readRogueAdminForm(root: ParentNode, prev?: RogueConfig): RogueC
   root.querySelectorAll<HTMLTableRowElement>('tr[data-promo]').forEach((tr) => {
     const id = tr.dataset.promo;
     if (!id) return;
-    const flagOf = (n: string) => !!tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`)?.checked;
+    const flagOf = (n: string) =>
+      readKeptFlag(tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`));
     promotions[id] = {
       used: flagOf('used'),
       fromBattle: Number(tr.querySelector<HTMLInputElement>('[data-field="fromBattle"]')?.value) || 1,

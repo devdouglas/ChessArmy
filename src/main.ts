@@ -390,6 +390,7 @@ import {
   type RogueConfig,
 } from './roguelite-config';
 import {
+  applyRogueRowEnabled,
   getRogueAdminEra,
   getRogueAdminUsedOnly,
   persistRogueAdminDraft,
@@ -2760,12 +2761,20 @@ function bindRogueConfigEvents(): void {
     return false;
   };
 
+  const prepareEnabledToggle = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLInputElement) || target.dataset.flag !== 'used') return;
+    const row = target.closest<HTMLElement>('tr[data-unit], tr[data-promo]');
+    if (row) applyRogueRowEnabled(row, target.checked);
+  };
+
   root.addEventListener('input', (e) => {
+    prepareEnabledToggle(e.target);
     syncRogueAdminForm();
     persistRogueAdminNow();
     if (rerenderOn(e.target)) render();
   });
   root.addEventListener('change', (e) => {
+    prepareEnabledToggle(e.target);
     syncRogueAdminForm();
     persistRogueAdminNow();
     if (rerenderOn(e.target)) render();
