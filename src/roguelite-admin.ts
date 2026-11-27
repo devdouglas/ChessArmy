@@ -236,7 +236,6 @@ export function renderRogueConfigPage(
           <label>Scout regenerates each <input type="number" min="0" max="20" data-global="scoutRegenPer" value="${g.scoutRegenPer}" /></label>
           <label>Wealthy gold each <input type="number" min="0" max="20" data-global="wealthyGoldPer" value="${g.wealthyGoldPer}" /></label>
           <label>Gold per star <input type="number" min="0" max="20" data-global="starGoldPerStar" value="${g.starGoldPerStar}" /></label>
-          <label title="Used when the era has no Knight chess piece">Fallback general kit <input type="text" data-global-text="startGeneralKit" value="${esc(String(g.startGeneralKit))}" /></label>
           <label class="chk"><input type="checkbox" data-global-flag="endlessAfterGoal"${g.endlessAfterGoal ? ' checked' : ''} /> Endless after the goal</label>
         </div>
       </section>
@@ -348,9 +347,6 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
   };
   const flag = (name: string) =>
     !!root.querySelector<HTMLInputElement>(`[data-global-flag="${name}"]`)?.checked;
-  const text = (name: string, fallback: string) =>
-    root.querySelector<HTMLInputElement>(`[data-global-text="${name}"]`)?.value.trim() || fallback;
-
   const g = getRogueConfig().globals;
   const globals = {
     startGold: num('startGold', g.startGold),
@@ -363,7 +359,6 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     scoutRegenPer: num('scoutRegenPer', g.scoutRegenPer),
     wealthyGoldPer: num('wealthyGoldPer', g.wealthyGoldPer),
     starGoldPerStar: num('starGoldPerStar', g.starGoldPerStar),
-    startGeneralKit: text('startGeneralKit', String(g.startGeneralKit)),
     endlessAfterGoal: flag('endlessAfterGoal'),
   };
 

@@ -153,19 +153,17 @@ export function pickRogueUnit(
   return list[Math.floor(Math.random() * list.length)]!;
 }
 
-/** The Knight chess piece for this era. Falls back to the configured general kit (stock: Scout). */
+/** The Knight chess piece for this era, else the highest-value unit in the start pool. */
 export function pickRogueKnight(period: Period): UnitType {
-  const knights = rogueUnitPool(period, 'start', 1).filter(
-    (t) => statsOf(t).chess.toLowerCase() === 'knight',
-  );
+  const pool = rogueUnitPool(period, 'start', 1);
+  const knights = pool.filter((t) => statsOf(t).chess.toLowerCase() === 'knight');
   if (knights.length) {
     return knights[Math.floor(Math.random() * knights.length)]!;
   }
-  // Stock / configured kit — used even when the era catalog has no Knight chess label.
-  const kit = getRogueConfig().globals.startGeneralKit;
-  if (kit && UNIT_STATS[kit]) return kit;
-  if (UNIT_STATS.scout) return 'scout';
-  return pickRogueUnit(period, undefined, 'start', 1);
+  if (!pool.length) throw new Error(`No recruitable units for ${sanitizePeriod(period)}`);
+  const top = Math.max(...pool.map((t) => statsOf(t).value));
+  const best = pool.filter((t) => statsOf(t).value === top);
+  return best[Math.floor(Math.random() * best.length)]!;
 }
 
 /** Three (or fewer) distinct random recruits for the victory shop. */
@@ -451,7 +449,7 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
   const battle = 1;
   const playerArmy: RogueUnit[] = [];
   const enemyArmy: RogueUnit[] = [];
-  // General always starts on the Knight (scout).
+  // General always starts on the era's Knight, or the highest-value start-pool unit.
   playerArmy.push({
     type: pickRogueKnight(period),
     unitTokens: ['general'],

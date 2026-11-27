@@ -29,7 +29,6 @@ export type RogueGlobals = {
   scoutRegenPer: number;
   wealthyGoldPer: number;
   starGoldPerStar: number;
-  startGeneralKit: UnitType;
   endlessAfterGoal: boolean;
 };
 
@@ -89,7 +88,6 @@ export const DEFAULT_ROGUE_GLOBALS: RogueGlobals = {
   scoutRegenPer: 2,
   wealthyGoldPer: 1,
   starGoldPerStar: 1,
-  startGeneralKit: 'scout',
   endlessAfterGoal: true,
 };
 
@@ -179,9 +177,6 @@ function mergePromo(id: PromotionTokenType, raw?: Partial<RoguePromoCfg>): Rogue
 export function sanitizeRogueConfig(raw: unknown): RogueConfig {
   const src = raw && typeof raw === 'object' ? (raw as Partial<RogueConfig>) : {};
   const g: Partial<RogueGlobals> = src.globals && typeof src.globals === 'object' ? src.globals : {};
-  const kit = typeof g.startGeneralKit === 'string' && g.startGeneralKit.trim()
-    ? g.startGeneralKit.trim()
-    : DEFAULT_ROGUE_GLOBALS.startGeneralKit;
   const globals: RogueGlobals = {
     startGold: int(g.startGold, DEFAULT_ROGUE_GLOBALS.startGold, 0, 9999),
     goalBattles: int(g.goalBattles, DEFAULT_ROGUE_GLOBALS.goalBattles, 1, 999),
@@ -193,7 +188,6 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
     scoutRegenPer: int(g.scoutRegenPer, DEFAULT_ROGUE_GLOBALS.scoutRegenPer, 0, 20),
     wealthyGoldPer: int(g.wealthyGoldPer, DEFAULT_ROGUE_GLOBALS.wealthyGoldPer, 0, 20),
     starGoldPerStar: int(g.starGoldPerStar, DEFAULT_ROGUE_GLOBALS.starGoldPerStar, 0, 20),
-    startGeneralKit: kit,
     endlessAfterGoal: bool(g.endlessAfterGoal, DEFAULT_ROGUE_GLOBALS.endlessAfterGoal),
   };
   // Ignore leftover `regions` on old localStorage / JSON saves (Early/Late

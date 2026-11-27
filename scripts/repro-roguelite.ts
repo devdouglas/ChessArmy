@@ -32,14 +32,25 @@ import {
   survivorUnits,
   takeRoguePromotionOffer,
 } from '../src/roguelite';
-import { isStackablePromotion } from '../src/engine';
+import { isStackablePromotion, statsOf } from '../src/engine';
 
 const period = 'ancient' as const;
 const pool = rogueUnitPool(period);
 if (pool.length < 4) throw new Error(`pool too small: ${pool.length}`);
 
 const knight = pickRogueKnight(period);
-if (knight !== 'scout') throw new Error(`expected scout knight, got ${knight}`);
+{
+  const start = rogueUnitPool(period, 'start', 1);
+  const knights = start.filter((t) => statsOf(t).chess.toLowerCase() === 'knight');
+  if (knights.length) {
+    if (!knights.includes(knight)) throw new Error(`expected a Knight kit, got ${knight}`);
+  } else {
+    const top = Math.max(...start.map((t) => statsOf(t).value));
+    if (statsOf(knight).value !== top) {
+      throw new Error(`expected highest-value start kit, got ${knight} value ${statsOf(knight).value}`);
+    }
+  }
+}
 
 let run = createRogueRun(period);
 if (run.playerArmy.length !== ROGUE_START_COUNT) throw new Error('bad start player');
