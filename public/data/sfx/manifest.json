@@ -1,0 +1,1173 @@
+{
+ "note": "Written by the Legions sound studio (~/htdocs/ChessArmy-tools/legions-studio). Do not edit by hand. Per unit type and slot (move, melee, ranged, death, rout): use the unit-specific pick (source \"unit\": the pick on the action that covers this unit type, i.e. the first of the slot's classActions whose units list names it, else the slot's catchAll action such as death_human or rout) when there is one; only when there is none use the default pick (source \"default\"). The default never overrides a unit-specific pick. move/melee/ranged are left out when the unit cannot do them (move 0, meleeDamage 0, shoot 0). file is relative to the data folder (data/sfx/<id>.mp3); null means nothing is picked yet.",
+ "actions": {
+  "armor_soak": "armor_soak.mp3",
+  "death_animal": "death_animal.mp3",
+  "death_human": "death_human.mp3",
+  "death_machine": "death_machine.mp3",
+  "default_death": "default_death.mp3",
+  "default_melee": "default_melee.mp3",
+  "default_move": "default_move.mp3",
+  "default_ranged": "default_ranged.mp3",
+  "default_rout": "default_rout.mp3",
+  "defeat": "defeat.mp3",
+  "end_turn": "end_turn.mp3",
+  "palisade_break": "palisade_break.mp3",
+  "promotion_gain": "promotion_gain.mp3",
+  "reload": "reload.mp3",
+  "take_damage": "take_damage.mp3",
+  "ui_click": "ui_click.mp3",
+  "ui_hover": "ui_hover.mp3",
+  "wall_demolish": "wall_demolish.mp3"
+ },
+ "units": {
+  "soldier": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "scout": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "bazooka": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "sniper": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "archer": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "javelin": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "horsearcher": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_animal.mp3",
+    "source": "unit",
+    "action": "death_animal"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "lightcavalry": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_animal.mp3",
+    "source": "unit",
+    "action": "death_animal"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "chariotarcher": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_animal.mp3",
+    "source": "unit",
+    "action": "death_animal"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "cohort": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "hoplite": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "elephant": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_animal.mp3",
+    "source": "unit",
+    "action": "death_animal"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "barbarian": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "catapult": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "ballista": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "tank": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "general": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "tower": {
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "dummy": {
+   "death": {
+    "file": "default_death.mp3",
+    "source": "default",
+    "action": "default_death"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "peasant": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "builder": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "dude": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "wolf": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_animal.mp3",
+    "source": "unit",
+    "action": "death_animal"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "fighter": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "gunship": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "bomber": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "frigate": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "cruiser": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "dreadnought": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_machine.mp3",
+    "source": "unit",
+    "action": "death_machine"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvf8ty84rdk3": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvf8vjffgpkd": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvgpbg68f593": {
+   "death": {
+    "file": "default_death.mp3",
+    "source": "default",
+    "action": "default_death"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvkn6vl7l0zw": {
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvlx87f1kk67": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvr2vokzh3n3": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvun2x81vsl5": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mvuvhfewwv97": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mw3t85tpmhz2": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mw4vuw6xnwnt": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mwjio288uty1": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "ranged": {
+    "file": "default_ranged.mp3",
+    "source": "default",
+    "action": "default_ranged"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mwjiue32r9rf": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  },
+  "u-mwowcdhlpw7r": {
+   "move": {
+    "file": "default_move.mp3",
+    "source": "default",
+    "action": "default_move"
+   },
+   "melee": {
+    "file": "default_melee.mp3",
+    "source": "default",
+    "action": "default_melee"
+   },
+   "death": {
+    "file": "death_human.mp3",
+    "source": "unit",
+    "action": "death_human"
+   },
+   "rout": {
+    "file": "default_rout.mp3",
+    "source": "default",
+    "action": "default_rout"
+   }
+  }
+ },
+ "unitActions": {
+  "unit_rotate": [
+   "cohort",
+   "hoplite",
+   "u-mwowcdhlpw7r",
+   "u-mwjio288uty1"
+  ],
+  "move_foot": [
+   "archer",
+   "javelin",
+   "peasant",
+   "dude",
+   "builder",
+   "barbarian",
+   "hoplite",
+   "cohort",
+   "soldier",
+   "scout",
+   "sniper",
+   "bazooka",
+   "general",
+   "catapult"
+  ],
+  "move_horse": [
+   "horsearcher",
+   "lightcavalry",
+   "u-mvf8ty84rdk3"
+  ],
+  "move_chariot": [
+   "chariotarcher"
+  ],
+  "move_elephant": [
+   "elephant"
+  ],
+  "move_wolf": [
+   "wolf"
+  ],
+  "move_tank": [
+   "tank"
+  ],
+  "move_flyer": [
+   "fighter",
+   "gunship",
+   "bomber",
+   "frigate",
+   "cruiser",
+   "dreadnought"
+  ],
+  "melee_blade": [
+   "barbarian",
+   "hoplite",
+   "cohort",
+   "peasant",
+   "dude",
+   "general",
+   "soldier",
+   "u-mvf8vjffgpkd"
+  ],
+  "melee_cavalry": [
+   "horsearcher",
+   "lightcavalry",
+   "chariotarcher",
+   "u-mvf8ty84rdk3"
+  ],
+  "melee_elephant": [
+   "elephant"
+  ],
+  "melee_wolf": [
+   "wolf"
+  ],
+  "melee_vehicle": [
+   "tank",
+   "fighter",
+   "frigate"
+  ],
+  "bash": [
+   "hoplite",
+   "elephant",
+   "barbarian",
+   "u-mwjio288uty1",
+   "Halangites"
+  ],
+  "berserk": [
+   "barbarian"
+  ],
+  "shoot_bow": [
+   "archer",
+   "horsearcher",
+   "dude",
+   "tower",
+   "u-mvkn6vl7l0zw"
+  ],
+  "shoot_javelin": [
+   "javelin",
+   "cohort",
+   "lightcavalry",
+   "elephant",
+   "u-mvr2vokzh3n3"
+  ],
+  "shoot_catapult": [
+   "catapult"
+  ],
+  "shoot_ballista": [
+   "ballista"
+  ],
+  "shoot_rifle": [
+   "scout",
+   "general",
+   "soldier"
+  ],
+  "shoot_sniper": [
+   "sniper"
+  ],
+  "shoot_rocket": [
+   "bazooka",
+   "tank"
+  ],
+  "shoot_ship_cannon": [
+   "fighter",
+   "gunship",
+   "frigate",
+   "cruiser"
+  ],
+  "shoot_bomb": [
+   "bomber",
+   "dreadnought"
+  ],
+  "death_animal": [
+   "elephant",
+   "wolf",
+   "horsearcher",
+   "lightcavalry",
+   "chariotarcher"
+  ],
+  "death_machine": [
+   "tank",
+   "catapult",
+   "ballista",
+   "tower",
+   "fighter",
+   "gunship",
+   "bomber",
+   "frigate",
+   "cruiser",
+   "dreadnought"
+  ],
+  "death_dummy": [
+   "dummy",
+   "u-mvgpbg68f593"
+  ],
+  "shields_up": [
+   "cohort",
+   "u-mwjio288uty1",
+   "Halangites"
+  ],
+  "build_trap": [
+   "builder",
+   "u-mw3t85tpmhz2"
+  ],
+  "build_palisade": [
+   "builder"
+  ],
+  "build_bridge": [
+   "builder"
+  ],
+  "build_remove": [
+   "builder"
+  ]
+ }
+}
