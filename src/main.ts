@@ -6917,8 +6917,8 @@ function renderStartScreen(): string {
   const eraClosed = eraPlayLocked();
   const noRecruits = !rogueUnitPool(selectedPeriod, 'start', 1).length;
   const rg = getRogueConfig().globals;
-  const rogueTitle = `2v2 randomised run. Win ${rg.goalBattles} for victory${rg.endlessAfterGoal ? ', then continue endless until you die' : ''}. Kit value ≤ battle+${rg.valueSlack}. From battle ${rg.enemyPromoStart} enemies get promotions (1, then 2, …). Killed units are gone for good. Stars + Wealthy pay gold. Scout units place hidden and grant map regenerates. Shop of ${rg.shopSize} recruits + promotions (${rg.firstPromoFree ? 'first free, extras ' : ''}${rg.promoCost}g) after each win; enemy gains one free unit.`;
-  const rogueMeta = `Win ${rg.goalBattles}${rg.endlessAfterGoal ? '+' : ''} · value gate · promos`;
+  const rogueTitle = `2v2 randomised run. Win ${rg.goalBattles} for victory${rg.endlessAfterGoal ? ', then continue endless until you die' : ''}. From battle ${rg.enemyPromoStart} enemies get promotions (1, then 2, …). Killed units are gone for good. Stars + Wealthy pay gold. Scout units place hidden and grant map regenerates. Shop of ${rg.shopSize} recruits + promotions (${rg.firstPromoFree ? 'first free, extras ' : ''}${rg.promoCost}g) after each win; enemy gains one free unit.`;
+  const rogueMeta = `Win ${rg.goalBattles}${rg.endlessAfterGoal ? '+' : ''} · promos`;
   const eraLock = eraClosed ? lockIconHtml() : '';
   const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
     eraClosed

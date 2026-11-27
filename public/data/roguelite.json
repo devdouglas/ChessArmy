@@ -7,7 +7,6 @@
     "shopSize": 3,
     "promoCost": 1,
     "firstPromoFree": true,
-    "valueSlack": 1,
     "enemyPromoStart": 7,
     "scoutRegenPer": 2,
     "wealthyGoldPer": 1,

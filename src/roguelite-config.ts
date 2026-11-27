@@ -25,7 +25,6 @@ export type RogueGlobals = {
   shopSize: number;
   promoCost: number;
   firstPromoFree: boolean;
-  valueSlack: number;
   enemyPromoStart: number;
   scoutRegenPer: number;
   wealthyGoldPer: number;
@@ -86,7 +85,6 @@ export const DEFAULT_ROGUE_GLOBALS: RogueGlobals = {
   shopSize: 3,
   promoCost: 1,
   firstPromoFree: true,
-  valueSlack: 1,
   enemyPromoStart: 7,
   scoutRegenPer: 2,
   wealthyGoldPer: 1,
@@ -196,7 +194,6 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
     shopSize: int(g.shopSize, DEFAULT_ROGUE_GLOBALS.shopSize, 1, 12),
     promoCost: int(g.promoCost, DEFAULT_ROGUE_GLOBALS.promoCost, 0, 99),
     firstPromoFree: bool(g.firstPromoFree, DEFAULT_ROGUE_GLOBALS.firstPromoFree),
-    valueSlack: int(g.valueSlack, DEFAULT_ROGUE_GLOBALS.valueSlack, 0, 20),
     enemyPromoStart: int(g.enemyPromoStart, DEFAULT_ROGUE_GLOBALS.enemyPromoStart, 1, 999),
     scoutRegenPer: int(g.scoutRegenPer, DEFAULT_ROGUE_GLOBALS.scoutRegenPer, 0, 20),
     wealthyGoldPer: int(g.wealthyGoldPer, DEFAULT_ROGUE_GLOBALS.wealthyGoldPer, 0, 20),

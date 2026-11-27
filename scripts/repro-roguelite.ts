@@ -24,17 +24,15 @@ import {
   createRogueRun,
   openRogueShop,
   pickRogueKnight,
-  pickRogueUnit,
   rogueArmyStamps,
   rogueBattleLabel,
   rogueEnemyPromoCount,
-  rogueMaxUnitValue,
   rogueUnitCost,
   rogueUnitPool,
   survivorUnits,
   takeRoguePromotionOffer,
 } from '../src/roguelite';
-import { isStackablePromotion, statsOf } from '../src/engine';
+import { isStackablePromotion } from '../src/engine';
 
 const period = 'ancient' as const;
 const pool = rogueUnitPool(period);
@@ -138,13 +136,6 @@ for (let b = 2; b < ROGUE_GOAL; b++) {
   const adv = advanceRogueRun(run, run.playerArmy, []);
   if (!adv) throw new Error(`advance ${b}`);
   run = adv;
-  const cap = rogueMaxUnitValue(run.battle);
-  const newest = run.enemyArmy[run.enemyArmy.length - 1]!;
-  if (statsOf(newest.type).value > cap) {
-    throw new Error(
-      `enemy ${newest.type} value ${statsOf(newest.type).value} > cap ${cap} at battle ${run.battle}`,
-    );
-  }
   const promoN = run.enemyArmy.reduce(
     (n, u) => n + (u.unitTokens ?? []).filter(isStackablePromotion).length,
     0,
@@ -162,18 +153,9 @@ for (let b = 2; b < ROGUE_GOAL; b++) {
 }
 if (run.battle !== ROGUE_GOAL) throw new Error(`expected battle ${ROGUE_GOAL}, got ${run.battle}`);
 
-if (rogueMaxUnitValue(4) !== 5) throw new Error('battle 4 cap should be 5');
 if (rogueEnemyPromoCount(6) !== 0) throw new Error('no promos before 7');
 if (rogueEnemyPromoCount(7) !== 1) throw new Error('1 promo at 7');
 if (rogueEnemyPromoCount(10) !== 4) throw new Error('4 promos at 10');
-
-{
-  // Value gate: battle 1 must not roll elephants (value 5+).
-  for (let i = 0; i < 40; i++) {
-    const t = pickRogueUnit(period, undefined, rogueMaxUnitValue(1));
-    if (statsOf(t).value > 2) throw new Error(`battle-1 pick ${t} value ${statsOf(t).value}`);
-  }
-}
 
 {
   const stamped = applyRogueEnemyPromotions(

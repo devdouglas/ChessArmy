@@ -37,8 +37,6 @@ import {
 } from './roguelite-config';
 
 export const ROGUE_GOAL = 10;
-/** Enemy / shop kits: value must be ≤ battle + this. Battle 4 → value ≤ 5. */
-export const ROGUE_VALUE_SLACK = 1;
 /** First battle where enemies receive promotions. */
 export const ROGUE_PROMO_START = 7;
 export const ROGUE_START_COUNT = 2;
@@ -72,11 +70,6 @@ export function roguePromoGold(): number {
 }
 export function rogueScoutRegenPer(): number {
   return getRogueConfig().globals.scoutRegenPer;
-}
-
-/** Max recruitable kit value for this battle number. */
-export function rogueMaxUnitValue(battle: number): number {
-  return Math.max(0, Math.floor(battle)) + getRogueConfig().globals.valueSlack;
 }
 
 /** How many random enemy promotions to stamp for this battle (0 before L7). */
@@ -143,33 +136,19 @@ export function rogueUnitCost(type: UnitType): number {
 }
 
 /**
- * Random recruitable kit. `maxValue` caps by combat value (battle + 1).
- * If the cap empties the pool, fall back to the cheapest kits in the era.
+ * Random recruitable kit for this purpose and battle (from/to range + flags).
  */
 export function pickRogueUnit(
   period: Period,
   avoid?: UnitType[],
-  maxValue?: number,
   purpose: 'shop' | 'start' | 'enemy' = 'shop',
   battle = 1,
 ): UnitType {
   const pool = rogueUnitPool(period, purpose, battle);
-  const underCap =
-    maxValue == null
-      ? pool
-      : pool.filter((t) => statsOf(t).value <= maxValue);
-  const base = underCap.length
-    ? underCap
-    : pool.length
-      ? (() => {
-          const lo = Math.min(...pool.map((t) => statsOf(t).value));
-          return pool.filter((t) => statsOf(t).value === lo);
-        })()
-      : pool;
   const prefer = avoid?.length
-    ? base.filter((t) => !avoid.includes(t))
-    : base;
-  const list = prefer.length ? prefer : base;
+    ? pool.filter((t) => !avoid.includes(t))
+    : pool;
+  const list = prefer.length ? prefer : pool;
   if (!list.length) throw new Error(`No recruitable units for ${sanitizePeriod(period)}`);
   return list[Math.floor(Math.random() * list.length)]!;
 }
@@ -186,14 +165,13 @@ export function pickRogueKnight(period: Period): UnitType {
   const kit = getRogueConfig().globals.startGeneralKit;
   if (kit && UNIT_STATS[kit]) return kit;
   if (UNIT_STATS.scout) return 'scout';
-  return pickRogueUnit(period, undefined, undefined, 'start', 1);
+  return pickRogueUnit(period, undefined, 'start', 1);
 }
 
 /** Three (or fewer) distinct random recruits for the victory shop. */
 export function rollRogueShopOffers(
   period: Period,
   count = rogueShopSize(),
-  maxValue?: number,
   battle = 1,
 ): UnitType[] {
   const offers: UnitType[] = [];
@@ -201,7 +179,7 @@ export function rollRogueShopOffers(
   for (let i = 0; i < n; i++) {
     const pool = rogueUnitPool(period, 'shop', battle);
     if (!pool.length) break;
-    offers.push(pickRogueUnit(period, offers, maxValue, 'shop', battle));
+    offers.push(pickRogueUnit(period, offers, 'shop', battle));
   }
   return offers;
 }
@@ -226,7 +204,7 @@ export function rollRoguePromotions(
 
 /**
  * Victory shop — `starGold` is 1 per earned star; `wealthyGold` is +1 per
- * Wealthy chevron on living player units. Offers match the next battle's value cap.
+ * Wealthy chevron on living player units. Offers follow each unit's from/to range.
  */
 export function openRogueShop(
   run: RogueRun,
@@ -244,7 +222,6 @@ export function openRogueShop(
       offers: rollRogueShopOffers(
         run.period,
         g.shopSize,
-        rogueMaxUnitValue(nextBattle),
         nextBattle,
       ),
       purchased: [],
@@ -472,32 +449,31 @@ export function rogueArmyStamps(
 
 export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'): RogueRun {
   const battle = 1;
-  const maxValue = rogueMaxUnitValue(battle);
   const playerArmy: RogueUnit[] = [];
   const enemyArmy: RogueUnit[] = [];
-  // General always starts on the Knight (scout) — value cap does not apply.
+  // General always starts on the Knight (scout).
   playerArmy.push({
     type: pickRogueKnight(period),
     unitTokens: ['general'],
   });
   const startCount = getRogueConfig().globals.startCount;
   while (playerArmy.length < startCount) {
+    if (!rogueUnitPool(period, 'start', battle).length) break;
     playerArmy.push({
       type: pickRogueUnit(
         period,
         playerArmy.map((u) => u.type),
-        maxValue,
         'start',
         battle,
       ),
     });
   }
   for (let i = 0; i < startCount; i++) {
+    if (!rogueUnitPool(period, 'enemy', battle).length) break;
     enemyArmy.push({
       type: pickRogueUnit(
         period,
         enemyArmy.map((u) => u.type),
-        maxValue,
         'enemy',
         battle,
       ),
@@ -547,8 +523,8 @@ export function survivorTypes(
 
 /**
  * After a win + shop: keep living player units, append purchases,
- * enemy gains +1 random unit (value ≤ next battle + 1), re-stamp enemy promos,
- * next battle. Past battle 10 this keeps going until the player dies.
+ * enemy gains +1 random unit (from the in-run enemy pool), re-stamp enemy promos,
+ * next battle. Past the goal this keeps going until the player dies.
  * Returns null if the player has no survivors (shouldn't happen on a wipeout win).
  */
 export function advanceRogueRun(
@@ -558,23 +534,21 @@ export function advanceRogueRun(
 ): RogueRun | null {
   if (!livingPlayer.length) return null;
   const battle = run.battle + 1;
-  const maxValue = rogueMaxUnitValue(battle);
   const playerArmy = [
     ...livingPlayer,
     ...purchased.map((type): RogueUnit => ({ type })),
   ];
-  const grown = [
-    ...run.enemyArmy,
-    {
+  const grown = [...run.enemyArmy];
+  if (rogueUnitPool(run.period, 'enemy', battle).length) {
+    grown.push({
       type: pickRogueUnit(
         run.period,
         run.enemyArmy.map((u) => u.type),
-        maxValue,
         'enemy',
         battle,
       ),
-    },
-  ];
+    });
+  }
   return {
     ...run,
     battle,

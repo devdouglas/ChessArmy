@@ -229,7 +229,6 @@ export function renderRogueConfigPage(
           <label>Shop size <input type="number" min="1" max="12" data-global="shopSize" value="${g.shopSize}" /></label>
           <label>Promo cost (after first) <input type="number" min="0" max="99" data-global="promoCost" value="${g.promoCost}" /></label>
           <label class="chk"><input type="checkbox" data-global-flag="firstPromoFree"${g.firstPromoFree ? ' checked' : ''} /> First promo free</label>
-          <label>Value slack (battle + N) <input type="number" min="0" max="20" data-global="valueSlack" value="${g.valueSlack}" /></label>
           <label>Enemy promos from battle <input type="number" min="1" max="999" data-global="enemyPromoStart" value="${g.enemyPromoStart}" /></label>
           <label>Scout regenerates each <input type="number" min="0" max="20" data-global="scoutRegenPer" value="${g.scoutRegenPer}" /></label>
           <label>Wealthy gold each <input type="number" min="0" max="20" data-global="wealthyGoldPer" value="${g.wealthyGoldPer}" /></label>
@@ -358,7 +357,6 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     shopSize: num('shopSize', g.shopSize),
     promoCost: num('promoCost', g.promoCost),
     firstPromoFree: flag('firstPromoFree'),
-    valueSlack: num('valueSlack', g.valueSlack),
     enemyPromoStart: num('enemyPromoStart', g.enemyPromoStart),
     scoutRegenPer: num('scoutRegenPer', g.scoutRegenPer),
     wealthyGoldPer: num('wealthyGoldPer', g.wealthyGoldPer),
