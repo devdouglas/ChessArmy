@@ -6951,6 +6951,24 @@ svg.board .hex.rock {
 .rogue-unlock select {
   max-width: 12rem;
 }
+.rogue-unlock-phrase {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+.rogue-table .rogue-unlock input[type='number'].rogue-unlock-x,
+.rogue-unlock input.rogue-unlock-x {
+  width: 4.8rem;
+  max-width: 5.5rem;
+  min-width: 3.6rem;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  border: 1px solid var(--line, #5c6358);
+  border-radius: 3px;
+  background: var(--panel, inherit);
+  color: inherit;
+}
 .rogue-unlock-add,
 .rogue-unlock-del {
   padding: 0.1rem 0.4rem;

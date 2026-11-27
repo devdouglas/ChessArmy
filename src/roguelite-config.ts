@@ -59,13 +59,13 @@ export type RogueUnlock = RogueUnlockCondition[];
 export const ROGUE_UNLOCK_TYPE_LABEL: Record<RogueUnlockType, string> = {
   always: 'Always',
   never: 'Never',
-  playGames: 'Play X games',
-  reachBattle: 'Reach battle X',
-  killUnits: 'Kill X units',
-  haveCoins: 'Have X coins',
-  reachBattleNoLoss: 'Reach battle X with no losses',
-  winWithUnits: 'Win with X of a unit',
-  breakObstacles: 'Break X obstacles',
+  playGames: 'Play games',
+  reachBattle: 'Reach battle',
+  killUnits: 'Kill units',
+  haveCoins: 'Have coins',
+  reachBattleNoLoss: 'Reach battle with no losses',
+  winWithUnits: 'Win with units',
+  breakObstacles: 'Break obstacles',
 };
 
 export type RogueGlobals = {
@@ -194,19 +194,18 @@ function sanitizeUnlockCondition(raw: unknown): RogueUnlockCondition | null {
   if (t === 'runsCompleted') t = 'playGames';
   if (t === 'regionCleared') return { type: 'always' };
   if (t === 'never') return { type: 'never' };
-  if (t === 'playGames') return { type: 'playGames', count: int(src.count, 1, 0, 999) };
+  if (t === 'playGames') return { type: 'playGames', count: int(src.count, 1, 1, 999) };
   if (t === 'reachBattle') return { type: 'reachBattle', battle: int(src.battle, 1, 1, 999) };
   if (t === 'killUnits') {
     const typ = String(src.unitType ?? '').trim();
     return { type: 'killUnits', count: int(src.count, 1, 1, 9999), unitType: typ || null };
   }
-  if (t === 'haveCoins') return { type: 'haveCoins', count: int(src.count, 1, 0, 9999) };
+  if (t === 'haveCoins') return { type: 'haveCoins', count: int(src.count, 1, 1, 9999) };
   if (t === 'reachBattleNoLoss') {
     return { type: 'reachBattleNoLoss', battle: int(src.battle, 1, 1, 999) };
   }
   if (t === 'winWithUnits') {
     const typ = String(src.unitType ?? '').trim();
-    if (!typ) return null;
     return { type: 'winWithUnits', count: int(src.count, 1, 1, 99), unitType: typ };
   }
   if (t === 'breakObstacles') {
@@ -700,11 +699,60 @@ export function unlockSatisfied(unlock: RogueUnlock, progress: RogueProgress, ba
 
 export type UnlockConditionStatus = {
   type: RogueUnlockType;
+  /** Condition with X filled in, e.g. "Play 5 games". */
+  label: string;
+  /** Progress toward the target, e.g. "3/5 games". */
   text: string;
   current: number;
   target: number;
   done: boolean;
 };
+
+/** Max for reach-battle X: the goal battle when endless mode is off, otherwise 999. */
+export function unlockBattleParamMax(
+  globals: Pick<RogueGlobals, 'goalBattles' | 'endlessAfterGoal'>,
+): number {
+  if (globals.endlessAfterGoal) return 999;
+  return Math.max(1, int(globals.goalBattles, 1, 1, 999));
+}
+
+export function unlockConditionLabel(cond: RogueUnlockCondition): string {
+  switch (cond.type) {
+    case 'always':
+      return 'Always';
+    case 'never':
+      return 'Never';
+    case 'playGames':
+      return `Play ${cond.count} game${cond.count === 1 ? '' : 's'}`;
+    case 'reachBattle':
+      return `Reach battle ${cond.battle}`;
+    case 'killUnits': {
+      const who = cond.unitType ? unitLabel(cond.unitType) : 'units';
+      return `Kill ${cond.count} ${who}`;
+    }
+    case 'haveCoins':
+      return `Have ${cond.count} coin${cond.count === 1 ? '' : 's'}`;
+    case 'reachBattleNoLoss':
+      return `Reach battle ${cond.battle} with no losses`;
+    case 'winWithUnits':
+      return `Win a battle with ${cond.count} ${unitLabel(cond.unitType)}`;
+    case 'breakObstacles': {
+      const who = cond.obstacleType
+        ? TOKEN_LABEL[cond.obstacleType]
+        : cond.count === 1
+          ? 'obstacle'
+          : 'obstacles';
+      return `Break ${cond.count} ${who}`;
+    }
+    default:
+      return '';
+  }
+}
+
+function progressText(current: number, target: number, unit: string): string {
+  const cur = Math.max(0, current);
+  return `${Math.min(cur, target)}/${target} ${unit}`;
+}
 
 function unitLabel(id: string | null | undefined): string {
   if (!id) return 'units';
@@ -717,15 +765,17 @@ export function describeUnlockCondition(
   battle = 1,
 ): UnlockConditionStatus {
   const done = conditionSatisfied(cond, progress, battle);
+  const label = unlockConditionLabel(cond);
   switch (cond.type) {
     case 'always':
-      return { type: 'always', text: 'Always unlocked', current: 1, target: 1, done: true };
+      return { type: 'always', label, text: 'Always unlocked', current: 1, target: 1, done: true };
     case 'never':
-      return { type: 'never', text: 'Never', current: 0, target: 1, done: false };
+      return { type: 'never', label, text: 'Never', current: 0, target: 1, done: false };
     case 'playGames':
       return {
         type: 'playGames',
-        text: `${Math.min(progress.gamesPlayed, cond.count)}/${cond.count} games`,
+        label,
+        text: progressText(progress.gamesPlayed, cond.count, cond.count === 1 ? 'game' : 'games'),
         current: progress.gamesPlayed,
         target: cond.count,
         done,
@@ -734,7 +784,8 @@ export function describeUnlockCondition(
       const cur = Math.max(battle, progress.bestBattle);
       return {
         type: 'reachBattle',
-        text: cur >= cond.battle ? `Reached battle ${cond.battle}` : `Reach battle ${cond.battle} (best ${cur})`,
+        label,
+        text: progressText(cur, cond.battle, cond.battle === 1 ? 'battle' : 'battles'),
         current: cur,
         target: cond.battle,
         done,
@@ -742,10 +793,11 @@ export function describeUnlockCondition(
     }
     case 'killUnits': {
       const cur = killsCounted(progress, cond.unitType);
-      const who = cond.unitType ? unitLabel(cond.unitType) : 'units';
+      const who = cond.unitType ? unitLabel(cond.unitType) : cond.count === 1 ? 'unit' : 'units';
       return {
         type: 'killUnits',
-        text: `Kill ${cond.count} ${who} (${cur}/${cond.count})`,
+        label,
+        text: progressText(cur, cond.count, who),
         current: cur,
         target: cond.count,
         done,
@@ -754,7 +806,8 @@ export function describeUnlockCondition(
     case 'haveCoins':
       return {
         type: 'haveCoins',
-        text: `Have ${cond.count} coins (max ${progress.maxCoins})`,
+        label,
+        text: progressText(progress.maxCoins, cond.count, cond.count === 1 ? 'coin' : 'coins'),
         current: progress.maxCoins,
         target: cond.count,
         done,
@@ -762,10 +815,12 @@ export function describeUnlockCondition(
     case 'reachBattleNoLoss':
       return {
         type: 'reachBattleNoLoss',
-        text:
-          progress.bestNoLossBattle >= cond.battle
-            ? `Reached battle ${cond.battle} with no losses`
-            : `Reach battle ${cond.battle} with no losses (best ${progress.bestNoLossBattle})`,
+        label,
+        text: progressText(
+          progress.bestNoLossBattle,
+          cond.battle,
+          cond.battle === 1 ? 'battle' : 'battles',
+        ),
         current: progress.bestNoLossBattle,
         target: cond.battle,
         done,
@@ -775,7 +830,8 @@ export function describeUnlockCondition(
       const who = unitLabel(cond.unitType);
       return {
         type: 'winWithUnits',
-        text: `Win with ${cond.count} ${who} (best ${cur})`,
+        label,
+        text: progressText(cur, cond.count, who),
         current: cur,
         target: cond.count,
         done,
@@ -783,18 +839,22 @@ export function describeUnlockCondition(
     }
     case 'breakObstacles': {
       const cur = obstaclesBroken(progress, cond.obstacleType);
-      const who = cond.obstacleType ? TOKEN_LABEL[cond.obstacleType].toLowerCase() : 'obstacles';
-      const noun = cond.count === 1 && !cond.obstacleType ? 'obstacle' : who;
+      const who = cond.obstacleType
+        ? TOKEN_LABEL[cond.obstacleType]
+        : cond.count === 1
+          ? 'obstacle'
+          : 'obstacles';
       return {
         type: 'breakObstacles',
-        text: `Break ${cond.count} ${noun} (${cur}/${cond.count})`,
+        label,
+        text: progressText(cur, cond.count, who),
         current: cur,
         target: cond.count,
         done,
       };
     }
     default:
-      return { type: 'always', text: '', current: 0, target: 0, done: false };
+      return { type: 'always', label: '', text: '', current: 0, target: 0, done: false };
   }
 }
 
