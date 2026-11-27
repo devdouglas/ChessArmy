@@ -41,6 +41,12 @@ import {
   type HexDir,
   type HexOrientation,
 } from './hex';
+import {
+  describePlaced,
+  generateTerrain,
+  randomSeed,
+  type TerrainPreset,
+} from './terrain-gen';
 
 export const COLS = 11;
 export const ROWS = 11;
@@ -1000,14 +1006,34 @@ export function createRogueInitialState(
   controls?: Record<Side, ArmyControl> | Partial<Record<Side, ArmyControl>>,
   aiStyles?: Record<Side, AiStyle> | Partial<Record<Side, AiStyle>>,
   radius = ROGUE_HEX_RADIUS,
+  /** Terrain generator preset. Missing → classic `opts` randomiser. */
+  preset?: TerrainPreset | null,
 ): GameState {
   const disk = hexDisk(radius, RANDOM_ORIENTATION);
   const clamped = clampMapOptions(opts);
-  const terrain = emptyTerrain(disk.cols, disk.rows);
-  const walls = paintTerrain(terrain, clamped);
+  let terrain = emptyTerrain(disk.cols, disk.rows);
+  let walls: TileToken[];
+  let log: string;
+  if (preset) {
+    const gen = generateTerrain(preset, {
+      terrain,
+      tokens: [],
+      occupied: armies ?? [],
+      orientation: RANDOM_ORIENTATION,
+      onBoard: (col, row) =>
+        distance({ col, row }, disk.center, RANDOM_ORIENTATION) <= disk.radius,
+      seed: randomSeed(),
+    });
+    terrain = gen.terrain;
+    walls = gen.tokens;
+    log = `Red moves first. Roguelite hex R${disk.radius}: ${preset.name}. ${describePlaced(gen.placed)}`;
+  } else {
+    walls = paintTerrain(terrain, clamped);
+    log = `Red moves first. Roguelite hex R${disk.radius}: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau.`;
+  }
   const state = freshGame(
     terrain,
-    `Red moves first. Roguelite hex R${disk.radius}: ${clamped.waterCount} water, ${clamped.rockCount} rock, ${clamped.palisadeCount} palisade, ${clamped.forestCount} forest, ${clamped.highCount} high, ${clamped.plateauCount} plateau.`,
+    log,
     RANDOM_ORIENTATION,
     armies,
     controls,

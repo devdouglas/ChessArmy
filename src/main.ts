@@ -315,6 +315,41 @@ import {
   stampFormation,
   stockFormation,
 } from './formations';
+import {
+  BUILTIN_TERRAIN_PRESETS,
+  listBuiltinTerrainPresets,
+  resetBuiltinTerrainPreset,
+  saveBuiltinTerrainPreset,
+  DEFAULT_TERRAIN_PRESET_ID,
+  LAYER_BIASES,
+  LAYER_BIAS_LABEL,
+  MAX_TERRAIN_DIFFICULTY,
+  MIRROR_AXES,
+  TERRAIN_DIFFICULTY_LABEL,
+  MIRROR_AXIS_LABEL,
+  MIRROR_MODES,
+  MIRROR_MODE_LABEL,
+  MAX_CLEAR_RADIUS,
+  MAX_LAYER_AMOUNT,
+  TERRAIN_LAYER_IDS,
+  TERRAIN_LAYER_LABEL,
+  cloneTerrainConfig,
+  deleteTerrainPreset,
+  describePlaced,
+  findTerrainPresetByName,
+  uniqueTerrainName,
+  generateTerrain,
+  getTerrainPreset,
+  listUserTerrainPresets,
+  randomSeed,
+  saveTerrainPreset,
+  type LayerBias,
+  type MirrorAxis,
+  type MirrorMode,
+  type TerrainConfig,
+  type TerrainLayerId,
+  type TerrainPreset,
+} from './terrain-gen';
 import { pickAiAction } from './ai';
 import {
   ROGUE_STAR_LABELS,
@@ -663,6 +698,15 @@ let editorUnitCategory: UnitCategory = sanitizeUnitCategory(selectedPeriod);
 let editorFormationId: string | null = STOCK_FORMATION_ID;
 let editorFormationName = 'New army';
 let editorArmiesOpen = false;
+let editorTerrainGenOpen = false;
+let editorTerrainPresetId: string | null = DEFAULT_TERRAIN_PRESET_ID;
+/** Terrain presets screen: the editor with only the generator + a preview board. */
+let editorTerrainOnly = false;
+let editorTerrainName = BUILTIN_TERRAIN_PRESETS[0]!.name;
+let editorTerrainCfg: TerrainConfig = cloneTerrainConfig(BUILTIN_TERRAIN_PRESETS[0]!);
+let editorTerrainSeed = randomSeed();
+let editorTerrainLockSeed = false;
+let editorTerrainStatus = '';
 let editorGlyphsOpen = false;
 let editorGlyphQuery = '';
 /** Last copy textarea focused — glyph chips insert here. */
@@ -937,6 +981,59 @@ function commitScoutPlace(hex: Hex): void {
   render();
 }
 
+const ROGUE_TERRAIN_KEY = 'chessarmy-rogue-terrain'; // legacy, cleared on load
+/** Terrain preset id for roguelite maps. '' = classic random. Never saved. */
+const ROGUE_TERRAIN_AUTO = 'auto';
+let rogueTerrainId: string = ROGUE_TERRAIN_AUTO;
+try {
+  localStorage.removeItem(ROGUE_TERRAIN_KEY);
+} catch {
+  /* private mode */
+}
+
+/** Difficulty 0 never appears in the roguelite. Battles 1–3: 1, 4–7: 1–2, 8+: 1–3. */
+function rogueDifficultiesFor(battle: number): number[] {
+  if (battle <= 3) return [1];
+  if (battle <= 7) return [1, 2];
+  return [1, 2, 3];
+}
+
+function rogueTerrainPool(): TerrainPreset[] {
+  return [...listBuiltinTerrainPresets(), ...listUserTerrainPresets()].filter(
+    (p) => p.difficulty > 0,
+  );
+}
+
+/** Name of the terrain the current roguelite map was built with (shown by the stars). */
+let rogueMapTerrainName = '';
+
+function rogueTerrainPreset(): TerrainPreset | null {
+  const p = pickRogueTerrain();
+  rogueMapTerrainName = p ? p.name : 'Classic random';
+  return p;
+}
+
+function pickRogueTerrain(): TerrainPreset | null {
+  if (rogueTerrainId === '') return null; // Classic random
+  if (rogueTerrainId !== ROGUE_TERRAIN_AUTO) {
+    const p = getTerrainPreset(rogueTerrainId);
+    if (p && p.difficulty > 0) return p;
+    // Gone, or rated 0: fall through to Auto.
+  }
+  const all = rogueTerrainPool();
+  if (!all.length) return null;
+  const want = rogueDifficultiesFor(rogueRun?.battle ?? 1);
+  const inTier = all.filter((p) => want.includes(p.difficulty));
+  const gap = (p: TerrainPreset) => Math.min(...want.map((w) => Math.abs(p.difficulty - w)));
+  const best = Math.min(...all.map(gap));
+  const pool = inTier.length ? inTier : all.filter((p) => gap(p) === best);
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
+function setRogueTerrainId(id: string): void {
+  rogueTerrainId = id === ROGUE_TERRAIN_AUTO || getTerrainPreset(id) ? id : '';
+}
+
 /** Roguelite: find a new location, keep remaining attempts. */
 function regenScoutMap(): void {
   if (!scoutPrep || scoutPrep.regenLeft <= 0 || !rogueRun) return;
@@ -950,6 +1047,7 @@ function regenScoutMap(): void {
       matchControls(),
       matchAiStyles(),
       ROGUE_HEX_RADIUS,
+      rogueTerrainPreset(),
     ),
   );
   clearSelection();
@@ -1220,6 +1318,7 @@ function startMatch(reshuffleRandom = true) {
             matchControls(),
             matchAiStyles(),
             ROGUE_HEX_RADIUS,
+            rogueTerrainPreset(),
           )
         : createInitialState(
             mapOpts,
@@ -2284,7 +2383,7 @@ function confirmLeaveEditor(): boolean {
   if (screen === 'roguelite' && rogueAdminDirty) {
     return confirm('Leave without saving roguelite config?');
   }
-  if (screen !== 'editor' || !editorDirty) return true;
+  if (screen !== 'editor' || !editorDirty || editorTerrainOnly) return true;
   return confirm('Leave without saving this level?');
 }
 
@@ -2318,7 +2417,8 @@ function claimEditorEdge(side: Side, edge: ArmyEdge): Side | null {
   return prev && prev !== side ? prev : null;
 }
 
-function beginEditorSession(): void {
+function beginEditorSession(terrainOnly = false): void {
+  editorTerrainOnly = terrainOnly;
   editorUnitCategory = unitCategoryForPeriod(editorPeriod);
   editorBrush = 'land';
   editorArmySide = 'red';
@@ -2376,7 +2476,7 @@ function enterEditor(fromLevelId?: string | null) {
   beginEditorSession();
 }
 
-function newEditorLevel() {
+function newEditorLevel(terrainOnly = false) {
   editorTerrain = emptyTerrain(COLS, ROWS);
   editorOrientation = 'flat';
   editorHex = false;
@@ -2404,7 +2504,14 @@ function newEditorLevel() {
   editorControls = defaultArmyControls();
   editorAiStyles = defaultAiStyles();
   editorDirty = false;
-  beginEditorSession();
+  beginEditorSession(terrainOnly);
+}
+
+/** Start-menu tool: configure terrain presets on a throwaway preview board. */
+function enterTerrainPresets() {
+  editorTerrainGenOpen = true;
+  editorTerrainStatus = '';
+  newEditorLevel(true);
 }
 
 function enterEditorFromMatch() {
@@ -3385,12 +3492,16 @@ function matchStarLabels(): [string, string, string] {
 function starGoalsHtml(): string {
   const kinds = starKinds();
   const labels = matchStarLabels();
+  const terrain =
+    rogueRun && rogueMapTerrainName
+      ? `<li class="star-goal rogue-terrain" title="Terrain of this map"><span>${escapeHtml(rogueMapTerrainName)}</span></li>`
+      : '';
   return `<ul class="star-goals" aria-label="Star goals">${labels
     .map(
       (label, i) =>
         `<li class="star-goal ${kinds[i]}" title="${escapeHtml(label)}">${starGlyphSvg(kinds[i], 16)}<span>${escapeHtml(label)}</span></li>`,
     )
-    .join('')}</ul>`;
+    .join('')}${terrain}</ul>`;
 }
 
 function packedEndStars(): { kind: 'on' | 'off'; label: string }[] {
@@ -5502,6 +5613,22 @@ function renderMapParams(): string {
         <span class="playlist-progress">${LEVEL_CATEGORY_LABEL[pl.kind]} ${plLvl ? escapeHtml(levelLabel(plLvl)) : pl.index + 1} / ${pl.ids.length}</span>
       </div>`;
   }
+  if (!activeLevelId && rogueRun) {
+    const opt = (p: { id: string; name: string }) =>
+      `<option value="${p.id}"${p.id === rogueTerrainId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
+    return `<div class="map-params">
+        ${levelSelect}
+        ${hotseatBtn}
+        <label>Terrain
+          <select id="rogue-terrain">
+            <option value="${ROGUE_TERRAIN_AUTO}"${rogueTerrainId === ROGUE_TERRAIN_AUTO ? ' selected' : ''}>Auto (by difficulty)</option>
+            <option value=""${rogueTerrainId ? '' : ' selected'}>Classic random</option>
+            ${rogueTerrainPool().map(opt).join('')}
+          </select>
+        </label>
+        <button type="button" id="rogue-generate">Generate</button>
+      </div>`;
+  }
   if (!activeLevelId) {
     return `<div class="map-params">
         ${levelSelect}
@@ -6512,6 +6639,7 @@ function bindEditorBoard() {
   if (!svg) return;
 
   editorPointerAbort?.abort();
+  if (editorTerrainOnly) return; // preview only: the board is not paintable
   editorPointerAbort = new AbortController();
   const { signal } = editorPointerAbort;
 
@@ -6765,7 +6893,8 @@ function inEditorSection(): boolean {
 }
 
 function renderToolbar(): string {
-  const editorNav = inEditorSection()
+  const terrainOnly = screen === 'editor' && editorTerrainOnly;
+  const editorNav = inEditorSection() && !terrainOnly
     ? `<nav class="editor-nav" aria-label="Levels, units, AI, roguelite, and unlocks">
         <button type="button" id="editor-nav-levels" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Levels</button>
         <button type="button" id="editor-nav-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
@@ -6776,7 +6905,7 @@ function renderToolbar(): string {
     : '';
   return `<div class="toolbar">
     <h1><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h1>
-    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">${inEditorSection() ? 'Exit editor' : 'Play game'}</button>
+    <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">${inEditorSection() ? (terrainOnly ? 'Exit' : 'Exit editor') : 'Play game'}</button>
     ${editorNav}
   </div>`;
 }
@@ -7035,6 +7164,7 @@ function renderStartScreen(): string {
         <div class="start-tools">
           <button type="button" class="start-reset" data-start="editor">Editor</button>
           <button type="button" class="start-reset" data-start="tweditor">TW editor</button>
+          <button type="button" class="start-reset" data-start="terrain">Terrain presets</button>
           <button type="button" id="reset-progress" class="start-reset">Reset progress</button>
         </div>
         ${renderAccountLine()}
@@ -7082,6 +7212,7 @@ function bindToolbarEvents() {
       else if (kind === 'editor') enterLevels(true);
       else if (kind === 'totalwar') void enterCampaignPlay();
       else if (kind === 'tweditor') void enterCampaignMap();
+      else if (kind === 'terrain') enterTerrainPresets();
     });
   });
   app.querySelector('#reset-progress')?.addEventListener('click', () => {
@@ -8027,6 +8158,85 @@ function levelCopyField(
   </div>`;
 }
 
+function renderTerrainGenPanel(): string {
+  const user = listUserTerrainPresets();
+  const row = (p: { id: string; name: string; builtin?: boolean; modified?: boolean; difficulty: number }) =>
+    `<li class="${p.id === editorTerrainPresetId ? 'active' : ''}">
+      <button type="button" data-terrain-load="${p.id}">${escapeHtml(p.name)} <span class="lvl-meta">D${p.difficulty}${p.builtin ? ` · built-in${p.modified ? ' · edited' : ''}` : ''}</span></button>
+      <button type="button" class="ghost" data-terrain-run="${p.id}" title="Load and generate">Gen</button>
+      ${
+        !p.builtin
+          ? `<button type="button" class="ghost danger" data-terrain-del="${p.id}" title="Delete">×</button>`
+          : p.modified
+            ? `<button type="button" class="ghost danger" data-terrain-reset="${p.id}" title="Restore factory settings">↺</button>`
+            : ''
+      }
+    </li>`;
+  const list = [...listBuiltinTerrainPresets(), ...user].map(row).join('');
+  const saved = user.find((p) => p.id === editorTerrainPresetId);
+  const layerRows = TERRAIN_LAYER_IDS.map((id) => {
+    const l = editorTerrainCfg.layers[id];
+    return `<div class="tg-row${l.amount > 0 ? ' on' : ''}" data-tg-row="${id}">
+      <span class="tg-name">${TERRAIN_LAYER_LABEL[id]}</span>
+      <label class="tg-range"><input type="range" min="0" max="${MAX_LAYER_AMOUNT}" value="${l.amount}" data-tg-layer="${id}" data-tg-field="amount" aria-label="${TERRAIN_LAYER_LABEL[id]} amount" /><output data-tg-val="${id}:amount">${l.amount}%</output></label>
+      <label class="tg-range" title="Chance each new tile attaches to a ${TERRAIN_LAYER_LABEL[id].toLowerCase()} tile that is already placed"><input type="range" min="0" max="100" step="5" value="${l.link}" data-tg-layer="${id}" data-tg-field="link" aria-label="${TERRAIN_LAYER_LABEL[id]} link chance" /><output data-tg-val="${id}:link">${l.link}%</output></label>
+      <select data-tg-layer="${id}" data-tg-field="bias" aria-label="${TERRAIN_LAYER_LABEL[id]} placement">
+        ${LAYER_BIASES.map((b) => `<option value="${b}"${l.bias === b ? ' selected' : ''}>${LAYER_BIAS_LABEL[b]}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+  const builtinLoaded = listBuiltinTerrainPresets().find((p) => p.id === editorTerrainPresetId);
+  const hint = saved ? saved.name : builtinLoaded ? 'built-in' : 'unsaved';
+  return `
+    <section class="editor-panel editor-panel-armies editor-panel-terrain">
+      <details data-editor-terrain${editorTerrainGenOpen ? ' open' : ''}>
+        <summary>
+          <h3>Terrain generator</h3>
+          <span class="lvl-meta">${escapeHtml(editorTerrainName)} · ${hint}</span>
+        </summary>
+        <div class="editor-fold-body">
+          <div class="editor-save editor-army-save">
+            <input type="text" id="terrain-name" value="${escapeHtml(editorTerrainName)}" placeholder="Preset name" maxlength="48" />
+            <button type="button" id="terrain-save" class="primary">${saved || builtinLoaded ? 'Save' : 'Save new'}</button>
+            ${saved || builtinLoaded ? '<button type="button" id="terrain-save-as" class="ghost">Save as new</button>' : ''}
+          </div>
+          <div class="editor-library">
+            <span class="editor-label">Presets</span>
+            <ul class="editor-levels editor-formations">${list}</ul>
+          </div>
+          <div class="tg-layers">
+            <div class="tg-row tg-head"><span></span><span>Amount</span><span>Link chance</span><span>Placement</span></div>
+            ${layerRows}
+          </div>
+          <div class="tg-opts">
+            <label class="chk"><input type="checkbox" id="terrain-replace"${editorTerrainCfg.replace ? ' checked' : ''} /> Replace existing tiles, trees, houses + grass</label>
+            <label class="chk" title="Every slope is walkable (±1 steps)"><input type="checkbox" id="terrain-ramps"${editorTerrainCfg.ramps && !editorTerrainCfg.singleRamps ? ' checked' : ''} /> Ramps (±1 slopes)</label>
+            <label class="chk" title="One ramp per plateau / mountain with no way down. Other cliffs stay cliffs."><input type="checkbox" id="terrain-single-ramps"${editorTerrainCfg.singleRamps ? ' checked' : ''} /> Single ramps</label>
+            <label title="Generate, then copy one half onto the other so both sides are equal. Hexes with units, their clear radius and structures are skipped.">Mirror
+              <select id="terrain-mirror">${MIRROR_MODES.map((m) => `<option value="${m}"${editorTerrainCfg.mirror === m ? ' selected' : ''}>${MIRROR_MODE_LABEL[m]}</option>`).join('')}</select>
+            </label>
+            <label title="Which line the exact mirror folds across (the reversed mirror turns the map 180° and ignores this)"${editorTerrainCfg.mirror === 'mirror' ? '' : ' hidden'} id="terrain-mirror-axis-label">Fold
+              <select id="terrain-mirror-axis">${MIRROR_AXES.map((a) => `<option value="${a}"${editorTerrainCfg.mirrorAxis === a ? ' selected' : ''}>${MIRROR_AXIS_LABEL[a]}</option>`).join('')}</select>
+            </label>
+            <label title="How hard this terrain is. Roguelite 'Auto' picks by it: battles 1–3 use 1, 4–7 use 1–2, 8+ any.">Difficulty
+              <select id="terrain-difficulty">${TERRAIN_DIFFICULTY_LABEL.map((l, i) => `<option value="${i}"${editorTerrainCfg.difficulty === i ? ' selected' : ''}>${l}</option>`).join('')}</select>
+            </label>
+            <label class="tg-range" title="Hexes one line outside an Edges / Center zone that are still open to that layer. 0 = hard limit.">Edge bleed
+              <input type="range" min="0" max="100" step="5" id="terrain-bleed" value="${editorTerrainCfg.bleed}" /><output id="terrain-bleed-val">${editorTerrainCfg.bleed}%</output>
+            </label>
+            <label>Clear around units <input type="number" id="terrain-clear" min="0" max="${MAX_CLEAR_RADIUS}" value="${editorTerrainCfg.clearRadius}" /></label>
+          </div>
+          <div class="tg-run">
+            <label>Seed <input type="number" id="terrain-seed" min="0" max="999999" value="${editorTerrainSeed}" /></label>
+            <label class="chk"><input type="checkbox" id="terrain-lock"${editorTerrainLockSeed ? ' checked' : ''} /> Lock seed</label>
+            <button type="button" id="terrain-generate" class="primary">Generate</button>
+          </div>
+          <p class="muted tg-status" id="terrain-status">${escapeHtml(editorTerrainStatus || 'Amount = % of free hexes. Link chance = odds a tile touches one of its own kind (0 scattered, 100 one blob). Undo reverts a generate. Units and flags/walls/boards stay untouched.')}</p>
+        </div>
+      </details>
+    </section>`;
+}
+
 function renderEditorBar(): string {
   const era = editorUnitCategory;
   const forms = listFormationsInPeriod(era);
@@ -8096,6 +8306,7 @@ function renderEditorBar(): string {
           </div>
         </details>
       </section>
+      ${renderTerrainGenPanel()}
       <section class="editor-panel editor-panel-level">
         <div class="editor-panel-head">
           <h3>Level <span id="editor-dirty" class="editor-unsaved"${editorDirty ? '' : ' hidden'}>unsaved</span></h3>
@@ -8840,28 +9051,7 @@ function insertCopyTag(tag: string, setters: Record<string, (v: string) => void>
   if (id !== 'board-text' && id !== 'story-text') markEditorDirty();
 }
 
-function bindEditorEvents() {
-  bindEditorBoardPopup();
-  bindEditorStoryPopup();
-  app.querySelectorAll<HTMLButtonElement>('[data-brush]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      editorBrush = btn.dataset.brush as EditorBrush;
-      render();
-    });
-  });
-  app.querySelector('#editor-unit-cat')?.addEventListener('change', (e) => {
-    editorUnitCategory = sanitizeUnitCategory((e.target as HTMLSelectElement).value);
-    if (isUnitBrush(editorBrush) && UNIT_STATS[editorBrush]?.category !== editorUnitCategory) {
-      const first = UNIT_TYPES.find((t) => UNIT_STATS[t].category === editorUnitCategory);
-      editorBrush = first ?? 'erase';
-    }
-    render();
-  });
-  app.querySelector('#editor-play')?.addEventListener('click', () =>
-    void doSaveLevel(false, false, true),
-  );
-  app.querySelector('#editor-save')?.addEventListener('click', () => void doSaveLevel(false));
-  app.querySelector('#editor-save-as')?.addEventListener('click', () => void doSaveLevel(true));
+function bindEditorGridControls(): void {
   app.querySelector('#editor-undo')?.addEventListener('click', () => undoEditor());
   app.querySelector('#editor-clear')?.addEventListener('click', () => {
     const { cols, rows } = currentGrid();
@@ -8903,6 +9093,65 @@ function bindEditorEvents() {
       applyEditorOrientation(btn.dataset.ori as HexOrientation);
     });
   });
+}
+
+function renderTerrainPreviewPanel(): string {
+  const grid = currentGrid();
+  return `
+    <section class="editor-panel editor-panel-terrain-preview">
+      <div class="editor-panel-head">
+        <h3>Preview board</h3>
+        <div class="editor-panel-head-actions">
+          <button type="button" id="editor-undo" class="ghost">Undo</button>
+          <button type="button" id="editor-clear" class="ghost">Clear</button>
+        </div>
+      </div>
+      <div class="editor-grid">
+        <label class="chk">
+          <input type="checkbox" id="editor-hex"${editorHex ? ' checked' : ''} />
+          Hex
+        </label>
+        ${
+          editorHex
+            ? `<label>R <input type="number" id="editor-radius" min="1" max="10" value="${editorRadius}" title="Tiles from the center to the edge" /></label>`
+            : `<label>W <input type="number" id="editor-cols" min="${MIN_COLS}" max="${MAX_COLS}" value="${grid.cols}" /></label>
+        <label>H <input type="number" id="editor-rows" min="${MIN_ROWS}" max="${MAX_ROWS}" value="${grid.rows}" /></label>`
+        }
+        <button type="button" data-ori="pointy" class="${editorOrientation === 'pointy' ? 'active' : ''}">Point up</button>
+        <button type="button" data-ori="flat" class="${editorOrientation === 'flat' ? 'active' : ''}">Flat up</button>
+      </div>
+      <p class="muted">Preview only — nothing here is saved as a level. Presets are what you save.</p>
+    </section>`;
+}
+
+function bindTerrainOnlyEvents(): void {
+  bindEditorGridControls();
+  bindTerrainGenEvents();
+}
+
+function bindEditorEvents() {
+  bindEditorBoardPopup();
+  bindEditorStoryPopup();
+  app.querySelectorAll<HTMLButtonElement>('[data-brush]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      editorBrush = btn.dataset.brush as EditorBrush;
+      render();
+    });
+  });
+  app.querySelector('#editor-unit-cat')?.addEventListener('change', (e) => {
+    editorUnitCategory = sanitizeUnitCategory((e.target as HTMLSelectElement).value);
+    if (isUnitBrush(editorBrush) && UNIT_STATS[editorBrush]?.category !== editorUnitCategory) {
+      const first = UNIT_TYPES.find((t) => UNIT_STATS[t].category === editorUnitCategory);
+      editorBrush = first ?? 'erase';
+    }
+    render();
+  });
+  app.querySelector('#editor-play')?.addEventListener('click', () =>
+    void doSaveLevel(false, false, true),
+  );
+  app.querySelector('#editor-save')?.addEventListener('click', () => void doSaveLevel(false));
+  app.querySelector('#editor-save-as')?.addEventListener('click', () => void doSaveLevel(true));
+  bindEditorGridControls();
   app.querySelector('#editor-name')?.addEventListener('change', (e) => {
     editorName = (e.target as HTMLInputElement).value;
   });
@@ -9281,7 +9530,233 @@ function bindEditorEvents() {
       void flushStore().then(() => render());
     });
   });
+  bindTerrainGenEvents();
   bindEditorBoard();
+}
+
+/**
+ * An exact mirror needs a middle line: odd rows for top/bottom, odd columns for
+ * left/right, even both for the 180° turn. Nudge a rectangular board by one.
+ */
+function mirrorFitSize(cols: number, rows: number): { cols: number; rows: number } {
+  const want = (n: number, max: number, min: number, odd: boolean) => {
+    if (n % 2 === (odd ? 1 : 0)) return n;
+    if (n + 1 <= max) return n + 1;
+    return Math.max(min, n - 1);
+  };
+  const m = editorTerrainCfg.mirror;
+  if (m === 'reversed') {
+    return {
+      cols: want(cols, MAX_COLS, MIN_COLS, false),
+      rows: want(rows, MAX_ROWS, MIN_ROWS, false),
+    };
+  }
+  if (m === 'mirror' && editorTerrainCfg.mirrorAxis === 'lr') {
+    return { cols: want(cols, MAX_COLS, MIN_COLS, true), rows };
+  }
+  if (m === 'mirror') return { cols, rows: want(rows, MAX_ROWS, MIN_ROWS, true) };
+  return { cols, rows };
+}
+
+function runTerrainGen(): void {
+  let resized = '';
+  if (!editorHex && editorTerrainCfg.mirror !== 'off') {
+    const cur = currentGrid();
+    const fit = mirrorFitSize(cur.cols, cur.rows);
+    if (fit.cols !== cur.cols || fit.rows !== cur.rows) {
+      editorRectRows = fit.rows;
+      applyEditorGrid(fit.cols, fit.rows);
+      resized = ` Board set to ${fit.cols}×${fit.rows} for an exact mirror.`;
+    }
+  }
+  const { cols, rows } = currentGrid();
+  if (!editorTerrainLockSeed) editorTerrainSeed = randomSeed();
+  pushEditorUndo();
+  const res = generateTerrain(editorTerrainCfg, {
+    terrain: editorTerrain,
+    tokens: editorTokens,
+    occupied: editorPieces,
+    orientation: editorOrientation,
+    onBoard: inEditorHex,
+    seed: editorTerrainSeed,
+  });
+  editorTerrain = res.terrain;
+  editorTokens = sanitizeTokens(res.tokens, cols, rows);
+  editorBoardHex = null;
+  editorStoryHex = null;
+  editorTerrainStatus = `Seed ${editorTerrainSeed}. ${describePlaced(res.placed)}.${resized}`;
+
+  editorTerrainGenOpen = true;
+  editorDirty = true;
+  render();
+}
+
+function loadTerrainPreset(id: string): boolean {
+  const p = getTerrainPreset(id);
+  if (!p) return false;
+  editorTerrainCfg = cloneTerrainConfig(p);
+  editorTerrainPresetId = p.id;
+  editorTerrainName = p.name;
+  editorTerrainGenOpen = true;
+  return true;
+}
+
+function bindTerrainGenEvents(): void {
+  app.querySelector<HTMLDetailsElement>('[data-editor-terrain]')?.addEventListener('toggle', (e) => {
+    editorTerrainGenOpen = (e.currentTarget as HTMLDetailsElement).open;
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-terrain-load]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (loadTerrainPreset(btn.dataset.terrainLoad!)) {
+        editorTerrainStatus = '';
+        render();
+      }
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-terrain-run]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (loadTerrainPreset(btn.dataset.terrainRun!)) runTerrainGen();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-terrain-reset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Restore this built-in preset to its factory settings?')) return;
+      const id = btn.dataset.terrainReset!;
+      const p = resetBuiltinTerrainPreset(id);
+      if (p && editorTerrainPresetId === id) {
+        editorTerrainCfg = cloneTerrainConfig(p);
+        editorTerrainName = p.name;
+      }
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-terrain-del]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Delete this terrain preset?')) return;
+      const id = btn.dataset.terrainDel!;
+      deleteTerrainPreset(id);
+      if (editorTerrainPresetId === id) editorTerrainPresetId = null;
+      render();
+    });
+  });
+  // Sliders edit the draft in place — no re-render, so drags are not interrupted.
+  app.querySelectorAll<HTMLInputElement>('input[data-tg-layer]').forEach((el) => {
+    el.addEventListener('input', () => {
+      const id = el.dataset.tgLayer as TerrainLayerId;
+      const field = el.dataset.tgField as 'amount' | 'link';
+      const v = Number(el.value);
+      editorTerrainCfg.layers[id][field] = v;
+      const out = app.querySelector<HTMLOutputElement>(`[data-tg-val="${id}:${field}"]`);
+      if (out) out.textContent = `${v}%`;
+      app
+        .querySelector(`[data-tg-row="${id}"]`)
+        ?.classList.toggle('on', editorTerrainCfg.layers[id].amount > 0);
+    });
+  });
+  app.querySelectorAll<HTMLSelectElement>('select[data-tg-layer]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const id = el.dataset.tgLayer as TerrainLayerId;
+      editorTerrainCfg.layers[id].bias = el.value as LayerBias;
+    });
+  });
+  app.querySelector<HTMLInputElement>('#terrain-name')?.addEventListener('change', (e) => {
+    editorTerrainName = (e.target as HTMLInputElement).value;
+  });
+  app.querySelector<HTMLInputElement>('#terrain-replace')?.addEventListener('change', (e) => {
+    editorTerrainCfg.replace = (e.target as HTMLInputElement).checked;
+  });
+  app.querySelector<HTMLInputElement>('#terrain-ramps')?.addEventListener('change', (e) => {
+    editorTerrainCfg.ramps = (e.target as HTMLInputElement).checked;
+    if (editorTerrainCfg.ramps) {
+      editorTerrainCfg.singleRamps = false;
+      const single = app.querySelector<HTMLInputElement>('#terrain-single-ramps');
+      if (single) single.checked = false;
+    }
+  });
+  app.querySelector<HTMLInputElement>('#terrain-single-ramps')?.addEventListener('change', (e) => {
+    editorTerrainCfg.singleRamps = (e.target as HTMLInputElement).checked;
+    if (editorTerrainCfg.singleRamps) {
+      editorTerrainCfg.ramps = false;
+      const all = app.querySelector<HTMLInputElement>('#terrain-ramps');
+      if (all) all.checked = false;
+    }
+  });
+  app.querySelector<HTMLSelectElement>('#terrain-mirror')?.addEventListener('change', (e) => {
+    editorTerrainCfg.mirror = (e.target as HTMLSelectElement).value as MirrorMode;
+    const axisLabel = app.querySelector<HTMLElement>('#terrain-mirror-axis-label');
+    if (axisLabel) axisLabel.hidden = editorTerrainCfg.mirror !== 'mirror';
+  });
+  app.querySelector<HTMLSelectElement>('#terrain-mirror-axis')?.addEventListener('change', (e) => {
+    editorTerrainCfg.mirrorAxis = (e.target as HTMLSelectElement).value as MirrorAxis;
+  });
+  app.querySelector<HTMLSelectElement>('#terrain-difficulty')?.addEventListener('change', (e) => {
+    editorTerrainCfg.difficulty = Math.max(
+      0,
+      Math.min(MAX_TERRAIN_DIFFICULTY, Number((e.target as HTMLSelectElement).value) || 0),
+    );
+  });
+  app.querySelector<HTMLInputElement>('#terrain-bleed')?.addEventListener('input', (e) => {
+    const v = Number((e.target as HTMLInputElement).value);
+    editorTerrainCfg.bleed = v;
+    const out = app.querySelector<HTMLOutputElement>('#terrain-bleed-val');
+    if (out) out.textContent = `${v}%`;
+  });
+  app.querySelector<HTMLInputElement>('#terrain-clear')?.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement;
+    editorTerrainCfg.clearRadius = Math.max(
+      0,
+      Math.min(MAX_CLEAR_RADIUS, Math.floor(Number(el.value)) || 0),
+    );
+    el.value = String(editorTerrainCfg.clearRadius);
+  });
+  app.querySelector<HTMLInputElement>('#terrain-seed')?.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement;
+    editorTerrainSeed = Math.max(0, Math.min(999999, Math.floor(Number(el.value)) || 0));
+    el.value = String(editorTerrainSeed);
+    // Typing a seed means "use this one".
+    editorTerrainLockSeed = true;
+    const lock = app.querySelector<HTMLInputElement>('#terrain-lock');
+    if (lock) lock.checked = true;
+  });
+  app.querySelector<HTMLInputElement>('#terrain-lock')?.addEventListener('change', (e) => {
+    editorTerrainLockSeed = (e.target as HTMLInputElement).checked;
+  });
+  const save = (asNew: boolean) => {
+    const nameEl = app.querySelector<HTMLInputElement>('#terrain-name');
+    if (nameEl) editorTerrainName = nameEl.value;
+    const typed = editorTerrainName.trim() || 'Untitled terrain';
+    // The name decides: same name as an existing preset = overwrite it (after a confirm
+    // unless it is the one loaded). A built-in keeps its factory copy and stores the edit
+    // as an override (↺ restores it). Any other name = a new preset.
+    let existing: string | null = null;
+    let name = typed;
+    const clash = findTerrainPresetByName(typed);
+    if (asNew) {
+      name = uniqueTerrainName(typed);
+    } else if (clash?.builtin) {
+      if (clash.id !== editorTerrainPresetId && !confirm(`Overwrite built-in "${clash.name}"?`)) return;
+      saveBuiltinTerrainPreset(clash.id, editorTerrainCfg);
+      editorTerrainPresetId = clash.id;
+      editorTerrainName = clash.name;
+      editorTerrainStatus = `Saved built-in "${clash.name}" (↺ in the list restores the original).`;
+      render();
+      return;
+    } else if (clash) {
+      if (clash.id !== editorTerrainPresetId && !confirm(`Overwrite "${clash.name}"?`)) return;
+      existing = clash.id;
+    }
+    const saved = saveTerrainPreset(name, editorTerrainCfg, existing);
+    editorTerrainPresetId = saved.id;
+    editorTerrainName = saved.name;
+    editorTerrainStatus =
+      saved.name === typed
+        ? `${existing ? 'Updated' : 'Saved'} "${saved.name}".`
+        : `"${typed}" is taken — saved as "${saved.name}".`;
+    render();
+  };
+  app.querySelector('#terrain-save')?.addEventListener('click', () => save(false));
+  app.querySelector('#terrain-save-as')?.addEventListener('click', () => save(true));
+  app.querySelector('#terrain-generate')?.addEventListener('click', () => runTerrainGen());
 }
 
 function bindLevelsEvents() {
@@ -9434,7 +9909,8 @@ function bindEvents() {
     return;
   }
   if (screen === 'editor') {
-    bindEditorEvents();
+    if (editorTerrainOnly) bindTerrainOnlyEvents();
+    else bindEditorEvents();
     return;
   }
   if (screen === 'units') {
@@ -9451,6 +9927,10 @@ function bindEvents() {
     if (activeLevelId) startMatch(false);
     else reset(true);
   });
+  app.querySelector<HTMLSelectElement>('#rogue-terrain')?.addEventListener('change', (e) => {
+    setRogueTerrainId((e.target as HTMLSelectElement).value);
+  });
+  app.querySelector('#rogue-generate')?.addEventListener('click', () => reset(true));
   app.querySelector('#start-hotseat')?.addEventListener('click', () => {
     mode = 'hotseat';
     playlist = null;
@@ -9700,6 +10180,23 @@ function render() {
       <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
         ${renderRogueUnlocksPage()}
+      </div>
+    `;
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'editor' && editorTerrainOnly) {
+    app.innerHTML = `
+      <div class="board-wrap editor-mode terrain-only">
+        ${renderToolbar()}
+        <div class="terrain-only-top">
+          ${renderTerrainGenPanel()}
+          ${renderTerrainPreviewPanel()}
+        </div>
+        <div class="board-stage">
+          ${renderBoard()}
+        </div>
       </div>
     `;
     bindEvents();
