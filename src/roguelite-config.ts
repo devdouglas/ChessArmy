@@ -58,7 +58,7 @@ export type RogueRegionInfo = {
 };
 
 export type RogueUnitCfg = {
-  listed: boolean;
+  used: boolean;
   unlock: RogueUnlock;
   fromBattle: number;
   toBattle: number | null;
@@ -70,7 +70,7 @@ export type RogueUnitCfg = {
 };
 
 export type RoguePromoCfg = {
-  listed: boolean;
+  used: boolean;
   unlock: RogueUnlock;
   fromBattle: number;
   inShop: boolean;
@@ -119,6 +119,14 @@ function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
 }
 
+/** Prefer `used`; accept legacy `listed` from older JSON / localStorage. */
+function usedFlag(raw: { used?: unknown; listed?: unknown } | undefined, fallback: boolean): boolean {
+  if (!raw) return fallback;
+  if (typeof raw.used === 'boolean') return raw.used;
+  if (typeof raw.listed === 'boolean') return raw.listed;
+  return fallback;
+}
+
 export function sanitizeUnlock(raw: unknown): RogueUnlock {
   if (!raw || typeof raw !== 'object') return { ...ALWAYS };
   const t = (raw as { type?: unknown }).type;
@@ -139,7 +147,7 @@ export function sanitizeUnlock(raw: unknown): RogueUnlock {
 export function defaultUnitCfg(type: UnitType): RogueUnitCfg {
   const rec = !!UNIT_STATS[type]?.recruitable;
   return {
-    listed: rec,
+    used: rec,
     unlock: { ...ALWAYS },
     fromBattle: 1,
     toBattle: null,
@@ -153,7 +161,7 @@ export function defaultUnitCfg(type: UnitType): RogueUnitCfg {
 export function defaultPromoCfg(id: PromotionTokenType): RoguePromoCfg {
   const isGeneral = id === 'general';
   return {
-    listed: !isGeneral,
+    used: !isGeneral,
     unlock: { ...ALWAYS },
     fromBattle: 1,
     inShop: !isGeneral,
@@ -169,7 +177,7 @@ function mergeUnit(type: UnitType, raw?: Partial<RogueUnitCfg>): RogueUnitCfg {
       ? d.toBattle
       : int(raw.toBattle, d.toBattle ?? 0, 1, 999);
   return {
-    listed: bool(raw.listed, d.listed),
+    used: usedFlag(raw, d.used),
     unlock: raw.unlock ? sanitizeUnlock(raw.unlock) : d.unlock,
     fromBattle: raw.fromBattle == null ? d.fromBattle : int(raw.fromBattle, d.fromBattle, 1, 999),
     toBattle: raw.toBattle == null ? d.toBattle : toBattle,
@@ -184,7 +192,7 @@ function mergePromo(id: PromotionTokenType, raw?: Partial<RoguePromoCfg>): Rogue
   const d = defaultPromoCfg(id);
   if (!raw) return d;
   return {
-    listed: bool(raw.listed, d.listed),
+    used: usedFlag(raw, d.used),
     unlock: raw.unlock ? sanitizeUnlock(raw.unlock) : d.unlock,
     fromBattle: raw.fromBattle == null ? d.fromBattle : int(raw.fromBattle, d.fromBattle, 1, 999),
     inShop: bool(raw.inShop, d.inShop),
@@ -444,7 +452,7 @@ export function unlockSatisfied(unlock: RogueUnlock, progress: RogueProgress, ba
 
 export function unitAvailableInRun(type: UnitType, battle: number, purpose: RoguePoolPurpose, progress: RogueProgress): boolean {
   const c = unitRogueCfg(type);
-  if (!c.listed) return false;
+  if (!c.used) return false;
   if (purpose === 'shop' && !c.inShop) return false;
   if (purpose === 'start' && !c.inStartPool) return false;
   if (purpose === 'enemy' && !c.inEnemyPool) return false;
@@ -461,7 +469,7 @@ export function promoAvailableInRun(
   progress: RogueProgress,
 ): boolean {
   const c = promoRogueCfg(id);
-  if (!c.listed) return false;
+  if (!c.used) return false;
   if (purpose === 'shop' && !c.inShop) return false;
   if (purpose === 'enemy' && !c.enemyAllowed) return false;
   if (!unlockSatisfied(c.unlock, progress, battle)) return false;

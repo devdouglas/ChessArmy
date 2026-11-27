@@ -15,7 +15,7 @@
   },
   "units": {
     "soldier": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -27,7 +27,7 @@
       "inEnemyPool": true
     },
     "scout": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -39,7 +39,7 @@
       "inEnemyPool": true
     },
     "bazooka": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -51,7 +51,7 @@
       "inEnemyPool": true
     },
     "sniper": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -63,7 +63,7 @@
       "inEnemyPool": true
     },
     "archer": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -75,7 +75,7 @@
       "inEnemyPool": true
     },
     "javelin": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -87,7 +87,7 @@
       "inEnemyPool": true
     },
     "horsearcher": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -99,7 +99,7 @@
       "inEnemyPool": true
     },
     "lightcavalry": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -111,7 +111,7 @@
       "inEnemyPool": true
     },
     "chariotarcher": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -123,7 +123,7 @@
       "inEnemyPool": true
     },
     "cohort": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -135,7 +135,7 @@
       "inEnemyPool": true
     },
     "hoplite": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -147,7 +147,7 @@
       "inEnemyPool": true
     },
     "elephant": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -159,7 +159,7 @@
       "inEnemyPool": true
     },
     "barbarian": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -171,7 +171,7 @@
       "inEnemyPool": true
     },
     "catapult": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -183,7 +183,7 @@
       "inEnemyPool": true
     },
     "ballista": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -195,7 +195,7 @@
       "inEnemyPool": true
     },
     "tank": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -207,7 +207,7 @@
       "inEnemyPool": true
     },
     "general": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -219,7 +219,7 @@
       "inEnemyPool": true
     },
     "tower": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -231,7 +231,7 @@
       "inEnemyPool": true
     },
     "dummy": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -243,7 +243,7 @@
       "inEnemyPool": false
     },
     "peasant": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -255,7 +255,7 @@
       "inEnemyPool": false
     },
     "builder": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -267,7 +267,7 @@
       "inEnemyPool": true
     },
     "dude": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -279,7 +279,7 @@
       "inEnemyPool": false
     },
     "wolf": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -291,7 +291,7 @@
       "inEnemyPool": true
     },
     "fighter": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -303,7 +303,7 @@
       "inEnemyPool": true
     },
     "gunship": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -315,7 +315,7 @@
       "inEnemyPool": true
     },
     "bomber": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -327,7 +327,7 @@
       "inEnemyPool": true
     },
     "frigate": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -339,7 +339,7 @@
       "inEnemyPool": true
     },
     "cruiser": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -351,7 +351,7 @@
       "inEnemyPool": true
     },
     "dreadnought": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -363,7 +363,7 @@
       "inEnemyPool": true
     },
     "u-mvf8ty84rdk3": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -375,7 +375,7 @@
       "inEnemyPool": true
     },
     "u-mvf8vjffgpkd": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -387,7 +387,7 @@
       "inEnemyPool": false
     },
     "u-mvgpbg68f593": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -399,7 +399,7 @@
       "inEnemyPool": false
     },
     "u-mvkn6vl7l0zw": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -411,7 +411,7 @@
       "inEnemyPool": false
     },
     "u-mvlx87f1kk67": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -423,7 +423,7 @@
       "inEnemyPool": true
     },
     "u-mvr2vokzh3n3": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -435,7 +435,7 @@
       "inEnemyPool": false
     },
     "u-mvun2x81vsl5": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -447,7 +447,7 @@
       "inEnemyPool": false
     },
     "u-mvuvhfewwv97": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -459,7 +459,7 @@
       "inEnemyPool": false
     },
     "u-mw3t85tpmhz2": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -471,7 +471,7 @@
       "inEnemyPool": false
     },
     "u-mw4vuw6xnwnt": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -483,7 +483,7 @@
       "inEnemyPool": true
     },
     "u-mwjio288uty1": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -495,7 +495,7 @@
       "inEnemyPool": true
     },
     "u-mwjiue32r9rf": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -507,7 +507,7 @@
       "inEnemyPool": true
     },
     "u-mwowcdhlpw7r": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -521,7 +521,7 @@
   },
   "promotions": {
     "general": {
-      "listed": false,
+      "used": false,
       "unlock": {
         "type": "always"
       },
@@ -530,7 +530,7 @@
       "enemyAllowed": false
     },
     "range1": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -539,7 +539,7 @@
       "enemyAllowed": true
     },
     "defense1": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -548,7 +548,7 @@
       "enemyAllowed": true
     },
     "attack1": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -557,7 +557,7 @@
       "enemyAllowed": true
     },
     "ap1": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -566,7 +566,7 @@
       "enemyAllowed": true
     },
     "hp2": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -575,7 +575,7 @@
       "enemyAllowed": true
     },
     "allTerrain": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -584,7 +584,7 @@
       "enemyAllowed": true
     },
     "lunge": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -593,7 +593,7 @@
       "enemyAllowed": true
     },
     "inspire": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -602,7 +602,7 @@
       "enemyAllowed": true
     },
     "scout": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },
@@ -611,7 +611,7 @@
       "enemyAllowed": false
     },
     "wealthy": {
-      "listed": true,
+      "used": true,
       "unlock": {
         "type": "always"
       },

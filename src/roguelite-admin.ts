@@ -154,7 +154,7 @@ export function renderRogueConfigPage(
           <td class="rogue-ico">${unitIcon(t)}</td>
           <td><strong>${esc(name)}</strong><div class="lvl-meta">${esc(t)}</div></td>
           <td class="rogue-num">${s?.value ?? '—'}</td>
-          <td>${chk('listed', c.listed, 'Listed / accessible in roguelite')}</td>
+          <td>${chk('used', c.used, 'Used in roguelite')}</td>
           <td><input type="number" min="0" max="9999" data-field="price" value="${c.price ?? ''}" placeholder="${s?.value ?? 0}" title="Gold. Blank = unit value (${s?.value ?? 0})" /></td>
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
@@ -175,7 +175,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table rogue-units">
             <thead>
               <tr>
-                <th></th><th>Unit</th><th>Value</th><th>Listed</th><th>Price</th>
+                <th></th><th>Unit</th><th>Value</th><th>Used</th><th>Price</th>
                 <th>From</th><th>To</th><th>Unlock</th><th>Shop</th><th>Start</th><th>Enemy</th>
               </tr>
             </thead>
@@ -192,7 +192,7 @@ export function renderRogueConfigPage(
     return `<tr data-promo="${id}">
       <td class="rogue-ico">${promoIcon(id)}</td>
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
-      <td>${chk('listed', c.listed)}</td>
+      <td>${chk('used', c.used)}</td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
       <td>${unlockSelect(`p:${id}`, c.unlock, listRogueRegionPresets(draft))}</td>
       <td>${chk('inShop', c.inShop)}</td>
@@ -265,7 +265,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table">
             <thead>
               <tr>
-                <th></th><th>Promotion</th><th>Listed</th><th>From battle</th>
+                <th></th><th>Promotion</th><th>Used</th><th>From battle</th>
                 <th>Unlock</th><th>Shop</th><th>Enemy</th>
               </tr>
             </thead>
@@ -288,21 +288,19 @@ export function renderRogueUnlocksPage(): string {
           const items = group.types
             .map((t) => {
               const c = unitRogueCfg(t);
-              const unlocked = c.listed && unlockSatisfied(c.unlock, progress, battle);
-              const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist']
-                .filter(Boolean)
-                .join(' ');
-              const why = !c.listed
-                ? 'Not listed in roguelite'
-                : unlocked
-                  ? `Unlocked · from battle ${c.fromBattle}${c.toBattle ? `–${c.toBattle}` : ''} · ${c.price ?? UNIT_STATS[t]?.value ?? 0}g`
-                  : 'Not yet unlocked';
+              if (!c.used) return '';
+              const unlocked = unlockSatisfied(c.unlock, progress, battle);
+              const cls = ['rogue-ov-item', unlocked ? '' : 'locked'].filter(Boolean).join(' ');
+              const why = unlocked
+                ? `Unlocked · from battle ${c.fromBattle}${c.toBattle ? `–${c.toBattle}` : ''} · ${c.price ?? UNIT_STATS[t]?.value ?? 0}g`
+                : 'Not yet unlocked';
               return `<div class="${cls}" title="${esc(`${UNIT_STATS[t]?.name ?? t}: ${why}`)}">
           ${unitIcon(t)}
           <span>${esc(UNIT_STATS[t]?.name ?? t)}</span>
         </div>`;
             })
             .join('');
+          if (!items) return '';
           return `<div class="rogue-ov-group unit-class-group"><h3 class="unit-class-label">${esc(group.label)}</h3><div class="rogue-ov-grid">${items}</div></div>`;
         })
         .join('')
@@ -310,11 +308,10 @@ export function renderRogueUnlocksPage(): string {
 
   const ovPromos = PROMOTION_TOKEN_TYPES.map((id) => {
     const c = promoRogueCfg(id);
-    const unlocked = c.listed && unlockSatisfied(c.unlock, progress, battle);
-    const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist']
-      .filter(Boolean)
-      .join(' ');
-    const why = !c.listed ? 'Not listed in the shop' : unlocked ? 'Unlocked' : 'Not yet unlocked';
+    if (!c.used) return '';
+    const unlocked = unlockSatisfied(c.unlock, progress, battle);
+    const cls = ['rogue-ov-item', unlocked ? '' : 'locked'].filter(Boolean).join(' ');
+    const why = unlocked ? 'Unlocked' : 'Not yet unlocked';
     return `<div class="${cls}" title="${esc(`${UNIT_TOKEN_LABEL[id]}: ${why}`)}">
       ${promoIcon(id)}
       <span>${esc(UNIT_TOKEN_LABEL[id])}</span>
@@ -327,7 +324,7 @@ export function renderRogueUnlocksPage(): string {
         <h2>Unlocks</h2>
         <span class="lvl-meta">${progress.runsCompleted} run${progress.runsCompleted === 1 ? '' : 's'} completed · best battle ${progress.bestBattle}</span>
       </div>
-      <p class="ai-editor-lead">Current unlockable state for this browser. Greyed items are not yet unlocked or not listed. Promotions are shown for every era.</p>
+      <p class="ai-editor-lead">Current unlockable state for this browser. Only units and promotions marked Used appear here; greyed items are not yet unlocked. Promotions are shown for every era.</p>
       ${rogueEraFilterHtml(era)}
       ${unitBlocks}
       <div class="rogue-ov-group"><h3 class="unit-class-label">Promotions</h3><div class="rogue-ov-grid">${ovPromos}</div></div>
@@ -405,7 +402,7 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     if (!id) return;
     const flagOf = (n: string) => !!tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`)?.checked;
     units[id] = {
-      listed: flagOf('listed'),
+      used: flagOf('used'),
       price: numOrNull(tr.querySelector<HTMLInputElement>('[data-field="price"]')?.value ?? ''),
       fromBattle: Number(tr.querySelector<HTMLInputElement>('[data-field="fromBattle"]')?.value) || 1,
       toBattle: numOrNull(tr.querySelector<HTMLInputElement>('[data-field="toBattle"]')?.value ?? ''),
@@ -422,7 +419,7 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     if (!id) return;
     const flagOf = (n: string) => !!tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`)?.checked;
     promotions[id] = {
-      listed: flagOf('listed'),
+      used: flagOf('used'),
       fromBattle: Number(tr.querySelector<HTMLInputElement>('[data-field="fromBattle"]')?.value) || 1,
       unlock: readUnlock(tr, `p:${id}`),
       inShop: flagOf('inShop'),
