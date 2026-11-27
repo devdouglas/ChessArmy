@@ -2940,7 +2940,37 @@ export function canLunge(state: GameState, pieceId: string): boolean {
   return lungeSpots(state, piece).length > 0;
 }
 
-/** True when a Scout can ambush-deploy onto this hex (standable, empty). */
+/**
+ * True when `hex` is level ground, or a walkable path of ≤1-height steps
+ * (within the piece's climb level) leads down to level ground. Stops Scouts
+ * from being dropped on sealed-off hills / mountains.
+ */
+function hasGroundAccess(state: GameState, piece: Piece, hex: Hex): boolean {
+  if (hexHeight(state, hex) <= 0) return true;
+  if (hasAllTerrain(piece)) return true;
+  const climb = climbLevelOf(piece);
+  const key = (h: Hex) => `${h.col},${h.row}`;
+  const seen = new Set<string>([key(hex)]);
+  const queue: Hex[] = [hex];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const ch = hexHeight(state, cur);
+    for (const n of hexNeighbors(state, cur)) {
+      const k = key(n);
+      if (seen.has(k) || !inBounds(state, n)) continue;
+      if (isWall(state, n) || isPalisade(state, n)) continue;
+      if (inWater(state, n) && !canPassWater(piece)) continue;
+      const nh = hexHeight(state, n);
+      if (nh > climb || Math.abs(nh - ch) > 1) continue;
+      if (nh <= 0) return true;
+      seen.add(k);
+      queue.push(n);
+    }
+  }
+  return false;
+}
+
+/** True when a Scout can ambush-deploy onto this hex (standable, empty, reachable from the plains). */
 export function canScoutDeployAt(state: GameState, piece: Piece, hex: Hex): boolean {
   if (!inBounds(state, hex)) return false;
   if (isWall(state, hex) || isPalisade(state, hex)) return false;
@@ -2948,6 +2978,7 @@ export function canScoutDeployAt(state: GameState, piece: Piece, hex: Hex): bool
   if (terrainHeight(terrainAt(state, hex)) > climbLevelOf(piece)) return false;
   const occ = pieceAt(state, hex);
   if (occ && occ.id !== piece.id) return false;
+  if (!hasGroundAccess(state, piece, hex)) return false;
   return true;
 }
 
