@@ -31,6 +31,7 @@ import {
   ROGUE_UNLOCK_TYPE_LABEL,
   ROGUE_UNLOCK_TYPES,
   describeUnlock,
+  type UnlockConditionStatus,
   unlockBattleParamMax,
   listRogueRegionPresets,
   regionRogueCfg,
@@ -434,6 +435,44 @@ export function renderRogueConfigPage(
   `;
 }
 
+
+const COUNTER_UNLOCK_TYPES = new Set([
+  'playGames',
+  'reachBattle',
+  'killUnits',
+  'haveCoins',
+  'reachBattleNoLoss',
+  'winWithUnits',
+  'breakObstacles',
+]);
+
+export function unlockProgressPct(d: Pick<UnlockConditionStatus, 'current' | 'target' | 'done' | 'type'>): number | null {
+  if (!COUNTER_UNLOCK_TYPES.has(d.type)) return null;
+  if (d.done || d.target <= 0) return 100;
+  return Math.max(0, Math.min(100, Math.round((100 * Math.max(0, d.current)) / d.target)));
+}
+
+function unlockConditionDetail(d: UnlockConditionStatus): string {
+  const pct = unlockProgressPct(d);
+  const label = `<span class="rogue-unlock-cond-label">${esc(d.label)}</span>`;
+  if (pct == null) {
+    return `<span class="rogue-unlock-cond">${label}<span class="rogue-unlock-cond-text">${esc(d.text)}</span></span>`;
+  }
+  return `<span class="rogue-unlock-cond">${label}
+    <span class="rogue-unlock-prog">
+      <span class="rogue-unlock-prog-text">${esc(d.text)}</span>
+      <span class="rogue-unlock-prog-bar" role="progressbar" aria-valuenow="${Math.max(0, Math.min(d.current, d.target))}" aria-valuemin="0" aria-valuemax="${Math.max(1, d.target)}" aria-valuetext="${esc(d.text)}" aria-label="${esc(`${d.label}: ${d.text}`)}">
+        <span class="rogue-unlock-prog-fill" style="width: ${pct}%"></span>
+      </span>
+    </span>
+  </span>`;
+}
+
+function unlocksConditionDetails(conds: UnlockConditionStatus[], unlocked: boolean): string {
+  if (unlocked || !conds.length) return '';
+  return `<span class="rogue-ov-why">${conds.map(unlockConditionDetail).join('')}</span>`;
+}
+
 export function renderRogueUnlocksPage(): string {
   const era = getRogueAdminEra();
   const progress = getRogueProgress();
@@ -454,14 +493,11 @@ export function renderRogueUnlocksPage(): string {
                 : conds.length
                   ? conds.map((d) => `${d.label} · ${d.text}`).join(' · ')
                   : 'Not yet unlocked';
-              const detail = !unlocked && conds.length
-                ? `<span class="rogue-ov-why">${conds
-                    .map((d) => `${esc(d.label)}<br>${esc(d.text)}`)
-                    .join('<br>')}</span>`
-                : '';
+              const detail = unlocksConditionDetails(conds, unlocked);
               return `<div class="${cls}" title="${esc(`${UNIT_STATS[t]?.name ?? t}: ${why}`)}">
           ${unitIcon(t)}
-          <span>${esc(UNIT_STATS[t]?.name ?? t)}${detail}</span>
+          <span class="rogue-ov-name">${esc(UNIT_STATS[t]?.name ?? t)}</span>
+          ${detail}
         </div>`;
             })
             .join('');
@@ -482,14 +518,11 @@ export function renderRogueUnlocksPage(): string {
       : conds.length
         ? conds.map((d) => `${d.label} · ${d.text}`).join(' · ')
         : 'Not yet unlocked';
-    const detail = !unlocked && conds.length
-      ? `<span class="rogue-ov-why">${conds
-          .map((d) => `${esc(d.label)}<br>${esc(d.text)}`)
-          .join('<br>')}</span>`
-      : '';
+    const detail = unlocksConditionDetails(conds, unlocked);
     return `<div class="${cls}" title="${esc(`${UNIT_TOKEN_LABEL[id]}: ${why}`)}">
       ${promoIcon(id)}
-      <span>${esc(UNIT_TOKEN_LABEL[id])}${detail}</span>
+      <span class="rogue-ov-name">${esc(UNIT_TOKEN_LABEL[id])}</span>
+      ${detail}
     </div>`;
   }).join('');
 

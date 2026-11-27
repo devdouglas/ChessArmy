@@ -7050,22 +7050,67 @@ svg.board .hex.rock {
   text-align: center;
   cursor: pointer;
 }
-.rogue-ov-item span {
+.rogue-ov-item .rogue-ov-name {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.rogue-ov-item.locked span {
-  -webkit-line-clamp: 6;
-}
 .rogue-ov-why {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
   margin-top: 0.15rem;
   font-size: 0.75em;
   line-height: 1.25;
   font-weight: 400;
   color: var(--muted, #8a8f86);
+  text-align: left;
+}
+.rogue-unlock-cond {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.12rem;
+  width: 100%;
+  min-width: 0;
+}
+.rogue-unlock-cond-label,
+.rogue-unlock-prog-text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.rogue-unlock-prog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  width: 100%;
+  min-width: 0;
+}
+.rogue-unlock-prog-bar {
+  display: block;
+  width: 100%;
+  height: 0.35rem;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--line, #5c6358) 80%, transparent);
+  overflow: hidden;
+}
+.rogue-unlock-prog-fill {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  border-radius: inherit;
+  background: var(--sel, var(--accent, #c9a227));
+}
+@media (max-width: 720px) {
+  .rogue-ov-grid {
+    grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr));
+  }
+  .rogue-unlock-prog-bar {
+    height: 0.42rem;
+  }
 }
 .rogue-ov-item.locked {
   filter: grayscale(1);

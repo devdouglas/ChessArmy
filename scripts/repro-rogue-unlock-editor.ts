@@ -5,10 +5,19 @@
 import { readFileSync } from 'node:fs';
 import {
   renderRogueConfigPage,
+  renderRogueUnlocksPage,
   setRogueAdminEra,
+  unlockProgressPct,
   ROGUE_ADMIN_ERA_KEY,
 } from '../src/roguelite-admin';
-import { sanitizeRogueConfig, sanitizeUnlock, type RogueConfig } from '../src/roguelite-config';
+import {
+  applyRogueConfig,
+  sanitizeRogueConfig,
+  sanitizeRogueProgress,
+  sanitizeUnlock,
+  setRogueProgress,
+  type RogueConfig,
+} from '../src/roguelite-config';
 import { UNIT_STATS, type UnitCategory } from '../src/roster';
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -171,5 +180,30 @@ const promoCfg: RogueConfig = {
 const prow = promoRow(renderRogueConfigPage(promoCfg, true), promoId);
 assert(/data-unlock-param="count" value="2"/.test(prow), 'promo count');
 assert(/<option value="elephant" selected>/.test(prow), 'promo unit selected');
+
+assert(unlockProgressPct({ type: 'playGames', current: 3, target: 5, done: false }) === 60, '3/5 is 60%');
+assert(unlockProgressPct({ type: 'playGames', current: 8, target: 5, done: true }) === 100, 'met is 100%');
+assert(unlockProgressPct({ type: 'always', current: 1, target: 1, done: true }) === null, 'always has no bar');
+
+applyRogueConfig({
+  ...base,
+  units: {
+    ...base.units,
+    [unitId]: {
+      ...(base.units[unitId] ?? {}),
+      used: true,
+      unlock: sanitizeUnlock([
+        { type: 'playGames', count: 5 },
+        { type: 'haveCoins', count: 10 },
+      ]),
+    },
+  },
+});
+setRogueProgress(sanitizeRogueProgress({ gamesPlayed: 3, maxCoins: 10, bestBattle: 1 }));
+const unlocksPage = renderRogueUnlocksPage();
+assert(unlocksPage.includes('role="progressbar"'), 'progress bar present');
+assert(unlocksPage.includes('3/5 games'), 'keeps 3/5 text');
+assert(unlocksPage.includes('style="width: 60%"'), 'partial bar width');
+assert(unlocksPage.includes('10/10 coins') && unlocksPage.includes('style="width: 100%"'), 'met condition is a full bar');
 
 console.log('repro-rogue-unlock-editor: ok');
