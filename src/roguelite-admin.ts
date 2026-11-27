@@ -315,12 +315,11 @@ export function renderRogueConfigPage(
         <h2>Roguelite config</h2>
         <span class="lvl-meta" id="rogue-admin-dirty">${dirty ? 'Unsaved changes (this browser)' : override ? 'Using a local override' : 'Shipped defaults'}</span>
         <div class="rogue-admin-actions">
-          <button type="button" id="rogue-cfg-save">Save</button>
           <button type="button" class="ghost" id="rogue-cfg-export">Export JSON</button>
           <button type="button" class="ghost" id="rogue-cfg-reset">Reset to shipped</button>
         </div>
       </div>
-      <p class="ai-editor-lead">Prices, unlocks, in-run availability, starting gold, and the goal battle. Save applies immediately in this browser (localStorage). Export a JSON file and put it in <code>public/data/roguelite.json</code> to ship the defaults. Seeded values match the previous hard-coded rules, so play does not change until you edit this. Current unlocks are on the Unlocks tab.</p>
+      <p class="ai-editor-lead">Prices, unlocks, in-run availability, starting gold, and the goal battle. Changes are saved immediately in this browser (localStorage). Export a JSON file and put it in <code>public/data/roguelite.json</code> to ship the defaults. Seeded values match the previous hard-coded rules, so play does not change until you edit this. Current unlocks are on the Unlocks tab.</p>
       ${rogueEraFilterHtml(era)}
 
       <section class="rogue-admin-section" id="rogue-sec-globals">

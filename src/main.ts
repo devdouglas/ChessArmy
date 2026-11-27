@@ -386,6 +386,7 @@ import {
   sanitizeUnlock,
   regionAvailableInBattle,
   regionRogueCfg,
+  hasRogueConfigOverride,
   type RogueConfig,
 } from './roguelite-config';
 import {
@@ -2448,9 +2449,6 @@ function loadEditorLevel(lvl: SavedLevel): void {
 }
 
 function confirmLeaveEditor(): boolean {
-  if (screen === 'roguelite' && rogueAdminDirty) {
-    return confirm('Leave without saving roguelite config?');
-  }
   if (screen !== 'editor' || !editorDirty || editorTerrainOnly) return true;
   return confirm('Leave without saving this level?');
 }
@@ -2716,10 +2714,12 @@ function syncRogueAdminForm(): HTMLElement | null {
   return root;
 }
 
-function markRogueAdminDirty(): void {
-  rogueAdminDirty = true;
+function persistRogueAdminNow(): void {
+  if (!rogueAdminDraft) return;
+  persistRogueAdminDraft(rogueAdminDraft);
+  rogueAdminDirty = false;
   const el = app.querySelector('#rogue-admin-dirty');
-  if (el) el.textContent = 'Unsaved changes (this browser)';
+  if (el) el.textContent = hasRogueConfigOverride() ? 'Using a local override' : 'Shipped defaults';
 }
 
 function bindRogueEraFilter(): void {
@@ -2727,8 +2727,11 @@ function bindRogueEraFilter(): void {
     btn.addEventListener('click', () => {
       const era = btn.dataset.rogueEra;
       if (!isRogueAdminEra(era) || era === getRogueAdminEra()) return;
+      if (screen === 'roguelite') {
+        syncRogueAdminForm();
+        persistRogueAdminNow();
+      }
       setRogueAdminEra(era);
-      if (screen === 'roguelite') syncRogueAdminForm();
       render();
     });
   });
@@ -2748,12 +2751,12 @@ function bindRogueConfigEvents(): void {
 
   root.addEventListener('input', (e) => {
     syncRogueAdminForm();
-    markRogueAdminDirty();
+    persistRogueAdminNow();
     if (rerenderOn(e.target)) render();
   });
   root.addEventListener('change', (e) => {
     syncRogueAdminForm();
-    markRogueAdminDirty();
+    persistRogueAdminNow();
     if (rerenderOn(e.target)) render();
   });
 
@@ -2771,7 +2774,7 @@ function bindRogueConfigEvents(): void {
       const unlock = sanitizeUnlock(cur.unlock).filter((c) => c.type !== 'always');
       rogueAdminDraft.promotions[id] = { ...cur, unlock: sanitizeUnlock([...unlock, extra]) };
     }
-    markRogueAdminDirty();
+    persistRogueAdminNow();
     render();
   };
 
@@ -2786,18 +2789,11 @@ function bindRogueConfigEvents(): void {
       const row = btn.closest('[data-unlock-index]');
       if (row) row.remove();
       syncRogueAdminForm();
-      markRogueAdminDirty();
+      persistRogueAdminNow();
       render();
     });
   });
 
-  root.querySelector('#rogue-cfg-save')?.addEventListener('click', () => {
-    syncRogueAdminForm();
-    if (!rogueAdminDraft) return;
-    persistRogueAdminDraft(rogueAdminDraft);
-    rogueAdminDirty = false;
-    render();
-  });
   root.querySelector('#rogue-cfg-export')?.addEventListener('click', () => {
     syncRogueAdminForm();
     if (!rogueAdminDraft) return;
