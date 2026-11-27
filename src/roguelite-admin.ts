@@ -8,7 +8,7 @@ import {
   type UnitType,
 } from './engine';
 import { pieceIconSvg, unitTokenGlyphSvg } from './icons';
-import { PERIOD_LABEL, PERIODS, type Period } from './period';
+import { eraIsWip } from './period';
 import {
   applyRogueConfig,
   exportRogueConfigJson,
@@ -20,31 +20,71 @@ import {
   saveRogueConfigLocal,
   sanitizeUnlock,
   type RogueConfig,
-  type RogueProgress,
   getGameRegions,
   type RoguePromoCfg,
   type GameRegion,
   type RogueUnitCfg,
   type RogueUnlock,
-  unitAvailableInRun,
   unitRogueCfg,
   unlockSatisfied,
 } from './roguelite-config';
-import { UNIT_STATS, UNIT_TYPES } from './roster';
+import {
+  UNIT_CATEGORIES,
+  UNIT_CATEGORY_LABEL,
+  UNIT_CLASS_LABEL,
+  UNIT_CLASSES,
+  UNIT_STATS,
+  UNIT_TYPES,
+  type UnitCategory,
+} from './roster';
 
-export type RogueAdminPreview = {
-  mode: 'current' | 'fresh' | 'custom';
-  runsCompleted: number;
-  bestBattle: number;
-  regionsCleared: string[];
-};
+export const ROGUE_ADMIN_ERA_KEY = 'chessarmy-roguelite-admin-era-v1';
 
-export const defaultRogueAdminPreview = (): RogueAdminPreview => ({
-  mode: 'current',
-  runsCompleted: 0,
-  bestBattle: 0,
-  regionsCleared: [],
-});
+export function getRogueAdminEra(): UnitCategory {
+  try {
+    if (typeof localStorage === 'undefined') return 'ancient';
+    const raw = localStorage.getItem(ROGUE_ADMIN_ERA_KEY);
+    if (raw && (UNIT_CATEGORIES as readonly string[]).includes(raw)) return raw as UnitCategory;
+  } catch {
+    /* private mode */
+  }
+  return 'ancient';
+}
+
+export function isRogueAdminEra(v: unknown): v is UnitCategory {
+  return typeof v === 'string' && (UNIT_CATEGORIES as readonly string[]).includes(v);
+}
+
+export function setRogueAdminEra(era: UnitCategory): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(ROGUE_ADMIN_ERA_KEY, era);
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Same grouping as the Units editor: class headers, then value, then name. */
+export function unitsGroupedLikeEditor(era: UnitCategory): { cls: string; label: string; types: UnitType[] }[] {
+  const shown = UNIT_TYPES.filter((t) => UNIT_STATS[t]?.category === era);
+  return UNIT_CLASSES.map((cls) => {
+    const types = shown
+      .filter((t) => UNIT_STATS[t].unitClass === cls)
+      .sort(
+        (a, b) =>
+          UNIT_STATS[a].value - UNIT_STATS[b].value ||
+          UNIT_STATS[a].name.localeCompare(UNIT_STATS[b].name),
+      );
+    return { cls, label: UNIT_CLASS_LABEL[cls], types };
+  }).filter((g) => g.types.length);
+}
+
+export function rogueEraFilterHtml(selected: UnitCategory): string {
+  const buttons = UNIT_CATEGORIES.map(
+    (c) =>
+      `<button type="button" data-rogue-era="${c}" class="${selected === c ? 'active' : ''}">${UNIT_CATEGORY_LABEL[c]}${eraIsWip(c) ? '<span class="era-wip">under construction</span>' : ''}</button>`,
+  ).join('');
+  return `<div class="unit-filter rogue-era-filter" role="radiogroup" aria-label="Era">${buttons}</div>`;
+}
 
 function esc(s: string): string {
   return s
@@ -52,16 +92,6 @@ function esc(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function previewProgress(preview: RogueAdminPreview): RogueProgress {
-  if (preview.mode === 'fresh') return { runsCompleted: 0, bestBattle: 0, regionsCleared: [] };
-  if (preview.mode === 'current') return getRogueProgress();
-  return {
-    runsCompleted: preview.runsCompleted,
-    bestBattle: preview.bestBattle,
-    regionsCleared: [...preview.regionsCleared],
-  };
 }
 
 function unlockSelect(name: string, unlock: RogueUnlock, regions: GameRegion[]): string {
@@ -108,24 +138,17 @@ function promoIcon(id: PromotionTokenType): string {
 
 export function renderRogueConfigPage(
   draft: RogueConfig,
-  preview: RogueAdminPreview,
   dirty: boolean,
 ): string {
   const g = draft.globals;
-  const progress = previewProgress(preview);
-  const eraUnits = (era: Period) =>
-    UNIT_TYPES.filter((t) => UNIT_STATS[t]?.category === era).sort(
-      (a, b) =>
-        (UNIT_STATS[a]?.name ?? a).localeCompare(UNIT_STATS[b]?.name ?? b) || a.localeCompare(b),
-    );
+  const era = getRogueAdminEra();
+  const groups = unitsGroupedLikeEditor(era);
 
-  const unitRows = (era: Period) =>
-    eraUnits(era)
-      .map((t) => {
-        const s = UNIT_STATS[t];
-        const c = unitRogueCfgMerged(t, draft);
-        const name = s?.name ?? t;
-        return `<tr data-unit="${esc(t)}">
+  const unitRow = (t: UnitType) => {
+    const s = UNIT_STATS[t];
+    const c = unitRogueCfgMerged(t, draft);
+    const name = s?.name ?? t;
+    return `<tr data-unit="${esc(t)}">
           <td class="rogue-ico">${unitIcon(t)}</td>
           <td><strong>${esc(name)}</strong><div class="lvl-meta">${esc(t)}</div></td>
           <td class="rogue-num">${s?.value ?? '—'}</td>
@@ -138,8 +161,29 @@ export function renderRogueConfigPage(
           <td>${chk('inStartPool', c.inStartPool)}</td>
           <td>${chk('inEnemyPool', c.inEnemyPool)}</td>
         </tr>`;
-      })
-      .join('');
+  };
+
+  const unitTables = groups.length
+    ? groups
+        .map(
+          (group) => `
+      <section class="rogue-admin-section unit-class-group" id="rogue-sec-units-${esc(era)}-${esc(group.cls)}">
+        <h3 class="unit-class-label">${esc(group.label)}</h3>
+        <div class="ai-check-wrap rogue-table-wrap">
+          <table class="ai-check rogue-table rogue-units">
+            <thead>
+              <tr>
+                <th></th><th>Unit</th><th>Value</th><th>Listed</th><th>Price</th>
+                <th>From</th><th>To</th><th>Unlock</th><th>Shop</th><th>Start</th><th>Enemy</th>
+              </tr>
+            </thead>
+            <tbody>${group.types.map(unitRow).join('')}</tbody>
+          </table>
+        </div>
+      </section>`,
+        )
+        .join('')
+    : `<p class="editor-empty">No ${esc(UNIT_CATEGORY_LABEL[era])} units.</p>`;
 
   const promoRows = PROMOTION_TOKEN_TYPES.map((id) => {
     const c = promoRogueCfgMerged(id, draft);
@@ -168,46 +212,6 @@ export function renderRogueConfigPage(
         .join('')
     : `<tr><td colspan="4" class="lvl-meta">Loading campaign regions…</td></tr>`;
 
-  const ovUnits = PERIODS.map((era) => {
-    const items = eraUnits(era)
-      .map((t) => {
-        const c = unitRogueCfgMerged(t, draft);
-        const unlocked = c.listed && unlockSatisfied(c.unlock, progress, Math.max(1, progress.bestBattle));
-        const inRun = unitAvailableInRun(t, Math.max(1, preview.mode === 'custom' ? preview.bestBattle || 1 : progress.bestBattle || 1), 'shop', progress);
-        const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist'].filter(Boolean).join(' ');
-        const why = !c.listed
-          ? 'Not listed in roguelite'
-          : unlocked
-            ? `Unlocked · from battle ${c.fromBattle}${c.toBattle ? `–${c.toBattle}` : ''} · ${c.price ?? UNIT_STATS[t]?.value ?? 0}g`
-            : 'Not yet unlocked';
-        return `<button type="button" class="${cls}" title="${esc(`${UNIT_STATS[t]?.name ?? t}: ${why}`)}" data-jump-unit="${esc(t)}">
-          ${unitIcon(t)}
-          <span>${esc(UNIT_STATS[t]?.name ?? t)}</span>
-          ${inRun && unlocked ? '' : ''}
-        </button>`;
-      })
-      .join('');
-    return `<div class="rogue-ov-group"><h4>${esc(PERIOD_LABEL[era])}</h4><div class="rogue-ov-grid">${items}</div></div>`;
-  }).join('');
-
-  const ovPromos = PROMOTION_TOKEN_TYPES.map((id) => {
-    const c = promoRogueCfgMerged(id, draft);
-    const unlocked = c.listed && unlockSatisfied(c.unlock, progress, Math.max(1, progress.bestBattle));
-    const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist'].filter(Boolean).join(' ');
-    const why = !c.listed ? 'Not listed in the shop' : unlocked ? 'Unlocked' : 'Not yet unlocked';
-    return `<button type="button" class="${cls}" title="${esc(`${UNIT_TOKEN_LABEL[id]}: ${why}`)}" data-jump-promo="${id}">
-      ${promoIcon(id)}
-      <span>${esc(UNIT_TOKEN_LABEL[id])}</span>
-    </button>`;
-  }).join('');
-
-  const regionChecks = gameRegions
-    .map((r) => {
-      const on = progress.regionsCleared.includes(r.id);
-      return `<label class="chk"><input type="checkbox" data-preview-region="${esc(r.id)}"${on ? ' checked' : ''}${preview.mode !== 'custom' ? ' disabled' : ''} /> ${esc(r.name)}</label>`;
-    })
-    .join('');
-
   const override = hasRogueConfigOverride();
 
   return `
@@ -221,7 +225,8 @@ export function renderRogueConfigPage(
           <button type="button" class="ghost" id="rogue-cfg-reset">Reset to shipped</button>
         </div>
       </div>
-      <p class="ai-editor-lead">Prices, unlocks, in-run availability, starting gold, and the goal battle. Save applies immediately in this browser (localStorage). Export a JSON file and put it in <code>public/data/roguelite.json</code> to ship the defaults. Seeded values match the previous hard-coded rules, so play does not change until you edit this.</p>
+      <p class="ai-editor-lead">Prices, unlocks, in-run availability, starting gold, and the goal battle. Save applies immediately in this browser (localStorage). Export a JSON file and put it in <code>public/data/roguelite.json</code> to ship the defaults. Seeded values match the previous hard-coded rules, so play does not change until you edit this. Current unlocks are on the Unlocks tab.</p>
+      ${rogueEraFilterHtml(era)}
 
       <section class="rogue-admin-section" id="rogue-sec-globals">
         <h3>Run settings</h3>
@@ -250,39 +255,7 @@ export function renderRogueConfigPage(
         </div>
       </section>
 
-      <section class="rogue-admin-section" id="rogue-sec-overview">
-        <h3>Overview</h3>
-        <p class="lvl-meta">Greyed items are not unlocked under the selected progress. Unlisted units stay in the grid but dimmer. Seeded unlocks are “Always”, matching current play.</p>
-        <div class="rogue-preview">
-          <span>Show as</span>
-          <label><input type="radio" name="rogue-preview" value="current"${preview.mode === 'current' ? ' checked' : ''} /> Current progress</label>
-          <label><input type="radio" name="rogue-preview" value="fresh"${preview.mode === 'fresh' ? ' checked' : ''} /> Fresh player</label>
-          <label><input type="radio" name="rogue-preview" value="custom"${preview.mode === 'custom' ? ' checked' : ''} /> Custom</label>
-          <label>Runs completed <input type="number" min="0" max="9999" id="rogue-preview-runs" value="${progress.runsCompleted}"${preview.mode !== 'custom' ? ' disabled' : ''} /></label>
-          <label>Best battle <input type="number" min="0" max="9999" id="rogue-preview-battle" value="${progress.bestBattle}"${preview.mode !== 'custom' ? ' disabled' : ''} /></label>
-          <span class="rogue-preview-regions">${regionChecks}</span>
-        </div>
-        ${ovUnits}
-        <div class="rogue-ov-group"><h4>Promotions</h4><div class="rogue-ov-grid">${ovPromos}</div></div>
-      </section>
-
-      ${PERIODS.map(
-        (era) => `
-      <section class="rogue-admin-section" id="rogue-sec-units-${era}">
-        <h3>Units — ${esc(PERIOD_LABEL[era])}</h3>
-        <div class="ai-check-wrap rogue-table-wrap">
-          <table class="ai-check rogue-table rogue-units">
-            <thead>
-              <tr>
-                <th></th><th>Unit</th><th>Value</th><th>Listed</th><th>Price</th>
-                <th>From</th><th>To</th><th>Unlock</th><th>Shop</th><th>Start</th><th>Enemy</th>
-              </tr>
-            </thead>
-            <tbody>${unitRows(era)}</tbody>
-          </table>
-        </div>
-      </section>`,
-      ).join('')}
+      ${unitTables}
 
       <section class="rogue-admin-section" id="rogue-sec-promos">
         <h3>Promotions</h3>
@@ -298,6 +271,64 @@ export function renderRogueConfigPage(
           </table>
         </div>
       </section>
+    </div>
+  `;
+}
+
+export function renderRogueUnlocksPage(): string {
+  const era = getRogueAdminEra();
+  const progress = getRogueProgress();
+  const battle = Math.max(1, progress.bestBattle);
+  const groups = unitsGroupedLikeEditor(era);
+  const unitBlocks = groups.length
+    ? groups
+        .map((group) => {
+          const items = group.types
+            .map((t) => {
+              const c = unitRogueCfg(t);
+              const unlocked = c.listed && unlockSatisfied(c.unlock, progress, battle);
+              const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist']
+                .filter(Boolean)
+                .join(' ');
+              const why = !c.listed
+                ? 'Not listed in roguelite'
+                : unlocked
+                  ? `Unlocked · from battle ${c.fromBattle}${c.toBattle ? `–${c.toBattle}` : ''} · ${c.price ?? UNIT_STATS[t]?.value ?? 0}g`
+                  : 'Not yet unlocked';
+              return `<div class="${cls}" title="${esc(`${UNIT_STATS[t]?.name ?? t}: ${why}`)}">
+          ${unitIcon(t)}
+          <span>${esc(UNIT_STATS[t]?.name ?? t)}</span>
+        </div>`;
+            })
+            .join('');
+          return `<div class="rogue-ov-group unit-class-group"><h3 class="unit-class-label">${esc(group.label)}</h3><div class="rogue-ov-grid">${items}</div></div>`;
+        })
+        .join('')
+    : `<p class="editor-empty">No ${esc(UNIT_CATEGORY_LABEL[era])} units.</p>`;
+
+  const ovPromos = PROMOTION_TOKEN_TYPES.map((id) => {
+    const c = promoRogueCfg(id);
+    const unlocked = c.listed && unlockSatisfied(c.unlock, progress, battle);
+    const cls = ['rogue-ov-item', unlocked ? '' : 'locked', c.listed ? '' : 'unlist']
+      .filter(Boolean)
+      .join(' ');
+    const why = !c.listed ? 'Not listed in the shop' : unlocked ? 'Unlocked' : 'Not yet unlocked';
+    return `<div class="${cls}" title="${esc(`${UNIT_TOKEN_LABEL[id]}: ${why}`)}">
+      ${promoIcon(id)}
+      <span>${esc(UNIT_TOKEN_LABEL[id])}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="rogue-admin" id="rogue-unlocks">
+      <div class="ai-editor-head rogue-admin-head">
+        <h2>Unlocks</h2>
+        <span class="lvl-meta">${progress.runsCompleted} run${progress.runsCompleted === 1 ? '' : 's'} completed · best battle ${progress.bestBattle}</span>
+      </div>
+      <p class="ai-editor-lead">Current unlockable state for this browser. Greyed items are not yet unlocked or not listed. Promotions are shown for every era.</p>
+      ${rogueEraFilterHtml(era)}
+      ${unitBlocks}
+      <div class="rogue-ov-group"><h3 class="unit-class-label">Promotions</h3><div class="rogue-ov-grid">${ovPromos}</div></div>
     </div>
   `;
 }
@@ -396,24 +427,6 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
   return { version: 1, globals, units, promotions };
 }
 
-export function readRogueAdminPreview(root: ParentNode, prev: RogueAdminPreview): RogueAdminPreview {
-  const mode =
-    (root.querySelector<HTMLInputElement>('input[name="rogue-preview"]:checked')?.value as
-      | RogueAdminPreview['mode']
-      | undefined) ?? prev.mode;
-  const runsCompleted = Number(root.querySelector<HTMLInputElement>('#rogue-preview-runs')?.value);
-  const bestBattle = Number(root.querySelector<HTMLInputElement>('#rogue-preview-battle')?.value);
-  const regionsCleared: string[] = [];
-  root.querySelectorAll<HTMLInputElement>('[data-preview-region]').forEach((el) => {
-    if (el.checked && el.dataset.previewRegion) regionsCleared.push(el.dataset.previewRegion);
-  });
-  return {
-    mode,
-    runsCompleted: Number.isFinite(runsCompleted) ? runsCompleted : prev.runsCompleted,
-    bestBattle: Number.isFinite(bestBattle) ? bestBattle : prev.bestBattle,
-    regionsCleared: mode === 'custom' ? regionsCleared : prev.regionsCleared,
-  };
-}
 
 export function persistRogueAdminDraft(draft: RogueConfig): void {
   saveRogueConfigLocal(draft);

@@ -344,14 +344,15 @@ import {
   type RogueConfig,
 } from './roguelite-config';
 import {
-  defaultRogueAdminPreview,
   downloadRogueConfig,
+  getRogueAdminEra,
   persistRogueAdminDraft,
   readRogueAdminForm,
-  readRogueAdminPreview,
   renderRogueConfigPage,
+  isRogueAdminEra,
+  renderRogueUnlocksPage,
   resetRogueAdminDraft,
-  type RogueAdminPreview,
+  setRogueAdminEra,
 } from './roguelite-admin';
 import {
   AI_RULE_CATEGORIES,
@@ -470,6 +471,7 @@ type Screen =
   | 'units'
   | 'ai'
   | 'roguelite'
+  | 'unlocks'
   | 'campaign-map'
   | 'campaign-play';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
@@ -2475,7 +2477,6 @@ function enterAi() {
 }
 
 let rogueAdminDraft: RogueConfig | null = null;
-let rogueAdminPreview: RogueAdminPreview = defaultRogueAdminPreview();
 let rogueAdminDirty = false;
 let rogueRunCompletionRecorded = false;
 
@@ -2483,10 +2484,27 @@ function cloneRogueConfig(cfg: RogueConfig): RogueConfig {
   return JSON.parse(JSON.stringify(cfg)) as RogueConfig;
 }
 
+function routeHash(): string {
+  try {
+    return location.hash.replace(/^#/, '');
+  } catch {
+    return '';
+  }
+}
+
 function wantsRogueAdminRoute(): boolean {
   try {
     const q = new URLSearchParams(location.search);
-    return q.get('roguelite') === '1' || location.hash.replace(/^#/, '') === 'roguelite';
+    return q.get('roguelite') === '1' || routeHash() === 'roguelite';
+  } catch {
+    return false;
+  }
+}
+
+function wantsUnlocksRoute(): boolean {
+  try {
+    const q = new URLSearchParams(location.search);
+    return q.get('unlocks') === '1' || routeHash() === 'unlocks';
   } catch {
     return false;
   }
@@ -2503,7 +2521,21 @@ function enterRogueConfig() {
   animating = false;
   render();
   void loadGameRegions().then((regs) => {
-    if (screen === 'roguelite' && regs.length) render();
+    if ((screen === 'roguelite' || screen === 'unlocks') && regs.length) render();
+  });
+}
+
+function enterRogueUnlocks() {
+  editorPainting = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
+  screen = 'unlocks';
+  clearSelection();
+  aiThinking = false;
+  animating = false;
+  render();
+  void loadGameRegions().then((regs) => {
+    if (screen === 'unlocks' && regs.length) render();
   });
 }
 
@@ -2511,7 +2543,6 @@ function syncRogueAdminForm(): HTMLElement | null {
   const root = app.querySelector<HTMLElement>('#rogue-admin');
   if (!root || !rogueAdminDraft) return root;
   rogueAdminDraft = readRogueAdminForm(root);
-  rogueAdminPreview = readRogueAdminPreview(root, rogueAdminPreview);
   return root;
 }
 
@@ -2521,16 +2552,26 @@ function markRogueAdminDirty(): void {
   if (el) el.textContent = 'Unsaved changes (this browser)';
 }
 
+function bindRogueEraFilter(): void {
+  app.querySelectorAll<HTMLButtonElement>('[data-rogue-era]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const era = btn.dataset.rogueEra;
+      if (!isRogueAdminEra(era) || era === getRogueAdminEra()) return;
+      setRogueAdminEra(era);
+      if (screen === 'roguelite') syncRogueAdminForm();
+      render();
+    });
+  });
+}
+
 function bindRogueConfigEvents(): void {
+  bindRogueEraFilter();
   const root = app.querySelector<HTMLElement>('#rogue-admin');
   if (!root || !rogueAdminDraft) return;
 
   const rerenderOn = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
-    if (target.closest('[name="rogue-preview"]')) return true;
     if (target.closest('[data-unlock-type]')) return true;
-    if (target.closest('[data-preview-region]')) return true;
-    if (target.id === 'rogue-preview-runs' || target.id === 'rogue-preview-battle') return true;
     return false;
   };
 
@@ -6691,16 +6732,17 @@ function paintSyncDot(s: ServerStatus = getServerStatus()): void {
 }
 
 function inEditorSection(): boolean {
-  return screen === 'levels' || screen === 'editor' || screen === 'units' || screen === 'ai' || screen === 'roguelite';
+  return screen === 'levels' || screen === 'editor' || screen === 'units' || screen === 'ai' || screen === 'roguelite' || screen === 'unlocks';
 }
 
 function renderToolbar(): string {
   const editorNav = inEditorSection()
-    ? `<nav class="editor-nav" aria-label="Levels, units, AI, and roguelite">
+    ? `<nav class="editor-nav" aria-label="Levels, units, AI, roguelite, and unlocks">
         <button type="button" id="editor-nav-levels" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Levels</button>
         <button type="button" id="editor-nav-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
         <button type="button" id="editor-nav-ai" class="${screen === 'ai' ? 'active' : ''}">AI</button>
         <button type="button" id="editor-nav-roguelite" class="${screen === 'roguelite' ? 'active' : ''}">Roguelite</button>
+        <button type="button" id="editor-nav-unlocks" class="${screen === 'unlocks' ? 'active' : ''}">Unlocks</button>
       </nav>`
     : '';
   return `<div class="toolbar">
@@ -7070,6 +7112,11 @@ function bindToolbarEvents() {
     if (screen === 'roguelite') return;
     if (!confirmLeaveEditor()) return;
     enterRogueConfig();
+  });
+  app.querySelector('#editor-nav-unlocks')?.addEventListener('click', () => {
+    if (screen === 'unlocks') return;
+    if (!confirmLeaveEditor()) return;
+    enterRogueUnlocks();
   });
   app.querySelector('#edit-this-level')?.addEventListener('click', () => {
     if (!activeLevelId) return;
@@ -9548,7 +9595,7 @@ function render() {
   app.classList.toggle('start-screen', screen === 'start');
   app.classList.toggle(
     'editor-screen',
-    screen === 'levels' || screen === 'units' || screen === 'ai' || screen === 'roguelite' || screen === 'editor',
+    screen === 'levels' || screen === 'units' || screen === 'ai' || screen === 'roguelite' || screen === 'unlocks' || screen === 'editor',
   );
 
   if (screen === 'start') {
@@ -9604,7 +9651,18 @@ function render() {
     app.innerHTML = `
       <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
-        ${renderRogueConfigPage(rogueAdminDraft, rogueAdminPreview, rogueAdminDirty)}
+        ${renderRogueConfigPage(rogueAdminDraft, rogueAdminDirty)}
+      </div>
+    `;
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'unlocks') {
+    app.innerHTML = `
+      <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
+        ${renderToolbar()}
+        ${renderRogueUnlocksPage()}
       </div>
     `;
     bindEvents();
@@ -9678,7 +9736,7 @@ async function initServerSync(): Promise<void> {
   if (screen === 'roguelite' && rogueAdminDraft && !rogueAdminDirty) {
     rogueAdminDraft = cloneRogueConfig(getRogueConfig());
   }
-  if (screen === 'start' || screen === 'roguelite') render();
+  if (screen === 'start' || screen === 'roguelite' || screen === 'unlocks') render();
   const { applied } = await syncFromServer();
   const account = await syncAccountProgress();
   defaultLevelId = getDefaultLevelId();
@@ -9696,7 +9754,8 @@ async function initServerSync(): Promise<void> {
   paintSyncDot();
 }
 
-if (wantsRogueAdminRoute()) enterRogueConfig();
+if (wantsUnlocksRoute()) enterRogueUnlocks();
+else if (wantsRogueAdminRoute()) enterRogueConfig();
 else render();
 void initServerSync();
 window.addEventListener('resize', scheduleLayoutRefresh);
