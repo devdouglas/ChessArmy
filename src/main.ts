@@ -373,10 +373,12 @@ import {
 } from './roguelite';
 import {
   getRogueConfig,
-  loadGameRegions,
+  listRogueRegionPresets,
   loadRogueConfig,
   recordRogueBattleWin,
   recordRogueRunCompleted,
+  regionAvailableInBattle,
+  regionRogueCfg,
   type RogueConfig,
 } from './roguelite-config';
 import {
@@ -991,43 +993,46 @@ try {
   /* private mode */
 }
 
-/** Difficulty 0 never appears in the roguelite. Battles 1–3: 1, 4–7: 1–2, 8+: 1–3. */
-function rogueDifficultiesFor(battle: number): number[] {
-  if (battle <= 3) return [1];
-  if (battle <= 7) return [1, 2];
-  return [1, 2, 3];
-}
-
+/** Presets Auto may roll, plus a manual pick even if it is currently disabled. */
 function rogueTerrainPool(): TerrainPreset[] {
-  return [...listBuiltinTerrainPresets(), ...listUserTerrainPresets()].filter(
-    (p) => p.difficulty > 0,
-  );
+  const ids = new Set(listRogueRegionPresets().map((r) => r.id));
+  return [...listBuiltinTerrainPresets(), ...listUserTerrainPresets()].filter((p) => ids.has(p.id));
 }
 
-/** Name of the terrain the current roguelite map was built with (shown by the stars). */
+/** Name / id of the terrain the current roguelite map was built with. */
 let rogueMapTerrainName = '';
+let rogueMapTerrainId = '';
 
 function rogueTerrainPreset(): TerrainPreset | null {
   const p = pickRogueTerrain();
   rogueMapTerrainName = p ? p.name : 'Classic random';
+  rogueMapTerrainId = p ? p.id : '';
   return p;
+}
+
+function pickWeightedTerrain(pool: TerrainPreset[]): TerrainPreset {
+  const weights = pool.map((p) => Math.max(0, regionRogueCfg(p.id).weight));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (sum <= 0) return pool[Math.floor(Math.random() * pool.length)]!;
+  let roll = Math.random() * sum;
+  for (let i = 0; i < pool.length; i++) {
+    roll -= weights[i]!;
+    if (roll < 0) return pool[i]!;
+  }
+  return pool[pool.length - 1]!;
 }
 
 function pickRogueTerrain(): TerrainPreset | null {
   if (rogueTerrainId === '') return null; // Classic random
   if (rogueTerrainId !== ROGUE_TERRAIN_AUTO) {
     const p = getTerrainPreset(rogueTerrainId);
-    if (p && p.difficulty > 0) return p;
-    // Gone, or rated 0: fall through to Auto.
+    if (p) return p;
+    // Gone: fall through to Auto.
   }
-  const all = rogueTerrainPool();
+  const battle = rogueRun?.battle ?? 1;
+  const all = rogueTerrainPool().filter((p) => regionAvailableInBattle(p.id, battle));
   if (!all.length) return null;
-  const want = rogueDifficultiesFor(rogueRun?.battle ?? 1);
-  const inTier = all.filter((p) => want.includes(p.difficulty));
-  const gap = (p: TerrainPreset) => Math.min(...want.map((w) => Math.abs(p.difficulty - w)));
-  const best = Math.min(...all.map(gap));
-  const pool = inTier.length ? inTier : all.filter((p) => gap(p) === best);
-  return pool[Math.floor(Math.random() * pool.length)]!;
+  return pickWeightedTerrain(all);
 }
 
 function setRogueTerrainId(id: string): void {
@@ -1095,7 +1100,7 @@ function ensureRogueShop() {
   const opened = openRogueShop(rogueRun, starGold, wealthyGold);
   rogueRun = opened.run;
   rogueShop = opened.shop;
-  recordRogueBattleWin(rogueRun.battle);
+  recordRogueBattleWin(rogueRun.battle, rogueMapTerrainId || undefined);
   if (rogueRun.battle >= rogueGoal() && !rogueRunCompletionRecorded) {
     recordRogueRunCompleted();
     rogueRunCompletionRecorded = true;
@@ -2628,9 +2633,6 @@ function enterRogueConfig() {
   aiThinking = false;
   animating = false;
   render();
-  void loadGameRegions().then((regs) => {
-    if ((screen === 'roguelite' || screen === 'unlocks') && regs.length) render();
-  });
 }
 
 function enterRogueUnlocks() {
@@ -2642,9 +2644,6 @@ function enterRogueUnlocks() {
   aiThinking = false;
   animating = false;
   render();
-  void loadGameRegions().then((regs) => {
-    if (screen === 'unlocks' && regs.length) render();
-  });
 }
 
 function syncRogueAdminForm(): HTMLElement | null {
@@ -5621,7 +5620,7 @@ function renderMapParams(): string {
         ${hotseatBtn}
         <label>Terrain
           <select id="rogue-terrain">
-            <option value="${ROGUE_TERRAIN_AUTO}"${rogueTerrainId === ROGUE_TERRAIN_AUTO ? ' selected' : ''}>Auto (by difficulty)</option>
+            <option value="${ROGUE_TERRAIN_AUTO}"${rogueTerrainId === ROGUE_TERRAIN_AUTO ? ' selected' : ''}>Auto (from config)</option>
             <option value=""${rogueTerrainId ? '' : ' selected'}>Classic random</option>
             ${rogueTerrainPool().map(opt).join('')}
           </select>
@@ -10266,7 +10265,6 @@ onServerStatus((s) => {
 
 async function initServerSync(): Promise<void> {
   await loadRogueConfig();
-  await loadGameRegions();
   if (screen === 'roguelite' && rogueAdminDraft && !rogueAdminDirty) {
     rogueAdminDraft = cloneRogueConfig(getRogueConfig());
   }

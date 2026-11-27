@@ -1,11 +1,18 @@
 /**
  * Roguelite rules config: prices, unlocks, in-run availability, regions, globals.
+ * "Regions" are terrain-generator presets (not campaign-map provinces).
  * Shipped defaults live in public/data/roguelite.json and match the previous
  * hard-coded constants. The admin page can override them in localStorage;
  * Export downloads a JSON file you can drop back into public/data/.
  */
 import { PROMOTION_TOKEN_TYPES, statsOf, type PromotionTokenType, type UnitType } from './engine';
 import { UNIT_STATS, UNIT_TYPES } from './roster';
+import {
+  BUILTIN_TERRAIN_PRESETS,
+  getTerrainPreset,
+  listBuiltinTerrainPresets,
+  listUserTerrainPresets,
+} from './terrain-gen';
 
 export const ROGUE_CONFIG_VERSION = 1;
 export const ROGUE_CONFIG_STORAGE_KEY = 'chessarmy-roguelite-config-v1';
@@ -32,12 +39,22 @@ export type RogueGlobals = {
   endlessAfterGoal: boolean;
 };
 
-/** A campaign-map region (from the Europe map), used by region-cleared unlocks. */
-export type GameRegion = {
+/**
+ * A map-generation preset as used in roguelite (the Regions admin list).
+ * `regionCleared` unlocks refer to these preset ids.
+ */
+export type RogueRegionCfg = {
+  enabled: boolean;
+  fromBattle: number;
+  toBattle: number | null;
+  weight: number;
+};
+
+export type RogueRegionInfo = {
   id: string;
   name: string;
-  ownerId: string | null;
-  settlementKind: string;
+  difficulty: number;
+  builtin?: boolean;
 };
 
 export type RogueUnitCfg = {
@@ -65,6 +82,7 @@ export type RogueConfig = {
   globals: RogueGlobals;
   units: Record<string, Partial<RogueUnitCfg>>;
   promotions: Record<string, Partial<RoguePromoCfg>>;
+  regions: Record<string, Partial<RogueRegionCfg>>;
 };
 
 export type RogueProgress = {
@@ -174,6 +192,51 @@ function mergePromo(id: PromotionTokenType, raw?: Partial<RoguePromoCfg>): Rogue
   };
 }
 
+/** Same battle windows Auto used before regions were configurable: 1, 4, or 8. */
+export function defaultRegionFromBattle(difficulty: number): number {
+  if (difficulty <= 1) return 1;
+  if (difficulty === 2) return 4;
+  return 8;
+}
+
+export function defaultRegionCfg(id: string): RogueRegionCfg {
+  const p = getTerrainPreset(id) ?? BUILTIN_TERRAIN_PRESETS.find((x) => x.id === id);
+  const difficulty = p?.difficulty ?? 1;
+  return {
+    enabled: difficulty > 0,
+    fromBattle: defaultRegionFromBattle(difficulty),
+    toBattle: null,
+    weight: 1,
+  };
+}
+
+function mergeRegion(id: string, raw?: Partial<RogueRegionCfg>): RogueRegionCfg {
+  const d = defaultRegionCfg(id);
+  if (!raw) return d;
+  const toBattle =
+    raw.toBattle == null || raw.toBattle === ('' as unknown)
+      ? d.toBattle
+      : int(raw.toBattle, d.toBattle ?? 0, 1, 999);
+  return {
+    enabled: bool(raw.enabled, d.enabled),
+    fromBattle: raw.fromBattle == null ? d.fromBattle : int(raw.fromBattle, d.fromBattle, 1, 999),
+    toBattle: raw.toBattle == null ? d.toBattle : toBattle,
+    weight: raw.weight == null ? d.weight : int(raw.weight, d.weight, 0, 999),
+  };
+}
+
+function rawRegionsMap(raw: unknown): Record<string, Partial<RogueRegionCfg>> {
+  // Ignore leftover arrays from old Early/Late or campaign-map saves.
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, Partial<RogueRegionCfg>> = {};
+  for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (id && val && typeof val === 'object' && !Array.isArray(val)) {
+      out[id] = val as Partial<RogueRegionCfg>;
+    }
+  }
+  return out;
+}
+
 export function sanitizeRogueConfig(raw: unknown): RogueConfig {
   const src = raw && typeof raw === 'object' ? (raw as Partial<RogueConfig>) : {};
   const g: Partial<RogueGlobals> = src.globals && typeof src.globals === 'object' ? src.globals : {};
@@ -190,8 +253,15 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
     starGoldPerStar: int(g.starGoldPerStar, DEFAULT_ROGUE_GLOBALS.starGoldPerStar, 0, 20),
     endlessAfterGoal: bool(g.endlessAfterGoal, DEFAULT_ROGUE_GLOBALS.endlessAfterGoal),
   };
-  // Ignore leftover `regions` on old localStorage / JSON saves (Early/Late
-  // battle ranges). Real regions come from the campaign map.
+  const rawRegions = rawRegionsMap((src as { regions?: unknown }).regions);
+  const regionIds = new Set<string>([
+    ...BUILTIN_TERRAIN_PRESETS.map((p) => p.id),
+    ...Object.keys(rawRegions),
+  ]);
+  const regions: Record<string, Partial<RogueRegionCfg>> = {};
+  for (const id of regionIds) {
+    regions[id] = mergeRegion(id, rawRegions[id]);
+  }
   const units: Record<string, Partial<RogueUnitCfg>> = {};
   if (src.units && typeof src.units === 'object') {
     for (const [id, val] of Object.entries(src.units)) {
@@ -204,7 +274,7 @@ export function sanitizeRogueConfig(raw: unknown): RogueConfig {
       if (id && val && typeof val === 'object') promotions[id] = { ...(val as Partial<RoguePromoCfg>) };
     }
   }
-  return { version: ROGUE_CONFIG_VERSION, globals, units, promotions };
+  return { version: ROGUE_CONFIG_VERSION, globals, units, promotions, regions };
 }
 
 export const DEFAULT_ROGUE_CONFIG: RogueConfig = sanitizeRogueConfig({
@@ -216,84 +286,49 @@ export const DEFAULT_ROGUE_CONFIG: RogueConfig = sanitizeRogueConfig({
 
 let current: RogueConfig = structuredCloneDefault();
 let loadedFromFile = false;
-let gameRegions: GameRegion[] = [];
 
-function summarizeGameRegions(
-  regions: { id: string; name: string; ownerId: string | null; settlement?: { kind?: string } }[],
-): GameRegion[] {
+export function regionRogueCfg(id: string, cfg: RogueConfig = current): RogueRegionCfg {
+  return mergeRegion(id, cfg.regions[id]);
+}
+
+/** Built-in presets, then user presets, then any leftover ids still in the config. */
+export function listRogueRegionPresets(cfg: RogueConfig = current): RogueRegionInfo[] {
   const seen = new Set<string>();
-  const out: GameRegion[] = [];
-  for (const r of regions) {
-    const id = String(r.id ?? '').trim();
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    out.push({
+  const out: RogueRegionInfo[] = [];
+  const add = (row: RogueRegionInfo) => {
+    if (!row.id || seen.has(row.id)) return;
+    seen.add(row.id);
+    out.push(row);
+  };
+  for (const p of listBuiltinTerrainPresets()) {
+    add({ id: p.id, name: p.name, difficulty: p.difficulty, builtin: true });
+  }
+  for (const p of listUserTerrainPresets()) {
+    add({ id: p.id, name: p.name, difficulty: p.difficulty, builtin: false });
+  }
+  for (const id of Object.keys(cfg.regions)) {
+    if (seen.has(id)) continue;
+    const p = getTerrainPreset(id);
+    add({
       id,
-      name: String(r.name ?? id).trim() || id,
-      ownerId: r.ownerId ?? null,
-      settlementKind: r.settlement?.kind ?? 'none',
+      name: p?.name ?? id,
+      difficulty: p?.difficulty ?? 1,
+      builtin: !!p?.builtin,
     });
   }
-  out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   return out;
 }
 
-export function getGameRegions(): GameRegion[] {
-  return gameRegions;
+export function regionAvailableInBattle(id: string, battle: number, cfg: RogueConfig = current): boolean {
+  const c = regionRogueCfg(id, cfg);
+  if (!c.enabled || c.weight <= 0) return false;
+  if (battle < c.fromBattle) return false;
+  if (c.toBattle != null && battle > c.toBattle) return false;
+  return true;
 }
 
-/** Campaign map first (same source as Total War), then shipped europe.json. */
-function regionsFromUnknown(raw: unknown): GameRegion[] {
-  if (!raw || typeof raw !== 'object') return [];
-  const list = (raw as { regions?: unknown }).regions;
-  if (!Array.isArray(list)) return [];
-  const rows: Parameters<typeof summarizeGameRegions>[0] = [];
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue;
-    const r = item as {
-      id?: unknown;
-      name?: unknown;
-      ownerId?: unknown;
-      settlement?: { kind?: unknown };
-    };
-    if (typeof r.id !== 'string' || !r.id) continue;
-    const kind = r.settlement && typeof r.settlement === 'object' ? String(r.settlement.kind ?? 'none') : 'none';
-    rows.push({
-      id: r.id,
-      name: typeof r.name === 'string' ? r.name : r.id,
-      ownerId: typeof r.ownerId === 'string' ? r.ownerId : null,
-      settlement: { kind },
-    });
-  }
-  return summarizeGameRegions(rows);
-}
-
-export async function loadGameRegions(): Promise<GameRegion[]> {
-  const apply = (list: GameRegion[]) => {
-    if (list.length) gameRegions = list;
-  };
-  // Browser only: same campaign map the Total War editor uses (local / server).
-  if (typeof document !== 'undefined') {
-    try {
-      const store = await import('./campaign/store');
-      const local = store.readLocalCampaign();
-      if (local?.regions.length) apply(summarizeGameRegions(local.regions));
-      const map = await store.loadCampaignMap();
-      if (map.regions.length) apply(summarizeGameRegions(map.regions));
-    } catch {
-      /* fall through to shipped file */
-    }
-    if (!gameRegions.length) {
-      try {
-        const url = new URL('data/campaign/europe.json', document.baseURI).href;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (res.ok) apply(regionsFromUnknown(await res.json()));
-      } catch {
-        /* offline / missing file */
-      }
-    }
-  }
-  return gameRegions;
+function knownRegionIds(cfg: RogueConfig = current): Set<string> {
+  return new Set(listRogueRegionPresets(cfg).map((r) => r.id));
 }
 
 function structuredCloneDefault(): RogueConfig {
@@ -318,13 +353,13 @@ export function emptyRogueProgress(): RogueProgress {
 
 export function sanitizeRogueProgress(raw: unknown): RogueProgress {
   const src = raw && typeof raw === 'object' ? (raw as Partial<RogueProgress>) : {};
-  const known = new Set(gameRegions.map((r) => r.id));
+  const known = knownRegionIds();
   const regionsCleared = Array.isArray(src.regionsCleared)
     ? [
         ...new Set(
           src.regionsCleared.filter((id): id is string => {
             if (typeof id !== 'string' || !id) return false;
-            // Drop invented Early/Late ids; keep campaign ids (or unknown until loaded).
+            // Drop invented Early/Late ids and leftover campaign-map ids.
             if (id === 'early' || id === 'late') return false;
             return known.size ? known.has(id) : true;
           }),
@@ -367,13 +402,16 @@ export function setRogueProgress(p: RogueProgress): void {
 }
 
 /** Update stored meta-progress after a battle win (`battle` is the battle just won). */
-export function recordRogueBattleWin(battle: number): RogueProgress {
+export function recordRogueBattleWin(battle: number, regionId?: string): RogueProgress {
   const prev = readProgress();
   const b = int(battle, 0, 0, 9999);
+  const id = regionId?.trim() ?? '';
+  const regionsCleared =
+    id && !prev.regionsCleared.includes(id) ? [...prev.regionsCleared, id] : prev.regionsCleared;
   const next: RogueProgress = {
     runsCompleted: prev.runsCompleted,
     bestBattle: Math.max(prev.bestBattle, b),
-    regionsCleared: prev.regionsCleared,
+    regionsCleared,
   };
   writeProgress(next);
   return next;
@@ -480,11 +518,16 @@ export function exportRogueConfigJson(cfg: RogueConfig = current): string {
   for (const id of PROMOTION_TOKEN_TYPES) {
     promotions[id] = promoCfgSnapshot(id, cfg);
   }
+  const regions: Record<string, Partial<RogueRegionCfg>> = { ...cfg.regions };
+  for (const r of listRogueRegionPresets(cfg)) {
+    regions[r.id] = regionCfgSnapshot(r.id, cfg);
+  }
   const out: RogueConfig = {
     version: ROGUE_CONFIG_VERSION,
     globals: { ...cfg.globals },
     units,
     promotions,
+    regions,
   };
   return `${JSON.stringify(out, null, 2)}\n`;
 }
@@ -495,6 +538,10 @@ function unitCfgSnapshot(type: UnitType, cfg: RogueConfig): Partial<RogueUnitCfg
 
 function promoCfgSnapshot(id: PromotionTokenType, cfg: RogueConfig): Partial<RoguePromoCfg> {
   return mergePromo(id, cfg.promotions[id]);
+}
+
+function regionCfgSnapshot(id: string, cfg: RogueConfig): Partial<RogueRegionCfg> {
+  return mergeRegion(id, cfg.regions[id]);
 }
 
 function readLocalOverride(): RogueConfig | null {

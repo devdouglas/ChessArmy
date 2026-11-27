@@ -20,11 +20,13 @@ import {
   saveRogueConfigLocal,
   sanitizeUnlock,
   type RogueConfig,
-  getGameRegions,
   type RoguePromoCfg,
-  type GameRegion,
+  type RogueRegionCfg,
+  type RogueRegionInfo,
   type RogueUnitCfg,
   type RogueUnlock,
+  listRogueRegionPresets,
+  regionRogueCfg,
   unitRogueCfg,
   unlockSatisfied,
 } from './roguelite-config';
@@ -94,7 +96,7 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function unlockSelect(name: string, unlock: RogueUnlock, regions: GameRegion[]): string {
+function unlockSelect(name: string, unlock: RogueUnlock, regions: RogueRegionInfo[]): string {
   const t = unlock.type;
   const param =
     t === 'battleAtLeast'
@@ -156,7 +158,7 @@ export function renderRogueConfigPage(
           <td><input type="number" min="0" max="9999" data-field="price" value="${c.price ?? ''}" placeholder="${s?.value ?? 0}" title="Gold. Blank = unit value (${s?.value ?? 0})" /></td>
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
-          <td>${unlockSelect(`u:${t}`, c.unlock, getGameRegions())}</td>
+          <td>${unlockSelect(`u:${t}`, c.unlock, listRogueRegionPresets(draft))}</td>
           <td>${chk('inShop', c.inShop)}</td>
           <td>${chk('inStartPool', c.inStartPool)}</td>
           <td>${chk('inEnemyPool', c.inEnemyPool)}</td>
@@ -192,25 +194,25 @@ export function renderRogueConfigPage(
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
       <td>${chk('listed', c.listed)}</td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
-      <td>${unlockSelect(`p:${id}`, c.unlock, getGameRegions())}</td>
+      <td>${unlockSelect(`p:${id}`, c.unlock, listRogueRegionPresets(draft))}</td>
       <td>${chk('inShop', c.inShop)}</td>
       <td>${chk('enemyAllowed', c.enemyAllowed)}</td>
     </tr>`;
   }).join('');
 
-  const gameRegions = getGameRegions();
-  const regionRows = gameRegions.length
-    ? gameRegions
-        .map(
-          (r) => `<tr data-game-region="${esc(r.id)}">
-            <td>${esc(r.name)}</td>
-            <td class="lvl-meta">${esc(r.id)}</td>
-            <td>${esc(r.settlementKind)}</td>
-            <td>${esc(r.ownerId ?? '—')}</td>
-          </tr>`,
-        )
-        .join('')
-    : `<tr><td colspan="4" class="lvl-meta">Loading campaign regions…</td></tr>`;
+  const regionRows = listRogueRegionPresets(draft)
+    .map((r) => {
+      const c = regionRogueCfgMerged(r.id, draft);
+      const kind = r.builtin ? 'Built-in' : 'Custom';
+      return `<tr data-region="${esc(r.id)}">
+            <td><strong>${esc(r.name)}</strong><div class="lvl-meta">${esc(r.id)} · ${kind} · difficulty ${r.difficulty}</div></td>
+            <td>${chk('enabled', c.enabled, 'Enabled in roguelite Auto')}</td>
+            <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle this preset can appear" /></td>
+            <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
+            <td><input type="number" min="0" max="999" data-field="weight" value="${c.weight}" title="Relative chance when Auto picks among eligible presets" /></td>
+          </tr>`;
+    })
+    .join('');
 
   const override = hasRogueConfigOverride();
 
@@ -246,10 +248,10 @@ export function renderRogueConfigPage(
       </section>
 
       <section class="rogue-admin-section" id="rogue-sec-regions">
-        <h3>Regions <span class="lvl-meta">Campaign map regions from the Europe map, used by “region cleared” unlocks. Edit names and borders in the Total War editor.</span></h3>
+        <h3>Regions <span class="lvl-meta">Map-generation presets. Auto picks an enabled preset in the from/to range, weighted. Seeded to match the previous difficulty tiers (1–3: Village &amp; Long grass; 4–7: those plus Dense forest, Marshland, Highlands; 8+: plus Fortified ridge &amp; Badlands). Open field stays off. “Region cleared” unlocks refer to these preset ids.</span></h3>
         <div class="ai-check-wrap rogue-table-wrap">
-          <table class="ai-check rogue-table">
-            <thead><tr><th>Name</th><th>Id</th><th>Settlement</th><th>Owner</th></tr></thead>
+          <table class="ai-check rogue-table rogue-regions">
+            <thead><tr><th>Preset</th><th>Enabled</th><th>From</th><th>To</th><th>Weight</th></tr></thead>
             <tbody>${regionRows}</tbody>
           </table>
         </div>
@@ -349,6 +351,10 @@ function promoRogueCfgMerged(id: PromotionTokenType, draft: RogueConfig): RogueP
   return c;
 }
 
+function regionRogueCfgMerged(id: string, draft: RogueConfig): RogueRegionCfg {
+  return regionRogueCfg(id, draft);
+}
+
 function readUnlock(scope: Element, name: string): RogueUnlock {
   const typeEl = scope.querySelector<HTMLSelectElement>(`[data-unlock-type="${CSS.escape(name)}"]`);
   const paramEl = scope.querySelector<HTMLInputElement | HTMLSelectElement>(
@@ -424,7 +430,20 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     };
   });
 
-  return { version: 1, globals, units, promotions };
+  const regions: Record<string, Partial<RogueRegionCfg>> = { ...getRogueConfig().regions };
+  root.querySelectorAll<HTMLTableRowElement>('tr[data-region]').forEach((tr) => {
+    const id = tr.dataset.region;
+    if (!id) return;
+    const flagOf = (n: string) => !!tr.querySelector<HTMLInputElement>(`[data-flag="${n}"]`)?.checked;
+    regions[id] = {
+      enabled: flagOf('enabled'),
+      fromBattle: Number(tr.querySelector<HTMLInputElement>('[data-field="fromBattle"]')?.value) || 1,
+      toBattle: numOrNull(tr.querySelector<HTMLInputElement>('[data-field="toBattle"]')?.value ?? ''),
+      weight: Number(tr.querySelector<HTMLInputElement>('[data-field="weight"]')?.value),
+    };
+  });
+
+  return { version: 1, globals, units, promotions, regions };
 }
 
 
