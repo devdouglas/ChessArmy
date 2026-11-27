@@ -8493,7 +8493,13 @@ function renderUnitEditor(): string {
     </article>`;
   };
   const groups = UNIT_CLASSES.map((cls) => {
-    const types = shown.filter((t) => UNIT_STATS[t].unitClass === cls);
+    const types = shown
+      .filter((t) => UNIT_STATS[t].unitClass === cls)
+      .sort(
+        (a, b) =>
+          UNIT_STATS[a].value - UNIT_STATS[b].value ||
+          UNIT_STATS[a].name.localeCompare(UNIT_STATS[b].name),
+      );
     if (!types.length) return '';
     return `<section class="unit-class-group">
       <h3 class="unit-class-label">${UNIT_CLASS_LABEL[cls]}</h3>
