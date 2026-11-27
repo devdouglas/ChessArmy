@@ -2712,7 +2712,7 @@ function enterRogueUnlocks() {
 function syncRogueAdminForm(): HTMLElement | null {
   const root = app.querySelector<HTMLElement>('#rogue-admin');
   if (!root || !rogueAdminDraft) return root;
-  rogueAdminDraft = readRogueAdminForm(root);
+  rogueAdminDraft = readRogueAdminForm(root, rogueAdminDraft);
   return root;
 }
 
@@ -10032,7 +10032,14 @@ function bindEvents() {
   }
   if (screen === 'ai') {
     bindAiChecklistEvents();
+    return;
+  }
+  if (screen === 'roguelite') {
     bindRogueConfigEvents();
+    return;
+  }
+  if (screen === 'unlocks') {
+    bindRogueEraFilter();
     return;
   }
 

@@ -511,8 +511,8 @@ function numOrNull(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Read the form into a config object (does not persist). */
-export function readRogueAdminForm(root: ParentNode): RogueConfig {
+/** Read the form into a config object (does not persist). Hidden era rows are kept from `prev`. */
+export function readRogueAdminForm(root: ParentNode, prev?: RogueConfig): RogueConfig {
   const num = (name: string, fallback: number) => {
     const el = root.querySelector<HTMLInputElement>(`[data-global="${name}"]`);
     const n = Number(el?.value);
@@ -579,7 +579,13 @@ export function readRogueAdminForm(root: ParentNode): RogueConfig {
     };
   });
 
-  return { version: 1, globals, units, promotions, regions };
+  return {
+    version: 1,
+    globals,
+    units: { ...(prev?.units ?? {}), ...units },
+    promotions: { ...(prev?.promotions ?? {}), ...promotions },
+    regions,
+  };
 }
 
 
