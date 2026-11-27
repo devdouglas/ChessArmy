@@ -142,6 +142,7 @@ import {
   playerFlagCaptures,
   playerHpLost,
   playerKills,
+  playerBrokenObstacles,
   playerKillsByType,
   playerSides,
   livingHostiles,
@@ -1117,6 +1118,7 @@ function flushRogueMatchProgress(won: boolean): void {
   noteRogueRunLosses();
   const patch = {
     kills: playerKillsByType(state),
+    broken: playerBrokenObstacles(state),
     gold: rogueRun.gold,
     lostUnit: rogueRunLostUnit,
     army: won ? armyCounts(state.pieces, 'red') : undefined,

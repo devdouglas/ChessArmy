@@ -2,8 +2,11 @@
  * Editor tab: configure roguelite prices, unlocks, regions, and globals.
  */
 import {
+  BREAKABLE_OBSTACLE_TYPES,
   PROMOTION_TOKEN_TYPES,
+  TOKEN_LABEL,
   UNIT_TOKEN_LABEL,
+  isBreakableObstacleType,
   type PromotionTokenType,
   type UnitType,
 } from './engine';
@@ -139,6 +142,17 @@ function conditionParams(cond: RogueUnlockCondition): string {
   if (cond.type === 'winWithUnits') {
     return `<input type="number" min="1" max="99" data-unlock-param="count" value="${cond.count}" title="How many" />
       <select data-unlock-param="unitType">${unitTypeOptions(cond.unitType, false)}</select>`;
+  }
+  if (cond.type === 'breakObstacles') {
+    const opts = [
+      `<option value=""${cond.obstacleType ? '' : ' selected'}>Any obstacle</option>`,
+      ...BREAKABLE_OBSTACLE_TYPES.map(
+        (typ) =>
+          `<option value="${typ}"${cond.obstacleType === typ ? ' selected' : ''}>${esc(TOKEN_LABEL[typ])}</option>`,
+      ),
+    ].join('');
+    return `<input type="number" min="1" max="9999" data-unlock-param="count" value="${cond.count}" title="How many to break" />
+      <select data-unlock-param="obstacleType">${opts}</select>`;
   }
   return '';
 }
@@ -417,6 +431,10 @@ function readOneCondition(row: Element): RogueUnlockCondition {
   if (type === 'killUnits') return { type, count: num('count', 1), unitType: typ || null };
   if (type === 'haveCoins') return { type, count: num('count', 1) };
   if (type === 'winWithUnits') return { type, count: num('count', 1), unitType: typ };
+  if (type === 'breakObstacles') {
+    const obstacle = row.querySelector<HTMLSelectElement>('[data-unlock-param="obstacleType"]')?.value ?? '';
+    return { type, count: num('count', 1), obstacleType: isBreakableObstacleType(obstacle) ? obstacle : null };
+  }
   if (type === 'never') return { type: 'never' };
   return { type: 'always' };
 }

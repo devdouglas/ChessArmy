@@ -986,15 +986,42 @@ export function hasBreakableWood(
   return !!woodTokenAt(state, h);
 }
 
-/** Palisade, tree, or forest. `remaining` 0 means the token is gone. */
+/** Obstacles the player team can break for roguelite unlocks. */
+export const BREAKABLE_OBSTACLE_TYPES = [
+  'palisade',
+  'tree',
+  'forest',
+  'wall',
+  'house',
+  'pikes',
+  'bridge',
+] as const;
+export type BreakableObstacleType = (typeof BREAKABLE_OBSTACLE_TYPES)[number];
+
+export function isBreakableObstacleType(v: unknown): v is BreakableObstacleType {
+  return (BREAKABLE_OBSTACLE_TYPES as readonly string[]).includes(String(v));
+}
+
+function noteObstacleBroken(state: GameState, side: string | undefined, type: string): void {
+  if (!side || !isSide(side) || !type) return;
+  const prev = state.brokenObstacles?.[side] ?? {};
+  state.brokenObstacles = {
+    ...state.brokenObstacles,
+    [side]: { ...prev, [type]: (prev[type] ?? 0) + 1 },
+  };
+}
+
+/** Palisade, tree, or forest. `remaining` 0 means the token is gone (forest is felled). */
 function chipWoodAt(
   state: GameState,
   h: Hex,
   amount: number,
-): { type: TokenType; remaining: number } | null {
+  by?: string,
+): { type: TokenType; remaining: number; broken: boolean } | null {
   const tok = woodTokenAt(state, h);
   if (!tok) return null;
   const full = isForestToken(tok.type) ? forestHp(tok) : palisadeHp(tok);
+  if (full <= 0) return { type: tok.type, remaining: 0, broken: false };
   const remaining = woodRemaining(full, amount);
   const type = tok.type;
   // Felled forest stays on the hex so Hide cover remains; palisade/tree still vanish.
@@ -1003,7 +1030,9 @@ function chipWoodAt(
   } else {
     tok.hp = remaining;
   }
-  return { type, remaining };
+  const broken = remaining <= 0;
+  if (broken) noteObstacleBroken(state, by, type);
+  return { type, remaining, broken };
 }
 
 /** Melee / shoot / splash amount vs wood HP (e.g. dmg 2 vs 3 HP → 1 left). */
@@ -1025,15 +1054,18 @@ function chipForestAt(
   state: GameState,
   h: Hex,
   amount = 1,
-): { remaining: number } | null {
+  by?: string,
+): { remaining: number; broken: boolean } | null {
   const tok = hexToken(state.tokens, h, (t) => isForestToken(t.type));
   if (!tok) return null;
   const before = forestHp(tok);
   // Already felled — no more wood soak; token stays for Hide.
-  if (before <= 0) return { remaining: 0 };
+  if (before <= 0) return { remaining: 0, broken: false };
   const remaining = woodRemaining(before, amount);
   tok.hp = remaining;
-  return { remaining };
+  const broken = remaining <= 0;
+  if (broken) noteObstacleBroken(state, by, 'forest');
+  return { remaining, broken };
 }
 
 /** True when forest wood still soaks shots (hp > 0). Felled forest (0) still hides. */
@@ -1189,6 +1221,8 @@ export type GameState = {
   casualties: Record<Side, number>;
   /** Pieces removed per side this match, counted by unit type. Missing on old states. */
   casualtyTypes?: Partial<Record<Side, Record<string, number>>>;
+  /** Obstacles fully destroyed / felled this match, counted by token type per side. */
+  brokenObstacles?: Partial<Record<Side, Record<string, number>>>;
   /** HP chipped per side this match (kills included). Missing on old states → 0. */
   hpLost: Record<Side, number>;
   /** Player-team flag takes this match (not kickoff seeds). */
@@ -2568,6 +2602,11 @@ function cloneState(state: GameState): GameState {
           Object.entries(state.casualtyTypes).map(([s, m]) => [s, { ...m }]),
         ) as GameState['casualtyTypes'])
       : undefined,
+    brokenObstacles: state.brokenObstacles
+      ? (Object.fromEntries(
+          Object.entries(state.brokenObstacles).map(([s, m]) => [s, { ...m }]),
+        ) as GameState['brokenObstacles'])
+      : undefined,
     hpLost: { ...emptySideCounts(), ...state.hpLost },
     flagCaptures: state.flagCaptures ?? 0,
     hadKing: { ...emptyHadKing(), ...state.hadKing },
@@ -3248,6 +3287,20 @@ export function playerKillsByType(state: GameState): Record<string, number> {
   return out;
 }
 
+/** Obstacle types the player team fully broke or felled this match. */
+export function playerBrokenObstacles(state: GameState): Record<string, number> {
+  const us = playerSides(state);
+  const out: Record<string, number> = {};
+  if (!us.length) return out;
+  for (const s of us) {
+    for (const [typ, n] of Object.entries(state.brokenObstacles?.[s] ?? {})) {
+      if (n) out[typ] = (out[typ] ?? 0) + n;
+    }
+  }
+  return out;
+}
+
+
 export function livingHostiles(state: GameState): number {
   const us = playerSides(state);
   if (!us.length) return 0;
@@ -3548,6 +3601,7 @@ function applyMarchStrike(state: GameState, piece: Piece, from: Hex, target: Hex
     state.tokens = state.tokens.filter(
       (t) => !(isPalisadeToken(t.type) && t.col === target.col && t.row === target.row),
     );
+    noteObstacleBroken(state, piece.side, pal.type);
     state.log.push(`${unitLog(piece)} breaks ${pal.type}`);
     return true;
   }
@@ -4921,16 +4975,19 @@ function applyActionInner(state: GameState, action: Action): GameState {
         next.tokens = next.tokens.filter(
           (t) => !(t.type === 'pikes' && t.col === action.to.col && t.row === action.to.row),
         );
+        noteObstacleBroken(next, piece.side, 'pikes');
         next.log.push(`${unitLog(piece)} clears pikes`);
       } else if (fence) {
         next.tokens = next.tokens.filter(
           (t) => !(t.type === 'palisade' && t.col === action.to.col && t.row === action.to.row),
         );
+        noteObstacleBroken(next, piece.side, 'palisade');
         next.log.push(`${unitLog(piece)} dismantles a palisade`);
       } else if (bridge) {
         next.tokens = next.tokens.filter(
           (t) => !(t.type === 'bridge' && t.col === action.to.col && t.row === action.to.row),
         );
+        noteObstacleBroken(next, piece.side, 'bridge');
         next.log.push(`${unitLog(piece)} dismantles a bridge`);
       } else {
         return state;
@@ -5034,7 +5091,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
         continue;
       }
       if ((step.outcome === 'token' || step.outcome === 'forest') && step.to) {
-        const wood = chipWoodAt(next, step.to, 1);
+        const wood = chipWoodAt(next, step.to, 1, piece.side);
         const before = hpLeft(victim);
         const dmg = applyDamage(next, victim, 1, 0, step.to, true);
         noteStrike(next, victim, before, dmg, step.to, true);
@@ -5229,6 +5286,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
             (t) =>
               !(isPalisadeToken(t.type) && t.col === ph.hex.col && t.row === ph.hex.row),
           );
+          noteObstacleBroken(next, piece.side, tok.type);
           hitBits.push(tok.type);
         } else {
           tok.hp = ph.remaining;
@@ -5348,7 +5406,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       // Breakable wood takes the same blast damage units do (not a free demolish).
       if (hasBreakableWood(next, h)) {
         const forestSoak = forestSoaksShot(next, h);
-        const wood = chipWoodAt(next, h, splash);
+        const wood = chipWoodAt(next, h, splash, piece.side);
         if (wood) {
           hitBits.push(
             wood.remaining > 0
@@ -5378,6 +5436,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
           (item) =>
             !(isWallToken(item.type) && item.col === h.col && item.row === h.row),
         );
+        noteObstacleBroken(next, piece.side, kind);
         hitBits.push(kind);
       }
     }
@@ -5396,7 +5455,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const dmgLines: string[] = [];
     for (const h of beam) {
       const forestSoak = forestSoaksShot(next, h);
-      const wood = chipWoodAt(next, h, shot);
+      const wood = chipWoodAt(next, h, shot, piece.side);
       if (wood) {
         hitBits.push(
           wood.remaining > 0
@@ -5428,7 +5487,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
     const fromHex: Hex = { col: piece.col, row: piece.row };
     const shot = shootDamageOf(piece);
     if (!t || sameTeam(next, t.side, piece.side)) {
-      const wood = chipWoodAt(next, action.at, shot);
+      const wood = chipWoodAt(next, action.at, shot, piece.side);
       if (!wood) return state;
       next.log.push(
         `${unitLog(piece)} shoots ${TOKEN_LABEL[wood.type]} at ${action.at.col},${action.at.row}` +
@@ -5449,7 +5508,7 @@ function applyActionInner(state: GameState, action: Action): GameState {
       return next;
     }
     if (isForest(next, action.at) && forestSoaksShot(next, action.at)) {
-      const chip = chipForestAt(next, action.at, shot);
+      const chip = chipForestAt(next, action.at, shot, piece.side);
       const cover =
         chip && chip.remaining > 0
           ? `forest (${chip.remaining} left)`

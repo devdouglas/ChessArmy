@@ -82,4 +82,35 @@ assert(
   `reachBattle copy, got ${desc.map((d) => d.text).join(' | ')}`,
 );
 
+const broke = sanitizeRogueProgress({
+  broken: { palisade: 2, tree: 1, forest: 1 },
+});
+assert(
+  conditionSatisfied({ type: 'breakObstacles', count: 4, obstacleType: null }, broke),
+  'break 4 of any',
+);
+assert(
+  conditionSatisfied({ type: 'breakObstacles', count: 2, obstacleType: 'palisade' }, broke),
+  'break 2 palisades',
+);
+assert(
+  !conditionSatisfied({ type: 'breakObstacles', count: 3, obstacleType: 'palisade' }, broke),
+  'break 3 palisades not yet',
+);
+const unknown = sanitizeUnlock({ type: 'breakObstacles', count: 2, obstacleType: 'banana' });
+assert(
+  unknown[0]!.type === 'breakObstacles' &&
+    (unknown[0] as { obstacleType: string | null }).obstacleType === null,
+  'unknown obstacle type becomes any',
+);
+const breakText = describeUnlock(
+  [{ type: 'breakObstacles', count: 5, obstacleType: 'tree' }],
+  broke,
+  1,
+);
+assert(
+  breakText.some((d) => d.type === 'breakObstacles' && d.text.includes('1/5')),
+  `breakObstacles copy, got ${breakText.map((d) => d.text).join(' | ')}`,
+);
+
 console.log('repro-rogue-unlocks: ok');

@@ -5,7 +5,15 @@
  * hard-coded constants. The admin page can override them in localStorage;
  * Export downloads a JSON file you can drop back into public/data/.
  */
-import { PROMOTION_TOKEN_TYPES, statsOf, type PromotionTokenType, type UnitType } from './engine';
+import {
+  PROMOTION_TOKEN_TYPES,
+  TOKEN_LABEL,
+  isBreakableObstacleType,
+  statsOf,
+  type BreakableObstacleType,
+  type PromotionTokenType,
+  type UnitType,
+} from './engine';
 import { UNIT_STATS, UNIT_TYPES } from './roster';
 import {
   BUILTIN_TERRAIN_PRESETS,
@@ -27,9 +35,11 @@ export const ROGUE_UNLOCK_TYPES = [
   'haveCoins',
   'reachBattleNoLoss',
   'winWithUnits',
+  'breakObstacles',
 ] as const;
 
 export type RogueUnlockType = (typeof ROGUE_UNLOCK_TYPES)[number];
+export { BREAKABLE_OBSTACLE_TYPES, isBreakableObstacleType, type BreakableObstacleType } from './engine';
 
 /** A single unlock condition. All conditions on a unit/promo must be met. */
 export type RogueUnlockCondition =
@@ -40,7 +50,8 @@ export type RogueUnlockCondition =
   | { type: 'killUnits'; count: number; unitType: string | null }
   | { type: 'haveCoins'; count: number }
   | { type: 'reachBattleNoLoss'; battle: number }
-  | { type: 'winWithUnits'; count: number; unitType: string };
+  | { type: 'winWithUnits'; count: number; unitType: string }
+  | { type: 'breakObstacles'; count: number; obstacleType: BreakableObstacleType | null };
 
 /** All conditions must be met. Empty means always. */
 export type RogueUnlock = RogueUnlockCondition[];
@@ -54,6 +65,7 @@ export const ROGUE_UNLOCK_TYPE_LABEL: Record<RogueUnlockType, string> = {
   haveCoins: 'Have X coins',
   reachBattleNoLoss: 'Reach battle X with no losses',
   winWithUnits: 'Win with X of a unit',
+  breakObstacles: 'Break X obstacles',
 };
 
 export type RogueGlobals = {
@@ -129,6 +141,8 @@ export type RogueProgress = {
   bestNoLossBattle: number;
   /** Best living count of each unit type in a winning player army. */
   winsWith: Record<string, number>;
+  /** Obstacles fully broken or felled, keyed by token type. */
+  broken: Record<string, number>;
 };
 
 export type RoguePoolPurpose = 'shop' | 'start' | 'enemy';
@@ -194,6 +208,14 @@ function sanitizeUnlockCondition(raw: unknown): RogueUnlockCondition | null {
     const typ = String(src.unitType ?? '').trim();
     if (!typ) return null;
     return { type: 'winWithUnits', count: int(src.count, 1, 1, 99), unitType: typ };
+  }
+  if (t === 'breakObstacles') {
+    const typ = String((src as { obstacleType?: unknown }).obstacleType ?? '').trim();
+    return {
+      type: 'breakObstacles',
+      count: int(src.count, 1, 1, 9999),
+      obstacleType: isBreakableObstacleType(typ) ? typ : null,
+    };
   }
   if (t === 'always') return { type: 'always' };
   return null;
@@ -454,6 +476,7 @@ export function emptyRogueProgress(): RogueProgress {
     maxCoins: 0,
     bestNoLossBattle: 0,
     winsWith: {},
+    broken: {},
   };
 }
 
@@ -482,6 +505,7 @@ export function sanitizeRogueProgress(raw: unknown): RogueProgress {
     maxCoins: int(src.maxCoins, 0, 0, 99999),
     bestNoLossBattle: int(src.bestNoLossBattle, 0, 0, 9999),
     winsWith: intMap(src.winsWith, 99),
+    broken: intMap(src.broken),
   };
 }
 
@@ -522,6 +546,8 @@ export type RogueProgressPatch = {
   army?: Record<string, number>;
   /** Battle just started, with no player unit lost in this run so far. */
   noLossBattle?: number;
+  /** Obstacles broken this match, by token type. */
+  broken?: Record<string, number>;
 };
 
 function addCounts(into: Record<string, number>, add?: Record<string, number>): Record<string, number> {
@@ -562,6 +588,7 @@ function applyProgressPatch(prev: RogueProgress, battle: number, patch: RoguePro
     maxCoins: Math.max(prev.maxCoins, int(patch.gold, 0, 0, 99999)),
     bestNoLossBattle: noLoss,
     winsWith: maxCounts(prev.winsWith, patch.army),
+    broken: addCounts(prev.broken, patch.broken),
   };
 }
 
@@ -633,6 +660,11 @@ export function killsCounted(progress: RogueProgress, unitType?: string | null):
   return Object.values(progress.kills).reduce((n, v) => n + v, 0);
 }
 
+export function obstaclesBroken(progress: RogueProgress, obstacleType?: string | null): number {
+  if (obstacleType) return progress.broken[obstacleType] ?? 0;
+  return Object.values(progress.broken).reduce((n, v) => n + v, 0);
+}
+
 export function conditionSatisfied(
   cond: RogueUnlockCondition,
   progress: RogueProgress,
@@ -655,6 +687,8 @@ export function conditionSatisfied(
       return progress.bestNoLossBattle >= cond.battle;
     case 'winWithUnits':
       return (progress.winsWith[cond.unitType] ?? 0) >= cond.count;
+    case 'breakObstacles':
+      return obstaclesBroken(progress, cond.obstacleType) >= cond.count;
     default:
       return false;
   }
@@ -742,6 +776,18 @@ export function describeUnlockCondition(
       return {
         type: 'winWithUnits',
         text: `Win with ${cond.count} ${who} (best ${cur})`,
+        current: cur,
+        target: cond.count,
+        done,
+      };
+    }
+    case 'breakObstacles': {
+      const cur = obstaclesBroken(progress, cond.obstacleType);
+      const who = cond.obstacleType ? TOKEN_LABEL[cond.obstacleType].toLowerCase() : 'obstacles';
+      const noun = cond.count === 1 && !cond.obstacleType ? 'obstacle' : who;
+      return {
+        type: 'breakObstacles',
+        text: `Break ${cond.count} ${noun} (${cur}/${cond.count})`,
         current: cur,
         target: cond.count,
         done,
