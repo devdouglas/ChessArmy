@@ -6,7 +6,6 @@
  * Export downloads a JSON file you can drop back into public/data/.
  */
 import {
-  PROMOTION_TOKEN_TYPES,
   TOKEN_LABEL,
   isBreakableObstacleType,
   statsOf,
@@ -14,7 +13,7 @@ import {
   type PromotionTokenType,
   type UnitType,
 } from './engine';
-import { UNIT_STATS, UNIT_TYPES } from './roster';
+import { UNIT_STATS } from './roster';
 import {
   BUILTIN_TERRAIN_PRESETS,
   getTerrainPreset,
@@ -932,45 +931,6 @@ export function hasRogueConfigOverride(): boolean {
   } catch {
     return false;
   }
-}
-
-export function exportRogueConfigJson(cfg: RogueConfig = current): string {
-  // Expand units currently in the roster so the file is a complete snapshot.
-  const units: Record<string, Partial<RogueUnitCfg>> = { ...cfg.units };
-  for (const t of UNIT_TYPES) {
-    units[t] = unitCfgSnapshot(t, cfg);
-  }
-  const promotions: Record<string, Partial<RoguePromoCfg>> = {};
-  for (const id of PROMOTION_TOKEN_TYPES) {
-    promotions[id] = promoCfgSnapshot(id, cfg);
-  }
-  const regions: Record<string, Partial<RogueRegionCfg>> = {};
-  for (const r of listRogueRegionPresets(cfg)) {
-    regions[r.id] = regionCfgSnapshot(r.id, cfg);
-  }
-  for (const [id, val] of Object.entries(cfg.regions)) {
-    if (!(id in regions)) regions[id] = val;
-  }
-  const out: RogueConfig = {
-    version: ROGUE_CONFIG_VERSION,
-    globals: { ...cfg.globals },
-    units,
-    promotions,
-    regions,
-  };
-  return `${JSON.stringify(out, null, 2)}\n`;
-}
-
-function unitCfgSnapshot(type: UnitType, cfg: RogueConfig): Partial<RogueUnitCfg> {
-  return mergeUnit(type, cfg.units[type]);
-}
-
-function promoCfgSnapshot(id: PromotionTokenType, cfg: RogueConfig): Partial<RoguePromoCfg> {
-  return mergePromo(id, cfg.promotions[id]);
-}
-
-function regionCfgSnapshot(id: string, cfg: RogueConfig): Partial<RogueRegionCfg> {
-  return mergeRegion(id, cfg.regions[id]);
 }
 
 function readLocalOverride(): RogueConfig | null {

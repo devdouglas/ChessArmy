@@ -390,7 +390,6 @@ import {
   type RogueConfig,
 } from './roguelite-config';
 import {
-  downloadRogueConfig,
   getRogueAdminEra,
   persistRogueAdminDraft,
   readRogueAdminForm,
@@ -2794,11 +2793,6 @@ function bindRogueConfigEvents(): void {
     });
   });
 
-  root.querySelector('#rogue-cfg-export')?.addEventListener('click', () => {
-    syncRogueAdminForm();
-    if (!rogueAdminDraft) return;
-    downloadRogueConfig(rogueAdminDraft);
-  });
   root.querySelector('#rogue-cfg-reset')?.addEventListener('click', () => {
     if (!confirm('Reset to the shipped roguelite.json and drop this browser’s override?')) return;
     void resetRogueAdminDraft().then((cfg) => {
