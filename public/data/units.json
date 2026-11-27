@@ -332,7 +332,7 @@
         "sight": 4
     },
     "lightcavalry": {
-        "name": "Light cavalry",
+        "name": "Light missile cavalry",
         "chess": "Eques",
         "category": "ancient",
         "role": "lightcavalry",
@@ -636,7 +636,7 @@
         "category": "ancient",
         "role": "catapult",
         "move": 1,
-        "shoot": 5,
+        "shoot": 4,
         "shootMin": 2,
         "shootArc": "arch",
         "actionPointGain": 1,
@@ -683,7 +683,7 @@
         "category": "ancient",
         "role": "ballista",
         "move": 1,
-        "shoot": 6,
+        "shoot": 5,
         "shootMin": 2,
         "shootArc": "laser",
         "actionPointGain": 1,
@@ -1776,7 +1776,7 @@
         "name": "Armored peasant",
         "chess": "Levy",
         "category": "ancient",
-        "recruitable": false,
+        "recruitable": true,
         "role": "peasant",
         "unitClass": "melee",
         "passWater": true,
@@ -1786,7 +1786,7 @@
         "infantry": true,
         "king": false,
         "abilities": [
-            "build"
+            "shields"
         ],
         "move": 1,
         "sight": 2,
@@ -1808,8 +1808,8 @@
         "armor": 0,
         "hexArmor": true,
         "armorFront": 0,
-        "armorFrontLeft": -1,
-        "armorFrontRight": -1,
+        "armorFrontLeft": 0,
+        "armorFrontRight": 0,
         "armorFlankLeft": -2,
         "armorFlankRight": -2,
         "armorRear": -2,
@@ -1825,7 +1825,7 @@
         "name": "Cohort Anthony",
         "chess": "Chap",
         "category": "ancient",
-        "recruitable": true,
+        "recruitable": false,
         "role": "dude",
         "unitClass": "hero",
         "passWater": true,
@@ -1936,13 +1936,12 @@
         "infantry": false,
         "king": false,
         "abilities": [
-            "javelin",
             "charge"
         ],
         "move": 3,
         "sight": 4,
-        "shoot": 2,
-        "shootMin": 1,
+        "shoot": 0,
+        "shootMin": 0,
         "shootArc": "arch",
         "actionPointGain": 2,
         "actionPointSpendCap": 2,
@@ -1973,7 +1972,7 @@
         "damageRear": 0
     },
     "u-mwowcdhlpw7r": {
-        "name": "Halangites",
+        "name": "Phalangites",
         "chess": "Spear",
         "category": "ancient",
         "recruitable": true,
