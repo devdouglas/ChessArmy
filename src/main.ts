@@ -5307,27 +5307,40 @@ function renderActionBar(): string {
   const range = s.shoot > 0 ? shootDamageOf(piece) || s.shootDamage : 0;
   const insp = piece.inspired ? ' (incl. +1 inspired)' : '';
   const inspCls = piece.inspired ? ' inspired' : '';
-  const meleeStat = `<span class="action-bar-dmg${inspCls}" title="Melee damage${insp}">Melee ${melee}</span>`;
+  const inspMark = piece.inspired
+    ? `<span class="action-bar-insp-mark" aria-hidden="true">${actionGlyphSvg('inspire', { className: 'inspire-stat-glyph', em: '12' })}</span>`
+    : '';
+  const meleeStat = `<span class="action-bar-dmg${inspCls}" title="Melee damage${insp}">${inspMark}Melee ${melee}</span>`;
+  const shots = pieceShotPipsHtml(piece);
   const rangeStat =
     s.shoot > 0
-      ? `<span class="action-bar-dmg${inspCls}" title="Ranged damage${insp}">Range ${range}</span>`
+      ? `<span class="action-bar-dmg${inspCls}" title="Ranged damage${insp}">${inspMark}Range ${range}</span>`
       : '';
+  const hpNow = hpLeft(piece);
+  const hpTop = hpMax(piece);
 
   return `
     <div class="action-bar">
       <div class="action-bar-left">
-        <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
-          <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmorOf(piece))}" stroke-width="2" />
-          <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
-        </svg>
-        <span class="action-bar-name">${s.name}</span>
-        ${hpPipsHtml(hpLeft(piece), hpMax(piece), piece.side)}
-        ${meleeStat}
-        ${pieceShotPipsHtml(piece)}
-        ${rangeStat}
+        <span class="action-bar-identity">
+          <svg class="side-icon" viewBox="-10 -10 20 20" width="26" height="26" aria-hidden="true">
+            <circle cx="0" cy="0" r="9.5" fill="${pieceColor(piece.side)}" stroke="${armorColor(ringArmorOf(piece))}" stroke-width="2" />
+            <g fill="${iconInk(piece.side)}" color="${iconInk(piece.side)}">${pieceIconSvg(piece.type, 13)}</g>
+          </svg>
+          <span class="action-bar-name">${s.name}</span>
+          <span class="action-bar-hp${hpTop > 5 ? ' is-many' : ''}">
+            ${hpPipsHtml(hpNow, hpTop, piece.side)}
+            <span class="action-bar-hp-count">${hpNow}</span>
+          </span>
+        </span>
+        <span class="action-bar-combat">
+          ${meleeStat}
+          ${shots || rangeStat ? `<span class="action-bar-ranged">${shots}${rangeStat}</span>` : ''}
+        </span>
       </div>
       <div class="action-bar-center">${pieceApPipsHtml(piece)}</div>
       <div class="action-bar-right">${promoIcons}</div>
+      <div class="action-bar-break" aria-hidden="true"></div>
       ${meta ? `<div class="action-bar-meta">${meta}</div>` : ''}
     </div>`;
 }
