@@ -6579,3 +6579,148 @@ svg.board .hex.rock {
 .piece-contact {
   fill: rgba(0, 0, 0, 0.28);
 }
+
+
+/* Roguelite config (editor tab) */
+.rogue-admin {
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  padding: 0 0.25rem 2.5rem;
+}
+.rogue-admin-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.35rem 0 0.5rem;
+  background: var(--bg, #111);
+}
+.rogue-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.rogue-admin-section {
+  margin: 1.25rem 0 1.75rem;
+}
+.rogue-admin-section h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+.rogue-admin-section h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.rogue-globals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  align-items: center;
+}
+.rogue-globals label,
+.rogue-preview label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+}
+.rogue-globals input[type='number'],
+.rogue-globals input[type='text'],
+.rogue-preview input[type='number'],
+.rogue-table input[type='number'],
+.rogue-table input[type='text'],
+.rogue-table select {
+  font: inherit;
+  max-width: 7rem;
+}
+.rogue-globals input[type='text'] {
+  max-width: 9rem;
+}
+.rogue-table input[type='number'] {
+  width: 4.2rem;
+  max-width: 4.2rem;
+}
+.rogue-table .chk,
+.rogue-globals .chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.rogue-ico {
+  width: 2.2rem;
+  text-align: center;
+  vertical-align: middle;
+}
+.rogue-ico svg {
+  display: block;
+  margin: 0 auto;
+}
+.rogue-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rogue-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin: 0 0 0.85rem;
+  font-size: 0.92rem;
+}
+.rogue-preview-regions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+}
+.rogue-ov-group {
+  margin: 0 0 1rem;
+}
+.rogue-ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
+  gap: 0.4rem;
+}
+.rogue-ov-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+.rogue-ov-item span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rogue-ov-item.locked {
+  filter: grayscale(1);
+  opacity: 0.42;
+}
+.rogue-ov-item.unlist {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+.rogue-table tr.rogue-jump {
+  outline: 2px solid var(--accent, #c9a227);
+  outline-offset: -2px;
+}
+@media (max-width: 720px) {
+  .rogue-admin-head {
+    position: static;
+  }
+}

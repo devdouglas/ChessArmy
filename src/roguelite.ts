@@ -28,6 +28,13 @@ import {
 import { distance } from './hex';
 import { sanitizePeriod, type Period } from './period';
 import { UNIT_STATS, UNIT_TYPES } from './roster';
+import {
+  configuredUnitCost,
+  getRogueConfig,
+  getRogueProgress,
+  promoAvailableInRun,
+  unitAvailableInRun,
+} from './roguelite-config';
 
 export const ROGUE_GOAL = 10;
 /** Enemy / shop kits: value must be ≤ battle + this. Battle 4 → value ≤ 5. */
@@ -47,15 +54,36 @@ export const ROGUE_STAR_LABELS = [
   'No units lost',
 ] as const;
 
+/** Live values from the roguelite config (seeded to the constants above). */
+export function rogueGoal(): number {
+  return getRogueConfig().globals.goalBattles;
+}
+export function rogueStartGold(): number {
+  return getRogueConfig().globals.startGold;
+}
+export function rogueStartCount(): number {
+  return getRogueConfig().globals.startCount;
+}
+export function rogueShopSize(): number {
+  return getRogueConfig().globals.shopSize;
+}
+export function roguePromoGold(): number {
+  return getRogueConfig().globals.promoCost;
+}
+export function rogueScoutRegenPer(): number {
+  return getRogueConfig().globals.scoutRegenPer;
+}
+
 /** Max recruitable kit value for this battle number. */
 export function rogueMaxUnitValue(battle: number): number {
-  return Math.max(0, Math.floor(battle)) + ROGUE_VALUE_SLACK;
+  return Math.max(0, Math.floor(battle)) + getRogueConfig().globals.valueSlack;
 }
 
 /** How many random enemy promotions to stamp for this battle (0 before L7). */
 export function rogueEnemyPromoCount(battle: number): number {
   const b = Math.max(0, Math.floor(battle));
-  return Math.max(0, b - (ROGUE_PROMO_START - 1));
+  const start = getRogueConfig().globals.enemyPromoStart;
+  return Math.max(0, b - (start - 1));
 }
 
 /** Army entry — type plus any kickoff tokens that survive between battles. */
@@ -92,18 +120,26 @@ export type RogueShop = {
   freePromoTaken: boolean;
 };
 
-/** Combat kits for the era — no dummies / zero-combat props. */
-export function rogueUnitPool(period: Period): UnitType[] {
+/**
+ * Combat kits for the era that the config lists for this purpose.
+ * `battle` is the upcoming fight (shop after battle N uses N+1).
+ */
+export function rogueUnitPool(
+  period: Period,
+  purpose: 'shop' | 'start' | 'enemy' = 'shop',
+  battle = 1,
+): UnitType[] {
   const era = sanitizePeriod(period);
+  const progress = getRogueProgress();
   return UNIT_TYPES.filter((t) => {
     const s = UNIT_STATS[t];
     if (!s || s.category !== era) return false;
-    return s.recruitable;
+    return unitAvailableInRun(t, battle, purpose, progress);
   });
 }
 
 export function rogueUnitCost(type: UnitType): number {
-  return Math.max(0, Math.floor(statsOf(type).value));
+  return configuredUnitCost(type);
 }
 
 /**
@@ -114,8 +150,10 @@ export function pickRogueUnit(
   period: Period,
   avoid?: UnitType[],
   maxValue?: number,
+  purpose: 'shop' | 'start' | 'enemy' = 'shop',
+  battle = 1,
 ): UnitType {
-  const pool = rogueUnitPool(period);
+  const pool = rogueUnitPool(period, purpose, battle);
   const underCap =
     maxValue == null
       ? pool
@@ -136,41 +174,47 @@ export function pickRogueUnit(
   return list[Math.floor(Math.random() * list.length)]!;
 }
 
-/** The Knight chess piece for this era (stock: Scout). */
+/** The Knight chess piece for this era. Falls back to the configured general kit (stock: Scout). */
 export function pickRogueKnight(period: Period): UnitType {
-  const knights = rogueUnitPool(period).filter(
+  const knights = rogueUnitPool(period, 'start', 1).filter(
     (t) => statsOf(t).chess.toLowerCase() === 'knight',
   );
   if (knights.length) {
     return knights[Math.floor(Math.random() * knights.length)]!;
   }
-  // Stock Knight kit — used even when the era catalog has no Knight chess label.
+  // Stock / configured kit — used even when the era catalog has no Knight chess label.
+  const kit = getRogueConfig().globals.startGeneralKit;
+  if (kit && UNIT_STATS[kit]) return kit;
   if (UNIT_STATS.scout) return 'scout';
-  return pickRogueUnit(period);
+  return pickRogueUnit(period, undefined, undefined, 'start', 1);
 }
 
 /** Three (or fewer) distinct random recruits for the victory shop. */
 export function rollRogueShopOffers(
   period: Period,
-  count = ROGUE_SHOP_SIZE,
+  count = rogueShopSize(),
   maxValue?: number,
+  battle = 1,
 ): UnitType[] {
   const offers: UnitType[] = [];
   const n = Math.max(0, Math.floor(count));
   for (let i = 0; i < n; i++) {
-    const pool = rogueUnitPool(period);
+    const pool = rogueUnitPool(period, 'shop', battle);
     if (!pool.length) break;
-    offers.push(pickRogueUnit(period, offers, maxValue));
+    offers.push(pickRogueUnit(period, offers, maxValue, 'shop', battle));
   }
   return offers;
 }
 
 /** Distinct random promotions for the victory shop (up to `count`). */
 export function rollRoguePromotions(
-  count = ROGUE_SHOP_SIZE,
+  count = rogueShopSize(),
+  battle = 1,
 ): PromotionTokenType[] {
-  // Shop never offers General — succession crowns that separately.
-  const pool = PROMOTION_TOKEN_TYPES.filter((t) => t !== 'general');
+  const progress = getRogueProgress();
+  const pool = PROMOTION_TOKEN_TYPES.filter((t) =>
+    promoAvailableInRun(t, battle, 'shop', progress),
+  );
   const out: PromotionTokenType[] = [];
   const n = Math.max(0, Math.min(Math.floor(count), pool.length));
   for (let i = 0; i < n; i++) {
@@ -191,29 +235,33 @@ export function openRogueShop(
 ): { run: RogueRun; shop: RogueShop } {
   const stars = Math.max(0, Math.floor(starGold));
   const wealth = Math.max(0, Math.floor(wealthyGold));
-  const gain = stars + wealth;
+  const g = getRogueConfig().globals;
+  const gain = stars * g.starGoldPerStar + wealth * g.wealthyGoldPer;
   const nextBattle = run.battle + 1;
   return {
     run: { ...run, gold: run.gold + gain },
     shop: {
       offers: rollRogueShopOffers(
         run.period,
-        ROGUE_SHOP_SIZE,
+        g.shopSize,
         rogueMaxUnitValue(nextBattle),
+        nextBattle,
       ),
       purchased: [],
-      starGold: stars,
-      wealthyGold: wealth,
-      promotions: rollRoguePromotions(),
+      starGold: stars * g.starGoldPerStar,
+      wealthyGold: wealth * g.wealthyGoldPer,
+      promotions: rollRoguePromotions(g.shopSize, nextBattle),
       freePromoTaken: false,
     },
   };
 }
 
-/** Enemy random promos — skip Scout/Wealthy (player-only economy / ambush). */
-const ENEMY_PROMO_POOL = PROMOTION_TOKEN_TYPES.filter(
-  (t) => t !== 'general' && t !== 'scout' && t !== 'wealthy',
-) as Exclude<PromotionTokenType, 'general'>[];
+function enemyPromoPool(battle: number): Exclude<PromotionTokenType, 'general'>[] {
+  const progress = getRogueProgress();
+  return PROMOTION_TOKEN_TYPES.filter((t) =>
+    promoAvailableInRun(t, battle, 'enemy', progress),
+  ) as Exclude<PromotionTokenType, 'general'>[];
+}
 
 function stackableCount(unit: RogueUnit): number {
   return (unit.unitTokens ?? []).filter(isStackablePromotion).length;
@@ -223,13 +271,15 @@ function stackableCount(unit: RogueUnit): number {
 export function applyRogueEnemyPromotions(
   army: RogueUnit[],
   count: number,
+  battle = 999,
 ): RogueUnit[] {
   const n = Math.max(0, Math.floor(count));
+  const pool = enemyPromoPool(battle);
   const out: RogueUnit[] = army.map((u) => {
     const kept = (u.unitTokens ?? []).filter((t) => !isStackablePromotion(t));
     return kept.length ? { type: u.type, unitTokens: kept } : { type: u.type };
   });
-  if (!n || !out.length || !ENEMY_PROMO_POOL.length) return out;
+  if (!n || !out.length || !pool.length) return out;
   for (let i = 0; i < n; i++) {
     const eligible = out
       .map((u, idx) => ({ u, idx }))
@@ -237,7 +287,7 @@ export function applyRogueEnemyPromotions(
     if (!eligible.length) break;
     const pick = eligible[Math.floor(Math.random() * eligible.length)]!;
     const promo =
-      ENEMY_PROMO_POOL[Math.floor(Math.random() * ENEMY_PROMO_POOL.length)]!;
+      pool[Math.floor(Math.random() * pool.length)]!;
     const unitTokens = sanitizeUnitTokens([
       ...(pick.u.unitTokens ?? []),
       promo,
@@ -277,7 +327,8 @@ export function buyRogueShopOffer(
 
 /** Cost to take the promotion at `index` (0 = still free). */
 export function roguePromoCost(shop: RogueShop): number {
-  return shop.freePromoTaken ? ROGUE_PROMO_COST : 0;
+  if (!shop.freePromoTaken && getRogueConfig().globals.firstPromoFree) return 0;
+  return getRogueConfig().globals.promoCost;
 }
 
 /**
@@ -429,21 +480,26 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
     type: pickRogueKnight(period),
     unitTokens: ['general'],
   });
-  while (playerArmy.length < ROGUE_START_COUNT) {
+  const startCount = getRogueConfig().globals.startCount;
+  while (playerArmy.length < startCount) {
     playerArmy.push({
       type: pickRogueUnit(
         period,
         playerArmy.map((u) => u.type),
         maxValue,
+        'start',
+        battle,
       ),
     });
   }
-  for (let i = 0; i < ROGUE_START_COUNT; i++) {
+  for (let i = 0; i < startCount; i++) {
     enemyArmy.push({
       type: pickRogueUnit(
         period,
         enemyArmy.map((u) => u.type),
         maxValue,
+        'enemy',
+        battle,
       ),
     });
   }
@@ -454,9 +510,10 @@ export function createRogueRun(period: Period, aiStyle: AiStyle = 'aggressive'):
     enemyArmy: applyRogueEnemyPromotions(
       enemyArmy,
       rogueEnemyPromoCount(battle),
+      battle,
     ),
     aiStyle,
-    gold: ROGUE_START_GOLD,
+    gold: getRogueConfig().globals.startGold,
   };
 }
 
@@ -513,6 +570,8 @@ export function advanceRogueRun(
         run.period,
         run.enemyArmy.map((u) => u.type),
         maxValue,
+        'enemy',
+        battle,
       ),
     },
   ];
@@ -523,18 +582,20 @@ export function advanceRogueRun(
     enemyArmy: applyRogueEnemyPromotions(
       grown,
       rogueEnemyPromoCount(battle),
+      battle,
     ),
   };
 }
 
 /** True after the player finishes the goal battle and opts out (UI clears the run). */
 export function rogueRunComplete(run: RogueRun): boolean {
-  return run.battle > ROGUE_GOAL;
+  return run.battle > getRogueConfig().globals.goalBattles;
 }
 
 export function rogueBattleLabel(run: RogueRun): string {
-  if (run.battle > ROGUE_GOAL) return `Battle ${run.battle}`;
-  return `Battle ${run.battle}/${ROGUE_GOAL}`;
+  const goal = getRogueConfig().globals.goalBattles;
+  if (run.battle > goal) return `Battle ${run.battle}`;
+  return `Battle ${run.battle}/${goal}`;
 }
 
 export function rogueArmyHint(run: RogueRun): string {

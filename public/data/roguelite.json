@@ -1,0 +1,639 @@
+{
+  "version": 1,
+  "globals": {
+    "startGold": 0,
+    "goalBattles": 10,
+    "startCount": 2,
+    "shopSize": 3,
+    "promoCost": 1,
+    "firstPromoFree": true,
+    "valueSlack": 1,
+    "enemyPromoStart": 7,
+    "scoutRegenPer": 2,
+    "wealthyGoldPer": 1,
+    "starGoldPerStar": 1,
+    "startGeneralKit": "scout",
+    "endlessAfterGoal": true
+  },
+  "regions": [
+    {
+      "id": "early",
+      "name": "Early",
+      "fromBattle": 1,
+      "toBattle": 6
+    },
+    {
+      "id": "late",
+      "name": "Late",
+      "fromBattle": 7,
+      "toBattle": 10
+    }
+  ],
+  "units": {
+    "soldier": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "scout": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "bazooka": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "sniper": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "archer": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 2,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "javelin": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 2,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "horsearcher": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "lightcavalry": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "chariotarcher": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "cohort": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "hoplite": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "elephant": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 5,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "barbarian": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "catapult": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 2,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "ballista": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 2,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "tank": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 9,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "general": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 100,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "tower": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "dummy": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 0,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "peasant": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "builder": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "dude": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 0,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "wolf": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "fighter": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "gunship": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "bomber": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 5,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "frigate": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "cruiser": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 7,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "dreadnought": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 10,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mvf8ty84rdk3": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mvf8vjffgpkd": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mvgpbg68f593": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 0,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mvkn6vl7l0zw": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mvlx87f1kk67": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mvr2vokzh3n3": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mvun2x81vsl5": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 0,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mvuvhfewwv97": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 0,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mw3t85tpmhz2": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 1,
+      "inShop": false,
+      "inStartPool": false,
+      "inEnemyPool": false
+    },
+    "u-mw4vuw6xnwnt": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mwjio288uty1": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mwjiue32r9rf": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 3,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    },
+    "u-mwowcdhlpw7r": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "toBattle": null,
+      "price": 4,
+      "inShop": true,
+      "inStartPool": true,
+      "inEnemyPool": true
+    }
+  },
+  "promotions": {
+    "general": {
+      "listed": false,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": false,
+      "enemyAllowed": false
+    },
+    "range1": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "defense1": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "attack1": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "ap1": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "hp2": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "allTerrain": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "lunge": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "inspire": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": true
+    },
+    "scout": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": false
+    },
+    "wealthy": {
+      "listed": true,
+      "unlock": {
+        "type": "always"
+      },
+      "fromBattle": 1,
+      "inShop": true,
+      "enemyAllowed": false
+    }
+  }
+}

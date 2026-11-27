@@ -316,9 +316,6 @@ import {
 } from './formations';
 import { pickAiAction } from './ai';
 import {
-  ROGUE_GOAL,
-  ROGUE_PROMO_COST,
-  ROGUE_SCOUT_REGEN_PER,
   ROGUE_STAR_LABELS,
   advanceRogueRun,
   buyRogueShopOffer,
@@ -326,6 +323,9 @@ import {
   openRogueShop,
   rogueArmyStamps,
   rogueBattleLabel,
+  rogueGoal,
+  roguePromoGold,
+  rogueScoutRegenPer,
   rogueUnitCost,
   rogueUnitPool,
   survivorTypes,
@@ -335,6 +335,23 @@ import {
   type RogueRun,
   type RogueShop,
 } from './roguelite';
+import {
+  getRogueConfig,
+  loadRogueConfig,
+  recordRogueBattleWin,
+  recordRogueRunCompleted,
+  type RogueConfig,
+} from './roguelite-config';
+import {
+  defaultRogueAdminPreview,
+  downloadRogueConfig,
+  persistRogueAdminDraft,
+  readRogueAdminForm,
+  readRogueAdminPreview,
+  renderRogueConfigPage,
+  resetRogueAdminDraft,
+  type RogueAdminPreview,
+} from './roguelite-admin';
 import {
   AI_RULE_CATEGORIES,
   AI_RULE_CATEGORY_LABEL,
@@ -451,6 +468,7 @@ type Screen =
   | 'editor'
   | 'units'
   | 'ai'
+  | 'roguelite'
   | 'campaign-map'
   | 'campaign-play';
 type PlaylistKind = 'campaign' | 'tutorial' | 'historical';
@@ -874,7 +892,7 @@ function maybeStartScoutPrep(keepRegen?: number): void {
     keepRegen !== undefined
       ? keepRegen
       : rogueRun
-        ? scouts.length * ROGUE_SCOUT_REGEN_PER
+        ? scouts.length * rogueScoutRegenPer()
         : 0;
   scoutPrep = { regenLeft, placingId: null };
 }
@@ -938,7 +956,8 @@ function regenScoutMap(): void {
 
 function startRogueRun() {
   if (eraPlayLocked()) return;
-  if (!rogueUnitPool(selectedPeriod).length) return;
+  if (!rogueUnitPool(selectedPeriod, 'start', 1).length) return;
+  rogueRunCompletionRecorded = false;
   rogueRun = createRogueRun(selectedPeriod, 'aggressive');
   clearRogueShop();
   randomArmies = null;
@@ -974,6 +993,11 @@ function ensureRogueShop() {
   const opened = openRogueShop(rogueRun, starGold, wealthyGold);
   rogueRun = opened.run;
   rogueShop = opened.shop;
+  recordRogueBattleWin(rogueRun.battle);
+  if (rogueRun.battle >= rogueGoal() && !rogueRunCompletionRecorded) {
+    recordRogueRunCompleted();
+    rogueRunCompletionRecorded = true;
+  }
 }
 
 function buyRogueOffer(index: number) {
@@ -2253,6 +2277,9 @@ function loadEditorLevel(lvl: SavedLevel): void {
 }
 
 function confirmLeaveEditor(): boolean {
+  if (screen === 'roguelite' && rogueAdminDirty) {
+    return confirm('Leave without saving roguelite config?');
+  }
   if (screen !== 'editor' || !editorDirty) return true;
   return confirm('Leave without saving this level?');
 }
@@ -2444,6 +2471,141 @@ function enterAi() {
   aiThinking = false;
   animating = false;
   render();
+}
+
+let rogueAdminDraft: RogueConfig | null = null;
+let rogueAdminPreview: RogueAdminPreview = defaultRogueAdminPreview();
+let rogueAdminDirty = false;
+let rogueRunCompletionRecorded = false;
+
+function cloneRogueConfig(cfg: RogueConfig): RogueConfig {
+  return JSON.parse(JSON.stringify(cfg)) as RogueConfig;
+}
+
+function wantsRogueAdminRoute(): boolean {
+  try {
+    const q = new URLSearchParams(location.search);
+    return q.get('roguelite') === '1' || location.hash.replace(/^#/, '') === 'roguelite';
+  } catch {
+    return false;
+  }
+}
+
+function enterRogueConfig() {
+  editorPainting = false;
+  editorPointerAbort?.abort();
+  briefingOpen = false;
+  if (!rogueAdminDraft) rogueAdminDraft = cloneRogueConfig(getRogueConfig());
+  screen = 'roguelite';
+  clearSelection();
+  aiThinking = false;
+  animating = false;
+  render();
+}
+
+function syncRogueAdminForm(): HTMLElement | null {
+  const root = app.querySelector<HTMLElement>('#rogue-admin');
+  if (!root || !rogueAdminDraft) return root;
+  rogueAdminDraft = readRogueAdminForm(root);
+  rogueAdminPreview = readRogueAdminPreview(root, rogueAdminPreview);
+  return root;
+}
+
+function markRogueAdminDirty(): void {
+  rogueAdminDirty = true;
+  const el = app.querySelector('#rogue-admin-dirty');
+  if (el) el.textContent = 'Unsaved changes (this browser)';
+}
+
+function bindRogueConfigEvents(): void {
+  const root = app.querySelector<HTMLElement>('#rogue-admin');
+  if (!root || !rogueAdminDraft) return;
+
+  const rerenderOn = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('[name="rogue-preview"]')) return true;
+    if (target.closest('[data-unlock-type]')) return true;
+    if (target.closest('[data-preview-region]')) return true;
+    if (target.id === 'rogue-preview-runs' || target.id === 'rogue-preview-battle') return true;
+    return false;
+  };
+
+  root.addEventListener('input', (e) => {
+    syncRogueAdminForm();
+    markRogueAdminDirty();
+    if (rerenderOn(e.target)) render();
+  });
+  root.addEventListener('change', (e) => {
+    syncRogueAdminForm();
+    markRogueAdminDirty();
+    if (rerenderOn(e.target)) render();
+  });
+
+  root.querySelector('#rogue-cfg-save')?.addEventListener('click', () => {
+    syncRogueAdminForm();
+    if (!rogueAdminDraft) return;
+    persistRogueAdminDraft(rogueAdminDraft);
+    rogueAdminDirty = false;
+    render();
+  });
+  root.querySelector('#rogue-cfg-export')?.addEventListener('click', () => {
+    syncRogueAdminForm();
+    if (!rogueAdminDraft) return;
+    downloadRogueConfig(rogueAdminDraft);
+  });
+  root.querySelector('#rogue-cfg-reset')?.addEventListener('click', () => {
+    if (!confirm('Reset to the shipped roguelite.json and drop this browser’s override?')) return;
+    void resetRogueAdminDraft().then((cfg) => {
+      rogueAdminDraft = cloneRogueConfig(cfg);
+      rogueAdminDirty = false;
+      render();
+    });
+  });
+  root.querySelector('#rogue-add-region')?.addEventListener('click', () => {
+    syncRogueAdminForm();
+    if (!rogueAdminDraft) return;
+    const n = rogueAdminDraft.regions.length + 1;
+    const last = rogueAdminDraft.regions[rogueAdminDraft.regions.length - 1];
+    const from = last ? last.toBattle + 1 : 1;
+    rogueAdminDraft.regions.push({
+      id: `region-${n}`,
+      name: `Region ${n}`,
+      fromBattle: from,
+      toBattle: from + 3,
+    });
+    rogueAdminDirty = true;
+    render();
+  });
+  root.querySelectorAll<HTMLButtonElement>('[data-del-region]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      syncRogueAdminForm();
+      if (!rogueAdminDraft) return;
+      const i = Number(btn.dataset.delRegion);
+      if (!Number.isFinite(i)) return;
+      rogueAdminDraft.regions.splice(i, 1);
+      rogueAdminDirty = true;
+      render();
+    });
+  });
+  const jumpTo = (sel: string) => {
+    const row = app.querySelector<HTMLElement>(sel);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('rogue-jump');
+    window.setTimeout(() => row.classList.remove('rogue-jump'), 1600);
+  };
+  root.querySelectorAll<HTMLButtonElement>('[data-jump-unit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.jumpUnit;
+      if (id) jumpTo(`tr[data-unit="${CSS.escape(id)}"]`);
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>('[data-jump-promo]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.jumpPromo;
+      if (id) jumpTo(`tr[data-promo="${CSS.escape(id)}"]`);
+    });
+  });
 }
 
 function refreshEditorBoard() {
@@ -5458,12 +5620,14 @@ function renderEndOverlay(): string {
   const lastInList = inList && !playlistHasNext();
   const listName = playlist ? LEVEL_CATEGORY_LABEL[playlist.kind] : '';
 
+  const goalBattles = rogueGoal();
+  const endlessOk = getRogueConfig().globals.endlessAfterGoal;
   const rogueGoalWin =
-    !!rogueRun && youWon && rogueRun.battle === ROGUE_GOAL;
+    !!rogueRun && youWon && rogueRun.battle === goalBattles;
   const rogueEndless =
-    !!rogueRun && youWon && rogueRun.battle > ROGUE_GOAL;
-  const rogueMid = !!rogueRun && youWon && rogueRun.battle < ROGUE_GOAL;
-  const rogueContinue = rogueMid || rogueGoalWin || rogueEndless;
+    !!rogueRun && youWon && rogueRun.battle > goalBattles;
+  const rogueMid = !!rogueRun && youWon && rogueRun.battle < goalBattles;
+  const rogueContinue = rogueMid || (endlessOk && (rogueGoalWin || rogueEndless));
   const title =
     rogueGoalWin
       ? 'ROGUELITE COMPLETE'
@@ -5620,8 +5784,10 @@ function renderEndOverlay(): string {
           <div class="rogue-shop-head rogue-promo-head">
             <span class="rogue-shop-hint">${
               shop.freePromoTaken
-                ? `Extra promotions — ${ROGUE_PROMO_COST}g each, assign to a survivor`
-                : 'Promotions — first free, extras 1g; assign to a survivor (keeps until death)'
+                ? `Extra promotions — ${roguePromoGold()}g each, assign to a survivor`
+                : getRogueConfig().globals.firstPromoFree
+                  ? `Promotions — first free, extras ${roguePromoGold()}g; assign to a survivor (keeps until death)`
+                  : `Promotions — ${roguePromoGold()}g each, assign to a survivor (keeps until death)`
             }</span>
           </div>
           <div class="rogue-promo-block">
@@ -6547,15 +6713,16 @@ function paintSyncDot(s: ServerStatus = getServerStatus()): void {
 }
 
 function inEditorSection(): boolean {
-  return screen === 'levels' || screen === 'editor' || screen === 'units' || screen === 'ai';
+  return screen === 'levels' || screen === 'editor' || screen === 'units' || screen === 'ai' || screen === 'roguelite';
 }
 
 function renderToolbar(): string {
   const editorNav = inEditorSection()
-    ? `<nav class="editor-nav" aria-label="Levels, units, and AI">
+    ? `<nav class="editor-nav" aria-label="Levels, units, AI, and roguelite">
         <button type="button" id="editor-nav-levels" class="${screen === 'levels' || screen === 'editor' ? 'active' : ''}">Levels</button>
         <button type="button" id="editor-nav-units" class="${screen === 'units' ? 'active' : ''}">Units</button>
         <button type="button" id="editor-nav-ai" class="${screen === 'ai' ? 'active' : ''}">AI</button>
+        <button type="button" id="editor-nav-roguelite" class="${screen === 'roguelite' ? 'active' : ''}">Roguelite</button>
       </nav>`
     : '';
   return `<div class="toolbar">
@@ -6748,7 +6915,10 @@ function renderStartScreen(): string {
   const skirmishN = skirmishMaps().length;
   const mapWord = (n: number) => `${n} map${n === 1 ? '' : 's'}`;
   const eraClosed = eraPlayLocked();
-  const noRecruits = !rogueUnitPool(selectedPeriod).length;
+  const noRecruits = !rogueUnitPool(selectedPeriod, 'start', 1).length;
+  const rg = getRogueConfig().globals;
+  const rogueTitle = `2v2 randomised run. Win ${rg.goalBattles} for victory${rg.endlessAfterGoal ? ', then continue endless until you die' : ''}. Kit value ≤ battle+${rg.valueSlack}. From battle ${rg.enemyPromoStart} enemies get promotions (1, then 2, …). Killed units are gone for good. Stars + Wealthy pay gold. Scout units place hidden and grant map regenerates. Shop of ${rg.shopSize} recruits + promotions (${rg.firstPromoFree ? 'first free, extras ' : ''}${rg.promoCost}g) after each win; enemy gains one free unit.`;
+  const rogueMeta = `Win ${rg.goalBattles}${rg.endlessAfterGoal ? '+' : ''} · value gate · promos`;
   const eraLock = eraClosed ? lockIconHtml() : '';
   const gateAttr = (empty: boolean, emptyTitle: string, openTitle: string) =>
     eraClosed
@@ -6787,9 +6957,9 @@ function renderStartScreen(): string {
             <span class="start-opt-name">${eraLock}${TUTORIAL_PLAY_TITLE}</span>
             <span class="start-opt-meta">${eraClosed ? 'Under construction' : tutorialN ? 'Tutorial' : 'No tutorial maps'}</span>
           </button>
-          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr(`2v2 randomised run. Win ${ROGUE_GOAL} for victory, then continue endless until you die. Kit value ≤ battle+1. From battle 7 enemies get promotions (1, then 2, …). Killed units are gone for good. Stars + Wealthy pay gold. Scout units place hidden and grant map regenerates. Shop of 3 recruits + promotions (first free, extras 1g) after each win; enemy gains one free unit.`)}>
+          <button type="button" class="start-opt" data-start="roguelite"${rogueGateAttr(rogueTitle)}>
             <span class="start-opt-name">${eraLock}Roguelite</span>
-            <span class="start-opt-meta">${rogueGateMeta(`Win ${ROGUE_GOAL}+ · value gate · promos`)}</span>
+            <span class="start-opt-meta">${rogueGateMeta(rogueMeta)}</span>
           </button>
           <button type="button" class="start-opt" data-start="campaign"${gateAttr(!campaignN, 'Mark saved levels as Campaign in the Editor', 'Pick a campaign map vs AI. Finish one to unlock the next.')}>
             <span class="start-opt-name">${eraLock}Campaign</span>
@@ -6917,6 +7087,11 @@ function bindToolbarEvents() {
     if (screen === 'ai') return;
     if (!confirmLeaveEditor()) return;
     enterAi();
+  });
+  app.querySelector('#editor-nav-roguelite')?.addEventListener('click', () => {
+    if (screen === 'roguelite') return;
+    if (!confirmLeaveEditor()) return;
+    enterRogueConfig();
   });
   app.querySelector('#edit-this-level')?.addEventListener('click', () => {
     if (!activeLevelId) return;
@@ -9206,6 +9381,7 @@ function bindEvents() {
   }
   if (screen === 'ai') {
     bindAiChecklistEvents();
+    bindRogueConfigEvents();
     return;
   }
 
@@ -9394,7 +9570,7 @@ function render() {
   app.classList.toggle('start-screen', screen === 'start');
   app.classList.toggle(
     'editor-screen',
-    screen === 'levels' || screen === 'units' || screen === 'ai' || screen === 'editor',
+    screen === 'levels' || screen === 'units' || screen === 'ai' || screen === 'roguelite' || screen === 'editor',
   );
 
   if (screen === 'start') {
@@ -9439,6 +9615,18 @@ function render() {
       <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
         ${renderToolbar()}
         ${renderAiChecklist()}
+      </div>
+    `;
+    bindEvents();
+    return;
+  }
+
+  if (screen === 'roguelite') {
+    if (!rogueAdminDraft) rogueAdminDraft = cloneRogueConfig(getRogueConfig());
+    app.innerHTML = `
+      <div class="board-wrap start-wrap levels-wrap unit-editor-wrap">
+        ${renderToolbar()}
+        ${renderRogueConfigPage(rogueAdminDraft, rogueAdminPreview, rogueAdminDirty)}
       </div>
     `;
     bindEvents();
@@ -9507,6 +9695,11 @@ onServerStatus((s) => {
 });
 
 async function initServerSync(): Promise<void> {
+  await loadRogueConfig();
+  if (screen === 'roguelite' && rogueAdminDraft && !rogueAdminDirty) {
+    rogueAdminDraft = cloneRogueConfig(getRogueConfig());
+  }
+  if (screen === 'start' || screen === 'roguelite') render();
   const { applied } = await syncFromServer();
   const account = await syncAccountProgress();
   defaultLevelId = getDefaultLevelId();
@@ -9524,7 +9717,8 @@ async function initServerSync(): Promise<void> {
   paintSyncDot();
 }
 
-render();
+if (wantsRogueAdminRoute()) enterRogueConfig();
+else render();
 void initServerSync();
 window.addEventListener('resize', scheduleLayoutRefresh);
 window.addEventListener('orientationchange', () => {
