@@ -278,10 +278,10 @@ export function renderRogueConfigPage(
     const c = unitRogueCfgMerged(t, draft);
     const name = s?.name ?? t;
     return `<tr data-unit="${esc(t)}">
+          <td>${chk('used', c.used, 'Used in roguelite')}</td>
           <td class="rogue-ico">${unitIcon(t)}</td>
           <td><strong>${esc(name)}</strong><div class="lvl-meta">${esc(t)}</div></td>
           <td class="rogue-num">${s?.value ?? '—'}</td>
-          <td>${chk('used', c.used, 'Used in roguelite')}</td>
           <td><input type="number" min="0" max="9999" data-field="price" value="${c.price ?? ''}" placeholder="${s?.value ?? 0}" title="Gold. Blank = unit value (${s?.value ?? 0})" /></td>
           <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle in a run" /></td>
           <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
@@ -302,7 +302,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table rogue-units">
             <thead>
               <tr>
-                <th></th><th>Unit</th><th>Value</th><th>Used</th><th>Price</th>
+                <th>Used</th><th></th><th>Unit</th><th>Value</th><th>Price</th>
                 <th>From</th><th>To</th><th>Unlock</th><th>Shop</th><th>Start</th><th>Enemy</th>
               </tr>
             </thead>
@@ -317,9 +317,9 @@ export function renderRogueConfigPage(
   const promoRows = PROMOTION_TOKEN_TYPES.filter((id) => !usedOnly || promoRogueCfgMerged(id, draft).used).map((id) => {
     const c = promoRogueCfgMerged(id, draft);
     return `<tr data-promo="${id}">
+      <td>${chk('used', c.used)}</td>
       <td class="rogue-ico">${promoIcon(id)}</td>
       <td><strong>${esc(UNIT_TOKEN_LABEL[id])}</strong><div class="lvl-meta">${id}</div></td>
-      <td>${chk('used', c.used)}</td>
       <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" /></td>
       <td>${unlockEditor(`p:${id}`, c.unlock, unlockOpts)}</td>
       <td>${chk('inShop', c.inShop)}</td>
@@ -333,8 +333,8 @@ export function renderRogueConfigPage(
       const c = regionRogueCfgMerged(r.id, draft);
       const kind = r.builtin ? 'Built-in' : 'Custom';
       return `<tr data-region="${esc(r.id)}">
-            <td><strong>${esc(r.name)}</strong><div class="lvl-meta">${esc(r.id)} · ${kind} · difficulty ${r.difficulty}</div></td>
             <td>${chk('enabled', c.enabled, 'Enabled in roguelite Auto')}</td>
+            <td><strong>${esc(r.name)}</strong><div class="lvl-meta">${esc(r.id)} · ${kind} · difficulty ${r.difficulty}</div></td>
             <td><input type="number" min="1" max="999" data-field="fromBattle" value="${c.fromBattle}" title="First battle this preset can appear" /></td>
             <td><input type="number" min="1" max="999" data-field="toBattle" value="${c.toBattle ?? ''}" placeholder="—" title="Last battle (blank = no cap)" /></td>
             <td><input type="number" min="0" max="999" data-field="weight" value="${c.weight}" title="Relative chance when Auto picks among eligible presets" /></td>
@@ -377,7 +377,7 @@ export function renderRogueConfigPage(
         <h3>Regions <span class="lvl-meta">Map-generation presets. Auto picks an enabled preset in the from/to range, weighted. Seeded to match the previous difficulty tiers (1–3: Village &amp; Long grass; 4–7: those plus Dense forest, Marshland, Highlands; 8+: plus Fortified ridge &amp; Badlands). Open field stays off. “Region cleared” unlocks refer to these preset ids.</span></h3>
         <div class="ai-check-wrap rogue-table-wrap">
           <table class="ai-check rogue-table rogue-regions">
-            <thead><tr><th>Preset</th><th>Enabled</th><th>From</th><th>To</th><th>Weight</th></tr></thead>
+            <thead><tr><th>Enabled</th><th>Preset</th><th>From</th><th>To</th><th>Weight</th></tr></thead>
             <tbody>${regionRows}</tbody>
           </table>
         </div>
@@ -391,7 +391,7 @@ export function renderRogueConfigPage(
           <table class="ai-check rogue-table">
             <thead>
               <tr>
-                <th></th><th>Promotion</th><th>Used</th><th>From battle</th>
+                <th>Used</th><th></th><th>Promotion</th><th>From battle</th>
                 <th>Unlock</th><th>Shop</th><th>Enemy</th>
               </tr>
             </thead>
