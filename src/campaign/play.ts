@@ -9,6 +9,7 @@ import {
 } from './types';
 import { centroid, pointInPolygon, ringToPath } from './geometry';
 import { UNIT_STATS } from '../roster';
+import { playSfx } from '../sfx';
 import { capitalMarkerSvg, siegeMarkerSvg, villageMarkerSvg } from './settlementIcons';
 import { loadCampaignMap } from './store';
 import { sanitizeUnitAccess } from './units';
@@ -472,6 +473,7 @@ export async function mountCampaignPlay(
   }
 
   function playRecruitFx(regionId: string, factionId: string): void {
+    playSfx('campaign_recruit');
     const svg = root.querySelector<SVGSVGElement>('.cm-svg');
     const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
     if (!svg || !layer) return;
@@ -501,6 +503,7 @@ export async function mountCampaignPlay(
     regionId: string,
     side: 'attacker' | 'defender',
   ): void {
+    playSfx('campaign_battle_loss_tick');
     const svg = root.querySelector<SVGSVGElement>('.cm-svg');
     const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
     if (!svg || !layer) return;
@@ -612,6 +615,7 @@ export async function mountCampaignPlay(
     fromId: string,
     toId: string,
   ): Promise<void> {
+    playSfx('campaign_army_move');
     const svg = root.querySelector<SVGSVGElement>('.cm-svg');
     const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
     if (!svg || !layer) return Promise.resolve();
@@ -667,6 +671,7 @@ export async function mountCampaignPlay(
   }
 
   function playTaxCoinFx(capitalIds: string[]): Promise<void> {
+    if (capitalIds.length) playSfx('campaign_tax');
     const svg = root.querySelector<SVGSVGElement>('.cm-svg');
     const bank = root.querySelector<HTMLElement>('.tw-coin.active');
     const layer = root.querySelector<HTMLElement>('.tw-tax-fx');
@@ -867,6 +872,7 @@ export async function mountCampaignPlay(
 
   function goNextPhase(): void {
     if (!canAdvancePhase()) return;
+    playSfx('campaign_phase_next');
     try {
       selectedStackId = null;
       recruitMode = false;
@@ -1288,6 +1294,7 @@ export async function mountCampaignPlay(
   }
 
   function selectStack(stackId: string): void {
+    playSfx('campaign_select_army');
     recruitMode = false;
     selectedStackId = stackId;
     const st = match?.stacks.find((s) => s.id === stackId);
@@ -1454,6 +1461,7 @@ export async function mountCampaignPlay(
   function paintInvasionModal(): void {
     let modal = root.querySelector<HTMLElement>('.tw-invasion-modal');
     if (!modal) {
+      playSfx('campaign_battle_start');
       modal = document.createElement('div');
       modal.className = 'tw-invasion-modal';
       modal.setAttribute('aria-hidden', 'true');

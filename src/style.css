@@ -7070,3 +7070,28 @@ svg.board .hex.rock {
     position: static;
   }
 }
+
+/* Sound effects: mute toggle + volume (src/sfx-hooks.ts, saved in localStorage) */
+.sfx-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.toolbar .sfx-mute {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  color: var(--muted, #8a9488);
+}
+
+.toolbar .sfx-mute.on {
+  color: var(--ink);
+}
+
+.sfx-volume {
+  width: 5.5rem;
+  accent-color: var(--sel);
+}

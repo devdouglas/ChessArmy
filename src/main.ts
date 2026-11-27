@@ -1,4 +1,6 @@
 import './style.css';
+import { playSfx } from './sfx';
+import { installSfx, sfxAction, sfxActionPoints, sfxControlsHtml, sfxHits, sfxObserve, sfxShot, sfxStep } from './sfx-hooks';
 import {
   ABILITY_BLURB,
   ABILITY_IDS,
@@ -1208,6 +1210,7 @@ function confirmRoguePromoAssign(pieceId: string) {
     roguePromoAssign.index,
   );
   if (!taken || taken.promo !== roguePromoAssign.promo) return;
+  playSfx('promotion_gain');
   const unitTokens = sanitizeUnitTokens([
     ...(piece.unitTokens ?? []),
     taken.promo,
@@ -1577,6 +1580,7 @@ function wait(ms: number): Promise<void> {
 
 async function playQueuedMarches(): Promise<void> {
   const steps = takeQueuedMarches();
+  if (steps.length) playSfx('auto_walk');
   for (const step of steps) {
     const live = getPiece(state, step.pieceId);
     const g = document.querySelector<SVGGElement>(
@@ -1618,6 +1622,7 @@ async function playPendingFx(): Promise<void> {
     if (gains.length) await flashActionPoints(gains, 'ap-gain');
     if (spends.length) await flashActionPoints(spends, 'ap-spend');
   }
+  if (board?.text) playSfx('board_message_open');
   if (board?.text) boardPopup = { text: board.text, title: board.title };
 }
 
@@ -1693,6 +1698,7 @@ function flashDamaged(
   }[],
 ): Promise<void> {
   if (!hits.length) return Promise.resolve();
+  sfxHits(hits, (id) => getPiece(state, id)?.type);
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let dying = false;
   let routing = false;
@@ -1736,6 +1742,7 @@ function flashActionPoints(
   cls: 'ap-gain' | 'ap-spend',
 ): Promise<void> {
   if (!events.length) return Promise.resolve();
+  sfxActionPoints(cls === 'ap-gain' ? 'gain' : 'spend');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let any = false;
   for (const ev of events) {
@@ -1975,6 +1982,7 @@ async function animateMoveAlong(
   beforeStep?: (hex: Hex) => Promise<void>,
 ): Promise<void> {
   const from = { col: piece.col, row: piece.row };
+  sfxStep(piece, path.length);
   const destPx = unitPixelOf(dest);
   const stopPx = unitPixelOf(stop);
   const facingEl = g.querySelector('.piece-facing');
@@ -3663,6 +3671,7 @@ function rogueGoldRewardHtml(
 function playRogueGoldFx() {
   const root = app.querySelector('.rogue-gold-reward:not(.settled)') as HTMLElement | null;
   if (!root || rogueGoldFxPlayed) return;
+  playSfx('rogue_gold');
   rogueGoldFxPlayed = true;
   const base = Number(root.dataset.base ?? 0);
   const gain = Number(root.dataset.gain ?? 0);
@@ -4053,6 +4062,7 @@ function remountPlayBoard(): void {
 /** Hidden units are omitted from the SVG — stamp cover broken, paint them, then pause. */
 async function showBreakCover(piece: Piece): Promise<void> {
   if (pieceVisible(state, piece, viewingSides(state))) return;
+  playSfx('reveal');
   revealPiece(piece);
   remountPlayBoard();
   const g = document.querySelector<SVGGElement>(
@@ -4072,6 +4082,7 @@ async function showBreakCover(piece: Piece): Promise<void> {
 async function playAnimatedAction(action: Action): Promise<void> {
   animating = true;
   const turnBefore = state.turn;
+  sfxAction(action, 'pieceId' in action ? getPiece(state, action.pieceId) : null, state.pieces);
 
   if (
     action.kind === 'move' ||
@@ -4263,6 +4274,7 @@ async function animateShot(piece: Piece, at: Hex): Promise<void> {
     ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - lift }
     : null;
   const flightMs = arch ? SHOT_FLIGHT_MS + 70 : SHOT_FLIGHT_MS;
+  sfxShot(piece, flightMs, (stats.splashDamage ?? 0) > 0);
   const svg = document.querySelector('svg.board');
   if (!svg) {
     await wait(flightMs);
@@ -6566,6 +6578,7 @@ function trySetMarch(piece: Piece, hex: Hex): boolean {
   // Re-clicking the destination does not cancel; give another order instead.
   if (!canOrderMarch(state, piece, hex)) return false;
   const acting = canActWithSelected() && selectedId === piece.id;
+  playSfx('march_order');
   void commitMarch(piece.id, hex, acting);
   return true;
 }
@@ -6694,12 +6707,14 @@ function onHexClick(col: number, row: number) {
       void skipScout(occ.id);
       return;
     }
+    if (occ.id !== selectedId) playSfx('unit_select');
     selectPiece(occ.id);
     return;
   }
 
   const board = tokenOnHex(state.tokens, hex, 'board');
   if (board?.read && board.text) {
+    playSfx('board_message_open');
     boardPopup = { text: board.text };
     render();
     return;
@@ -6707,14 +6722,17 @@ function onHexClick(col: number, row: number) {
 
   // Shoot-range / preview tints are not actions — keep the piece selected
   if (selectedId && highlights.some((h) => eq(h.hex, hex))) {
+    playSfx('invalid_move');
     return;
   }
 
   // Empty-AP mark: the move needs action points. Keep this unit selected.
   if (selectedId && emptyApKeys(selectedId).has(key(hex))) {
+    playSfx('ap_empty');
     return;
   }
 
+  if (selectedId) playSfx('unit_deselect');
   clearSelection();
   render();
 }
@@ -6996,6 +7014,7 @@ function renderToolbar(): string {
   return `<div class="toolbar">
     <h1><span class="app-name">${APP_NAME}</span> ${appVerHtml()}</h1>
     <button type="button" id="go-start" class="${screen === 'start' ? 'active' : ''}">${inEditorSection() ? (terrainOnly ? 'Exit' : 'Exit editor') : 'Play game'}</button>
+    ${sfxControlsHtml()}
     ${editorNav}
   </div>`;
 }
@@ -10192,6 +10211,19 @@ function render() {
     if (editorTts) closeEditorTts();
   }
   syncPopupNarration();
+  installSfx(app);
+  if (state) {
+    sfxObserve({
+      screen,
+      turn: state.turn,
+      turnNumber: state.turnNumber,
+      winner: state.winner,
+      playerTurn: isPlayerControlled(state, state.turn),
+      won: playerTeamWon(state),
+      vsEnemy: matchHasEnemies(state),
+      turnsLeft: turnsLeft(),
+    });
+  }
   maybeRecordLevelWin();
   if (screen === 'play' && rogueRun && state.winner) {
     if (playerTeamWon(state)) ensureRogueShop();
