@@ -2,14 +2,21 @@
  * Roguelite unlock conditions: migrate old kinds, AND-all arrays, progress checks.
  */
 import {
+  applyRogueConfig,
   conditionSatisfied,
   describeUnlock,
+  recordRogueGold,
+  recordRogueRunStarted,
+  sanitizeRogueConfig,
   sanitizeRogueProgress,
   sanitizeUnlock,
+  setRogueProgress,
+  setRogueUnlockToastHandler,
   unlockBattleParamMax,
   unlockConditionLabel,
   unlockSatisfied,
   type RogueUnlockCondition,
+  type RogueUnlockToast,
 } from '../src/roguelite-config';
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -229,5 +236,43 @@ assert(
   !conditionSatisfied(with10[0]!, sanitizeRogueProgress({ kills: { archer: 10 }, killsBy: { soldier: 10 } })),
   'killsWith does not use victim kills',
 );
+
+
+if (typeof localStorage === 'undefined') {
+  const store = new Map<string, string>();
+  const memoryStorage: Storage = {
+    get length() { return store.size; },
+    clear() { store.clear(); },
+    getItem(key: string) { return store.has(key) ? store.get(key)! : null; },
+    key(index: number) { return [...store.keys()][index] ?? null; },
+    removeItem(key: string) { store.delete(key); },
+    setItem(key: string, value: string) { store.set(key, value); },
+  };
+  (globalThis as { localStorage: Storage }).localStorage = memoryStorage;
+}
+
+const toasts: RogueUnlockToast[] = [];
+setRogueUnlockToastHandler((items) => { toasts.push(...items); });
+applyRogueConfig(sanitizeRogueConfig({
+  units: {
+    archer: { used: true, unlock: [{ type: 'playGames', count: 1 }], inShop: true, inStartPool: true, inEnemyPool: true, fromBattle: 1 },
+  },
+  promotions: {
+    scout: { used: true, unlock: [{ type: 'playGames', count: 2 }], inShop: true, fromBattle: 1 },
+  },
+}));
+setRogueProgress(sanitizeRogueProgress({}));
+toasts.length = 0;
+recordRogueRunStarted(0);
+assert(toasts.some((x) => x.kind === 'unit' && x.name === 'Archer' && x.id === 'u:archer'), `toast names the unit, got ${JSON.stringify(toasts)}`);
+assert(toasts.some((x) => x.condition === 'Play 1 game'), 'toast mentions the condition met');
+assert(!toasts.some((x) => x.id === 'p:scout'), 'scout still locked');
+const first = toasts.length;
+recordRogueGold(5);
+assert(toasts.length === first, 'no repeat toast on later gold');
+recordRogueRunStarted(0);
+assert(toasts.some((x) => x.kind === 'promo' && x.id === 'p:scout' && x.name), 'promotion toast after 2 games');
+assert(toasts.filter((x) => x.id === 'u:archer').length === 1, 'unit toast fires once');
+setRogueUnlockToastHandler(null);
 
 console.log('repro-rogue-unlocks: ok');

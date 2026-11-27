@@ -285,14 +285,14 @@ export function applyRogueRowEnabled(row: HTMLElement, enabled: boolean): void {
   }
 }
 
-function unitIcon(type: UnitType): string {
+export function unitIcon(type: UnitType): string {
   return `<svg class="side-icon rogue-ov-icon" viewBox="-10 -10 20 20" width="28" height="28" aria-hidden="true">
     <circle cx="0" cy="0" r="9.5" fill="#3d4a3a" />
     <g fill="#e8ebe6" color="#e8ebe6">${pieceIconSvg(type, 16)}</g>
   </svg>`;
 }
 
-function promoIcon(id: PromotionTokenType): string {
+export function promoIcon(id: PromotionTokenType): string {
   return `<svg class="rogue-ov-icon" viewBox="-12 -12 24 24" width="28" height="28" aria-hidden="true">${unitTokenGlyphSvg(id, 18)}</svg>`;
 }
 

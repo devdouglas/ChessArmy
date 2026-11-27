@@ -6,14 +6,16 @@
  * Export downloads a JSON file you can drop back into public/data/.
  */
 import {
+  PROMOTION_TOKEN_TYPES,
   TOKEN_LABEL,
+  UNIT_TOKEN_LABEL,
   isBreakableObstacleType,
   statsOf,
   type BreakableObstacleType,
   type PromotionTokenType,
   type UnitType,
 } from './engine';
-import { UNIT_STATS } from './roster';
+import { UNIT_STATS, UNIT_TYPES } from './roster';
 import {
   BUILTIN_TERRAIN_PRESETS,
   getTerrainPreset,
@@ -147,6 +149,8 @@ export type RogueProgress = {
   broken: Record<string, number>;
   /** Enemy kills scored by the player's unit type. */
   killsBy: Record<string, number>;
+  /** Unlock ids (`u:type` / `p:id`) already toasted. */
+  seenUnlocks: string[];
 };
 
 export type RoguePoolPurpose = 'shop' | 'start' | 'enemy';
@@ -485,6 +489,7 @@ export function emptyRogueProgress(): RogueProgress {
     winsWith: {},
     broken: {},
     killsBy: {},
+    seenUnlocks: [],
   };
 }
 
@@ -515,6 +520,7 @@ export function sanitizeRogueProgress(raw: unknown): RogueProgress {
     winsWith: intMap(src.winsWith, 99),
     broken: intMap(src.broken),
     killsBy: intMap(src.killsBy),
+    seenUnlocks: seenUnlockIds(src.seenUnlocks),
   };
 }
 
@@ -544,6 +550,106 @@ export function getRogueProgress(): RogueProgress {
 
 export function setRogueProgress(p: RogueProgress): void {
   writeProgress(p);
+}
+
+function seenUnlockIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    if (!id.startsWith('u:') && !id.startsWith('p:')) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export type RogueUnlockToast = {
+  id: string;
+  kind: 'unit' | 'promo';
+  typeId: string;
+  name: string;
+  condition?: string;
+};
+
+let unlockToastHandler: ((items: RogueUnlockToast[]) => void) | null = null;
+
+/** UI hook for gameplay unlock toasts. Not called for admin or setRogueProgress. */
+export function setRogueUnlockToastHandler(
+  handler: ((items: RogueUnlockToast[]) => void) | null,
+): void {
+  unlockToastHandler = handler;
+}
+
+export function unlockedRogueItemIds(progress: RogueProgress, battle = Math.max(1, progress.bestBattle)): string[] {
+  const out: string[] = [];
+  for (const typ of UNIT_TYPES) {
+    const c = unitRogueCfg(typ);
+    if (!c.used) continue;
+    if (unlockSatisfied(c.unlock, progress, battle)) out.push(`u:${typ}`);
+  }
+  for (const id of PROMOTION_TOKEN_TYPES) {
+    const c = promoRogueCfg(id);
+    if (!c.used) continue;
+    if (unlockSatisfied(c.unlock, progress, battle)) out.push(`p:${id}`);
+  }
+  return out;
+}
+
+function toastForUnlock(id: string, prev: RogueProgress, next: RogueProgress, battle: number): RogueUnlockToast {
+  const typeId = id.slice(2);
+  if (id.startsWith('p:')) {
+    const c = promoRogueCfg(typeId as PromotionTokenType);
+    return {
+      id,
+      kind: 'promo',
+      typeId,
+      name: UNIT_TOKEN_LABEL[typeId as PromotionTokenType] ?? typeId,
+      condition: newlyMetConditionLine(c.unlock, prev, next, battle),
+    };
+  }
+  const c = unitRogueCfg(typeId as UnitType);
+  return {
+    id,
+    kind: 'unit',
+    typeId,
+    name: UNIT_STATS[typeId as UnitType]?.name ?? typeId,
+    condition: newlyMetConditionLine(c.unlock, prev, next, battle),
+  };
+}
+
+function newlyMetConditionLine(
+  unlock: RogueUnlock,
+  prev: RogueProgress,
+  next: RogueProgress,
+  battle: number,
+): string | undefined {
+  for (const cond of sanitizeUnlock(unlock)) {
+    if (cond.type === 'always' || cond.type === 'never') continue;
+    if (!conditionSatisfied(cond, prev, battle) && conditionSatisfied(cond, next, battle)) {
+      return unlockConditionLabel(cond);
+    }
+  }
+  return undefined;
+}
+
+function commitGameplayProgress(next: RogueProgress): RogueProgress {
+  const prev = readProgress();
+  const battle = Math.max(1, next.bestBattle, prev.bestBattle);
+  const before = new Set(unlockedRogueItemIds(prev, Math.max(1, prev.bestBattle)));
+  const after = unlockedRogueItemIds(next, battle);
+  const seen = new Set(prev.seenUnlocks);
+  const fresh: RogueUnlockToast[] = [];
+  for (const id of after) {
+    if (before.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    fresh.push(toastForUnlock(id, prev, next, battle));
+  }
+  const written = sanitizeRogueProgress({ ...next, seenUnlocks: [...seen] });
+  writeProgress(written);
+  if (fresh.length) unlockToastHandler?.(fresh);
+  return written;
 }
 
 export type RogueProgressPatch = {
@@ -612,8 +718,7 @@ export function recordRogueBattleWin(
 ): RogueProgress {
   const prev = readProgress();
   const next = applyProgressPatch(prev, battle, { ...patch, regionId: regionId ?? patch.regionId });
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 /** Record kills / gold / a lost unit when a roguelite match ends in defeat. */
@@ -622,8 +727,7 @@ export function recordRogueMatchProgress(battle: number, patch: RogueProgressPat
   const next = applyProgressPatch(prev, 0, { ...patch, lostUnit: patch.lostUnit ?? true });
   // Defeat should not raise bestBattle; applyProgressPatch with battle 0 keeps it.
   void battle;
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 /** Count a run start as a game played, and note starting gold / battle 1 if still clean. */
@@ -635,8 +739,7 @@ export function recordRogueRunStarted(gold = 0): RogueProgress {
     maxCoins: Math.max(prev.maxCoins, int(gold, 0, 0, 99999)),
     bestNoLossBattle: Math.max(prev.bestNoLossBattle, 1),
   };
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 /** Track the highest purse held. */
@@ -645,8 +748,7 @@ export function recordRogueGold(gold: number): RogueProgress {
   const maxCoins = Math.max(prev.maxCoins, int(gold, 0, 0, 99999));
   if (maxCoins === prev.maxCoins) return prev;
   const next = { ...prev, maxCoins };
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 /** A new battle has started in a still-clean run. */
@@ -655,16 +757,14 @@ export function recordRogueNoLossBattle(battle: number): RogueProgress {
   const bestNoLossBattle = Math.max(prev.bestNoLossBattle, int(battle, 0, 0, 9999));
   if (bestNoLossBattle === prev.bestNoLossBattle) return prev;
   const next = { ...prev, bestNoLossBattle };
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 /** Count a finished goal run (player opts out after the goal battle). */
 export function recordRogueRunCompleted(): RogueProgress {
   const prev = readProgress();
   const next = { ...prev, runsCompleted: prev.runsCompleted + 1 };
-  writeProgress(next);
-  return next;
+  return commitGameplayProgress(next);
 }
 
 export function killsCounted(progress: RogueProgress, unitType?: string | null): number {

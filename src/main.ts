@@ -385,6 +385,8 @@ import {
   recordRogueNoLossBattle,
   recordRogueRunCompleted,
   sanitizeUnlock,
+  setRogueUnlockToastHandler,
+  type RogueUnlockToast,
   regionAvailableInBattle,
   regionRogueCfg,
   hasRogueConfigOverride,
@@ -393,6 +395,8 @@ import {
 import {
   applyRogueRowEnabled,
   getRogueAdminEra,
+  promoIcon,
+  unitIcon,
   getRogueAdminUsedOnly,
   persistRogueAdminDraft,
   readRogueAdminForm,
@@ -10027,6 +10031,50 @@ function bindLevelReorder() {
   });
 }
 
+function installRogueUnlockToasts(): void {
+  setRogueUnlockToastHandler((items) => {
+    if (typeof document === 'undefined') return;
+    showRogueUnlockToasts(items);
+  });
+}
+
+function showRogueUnlockToasts(items: RogueUnlockToast[]): void {
+  let host = document.getElementById('rogue-unlock-toasts');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'rogue-unlock-toasts';
+    host.className = 'rogue-unlock-toasts';
+    host.setAttribute('aria-live', 'polite');
+    document.body.appendChild(host);
+  }
+  for (const item of items) {
+    const el = document.createElement('div');
+    el.className = 'rogue-unlock-toast';
+    const ico = document.createElement('div');
+    ico.className = 'rogue-unlock-toast-ico';
+    ico.innerHTML = item.kind === 'unit' ? unitIcon(item.typeId as UnitType) : promoIcon(item.typeId as PromotionTokenType);
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent =
+      item.kind === 'unit'
+        ? `New unit unlocked: ${item.name}`
+        : `New promotion unlocked: ${item.name}`;
+    body.appendChild(title);
+    if (item.condition) {
+      const sub = document.createElement('span');
+      sub.textContent = item.condition;
+      body.appendChild(sub);
+    }
+    el.append(ico, body);
+    host.appendChild(el);
+    window.setTimeout(() => {
+      el.classList.add('is-out');
+      window.setTimeout(() => el.remove(), 350);
+    }, 3000);
+  }
+}
+
+
 function bindEvents() {
   bindToolbarEvents();
   if (screen === 'start') return;
@@ -10405,6 +10453,8 @@ function scheduleLayoutRefresh() {
 onServerStatus((s) => {
   paintSyncDot(s);
 });
+
+installRogueUnlockToasts();
 
 async function initServerSync(): Promise<void> {
   await loadRogueConfig();
